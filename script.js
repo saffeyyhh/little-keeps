@@ -1,3 +1,5 @@
+alert("script loaded");
+
 const baseColours = [
   { name: "Pink", value: "#ff8fab" },
   { name: "Blue", value: "#8ecae6" },
