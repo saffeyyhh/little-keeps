@@ -73,24 +73,12 @@ input {
 .letters {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 4px;
   position: relative;
   transform: rotateX(55deg) rotateZ(-35deg);
   transform-style: preserve-3d;
   width: max-content;
   margin: 30px auto;
-}
-
-.connector {
-  position: absolute;
-  height: 14px;
-  background: #333;
-  left: 35px;
-  right: 35px;
-  top: 50%;
-  transform: translateY(-50%) translateZ(-20px);
-  z-index: 0;
-  border-radius: 999px;
 }
 
 .letter-block {
@@ -158,4 +146,14 @@ input {
   color: var(--letter-colour);
   font-size: 34px;
   font-weight: bold;
+}
+
+.connector-piece {
+  position: absolute;
+  width: 12px;
+  height: 14px;
+  right: -8px;
+  top: 34px;
+  border-radius: 999px;
+  z-index: -1;
 }
