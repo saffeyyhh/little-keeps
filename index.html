@@ -3,6 +3,7 @@
 <head>
   <title>Little Keeps</title>
 </head>
+
 <body>
   <h1>Little Keeps</h1>
   <p>Personalised gifts made just for you.</p>
@@ -10,18 +11,22 @@
   <h2>Name Keychain Customiser</h2>
 
   <label>Enter name:</label>
-  <input type="text" placeholder="e.g. Kaylee">
+  <input id="nameInput" type="text" placeholder="e.g. Kaylee" oninput="updatePreview()">
 
   <h3>Choose base colour</h3>
-  <button>Pink</button>
-  <button>Blue</button>
-  <button>Purple</button>
+  <button onclick="chooseBase('pink')">Pink</button>
+  <button onclick="chooseBase('lightblue')">Blue</button>
+  <button onclick="chooseBase('plum')">Purple</button>
 
   <h3>Choose letter colour</h3>
-  <button>White</button>
-  <button>Black</button>
+  <button onclick="chooseLetter('white')">White</button>
+  <button onclick="chooseLetter('black')">Black</button>
 
   <h3>Preview</h3>
-  <p>Your keychain preview will be here.</p>
+  <div id="previewBox" style="padding:30px; background:pink; width:300px; text-align:center;">
+    <h1 id="previewName" style="color:white;">YOUR NAME</h1>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
