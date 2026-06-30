@@ -61,40 +61,33 @@ button {
 }
 
 .letter-tile {
-  background: var(--base-colour);
-  color: var(--letter-colour);
-  width: 75px;
-  height: 75px;
-  border-radius: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 34px;
-  font-weight: bold;
-  box-shadow: 0 5px 0 rgba(0,0,0,0.18);
-  position: relative;
+    width:75px;
+    height:75px;
+    background:var(--base-colour);
+    border-radius:18px;
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    box-shadow:0 5px 0 rgba(0,0,0,.18);
 }
 
-.letter-tile::before {
-  content: "";
-  position: absolute;
-  width: 55px;
-  height: 55px;
-  background: var(--tile-colour);
-  border-radius: 14px;
-  z-index: 0;
+.inner-tile{
+    width:55px;
+    height:55px;
+
+    background:var(--tile-colour);
+
+    border-radius:14px;
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
 }
 
-.letter-tile {
-  isolation: isolate;
-}
-
-.letter-tile {
-  color: var(--letter-colour);
-}
-
-.letter-tile::after {
-  content: attr(data-letter);
-  position: relative;
-  z-index: 1;
+.letter{
+    color:var(--letter-colour);
+    font-size:34px;
+    font-weight:bold;
 }
