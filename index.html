@@ -6,37 +6,32 @@
 </head>
 
 <body>
-  <div class="container">
-    <h1>🌸 Little Keeps</h1>
-    <p>Personalised gifts made just for you.</p>
+  <main class="page">
+    <section class="card">
+      <h1>Little Keeps ♡</h1>
+      <p class="tagline">Personalised gifts made just for you.</p>
 
-    <div class="card">
-      <h2>Name Keychain Customiser</h2>
+      <h2>🌸 Name Keychain Customiser</h2>
 
-      <label>Enter name:</label>
-      <input id="nameInput" type="text" placeholder="e.g. Kaylee" oninput="updatePreview()">
+      <label>Enter name</label>
+      <input id="nameInput" type="text" maxlength="10" placeholder="e.g. Kaylee">
 
       <h3>Choose base colour</h3>
-      <button onclick="chooseBase('pink')">Pink</button>
-      <button onclick="chooseBase('lightblue')">Blue</button>
-      <button onclick="chooseBase('plum')">Purple</button>
+      <div id="baseColours" class="colour-row"></div>
 
       <h3>Choose tile colour</h3>
-      <button onclick="chooseTile('#ff8fab')">Pink</button>
-      <button onclick="chooseTile('#7ec8e3')">Blue</button>
-      <button onclick="chooseTile('#ffffff')">White</button>
-      <button onclick="chooseTile('#222222')">Black</button>
+      <div id="tileColours" class="colour-row"></div>
 
       <h3>Choose letter colour</h3>
-      <button onclick="chooseLetter('white')">White</button>
-      <button onclick="chooseLetter('black')">Black</button>
+      <div id="letterColours" class="colour-row"></div>
 
       <h3>Preview</h3>
-      <div id="previewBox" class="preview-box">
-        <div id="previewName" class="preview-name">YOUR NAME</div>
+      <div class="keychain">
+        <div class="hole"></div>
+        <div id="previewName" class="letters"></div>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
   <script src="script.js"></script>
 </body>
