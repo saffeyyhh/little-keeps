@@ -5,9 +5,18 @@ function updatePreview() {
   preview.innerHTML = "";
 
   name.toUpperCase().split("").forEach(letter => {
-    let tile = document.createElement("span");
+    let tile = document.createElement("div");
     tile.className = "letter-tile";
-    tile.setAttribute("data-letter", letter);
+
+    let inner = document.createElement("div");
+    inner.className = "inner-tile";
+
+    let text = document.createElement("span");
+    text.className = "letter";
+    text.innerText = letter;
+
+    inner.appendChild(text);
+    tile.appendChild(inner);
     preview.appendChild(tile);
   });
 }
