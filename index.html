@@ -2,29 +2,34 @@
 <html>
 <head>
   <title>Little Keeps</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-  <h1>Little Keeps</h1>
-  <p>Personalised gifts made just for you.</p>
+  <div class="container">
+    <h1>🌸 Little Keeps</h1>
+    <p>Personalised gifts made just for you.</p>
 
-  <h2>Name Keychain Customiser</h2>
+    <div class="card">
+      <h2>Name Keychain Customiser</h2>
 
-  <label>Enter name:</label>
-  <input id="nameInput" type="text" placeholder="e.g. Kaylee" oninput="updatePreview()">
+      <label>Enter name:</label>
+      <input id="nameInput" type="text" placeholder="e.g. Kaylee" oninput="updatePreview()">
 
-  <h3>Choose base colour</h3>
-  <button onclick="chooseBase('pink')">Pink</button>
-  <button onclick="chooseBase('lightblue')">Blue</button>
-  <button onclick="chooseBase('plum')">Purple</button>
+      <h3>Choose base colour</h3>
+      <button onclick="chooseBase('pink')">Pink</button>
+      <button onclick="chooseBase('lightblue')">Blue</button>
+      <button onclick="chooseBase('plum')">Purple</button>
 
-  <h3>Choose letter colour</h3>
-  <button onclick="chooseLetter('white')">White</button>
-  <button onclick="chooseLetter('black')">Black</button>
+      <h3>Choose letter colour</h3>
+      <button onclick="chooseLetter('white')">White</button>
+      <button onclick="chooseLetter('black')">Black</button>
 
-  <h3>Preview</h3>
-  <div id="previewBox" style="padding:30px; background:pink; width:300px; text-align:center;">
-    <h1 id="previewName" style="color:white;">YOUR NAME</h1>
+      <h3>Preview</h3>
+      <div id="previewBox" class="preview-box">
+        <div id="previewName" class="preview-name">YOUR NAME</div>
+      </div>
+    </div>
   </div>
 
   <script src="script.js"></script>
