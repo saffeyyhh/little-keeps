@@ -20,4 +20,8 @@ function chooseLetter(colour) {
   document.documentElement.style.setProperty("--letter-colour", colour);
 }
 
+function chooseTile(colour) {
+  document.documentElement.style.setProperty("--tile-colour", colour);
+}
+
 updatePreview();
