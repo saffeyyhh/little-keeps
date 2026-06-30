@@ -96,34 +96,38 @@ input {
   position: relative;
   z-index: 1;
   background: var(--base);
-  box-shadow:
-    0 8px 0 rgba(0,0,0,0.25),
-    inset 0 -10px 0 rgba(0,0,0,0.12);
+  transform: perspective(500px) rotateX(18deg);
+  transform-style: preserve-3d;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 18px 18px rgba(0,0,0,0.18);
 }
 
-/* fake ribbed side only */
+/* front ribbed side */
 .letter-block::after {
   content: "";
   position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: -8px;
-  height: 12px;
-  border-radius: 0 0 14px 14px;
+  left: 4px;
+  right: 4px;
+  bottom: -18px;
+  height: 22px;
   background:
     repeating-linear-gradient(
       90deg,
-      rgba(0,0,0,0.18) 0px,
-      rgba(0,0,0,0.18) 3px,
-      transparent 3px,
-      transparent 8px
-    );
+      rgba(0,0,0,0.28) 0px,
+      rgba(0,0,0,0.28) 4px,
+      rgba(255,255,255,0.22) 4px,
+      rgba(255,255,255,0.22) 8px
+    ),
+    var(--base);
+  border-radius: 0 0 16px 16px;
+  transform: rotateX(-90deg);
+  transform-origin: top;
 }
 
 .inner-tile {
+  transform: translateZ(8px);
   width: 54px;
   height: 54px;
   background: var(--tile-colour);
@@ -133,6 +137,7 @@ input {
   align-items: center;
   justify-content: center;
 }
+
 
 .letter {
   color: var(--letter-colour);
