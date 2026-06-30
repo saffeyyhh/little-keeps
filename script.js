@@ -17,8 +17,8 @@ const letterColours = [
   { name: "Black", value: "#222222" }
 ];
 
-let selectedBases = ["#ff8fab", "#8ecae6"]; // alternating colours
-let selectedTile = "#8ecae6";
+let selectedBases = ["#ff8fab", "#8ecae6"];
+let selectedTiles = ["#8ecae6", "#ff8fab"];
 let selectedLetter = "#ffffff";
 
 function createColourButtons(list, containerId, type) {
@@ -36,20 +36,16 @@ function createColourButtons(list, containerId, type) {
     button.onclick = () => {
       if (type === "base") {
         selectedBases.push(colour.value);
-
-        if (selectedBases.length > 2) {
-          selectedBases.shift();
-        }
+        if (selectedBases.length > 2) selectedBases.shift();
       }
 
       if (type === "tile") {
-        selectedTile = colour.value;
-        document.documentElement.style.setProperty("--tile-colour", selectedTile);
+        selectedTiles.push(colour.value);
+        if (selectedTiles.length > 2) selectedTiles.shift();
       }
 
       if (type === "letter") {
         selectedLetter = colour.value;
-        document.documentElement.style.setProperty("--letter-colour", selectedLetter);
       }
 
       updatePreview();
@@ -65,25 +61,34 @@ function updatePreview() {
 
   preview.innerHTML = "";
 
+  const hole = document.createElement("div");
+  hole.className = "keychain-hole";
+  hole.style.setProperty("--base", selectedBases[0]);
+  preview.appendChild(hole);
+
   name.toUpperCase().split("").forEach((letter, index) => {
+    const baseColour = selectedBases[index % selectedBases.length];
+    const tileColour = selectedTiles[index % selectedTiles.length];
+
     const block = document.createElement("div");
     block.className = "letter-block";
-    block.style.setProperty("--base", selectedBases[index % selectedBases.length]);
+    block.style.setProperty("--base", baseColour);
+    block.style.setProperty("--tile", tileColour);
 
     const connector = document.createElement("div");
     connector.className = "connector-piece";
-    connector.style.background = selectedBases[index % selectedBases.length];
-
-    block.appendChild(connector);
+    connector.style.background = baseColour;
 
     const inner = document.createElement("div");
     inner.className = "inner-tile";
 
     const text = document.createElement("span");
     text.className = "letter";
+    text.style.color = selectedLetter;
     text.innerText = letter;
 
     inner.appendChild(text);
+    block.appendChild(connector);
     block.appendChild(inner);
     preview.appendChild(block);
   });
@@ -94,8 +99,5 @@ document.getElementById("nameInput").addEventListener("input", updatePreview);
 createColourButtons(baseColours, "baseColours", "base");
 createColourButtons(tileColours, "tileColours", "tile");
 createColourButtons(letterColours, "letterColours", "letter");
-
-document.documentElement.style.setProperty("--tile-colour", selectedTile);
-document.documentElement.style.setProperty("--letter-colour", selectedLetter);
 
 updatePreview();
