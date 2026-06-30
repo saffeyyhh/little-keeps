@@ -85,6 +85,7 @@ function updatePreview() {
     const text = document.createElement("span");
     text.className = "letter";
     text.style.color = selectedLetter;
+    document.documentElement.style.setProperty("--letter-colour", selectedLetter);
     text.innerText = letter;
 
     inner.appendChild(text);
