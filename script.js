@@ -7,7 +7,7 @@ function updatePreview() {
   name.toUpperCase().split("").forEach(letter => {
     let tile = document.createElement("span");
     tile.className = "letter-tile";
-    tile.innerText = letter;
+    tile.setAttribute("data-letter", letter);
     preview.appendChild(tile);
   });
 }
