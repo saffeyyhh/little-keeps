@@ -65,14 +65,16 @@ function updatePreview() {
 
   preview.innerHTML = "";
 
-  const connector = document.createElement("div");
-  connector.className = "connector";
-  preview.appendChild(connector);
-
   name.toUpperCase().split("").forEach((letter, index) => {
     const block = document.createElement("div");
     block.className = "letter-block";
     block.style.setProperty("--base", selectedBases[index % selectedBases.length]);
+
+    const connector = document.createElement("div");
+    connector.className = "connector-piece";
+    connector.style.background = selectedBases[index % selectedBases.length];
+
+    block.appendChild(connector);
 
     const inner = document.createElement("div");
     inner.className = "inner-tile";
