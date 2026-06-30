@@ -16,9 +16,9 @@ const letterColours = [
   { name: "Black", value: "#222222" }
 ];
 
-let selectedBase = baseColours[0].value;
-let selectedTile = tileColours[1].value;
-let selectedLetter = letterColours[0].value;
+let selectedBase = "#ff8fab";
+let selectedTile = "#8ecae6";
+let selectedLetter = "#ffffff";
 
 function createColourButtons(list, containerId, type) {
   const container = document.getElementById(containerId);
@@ -27,17 +27,15 @@ function createColourButtons(list, containerId, type) {
   list.forEach(colour => {
     const button = document.createElement("button");
     button.className = "colour-btn";
-    button.onclick = () => selectColour(type, colour.value);
+    button.onclick = function () {
+      selectColour(type, colour.value);
+    };
 
-    const swatch = document.createElement("span");
-    swatch.className = "swatch";
-    swatch.style.background = colour.value;
+    button.innerHTML = `
+      <span class="swatch" style="background:${colour.value}"></span>
+      <span>${colour.name}</span>
+    `;
 
-    const label = document.createElement("span");
-    label.innerText = colour.name;
-
-    button.appendChild(swatch);
-    button.appendChild(label);
     container.appendChild(button);
   });
 }
@@ -50,14 +48,6 @@ function selectColour(type, value) {
   document.documentElement.style.setProperty("--base-colour", selectedBase);
   document.documentElement.style.setProperty("--tile-colour", selectedTile);
   document.documentElement.style.setProperty("--letter-colour", selectedLetter);
-
-  updateSelectedButtons();
-}
-
-function updateSelectedButtons() {
-  document.querySelectorAll(".colour-btn").forEach(button => {
-    button.classList.remove("selected");
-  });
 }
 
 function updatePreview() {
@@ -67,8 +57,8 @@ function updatePreview() {
   preview.innerHTML = "";
 
   name.toUpperCase().split("").forEach(letter => {
-    const tile = document.createElement("div");
-    tile.className = "letter-tile";
+    const outer = document.createElement("div");
+    outer.className = "letter-tile";
 
     const inner = document.createElement("div");
     inner.className = "inner-tile";
@@ -78,8 +68,8 @@ function updatePreview() {
     text.innerText = letter;
 
     inner.appendChild(text);
-    tile.appendChild(inner);
-    preview.appendChild(tile);
+    outer.appendChild(inner);
+    preview.appendChild(outer);
   });
 }
 
@@ -89,4 +79,7 @@ createColourButtons(baseColours, "baseColours", "base");
 createColourButtons(tileColours, "tileColours", "tile");
 createColourButtons(letterColours, "letterColours", "letter");
 
+selectColour("base", selectedBase);
+selectColour("tile", selectedTile);
+selectColour("letter", selectedLetter);
 updatePreview();
