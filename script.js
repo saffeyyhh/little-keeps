@@ -1,12 +1,23 @@
 function updatePreview() {
-  let name = document.getElementById("nameInput").value;
-  document.getElementById("previewName").innerText = name || "YOUR NAME";
+  let name = document.getElementById("nameInput").value || "KAYLEE";
+  let preview = document.getElementById("previewName");
+
+  preview.innerHTML = "";
+
+  name.toUpperCase().split("").forEach(letter => {
+    let tile = document.createElement("span");
+    tile.className = "letter-tile";
+    tile.innerText = letter;
+    preview.appendChild(tile);
+  });
 }
 
 function chooseBase(colour) {
-  document.getElementById("previewBox").style.backgroundColor = colour;
+  document.documentElement.style.setProperty("--base-colour", colour);
 }
 
 function chooseLetter(colour) {
-  document.getElementById("previewName").style.color = colour;
+  document.documentElement.style.setProperty("--letter-colour", colour);
 }
+
+updatePreview();
