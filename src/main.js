@@ -1,0 +1,1134 @@
+import "./style.css";
+import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import confetti from "canvas-confetti";
+import emailjs from "@emailjs/browser";
+
+let draftData = null;
+
+document.querySelector("#app").innerHTML = `
+  <main class="page">
+    <section class="controls">
+      <h1>Little Keeps ♡</h1>
+      <p>Personalised gifts made just for you.</p>
+
+      <h3>Order Type</h3>
+      <div class="toggle-row">
+        <button id="singleBtn" class="toggle active">Single Order</button>
+        <button id="groupBtn" class="toggle">Group Order</button>
+      </div>
+
+      <div id="singleSection">
+        <h3>Name</h3>
+        <input id="singleName" value="Alicia" maxlength="10">
+      </div>
+
+      <div id="groupSection" class="hidden">
+        <h3>Name List</h3>
+        <textarea id="nameList" placeholder="Paste names here, one per line">Alicia
+Ben
+Chloe</textarea>
+        <p id="nameCount">3 names</p>
+      </div>
+
+      <h3>Names</h3>
+      <div id="nameCards"></div>
+
+      <h3>Colours</h3>
+      <label class="apply-row">
+        <input id="applyAllToggle" type="checkbox" checked>
+        Apply colour changes to all names
+      </label>
+      <p id="editModeText" class="hint">Currently editing: all names</p>
+
+      <p>Base Colours</p>
+      <div id="baseSlots" class="slot-row"></div>
+      <div id="baseColours" class="swatches"></div>
+
+      <p>Cap Colours</p>
+      <div id="capSlots" class="slot-row"></div>
+      <div id="capColours" class="swatches"></div>
+
+      <p>Letter Colours</p>
+      <div id="letterSlots" class="slot-row"></div>
+      <div id="letterColours" class="swatches"></div>
+
+      <button id="resetSelected" class="reset-btn">Reset selected name to global design</button>
+
+      <div class="contact-box">
+        <h3>Contact Details</h3>
+
+        <input id="customerName" placeholder="Name">
+        <input id="customerEmail" type="email" placeholder="Email">
+        <input id="customerPhone" placeholder="Contact Number">
+
+        <label>Needed By</label>
+        <input id="neededBy" type="date">
+
+        <label>Collection Method</label>
+        <select id="collectionMethod">
+          <option value="pickup">Pick Up at Woodlands</option>
+          <option value="delivery">Delivery islandwide</option>
+        </select>
+
+        <p id="deliveryNote" class="hint">
+          Pick up at Woodlands. We will contact you nearer to the date.
+        </p>
+
+        <textarea id="orderNotes" placeholder="Additional notes..."></textarea>
+      </div>
+
+      <div class="review-box">
+        <h3>Review Order</h3>
+        <div class="review-summary">
+          <p>Total names: <strong id="reviewCount">0</strong></p>
+          <p>Estimated total: <strong id="reviewPrice">$0.00</strong></p>
+        </div>
+        <div id="reviewList"></div>
+      </div>
+
+      <button
+          id="submitOrderBtn"
+          class="submit-btn"
+          disabled
+      >
+          Submit Order
+      </button>
+
+      <p id="formStatus" class="hint"></p>
+
+      <p id="submitStatus" class="hint"></p>
+    </section>
+
+    <section class="preview">
+      <div class="preview-sticky">
+        <canvas id="previewCanvas"></canvas>
+      </div>
+    </section>
+
+      <div id="successModal" class="modal hidden">
+        <div class="modal-card">
+          <h2>Order Submitted ♡</h2>
+          <p>Thank you! We’ve received your order.</p>
+          <p id="orderRefText"></p>
+          <p>We’ll contact you nearer to your collection/delivery date.</p>
+          <button id="closeModalBtn" class="submit-btn">Done</button>
+        </div>
+      </div>
+
+      <div id="draftModal" class="modal hidden">
+
+    <div class="modal-card">
+
+        <h2>🩷 Welcome Back!</h2>
+
+        <p>
+
+            We found an unfinished order.
+
+        </p>
+
+        <p>
+
+            Would you like to continue where you left off?
+
+        </p>
+
+        <button
+            id="continueDraftBtn"
+            class="submit-btn"
+        >
+
+            Continue Order
+
+        </button>
+
+        <button
+            id="discardDraftBtn"
+            class="secondary-btn"
+        >
+
+            Start New
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+  </main>
+`;
+
+const BASE_PRICE = 3.5;
+const EXTRA_COLOUR_PRICE = 0.5;
+
+const canvas = document.getElementById("previewCanvas");
+const singleBtn = document.getElementById("singleBtn");
+const groupBtn = document.getElementById("groupBtn");
+const singleSection = document.getElementById("singleSection");
+const groupSection = document.getElementById("groupSection");
+const singleName = document.getElementById("singleName");
+const nameList = document.getElementById("nameList");
+const nameCount = document.getElementById("nameCount");
+const nameCards = document.getElementById("nameCards");
+const applyAllToggle = document.getElementById("applyAllToggle");
+const editModeText = document.getElementById("editModeText");
+const resetSelected = document.getElementById("resetSelected");
+const reviewCount = document.getElementById("reviewCount");
+const reviewPrice = document.getElementById("reviewPrice");
+const reviewList = document.getElementById("reviewList");
+const customerName = document.getElementById("customerName");
+const customerEmail = document.getElementById("customerEmail");
+const customerPhone = document.getElementById("customerPhone");
+const neededBy = document.getElementById("neededBy");
+const collectionMethod = document.getElementById("collectionMethod");
+const deliveryNote = document.getElementById("deliveryNote");
+const orderNotes = document.getElementById("orderNotes");
+const submitOrderBtn = document.getElementById("submitOrderBtn");
+const submitStatus = document.getElementById("submitStatus");
+const successModal = document.getElementById("successModal");
+const orderRefText = document.getElementById("orderRefText");
+const closeModalBtn = document.getElementById("closeModalBtn");
+
+const draftModal =
+document.getElementById("draftModal");
+
+const continueDraftBtn =
+document.getElementById("continueDraftBtn");
+
+const discardDraftBtn =
+document.getElementById("discardDraftBtn");
+
+const EMAILJS_SERVICE = "service_tm3z0gd";
+const EMAILJS_TEMPLATE = "template_3kt0yd9";
+const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
+
+emailjs.init(EMAILJS_PUBLIC);
+
+const baseColours = ["#ff8fab", "#8ecae6", "#cdb4db", "#ffd166", "#95d5b2", "#ffffff"];
+const capColours = ["#8ecae6", "#ff8fab", "#ffffff", "#222222", "#ffd166", "#95d5b2"];
+const letterColours = ["#ffffff", "#222222", "#ff8fab", "#ffd166", "#95d5b2", "#8ecae6"];
+
+let orderType = "single";
+let selectedIndex = 0;
+
+let globalDesign = {
+  bases: ["#ff8fab", "#8ecae6"],
+  caps: ["#8ecae6", "#ff8fab"],
+  letters: ["#ffffff", "#222222"]
+};
+
+let names = [];
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#efe9e1");
+
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
+camera.position.set(70, 55, 80);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enablePan = false;
+
+scene.add(new THREE.AmbientLight(0xffffff, 1.6));
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+keyLight.position.set(50, 80, 70);
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.8);
+fillLight.position.set(-40, 30, 30);
+scene.add(fillLight);
+
+const loader = new STLLoader();
+const keychain = new THREE.Group();
+scene.add(keychain);
+
+const geometryCache = {};
+
+function generateOrderRef() {
+  const date = new Date();
+  const yymmdd = date.toISOString().slice(2, 10).replaceAll("-", "");
+  const random = Math.floor(1000 + Math.random() * 9000);
+  return `LK-${yymmdd}-${random}`;
+}
+
+function createMat(colour) {
+  return new THREE.MeshStandardMaterial({
+    color: colour,
+    roughness: 0.42,
+    metalness: 0
+  });
+}
+
+function calculatePrice(design) {
+  const extraColours =
+    Math.max(0, design.bases.length - 2) +
+    Math.max(0, design.caps.length - 2) +
+    Math.max(0, design.letters.length - 2);
+
+  return BASE_PRICE + extraColours * EXTRA_COLOUR_PRICE;
+}
+
+function getActiveDesign() {
+  const item = names[selectedIndex];
+
+  if (applyAllToggle.checked || !item) return globalDesign;
+
+  if (!item.custom) {
+    item.custom = {
+      bases: [...globalDesign.bases],
+      caps: [...globalDesign.caps],
+      letters: [...globalDesign.letters]
+    };
+  }
+
+  return item.custom;
+}
+
+function makeSwatches(containerId, colours, type) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+
+  colours.forEach(colour => {
+    const btn = document.createElement("button");
+    btn.className = "swatch";
+    btn.style.background = colour;
+
+    btn.onclick = () => {
+      addColourToDesign(type, colour);
+      refreshUI();
+      buildSelectedPreview();
+    };
+
+    container.appendChild(btn);
+  });
+}
+
+function addColourToDesign(type, colour) {
+  const design = getActiveDesign();
+
+  if (type === "base") design.bases.push(colour);
+  if (type === "cap") design.caps.push(colour);
+  if (type === "letter") design.letters.push(colour);
+
+  if (applyAllToggle.checked) {
+    names.forEach(item => {
+      item.custom = null;
+    });
+  }
+}
+
+function removeColourFromDesign(type, index) {
+  const design = getActiveDesign();
+
+  if (type === "base" && design.bases.length > 1) design.bases.splice(index, 1);
+  if (type === "cap" && design.caps.length > 1) design.caps.splice(index, 1);
+  if (type === "letter" && design.letters.length > 1) design.letters.splice(index, 1);
+
+  if (applyAllToggle.checked) {
+    names.forEach(item => {
+      item.custom = null;
+    });
+  }
+
+  refreshUI();
+  buildSelectedPreview();
+}
+
+function renderColourSlots() {
+  const design = getActiveDesign();
+  renderSlots("baseSlots", design.bases, "base");
+  renderSlots("capSlots", design.caps, "cap");
+  renderSlots("letterSlots", design.letters, "letter");
+}
+
+function renderSlots(containerId, colours, type) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+
+  colours.forEach((colour, index) => {
+    const slot = document.createElement("button");
+    slot.className = "colour-slot";
+    slot.style.background = colour;
+    slot.title = "Click to remove this colour";
+    slot.onclick = () => removeColourFromDesign(type, index);
+    container.appendChild(slot);
+  });
+}
+
+function loadSTL(path) {
+  if (geometryCache[path]) return Promise.resolve(geometryCache[path].clone());
+
+  return new Promise((resolve, reject) => {
+    loader.load(
+      path,
+      geometry => {
+        geometry.computeVertexNormals();
+        geometry.center();
+        geometryCache[path] = geometry;
+        resolve(geometry.clone());
+      },
+      undefined,
+      reject
+    );
+  });
+}
+
+function splitCapGeometry(geometry) {
+  const pos = geometry.attributes.position;
+  const triangleCount = pos.count / 3;
+  const visited = new Array(triangleCount).fill(false);
+  const components = [];
+
+  function getVertexKey(i) {
+    return [
+      pos.getX(i).toFixed(3),
+      pos.getY(i).toFixed(3),
+      pos.getZ(i).toFixed(3)
+    ].join(",");
+  }
+
+  const vertexMap = new Map();
+
+  for (let t = 0; t < triangleCount; t++) {
+    for (let j = 0; j < 3; j++) {
+      const key = getVertexKey(t * 3 + j);
+      if (!vertexMap.has(key)) vertexMap.set(key, []);
+      vertexMap.get(key).push(t);
+    }
+  }
+
+  for (let t = 0; t < triangleCount; t++) {
+    if (visited[t]) continue;
+
+    const stack = [t];
+    const component = [];
+    visited[t] = true;
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      component.push(current);
+
+      for (let j = 0; j < 3; j++) {
+        const key = getVertexKey(current * 3 + j);
+        const neighbours = vertexMap.get(key) || [];
+
+        neighbours.forEach(n => {
+          if (!visited[n]) {
+            visited[n] = true;
+            stack.push(n);
+          }
+        });
+      }
+    }
+
+    components.push(component);
+  }
+
+  components.sort((a, b) => b.length - a.length);
+
+  const tileTriangles = components[0] || [];
+  const letterTriangles = components.slice(1).flat();
+
+  function makeGeometry(triangles) {
+    const vertices = [];
+
+    triangles.forEach(t => {
+      for (let j = 0; j < 3; j++) {
+        const i = t * 3 + j;
+        vertices.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+      }
+    });
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+
+  return {
+    tile: makeGeometry(tileTriangles),
+    letter: makeGeometry(letterTriangles)
+  };
+}
+
+function getDesign(item) {
+  if (!item.custom) return globalDesign;
+
+  return {
+    bases: item.custom.bases || globalDesign.bases,
+    caps: item.custom.caps || globalDesign.caps,
+    letters: item.custom.letters || globalDesign.letters
+  };
+}
+
+async function createKeycap(letter, index, design) {
+  const group = new THREE.Group();
+
+  const baseColour = design.bases[index % design.bases.length];
+  const capColour = design.caps[index % design.caps.length];
+  const letterColour = design.letters[index % design.letters.length];
+
+  const baseGeo = await loadSTL("/models/base.stl");
+  const base = new THREE.Mesh(baseGeo, createMat(baseColour));
+  base.rotation.z = Math.PI / 2;
+  group.add(base);
+
+  const capGeo = await loadSTL(`/models/keycap-char-${letter}.stl`);
+  const parts = splitCapGeometry(capGeo);
+
+  const tile = new THREE.Mesh(parts.tile, createMat(capColour));
+  const raisedLetter = new THREE.Mesh(parts.letter, createMat(letterColour));
+
+  const capGroup = new THREE.Group();
+  capGroup.add(tile);
+  capGroup.add(raisedLetter);
+  capGroup.position.set(4.2, 0, 11);
+  group.add(capGroup);
+
+  group.position.x = index * 28;
+
+  return group;
+}
+
+async function buildKeychain(name, design) {
+  keychain.clear();
+
+  const cleanName = (name || "A").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  for (let i = 0; i < cleanName.length; i++) {
+    try {
+      const item = await createKeycap(cleanName[i], i, design);
+      keychain.add(item);
+    } catch (err) {
+      console.warn(`Missing STL for ${cleanName[i]}`, err);
+    }
+  }
+
+  keychain.position.x = -((cleanName.length - 1) * 28) / 2;
+  keychain.rotation.x = -0.8;
+  keychain.rotation.y = 0.2;
+
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
+function updateNames() {
+  const previous = names;
+
+  if (orderType === "single") {
+    const value = singleName.value.trim() || "Alicia";
+    const existing = previous.find(n => n.name === value);
+    names = [existing || { name: value, custom: null }];
+  } else {
+    names = nameList.value
+      .split("\n")
+      .map(name => name.trim())
+      .filter(Boolean)
+      .map(value => {
+        const existing = previous.find(n => n.name === value);
+        return existing || { name: value, custom: null };
+      });
+  }
+
+  if (selectedIndex >= names.length) selectedIndex = 0;
+
+  if (nameCount) {
+    nameCount.innerText = `${names.length} name${names.length === 1 ? "" : "s"}`;
+  }
+
+  refreshUI();
+  buildSelectedPreview();
+}
+
+function createMiniPreview(name, design) {
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .split("")
+    .map((letter, i) => {
+      const base = design.bases[i % design.bases.length];
+      const cap = design.caps[i % design.caps.length];
+      const letterColour = design.letters[i % design.letters.length];
+
+      return `
+        <div class="mini-block" style="background:${base}">
+          <div class="mini-cap" style="background:${cap}; color:${letterColour}">
+            ${letter}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderNameCards() {
+  nameCards.innerHTML = "";
+
+  names.forEach((item, index) => {
+    const card = document.createElement("button");
+    card.className = "student-card";
+
+    if (index === selectedIndex) card.classList.add("active");
+
+    const design = getDesign(item);
+
+    card.innerHTML = `
+      <div class="name-card-top">
+        <strong>${item.name}</strong>
+      </div>
+
+      <div class="mini-chain">
+        ${createMiniPreview(item.name, design)}
+      </div>
+    `;
+
+    card.onclick = () => {
+      selectedIndex = index;
+      refreshUI();
+      buildSelectedPreview();
+    };
+
+    nameCards.appendChild(card);
+  });
+}
+
+function updateEditModeText() {
+  if (applyAllToggle.checked) {
+    editModeText.innerText = "Currently editing: all names";
+    resetSelected.style.display = "none";
+    return;
+  }
+
+  const item = names[selectedIndex];
+
+  editModeText.innerText = item
+    ? `Currently editing: ${item.name} only`
+    : "Currently editing: selected name only";
+
+  resetSelected.style.display = "block";
+}
+
+function autoSave(){
+
+    saveDraft();
+
+}
+
+setInterval(autoSave,3000);
+
+function renderReviewOrder() {
+  let total = 0;
+
+  reviewCount.innerText = names.length;
+  reviewList.innerHTML = "";
+
+  names.forEach(item => {
+    const design = getDesign(item);
+    const price = calculatePrice(design);
+    total += price;
+
+    const row = document.createElement("div");
+    row.className = "review-item";
+
+    row.innerHTML = `
+      <strong>${item.name}</strong>
+      <div class="mini-chain">
+        ${createMiniPreview(item.name, design)}
+      </div>
+      <small>$${price.toFixed(2)}</small>
+    `;
+
+    reviewList.appendChild(row);
+  });
+
+  const deliveryFee =
+  collectionMethod.value === "delivery" && total < 50 ? 5 : 0;
+
+  const grandTotal = total + deliveryFee;
+
+  reviewPrice.innerHTML = `
+    Subtotal: $${total.toFixed(2)}<br>
+    Delivery: $${deliveryFee.toFixed(2)}<br>
+    Total: $${grandTotal.toFixed(2)}
+  `;
+
+  if (collectionMethod.value === "pickup") {
+    deliveryNote.innerText =
+      "Pick up at Woodlands. We will contact you nearer to the date.";
+  } else if (total >= 50) {
+    deliveryNote.innerText = "Free islandwide delivery.";
+  } else {
+    deliveryNote.innerText = "$5 islandwide delivery.";
+  }
+}
+
+function getColourName(hex) {
+  const colourNames = {
+    "#ff8fab": "Pink",
+    "#8ecae6": "Blue",
+    "#cdb4db": "Purple",
+    "#ffd166": "Yellow",
+    "#95d5b2": "Green",
+    "#ffffff": "White",
+    "#222222": "Black"
+  };
+
+  return colourNames[hex] || hex;
+}
+
+function addToTotal(totals, colour) {
+  const name = getColourName(colour);
+  totals[name] = (totals[name] || 0) + 1;
+}
+
+function getColourTotals() {
+  const totals = {
+    base: {},
+    cap: {},
+    letter: {}
+  };
+
+  names.forEach(item => {
+    const design = getDesign(item);
+    const cleanName = item.name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    cleanName.split("").forEach((_, i) => {
+      addToTotal(totals.base, design.bases[i % design.bases.length]);
+      addToTotal(totals.cap, design.caps[i % design.caps.length]);
+      addToTotal(totals.letter, design.letters[i % design.letters.length]);
+    });
+  });
+
+  return totals;
+}
+
+function formatTotals(title, totals) {
+  const lines = [title];
+
+  Object.entries(totals).forEach(([colour, count]) => {
+    lines.push(`- ${colour}: ${count}`);
+  });
+
+  return lines.join("\n");
+}
+
+function getEmailHtml() {
+  let subtotal = 0;
+  const colourTotals = getColourTotals();
+  const lines = [];
+
+  lines.push("Little Keeps Order");
+  lines.push("==================");
+  lines.push("");
+  lines.push(`Name: ${customerName.value || "-"}`);
+  lines.push(`Email: ${customerEmail.value || "-"}`);
+  lines.push(`Contact Number: ${customerPhone.value || "-"}`);
+  lines.push(`Needed By: ${neededBy.value || "-"}`);
+  lines.push(`Collection Method: ${collectionMethod.value === "pickup" ? "Pick Up at Woodlands" : "Delivery islandwide"}`);
+  lines.push("");
+  lines.push(`Order Type: ${orderType === "single" ? "Single Order" : "Group Order"}`);
+  lines.push(`Total Names: ${names.length}`);
+  lines.push("");
+
+  names.forEach((item, index) => {
+    const design = getDesign(item);
+    const price = calculatePrice(design);
+    subtotal += price;
+
+    lines.push(`${index + 1}. ${item.name}`);
+    lines.push(`Base: ${design.bases.map(getColourName).join(", ")}`);
+    lines.push(`Cap: ${design.caps.map(getColourName).join(", ")}`);
+    lines.push(`Letter: ${design.letters.map(getColourName).join(", ")}`);
+    lines.push(`Price: $${price.toFixed(2)}`);
+    lines.push("");
+  });
+
+  const deliveryFee =
+    collectionMethod.value === "delivery" && subtotal < 50 ? 5 : 0;
+
+  const total = subtotal + deliveryFee;
+
+  lines.push("PRINTING TOTALS");
+  lines.push("===============");
+  lines.push(formatTotals("Base colours", colourTotals.base));
+  lines.push("");
+  lines.push(formatTotals("Cap colours", colourTotals.cap));
+  lines.push("");
+  lines.push(formatTotals("Letter colours", colourTotals.letter));
+  lines.push("");
+
+  lines.push(`Subtotal: $${subtotal.toFixed(2)}`);
+  lines.push(`Delivery: $${deliveryFee.toFixed(2)}`);
+  lines.push(`Total: $${total.toFixed(2)}`);
+  lines.push("");
+
+  if (collectionMethod.value === "pickup") {
+    lines.push("Pickup note: Pick up at Woodlands. Customer will be contacted nearer to the date.");
+  } else if (subtotal >= 50) {
+    lines.push("Delivery note: Free islandwide delivery.");
+  } else {
+    lines.push("Delivery note: $5 islandwide delivery fee.");
+  }
+
+  lines.push("");
+  lines.push("Notes:");
+  lines.push(orderNotes.value || "-");
+
+  return lines.join("\n");
+}
+
+async function submitOrder() {
+
+    submitStatus.innerText = "Sending order...";
+
+    const summary = getEmailHtml();
+
+    const orderRef = generateOrderRef();
+
+    try {
+
+        await emailjs.send(
+            EMAILJS_SERVICE,
+            EMAILJS_TEMPLATE,
+            {
+                order_ref: orderRef,
+                customer_name: customerName.value,
+                customer_email: customerEmail.value,
+                customer_phone: customerPhone.value,
+                needed_by: neededBy.value,
+                collection_method: collectionMethod.value,
+                notes: orderNotes.value,
+                message: summary
+            }
+
+        );
+
+        celebrateOrder();
+        localStorage.removeItem("littleKeepsDraft");
+        submitStatus.innerText =
+            "Order submitted successfully!";
+        orderRefText.innerText =
+            `Order Reference: ${orderRef}`;
+        successModal.classList.remove("hidden");
+    }
+
+    catch (error) {
+    console.error("EMAILJS ERROR:", error);
+    alert(JSON.stringify(error));
+    submitStatus.innerText =
+        "Unable to send order.";
+}
+
+}
+
+function refreshUI() {
+  renderNameCards();
+  renderColourSlots();
+  updateEditModeText();
+  renderReviewOrder();
+}
+
+function buildSelectedPreview() {
+  if (!names.length) {
+    keychain.clear();
+    return;
+  }
+
+  const item = names[selectedIndex];
+  buildKeychain(item.name, getDesign(item));
+}
+
+function resize() {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+function animate() {
+  resize();
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+singleBtn.onclick = () => {
+  orderType = "single";
+  singleBtn.classList.add("active");
+  groupBtn.classList.remove("active");
+  singleSection.classList.remove("hidden");
+  groupSection.classList.add("hidden");
+  selectedIndex = 0;
+  updateNames();
+};
+
+groupBtn.onclick = () => {
+  orderType = "group";
+  groupBtn.classList.add("active");
+  singleBtn.classList.remove("active");
+  groupSection.classList.remove("hidden");
+  singleSection.classList.add("hidden");
+  selectedIndex = 0;
+  updateNames();
+};
+
+singleName.addEventListener("input", updateNames);
+
+customerName.addEventListener(
+    "input",
+    validateForm
+);
+
+customerEmail.addEventListener(
+    "input",
+    validateForm
+);
+
+customerPhone.addEventListener(
+    "input",
+    validateForm
+);
+
+neededBy.addEventListener(
+    "change",
+    validateForm
+);
+
+collectionMethod.addEventListener(
+    "change",
+    validateForm
+);
+
+nameList.addEventListener("input", updateNames);
+
+applyAllToggle.addEventListener("change", () => {
+  refreshUI();
+  buildSelectedPreview();
+});
+
+resetSelected.onclick = () => {
+  if (names[selectedIndex]) {
+    names[selectedIndex].custom = null;
+    refreshUI();
+    buildSelectedPreview();
+  }
+};
+
+submitOrderBtn.onclick = submitOrder;
+collectionMethod.addEventListener("change", () => {
+  refreshUI();
+});
+
+makeSwatches("baseColours", baseColours, "base");
+makeSwatches("capColours", capColours, "cap");
+makeSwatches("letterColours", letterColours, "letter");
+
+function validateForm() {
+
+    let valid = true;
+    let message = "";
+
+    if (!customerName.value.trim()) {
+        valid = false;
+        message = "Please enter your name.";
+    }
+
+    else if (
+        !customerEmail.value.match(
+            /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        )
+    ) {
+        valid = false;
+        message = "Please enter a valid email.";
+    }
+
+    else if (
+        !customerPhone.value.match(/^[0-9]{8}$/)
+    ) {
+        valid = false;
+        message = "Contact number must be 8 digits.";
+    }
+
+    else if (!neededBy.value) {
+        valid = false;
+        message = "Please select a required date.";
+    }
+
+    submitOrderBtn.disabled = !valid;
+    submitOrderBtn.classList.toggle("disabled", !valid);
+
+    document.getElementById("formStatus").innerText = message;
+
+}
+
+closeModalBtn.onclick = () => {
+  successModal.classList.add("hidden");
+};
+
+function saveDraft() {
+
+    const draft = {
+
+        orderType,
+
+        names,
+
+        selectedIndex,
+
+        globalDesign,
+
+        customerName: customerName.value,
+
+        customerEmail: customerEmail.value,
+
+        customerPhone: customerPhone.value,
+
+        neededBy: neededBy.value,
+
+        collectionMethod: collectionMethod.value,
+
+        orderNotes: orderNotes.value,
+
+        singleName: singleName.value,
+
+        nameList: nameList.value
+
+    };
+
+    localStorage.setItem(
+        "littleKeepsDraft",
+        JSON.stringify(draft)
+    );
+
+}
+
+function loadDraft() {
+
+    const saved = localStorage.getItem("littleKeepsDraft");
+
+    if (!saved) return;
+
+    draftData = JSON.parse(saved);
+
+    draftModal.classList.remove("hidden");
+
+}
+
+continueDraftBtn.onclick = () => {
+
+    draftModal.classList.add("hidden");
+
+    orderType = draftData.orderType;
+
+    names = draftData.names;
+
+    selectedIndex = draftData.selectedIndex;
+
+    globalDesign = draftData.globalDesign;
+
+    customerName.value = draftData.customerName;
+
+    customerEmail.value = draftData.customerEmail;
+
+    customerPhone.value = draftData.customerPhone;
+
+    neededBy.value = draftData.neededBy;
+
+    collectionMethod.value =
+        draftData.collectionMethod;
+
+    orderNotes.value =
+        draftData.orderNotes;
+
+    singleName.value =
+        draftData.singleName;
+
+    nameList.value =
+        draftData.nameList;
+
+    if(orderType==="group"){
+
+        groupBtn.click();
+
+    }
+
+    else{
+
+        singleBtn.click();
+
+    }
+
+    refreshUI();
+
+    buildSelectedPreview();
+
+};
+
+discardDraftBtn.onclick = () => {
+
+    localStorage.removeItem(
+        "littleKeepsDraft"
+    );
+
+    draftModal.classList.add("hidden");
+
+};
+
+function celebrateOrder() {
+
+  const duration = 1800;
+  const end = Date.now() + duration;
+
+  (function frame() {
+
+    confetti({
+      particleCount: 3,
+      angle: 60,
+      spread: 60,
+      origin: { x: 0 },
+      colors: [
+        "#ff8fab",
+        "#ffd166",
+        "#8ecae6",
+        "#95d5b2",
+        "#ffffff"
+      ]
+    });
+
+    confetti({
+      particleCount: 3,
+      angle: 120,
+      spread: 60,
+      origin: { x: 1 },
+      colors: [
+        "#ff8fab",
+        "#ffd166",
+        "#8ecae6",
+        "#95d5b2",
+        "#ffffff"
+      ]
+    });
+
+    if (Date.now() < end) {
+      requestAnimationFrame(frame);
+    }
+
+  })();
+
+}
+
+updateNames();
+loadDraft();
+validateForm();
+animate();
+
