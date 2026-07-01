@@ -371,3 +371,11 @@ select {
     background:#dfdfdf;
 
 }
+
+.payment-box {
+  margin-top: 28px;
+  padding: 18px;
+  border-radius: 18px;
+  background: #fff7fb;
+  border: 2px solid #eee;
+}

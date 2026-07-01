@@ -64,6 +64,10 @@ Chloe</textarea>
         <input id="customerPhone" placeholder="Contact Number">
 
         <label>Needed By</label>
+        <p class="hint">
+          Please allow at least 5 days for production.
+        </p>
+
         <input id="neededBy" type="date">
 
         <label>Collection Method</label>
@@ -86,6 +90,19 @@ Chloe</textarea>
           <p>Estimated total: <strong id="reviewPrice">$0.00</strong></p>
         </div>
         <div id="reviewList"></div>
+      </div>
+
+      <div class="payment-box">
+        <h3>Payment</h3>
+
+        <p>
+          Payment instruction will be sent via email confirmation.
+        </p>
+
+        <p>
+          Thank you for your order! 💕
+        <p>
+        
       </div>
 
       <button
@@ -205,6 +222,8 @@ document.getElementById("discardDraftBtn");
 const EMAILJS_SERVICE = "service_tm3z0gd";
 const EMAILJS_TEMPLATE = "template_3kt0yd9";
 const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
+
+const EMAILJS_CUSTOMER_TEMPLATE = "template_liazurv";
 
 emailjs.init(EMAILJS_PUBLIC);
 
@@ -720,69 +739,154 @@ function formatTotals(title, totals) {
   return lines.join("\n");
 }
 
+function createEmailMiniPreview(name, design) {
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .split("")
+    .map((letter, i) => {
+      const base = design.bases[i % design.bases.length];
+      const cap = design.caps[i % design.caps.length];
+      const letterColour = design.letters[i % design.letters.length];
+
+      return `
+        <span style="display:inline-block;width:36px;height:36px;background:${base};border-radius:10px;margin:4px;position:relative;vertical-align:middle;">
+          <span style="display:block;width:23px;height:23px;background:${cap};border-radius:7px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;line-height:23px;font-size:13px;font-weight:bold;color:${letterColour};">
+            ${letter}
+          </span>
+        </span>
+      `;
+    })
+    .join("");
+}
+
+function getBaseSummary() {
+  const totals = {};
+
+  names.forEach(item => {
+    const design = getDesign(item);
+    const cleanName = item.name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    cleanName.split("").forEach((_, i) => {
+      const colour = getColourName(design.bases[i % design.bases.length]);
+      totals[colour] = (totals[colour] || 0) + 1;
+    });
+  });
+
+  return totals;
+}
+
+function getKeycapSummary() {
+  const totals = {};
+
+  names.forEach(item => {
+    const design = getDesign(item);
+    const cleanName = item.name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    cleanName.split("").forEach((letter, i) => {
+      const cap = getColourName(design.caps[i % design.caps.length]);
+      const letterColour = getColourName(design.letters[i % design.letters.length]);
+
+      const key = `${letter} — Cap: ${cap}, Letter: ${letterColour}`;
+      totals[key] = (totals[key] || 0) + 1;
+    });
+  });
+
+  return totals;
+}
+
 function getEmailHtml() {
   let subtotal = 0;
-  const colourTotals = getColourTotals();
-  const lines = [];
 
-  lines.push("Little Keeps Order");
-  lines.push("==================");
-  lines.push("");
-  lines.push(`Name: ${customerName.value || "-"}`);
-  lines.push(`Email: ${customerEmail.value || "-"}`);
-  lines.push(`Contact Number: ${customerPhone.value || "-"}`);
-  lines.push(`Needed By: ${neededBy.value || "-"}`);
-  lines.push(`Collection Method: ${collectionMethod.value === "pickup" ? "Pick Up at Woodlands" : "Delivery islandwide"}`);
-  lines.push("");
-  lines.push(`Order Type: ${orderType === "single" ? "Single Order" : "Group Order"}`);
-  lines.push(`Total Names: ${names.length}`);
-  lines.push("");
+  let html = `
+    <h2 style="color:#ff6f9f;">Review Order</h2>
+  `;
 
-  names.forEach((item, index) => {
+  names.forEach(item => {
     const design = getDesign(item);
     const price = calculatePrice(design);
     subtotal += price;
 
-    lines.push(`${index + 1}. ${item.name}`);
-    lines.push(`Base: ${design.bases.map(getColourName).join(", ")}`);
-    lines.push(`Cap: ${design.caps.map(getColourName).join(", ")}`);
-    lines.push(`Letter: ${design.letters.map(getColourName).join(", ")}`);
-    lines.push(`Price: $${price.toFixed(2)}`);
-    lines.push("");
+    html += `
+      <div style="background:white;border:1px solid #eee;border-radius:16px;padding:14px;margin:12px 0;">
+        <h3 style="margin:0 0 8px;">${item.name}</h3>
+        <div>${createEmailMiniPreview(item.name, design)}</div>
+        <p style="margin:10px 0 0;"><b>$${price.toFixed(2)}</b></p>
+      </div>
+    `;
   });
 
-  const deliveryFee =
-    collectionMethod.value === "delivery" && subtotal < 50 ? 5 : 0;
+  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 5 : 0;
+  const total = subtotal + delivery;
 
-  const total = subtotal + deliveryFee;
+  html += `
+    <hr>
+    <h2 style="color:#ff6f9f;">Total</h2>
+    <p>Subtotal: <b>$${subtotal.toFixed(2)}</b></p>
+    <p>Delivery: <b>$${delivery.toFixed(2)}</b></p>
+    <h2>Total: $${total.toFixed(2)}</h2>
+  `;
 
-  lines.push("PRINTING TOTALS");
-  lines.push("===============");
-  lines.push(formatTotals("Base colours", colourTotals.base));
-  lines.push("");
-  lines.push(formatTotals("Cap colours", colourTotals.cap));
-  lines.push("");
-  lines.push(formatTotals("Letter colours", colourTotals.letter));
-  lines.push("");
+  const bases = getBaseSummary();
+  const keycaps = getKeycapSummary();
 
-  lines.push(`Subtotal: $${subtotal.toFixed(2)}`);
-  lines.push(`Delivery: $${deliveryFee.toFixed(2)}`);
-  lines.push(`Total: $${total.toFixed(2)}`);
-  lines.push("");
+  html += `
+    <hr>
+    <h2 style="color:#ff6f9f;">Production Summary</h2>
+    <h3>Base Printing</h3>
+  `;
 
-  if (collectionMethod.value === "pickup") {
-    lines.push("Pickup note: Pick up at Woodlands. Customer will be contacted nearer to the date.");
-  } else if (subtotal >= 50) {
-    lines.push("Delivery note: Free islandwide delivery.");
-  } else {
-    lines.push("Delivery note: $5 islandwide delivery fee.");
-  }
+  Object.entries(bases).forEach(([colour, count]) => {
+    html += `<p>${colour}: <b>${count}</b></p>`;
+  });
 
-  lines.push("");
-  lines.push("Notes:");
-  lines.push(orderNotes.value || "-");
+  html += `<hr><h3>Keycap Printing</h3>`;
 
-  return lines.join("\n");
+  Object.entries(keycaps).forEach(([item, count]) => {
+    html += `
+      <div style="background:#fff7fb;border:1px solid #eee;border-radius:12px;padding:10px;margin:8px 0;">
+        <p style="margin:0;"><b>${item}</b></p>
+        <p style="margin:4px 0 0;">Quantity: <b>${count}</b></p>
+      </div>
+    `;
+  });
+
+  html += `
+  <hr>
+  <h2 style="color:#ff6f9f;">Payment Status</h2>
+  <p><b>Pending Payment</b></p>
+  <p>Customer has been instructed to send payment screenshot via WhatsApp.</p>
+  <p>Ship out timeline: <b>3–5 working days after payment confirmation</b></p>
+`;
+
+  return html;
+}
+
+function getCustomerEmailHtml() {
+  let subtotal = 0;
+
+  let html = `
+    <h2 style="color:#ff6f9f;">Your Order Summary</h2>
+  `;
+
+  names.forEach(item => {
+    const design = getDesign(item);
+    const price = calculatePrice(design);
+    subtotal += price;
+
+    html += `
+      <div style="background:white;border:1px solid #eee;border-radius:16px;padding:14px;margin:12px 0;">
+        <h3 style="margin:0 0 8px;">${item.name}</h3>
+        <div>${createEmailMiniPreview(item.name, design)}</div>
+        <p style="margin:10px 0 0;"><b>$${price.toFixed(2)}</b></p>
+      </div>
+    `;
+  });
+
+  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 5 : 0;
+  const total = subtotal + delivery;
+
+  return html;
 }
 
 async function submitOrder() {
@@ -808,7 +912,32 @@ async function submitOrder() {
                 notes: orderNotes.value,
                 message: summary
             }
+        );
 
+        const subtotal = names.reduce(
+          (sum, item) => sum + calculatePrice(getDesign(item)),
+          0
+        );
+
+        const delivery =
+          collectionMethod.value === "delivery" && subtotal < 50
+            ? 5
+            : 0;
+
+        const total = subtotal + delivery;
+
+        await emailjs.send(
+          EMAILJS_SERVICE,
+          EMAILJS_CUSTOMER_TEMPLATE,
+          {
+            customer_name: customerName.value,
+            customer_email: customerEmail.value,
+            order_ref: orderRef,
+
+            total_amount: `$${total.toFixed(2)}`,
+
+            customer_summary: getCustomerEmailHtml()
+          }
         );
 
         celebrateOrder();
@@ -1127,8 +1256,26 @@ function celebrateOrder() {
 
 }
 
+function setMinimumDate() {
+
+  const today = new Date();
+
+  // Earliest date = today + 5 days
+  today.setDate(today.getDate() + 5);
+
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+
+  neededBy.min = `${yyyy}-${mm}-${dd}`;
+}
+
 updateNames();
 loadDraft();
+
+setMinimumDate();
+
 validateForm();
+
 animate();
 
