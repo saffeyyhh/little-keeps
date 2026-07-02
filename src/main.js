@@ -263,58 +263,64 @@ emailjs.init(EMAILJS_PUBLIC);
 
 const colours = [
   {
-    name: "Dark Green",
-    colour: "#0b3d2e",
-    available: false,
-    note: "Restocking in ~5 days"
-  },
-  {
-    name: "Rouge Red",
-    colour: "#c9184a",
-    available: true,
-    note: "Restocking in ~5 days"
-  },
-  {
     name: "Jade White",
     colour: "#f4f1e8",
     available: true,
-    note: "Restocking in ~5 days"
-  },
-  {
-    name: "Cyan",
-    colour: "#00a6d6",
-    available: true,
-    note: "Restocking in ~5 days"
-  },
-  {
-    name: "Pink",
-    colour: "#ff8fab",
-    available: true,
-    note: "Restocking in ~5 days"
-  },
-  {
-    name: "Gold",
-    colour: "#d6a84f",
-    available: true,
-    note: "Restocking in ~5 days"
+    note: ""
   },
   {
     name: "Warm Yellow",
     colour: "#ffd166",
     available: true,
-    note: "Restocking in ~5 days"
+    note: ""
+  },
+  {
+    name: "Gold",
+    colour: "#d6a84f",
+    available: true,
+    note: ""
+  },
+  {
+    name: "Pink",
+    colour: "#ff8fab",
+    available: true,
+    note: ""
+  },
+  {
+    name: "Rouge Red",
+    colour: "#c9184a",
+    available: true,
+    note: ""
+  },
+  {
+    name: "Purple",
+    colour: "#8a4fff",
+    available: true,
+    note: ""
+  },
+  {
+    name: "Indigo Purple",
+    colour: "#4b4fa8",
+    available: true,
+    note: ""
+  },
+  {
+    name: "Cyan",
+    colour: "#00a6d6",
+    available: true,
+    note: ""
   },
   {
     name: "Christmas Green",
     colour: "#1f8f4d",
     available: true,
-    note: "Restocking in ~5 days"
+    note: ""
   },
   {
-    name: "Charcoal",
-    colour: "#2b2b2b",
-    available: false,
-    note: "Restocking in ~5 days"
+    name: "Black",
+    colour: "#222222",
+    available: true,
+    note: ""
   }
 ];
 
