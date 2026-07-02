@@ -132,9 +132,20 @@ Chloe</textarea>
 
         <label>Collection Method</label>
         <select id="collectionMethod">
-          <option value="pickup">Pick Up at Woodlands</option>
+          <option value="pickup">Pick Up at Woodlands MRT</option>
           <option value="delivery">Delivery islandwide</option>
         </select>
+
+        <div id="deliveryAddressSection" class="hidden">
+
+        <label>Delivery Address</label>
+
+        <textarea
+          id="deliveryAddress"
+          placeholder="Enter your delivery address..."
+        ></textarea>
+
+      </div>
 
         <p id="deliveryNote" class="hint">
           Pick up at Woodlands. We will contact you nearer to the date.
@@ -239,6 +250,12 @@ const EMAILJS_TEMPLATE = "template_3kt0yd9";
 const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
 
 const EMAILJS_CUSTOMER_TEMPLATE = "template_liazurv";
+
+const deliveryAddressSection =
+document.getElementById("deliveryAddressSection");
+
+const deliveryAddress =
+document.getElementById("deliveryAddress");
 
 emailjs.init(EMAILJS_PUBLIC);
 
@@ -1105,6 +1122,7 @@ async function submitOrder() {
                 customer_phone: customerPhone.value,
                 needed_by: neededBy.value,
                 collection_method: collectionMethod.value,
+                delivery_address: deliveryAddress.value,
                 notes: orderNotes.value,
                 message: summary
             }
@@ -1131,6 +1149,8 @@ async function submitOrder() {
             order_ref: orderRef,
 
             total_amount: `$${total.toFixed(2)}`,
+
+            delivery_address: deliveryAddress.value,
 
             customer_summary: getCustomerEmailHtml()
           }
@@ -1230,10 +1250,27 @@ neededBy.addEventListener(
     validateForm
 );
 
-collectionMethod.addEventListener(
-    "change",
-    validateForm
-);
+collectionMethod.addEventListener("change", () => {
+
+    if(collectionMethod.value==="delivery"){
+
+        deliveryAddressSection.classList.remove("hidden");
+
+    }
+
+    else{
+
+        deliveryAddressSection.classList.add("hidden");
+
+        deliveryAddress.value="";
+
+    }
+
+    refreshUI();
+
+    validateForm();
+
+});
 
 nameList.addEventListener("input", updateNames);
 
@@ -1290,6 +1327,17 @@ function validateForm() {
         message = "Please select a required date.";
     }
 
+    else if(
+    collectionMethod.value==="delivery" &&
+    !deliveryAddress.value.trim()
+  ){
+
+    valid = false;
+
+    message = "Please enter your delivery address.";
+
+  }
+
     submitOrderBtn.disabled = !valid;
     submitOrderBtn.classList.toggle("disabled", !valid);
 
@@ -1323,6 +1371,8 @@ function saveDraft() {
         neededBy: neededBy.value,
 
         collectionMethod: collectionMethod.value,
+
+        deliveryAddress: deliveryAddress.value,
 
         orderNotes: orderNotes.value,
 
@@ -1373,6 +1423,22 @@ continueDraftBtn.onclick = () => {
 
     collectionMethod.value =
         draftData.collectionMethod;
+
+    deliveryAddress.value =
+        draftData.deliveryAddress || "";
+
+    if (collectionMethod.value === "delivery") {
+
+        deliveryAddressSection.classList.remove("hidden");
+
+    } else {
+
+        deliveryAddressSection.classList.add("hidden");
+
+    }
+
+    orderNotes.value =
+        draftData.orderNotes;
 
     orderNotes.value =
         draftData.orderNotes;
