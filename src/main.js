@@ -44,6 +44,39 @@ Chloe</textarea>
 
             <h3>Names</h3>
             <div id="nameCards"></div>
+
+            <div class="pricing-box">
+
+                <h3>💖 Pricing Guide</h3>
+
+                <ul>
+                    <li>Starts from <strong>$3.50 per name</strong>.</li>
+                    <li>Includes up to <strong>2 Base</strong>, <strong>2 Cap</strong> and <strong>2 Letter</strong> colours.</li>
+                    <li>Additional colours: <strong>+$0.50</strong> per extra colour.</li>
+                </ul>
+
+            </div>
+
+            <div class="stock-note">
+
+                💌 <strong>Need another colour?</strong><br>
+
+                Can't find the colour you're looking for?
+                WhatsApp us at <strong>8512 1915</strong>.
+
+                <br><br>
+
+                We may be able to specially order the filament colour for you at
+                <strong>no extra cost!</strong>
+            </div>
+
+            <div class="colour-note">
+
+                🖨️ Colours shown on screen are for reference only.
+                Slight colour variations may occur due to monitor settings and filament batches.
+
+            </div>
+
           </div>
         </section>
 
@@ -73,13 +106,6 @@ Chloe</textarea>
             <p>Letter Colours</p>
             <div id="letterSlots" class="slot-row"></div>
             <div id="letterColours" class="swatches"></div>
-
-            <div class="stock-note">
-            💌 <strong>Need another colour?</strong><br>
-            If you can't find the colour you're looking for, WhatsApp us at
-            <strong>8512 1915</strong>.<br><br>
-            ✨ We may be able to special order it for you at no cost!
-            </div>
 
             <button id="resetSelected" class="reset-btn">Reset selected name to global design</button>
           </div>
@@ -128,7 +154,7 @@ Chloe</textarea>
 
       <div class="payment-box">
         <h3>Payment</h3>
-        <p>Payment instruction will be sent via email confirmation.</p>
+        <p>Payment is via PayNow only. Instruction will be sent via email confirmation.</p>
         <p>Thank you for your order! 💕</p>
       </div>
 
@@ -327,10 +353,29 @@ let orderType = "single";
 let selectedIndex = 0;
 let orderSubmitted = false;
 
+function getAvailableColours() {
+  return colours
+    .filter(c => c.available)
+    .map(c => c.colour);
+}
+
+const available = getAvailableColours();
+
 let globalDesign = {
-  bases: ["#ff8fab", "#8ecae6"],
-  caps: ["#8ecae6", "#ff8fab"],
-  letters: ["#ffffff", "#222222"]
+  bases: [
+    available[0],
+    available[1]
+  ],
+
+  caps: [
+    available[1] || available[0],
+    available[0]
+  ],
+
+  letters: [
+    available[2] || available[0],
+    available[3] || available[1] || available[0]
+  ]
 };
 
 let names = [];
@@ -345,8 +390,20 @@ const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
 camera.position.set(0, 0, 180);
 
 const controls = new OrbitControls(camera, renderer.domElement);
+
 controls.enableDamping = true;
 controls.enablePan = false;
+
+// Don't allow flipping underneath
+controls.minPolarAngle = Math.PI * 0.28;
+controls.maxPolarAngle = Math.PI * 0.58;
+
+// Limit left/right rotation slightly
+controls.minAzimuthAngle = -Math.PI / 5;
+controls.maxAzimuthAngle = Math.PI / 5;
+
+// Optional: prevent zooming
+// controls.enableZoom = false;
 
 scene.add(new THREE.AmbientLight(0xffffff, 1.6));
 
@@ -735,10 +792,12 @@ function renderNameCards() {
     if (index === selectedIndex) card.classList.add("active");
 
     const design = getDesign(item);
+    const price = calculatePrice(design);
 
     card.innerHTML = `
       <div class="name-card-top">
         <strong>${item.name}</strong>
+        <span class="price-tag">$${price.toFixed(2)}</span>
       </div>
 
       <div class="mini-chain">
@@ -795,11 +854,14 @@ function renderReviewOrder() {
     row.className = "review-item";
 
     row.innerHTML = `
-      <strong>${item.name}</strong>
+      <div class="name-card-top">
+        <strong>${item.name}</strong>
+        <span class="price-tag">$${price.toFixed(2)}</span>
+      </div>
+
       <div class="mini-chain">
         ${createMiniPreview(item.name, design)}
       </div>
-      <small>$${price.toFixed(2)}</small>
     `;
 
     reviewList.appendChild(row);
