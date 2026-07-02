@@ -35,7 +35,11 @@ document.querySelector("#app").innerHTML = `
               <textarea id="nameList" placeholder="Paste names here, one per line">Alicia
 Ben
 Chloe</textarea>
+
               <p id="nameCount">3 names</p>
+
+              <p class="hint">Tap an icon to add it to the current line.</p>
+              <div id="groupIconPicker" class="icon-picker"></div>
             </div>
 
             <h3>Names</h3>
@@ -1403,34 +1407,43 @@ function setMinimumDate() {
 }
 
 function renderIconPicker() {
-  const iconPicker = document.getElementById("iconPicker");
-  if (!iconPicker) return;
+  const singlePicker = document.getElementById("iconPicker");
+  const groupPicker = document.getElementById("groupIconPicker");
 
-  iconPicker.innerHTML = "";
+  function buildPicker(container, targetInput) {
+    if (!container || !targetInput) return;
 
-  iconChoices.forEach(icon => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "icon-btn";
-    btn.innerHTML = icon;
+    container.innerHTML = "";
 
-    btn.onclick = () => {
-      // Append the icon
-      singleName.value += icon;
+    iconChoices.forEach(icon => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "icon-btn";
+      btn.innerHTML = displayIcon(icon);
 
-      // Refresh preview immediately
-      updateNames();
+      btn.onclick = () => {
+        const start = targetInput.selectionStart ?? targetInput.value.length;
+        const end = targetInput.selectionEnd ?? targetInput.value.length;
 
-      // Keep cursor at end
-      singleName.focus();
-      singleName.selectionStart = singleName.value.length;
-      singleName.selectionEnd = singleName.value.length;
-    };
+        targetInput.value =
+          targetInput.value.slice(0, start) +
+          icon +
+          targetInput.value.slice(end);
 
-    iconPicker.appendChild(btn);
-  });
+        targetInput.focus();
+        targetInput.selectionStart = start + icon.length;
+        targetInput.selectionEnd = start + icon.length;
+
+        updateNames();
+      };
+
+      container.appendChild(btn);
+    });
+  }
+
+  buildPicker(singlePicker, singleName);
+  buildPicker(groupPicker, nameList);
 }
-
 renderIconPicker();
 updateNames();
 loadDraft();

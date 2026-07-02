@@ -58,9 +58,7 @@ body {
 }
 
 .preview-card {
-  position: sticky;
-  top: 18px;
-  z-index: 10;
+  position: static;
   padding: 16px;
 }
 
@@ -410,3 +408,4 @@ textarea {
     transform:none;
 
 }
+
