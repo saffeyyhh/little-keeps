@@ -5,56 +5,88 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import confetti from "canvas-confetti";
 import emailjs from "@emailjs/browser";
 
-let draftData = null;
-
 document.querySelector("#app").innerHTML = `
   <main class="page">
-    <section class="controls">
-      <h1>Little Keeps ♡</h1>
-      <p>Personalised gifts made just for you.</p>
-
-      <h3>Order Type</h3>
-      <div class="toggle-row">
-        <button id="singleBtn" class="toggle active">Single Order</button>
-        <button id="groupBtn" class="toggle">Group Order</button>
+    <section id="designScreen" class="design-screen">
+      <div class="brand-box">
+        <h1>Little Keeps ♡</h1>
+        <p>Personalised gifts made just for you.</p>
       </div>
 
-      <div id="singleSection">
-        <h3>Name</h3>
-        <input id="singleName" value="Alicia" maxlength="10">
-      </div>
+      <div class="design-grid">
+        <section class="left-panel">
+          <div class="card">
+            <h3>Order Type</h3>
+            <div class="toggle-row">
+              <button id="singleBtn" class="toggle active">Single Order</button>
+              <button id="groupBtn" class="toggle">Group Order</button>
+            </div>
+          </div>
 
-      <div id="groupSection" class="hidden">
-        <h3>Name List</h3>
-        <textarea id="nameList" placeholder="Paste names here, one per line">Alicia
+          <div class="card">
+            <div id="singleSection">
+              <h3>Name</h3>
+              <input id="singleName" value="Alicia" maxlength="10">
+              <div id="iconPicker" class="icon-picker"></div>
+            </div>
+
+            <div id="groupSection" class="hidden">
+              <h3>Name List</h3>
+              <textarea id="nameList" placeholder="Paste names here, one per line">Alicia
 Ben
 Chloe</textarea>
-        <p id="nameCount">3 names</p>
+              <p id="nameCount">3 names</p>
+            </div>
+
+            <h3>Names</h3>
+            <div id="nameCards"></div>
+          </div>
+        </section>
+
+        <section class="right-panel">
+          <div class="preview-card">
+            <canvas id="previewCanvas"></canvas>
+          </div>
+
+          <div class="card colours-card">
+            <h3>Colours</h3>
+
+            <label class="apply-row">
+              <input id="applyAllToggle" type="checkbox" checked>
+              Apply colour changes to all names
+            </label>
+
+            <p id="editModeText" class="hint">Currently editing: all names</p>
+
+            <p>Base Colours</p>
+            <div id="baseSlots" class="slot-row"></div>
+            <div id="baseColours" class="swatches"></div>
+
+            <p>Cap Colours</p>
+            <div id="capSlots" class="slot-row"></div>
+            <div id="capColours" class="swatches"></div>
+
+            <p>Letter Colours</p>
+            <div id="letterSlots" class="slot-row"></div>
+            <div id="letterColours" class="swatches"></div>
+
+            <div class="stock-note">
+            💌 <strong>Need another colour?</strong><br>
+            If you can't find the colour you're looking for, WhatsApp us at
+            <strong>8512 1915</strong>.<br><br>
+            ✨ We may be able to special order it for you at no cost!
+            </div>
+
+            <button id="resetSelected" class="reset-btn">Reset selected name to global design</button>
+          </div>
+        </section>
       </div>
 
-      <h3>Names</h3>
-      <div id="nameCards"></div>
+      <button id="nextBtn" class="submit-btn">Next: Checkout</button>
+    </section>
 
-      <h3>Colours</h3>
-      <label class="apply-row">
-        <input id="applyAllToggle" type="checkbox" checked>
-        Apply colour changes to all names
-      </label>
-      <p id="editModeText" class="hint">Currently editing: all names</p>
-
-      <p>Base Colours</p>
-      <div id="baseSlots" class="slot-row"></div>
-      <div id="baseColours" class="swatches"></div>
-
-      <p>Cap Colours</p>
-      <div id="capSlots" class="slot-row"></div>
-      <div id="capColours" class="swatches"></div>
-
-      <p>Letter Colours</p>
-      <div id="letterSlots" class="slot-row"></div>
-      <div id="letterColours" class="swatches"></div>
-
-      <button id="resetSelected" class="reset-btn">Reset selected name to global design</button>
+    <section id="checkoutScreen" class="checkout-screen hidden">
+      <button id="backBtn" class="secondary-btn">← Back to Design</button>
 
       <div class="contact-box">
         <h3>Contact Details</h3>
@@ -64,9 +96,7 @@ Chloe</textarea>
         <input id="customerPhone" placeholder="Contact Number">
 
         <label>Needed By</label>
-        <p class="hint">
-          Please allow at least 5 days for production.
-        </p>
+        <p class="hint">Please allow at least 5 days for production.</p>
 
         <input id="neededBy" type="date">
 
@@ -94,88 +124,38 @@ Chloe</textarea>
 
       <div class="payment-box">
         <h3>Payment</h3>
-
-        <p>
-          Payment instruction will be sent via email confirmation.
-        </p>
-
-        <p>
-          Thank you for your order! 💕
-        <p>
-        
+        <p>Payment instruction will be sent via email confirmation.</p>
+        <p>Thank you for your order! 💕</p>
       </div>
 
-      <button
-          id="submitOrderBtn"
-          class="submit-btn"
-          disabled
-      >
-          Submit Order
+      <button id="submitOrderBtn" class="submit-btn" disabled>
+        Submit Order
       </button>
 
       <p id="formStatus" class="hint"></p>
-
       <p id="submitStatus" class="hint"></p>
     </section>
 
-    <section class="preview">
-      <div class="preview-sticky">
-        <canvas id="previewCanvas"></canvas>
+    <div id="successModal" class="modal hidden">
+      <div class="modal-card">
+        <h2>Order Submitted ♡</h2>
+        <p>Thank you! We’ve received your order.</p>
+        <p id="orderRefText"></p>
+        <p>We’ll contact you nearer to your collection/delivery date.</p>
+        <button id="closeModalBtn" class="submit-btn">Done</button>
       </div>
-    </section>
-
-      <div id="successModal" class="modal hidden">
-        <div class="modal-card">
-          <h2>Order Submitted ♡</h2>
-          <p>Thank you! We’ve received your order.</p>
-          <p id="orderRefText"></p>
-          <p>We’ll contact you nearer to your collection/delivery date.</p>
-          <button id="closeModalBtn" class="submit-btn">Done</button>
-        </div>
-      </div>
-
-      <div id="draftModal" class="modal hidden">
-
-    <div class="modal-card">
-
-        <h2>🩷 Welcome Back!</h2>
-
-        <p>
-
-            We found an unfinished order.
-
-        </p>
-
-        <p>
-
-            Would you like to continue where you left off?
-
-        </p>
-
-        <button
-            id="continueDraftBtn"
-            class="submit-btn"
-        >
-
-            Continue Order
-
-        </button>
-
-        <button
-            id="discardDraftBtn"
-            class="secondary-btn"
-        >
-
-            Start New
-
-        </button>
-
     </div>
 
-</div>
+    <div id="draftModal" class="modal hidden">
+      <div class="modal-card">
+        <h2>🩷 Welcome Back!</h2>
+        <p>We found an unfinished order.</p>
+        <p>Would you like to continue where you left off?</p>
 
-
-
+        <button id="continueDraftBtn" class="submit-btn">Continue Order</button>
+        <button id="discardDraftBtn" class="secondary-btn">Start New</button>
+      </div>
+    </div>
   </main>
 `;
 
@@ -210,6 +190,11 @@ const successModal = document.getElementById("successModal");
 const orderRefText = document.getElementById("orderRefText");
 const closeModalBtn = document.getElementById("closeModalBtn");
 
+const designScreen = document.getElementById("designScreen");
+const checkoutScreen = document.getElementById("checkoutScreen");
+const nextBtn = document.getElementById("nextBtn");
+const backBtn = document.getElementById("backBtn");
+
 const draftModal =
 document.getElementById("draftModal");
 
@@ -227,12 +212,107 @@ const EMAILJS_CUSTOMER_TEMPLATE = "template_liazurv";
 
 emailjs.init(EMAILJS_PUBLIC);
 
-const baseColours = ["#ff8fab", "#8ecae6", "#cdb4db", "#ffd166", "#95d5b2", "#ffffff"];
-const capColours = ["#8ecae6", "#ff8fab", "#ffffff", "#222222", "#ffd166", "#95d5b2"];
-const letterColours = ["#ffffff", "#222222", "#ff8fab", "#ffd166", "#95d5b2", "#8ecae6"];
 
+
+const colours = [
+  {
+    name: "Dark Green",
+    colour: "#0b3d2e",
+    available: false
+  },
+  {
+    name: "Rouge Red",
+    colour: "#c9184a",
+    available: true
+  },
+  {
+    name: "Jade White",
+    colour: "#f4f1e8",
+    available: true
+  },
+  {
+    name: "Cyan",
+    colour: "#00a6d6",
+    available: true
+  },
+  {
+    name: "Pink",
+    colour: "#ff8fab",
+    available: true
+  },
+  {
+    name: "Gold",
+    colour: "#d6a84f",
+    available: true
+  },
+  {
+    name: "Warm Yellow",
+    colour: "#ffd166",
+    available: true
+  },
+  {
+    name: "Christmas Green",
+    colour: "#1f8f4d",
+    available: true
+  },
+  {
+    name: "Charcoal",
+    colour: "#2b2b2b",
+    available: false
+  }
+];
+
+const baseColours = colours;
+const capColours = colours;
+const letterColours = colours;
+
+const specialKeycaps = {
+  "♡": "heart",
+  "★": "star",
+  "✿": "flower",
+  "🎀": "ribbon",
+  "🐾": "paw",
+  "☘": "clover",
+  "🌙": "moon",
+  "♪": "music",
+  "⚡": "lightning",
+  "🔥": "fire",
+  "☕": "coffee",
+  "🦆": "duck"
+};
+
+const iconChoices = Object.keys(specialKeycaps);
+
+function sanitizeName(name) {
+  return Array.from(name || "")
+    .map(char => /[a-z]/i.test(char) ? char.toUpperCase() : char)
+    .filter(char => /[A-Z0-9]/.test(char) || specialKeycaps[char])
+    .join("");
+}
+
+function displayIcon(char) {
+  const map = {
+    "♡": "🩷",
+    "★": "⭐",
+    "✿": "🌸",
+    "🎀": "🎀",
+    "🐾": "🐾",
+    "☘": "☘️",
+    "🌙": "🌙",
+    "♪": "🎵",
+    "⚡": "⚡",
+    "🔥": "🔥",
+    "☕": "☕",
+    "🦆": "🦆"
+  };
+
+  return map[char] || char;
+}
+
+let draftData = null;
 let orderType = "single";
 let selectedIndex = 0;
+let orderSubmitted = false;
 
 let globalDesign = {
   bases: ["#ff8fab", "#8ecae6"],
@@ -249,7 +329,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color("#efe9e1");
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
-camera.position.set(70, 55, 80);
+camera.position.set(0, 0, 180);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -312,23 +392,61 @@ function getActiveDesign() {
 }
 
 function makeSwatches(containerId, colours, type) {
+
   const container = document.getElementById(containerId);
   container.innerHTML = "";
 
-  colours.forEach(colour => {
+  colours.forEach(item => {
+
     const btn = document.createElement("button");
     btn.className = "swatch";
-    btn.style.background = colour;
+    btn.style.background = item.colour;
 
-    btn.onclick = () => {
-      addColourToDesign(type, colour);
-      refreshUI();
-      buildSelectedPreview();
-    };
+    if (!item.available) {
+
+      btn.classList.add("oos");
+
+      btn.title = `${item.name}\n${item.note}`;
+
+      btn.onclick = () => {
+
+        alert(`${item.name} is currently out of stock.\n\n${item.note}`);
+
+      };
+
+    } else {
+
+      btn.onclick = () => {
+
+        addColourToDesign(type, item.colour);
+
+        refreshUI();
+
+        buildSelectedPreview();
+
+      };
+
+    }
 
     container.appendChild(btn);
+
   });
+
 }
+
+nextBtn.onclick = () => {
+  designScreen.classList.add("hidden");
+  checkoutScreen.classList.remove("hidden");
+  window.scrollTo(0, 0);
+  refreshUI();
+  validateForm();
+};
+
+backBtn.onclick = () => {
+  checkoutScreen.classList.add("hidden");
+  designScreen.classList.remove("hidden");
+  window.scrollTo(0, 0);
+};
 
 function addColourToDesign(type, colour) {
   const design = getActiveDesign();
@@ -500,7 +618,15 @@ async function createKeycap(letter, index, design) {
   base.rotation.z = Math.PI / 2;
   group.add(base);
 
-  const capGeo = await loadSTL(`/models/keycap-char-${letter}.stl`);
+  // Load the correct keycap STL
+  const special = specialKeycaps[letter];
+
+  const capPath = special
+    ? `/models/keycap - ${special}.stl`
+    : `/models/keycap-char-${letter}.stl`;
+
+  const capGeo = await loadSTL(capPath);
+
   const parts = splitCapGeometry(capGeo);
 
   const tile = new THREE.Mesh(parts.tile, createMat(capColour));
@@ -520,18 +646,19 @@ async function createKeycap(letter, index, design) {
 async function buildKeychain(name, design) {
   keychain.clear();
 
-  const cleanName = (name || "A").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const cleanName = sanitizeName(name || "A");
+  const letters = Array.from(cleanName);
 
-  for (let i = 0; i < cleanName.length; i++) {
+  for (let i = 0; i < letters.length; i++) {
     try {
-      const item = await createKeycap(cleanName[i], i, design);
+      const item = await createKeycap(letters[i], i, design);
       keychain.add(item);
     } catch (err) {
-      console.warn(`Missing STL for ${cleanName[i]}`, err);
+      console.warn(`Missing STL for ${letters[i]}`, err);
     }
   }
 
-  keychain.position.x = -((cleanName.length - 1) * 28) / 2;
+  keychain.position.x = -((letters.length - 1) * 28) / 2;
   keychain.rotation.x = -0.8;
   keychain.rotation.y = 0.2;
 
@@ -568,10 +695,7 @@ function updateNames() {
 }
 
 function createMiniPreview(name, design) {
-  return name
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .split("")
+  return Array.from(sanitizeName(name))
     .map((letter, i) => {
       const base = design.bases[i % design.bases.length];
       const cap = design.caps[i % design.caps.length];
@@ -580,7 +704,7 @@ function createMiniPreview(name, design) {
       return `
         <div class="mini-block" style="background:${base}">
           <div class="mini-cap" style="background:${cap}; color:${letterColour}">
-            ${letter}
+            ${displayIcon(letter)}
           </div>
         </div>
       `;
@@ -717,9 +841,9 @@ function getColourTotals() {
 
   names.forEach(item => {
     const design = getDesign(item);
-    const cleanName = item.name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const cleanName = sanitizeName(item.name);
 
-    cleanName.split("").forEach((_, i) => {
+    Array.from(cleanName).forEach((_, i) => {
       addToTotal(totals.base, design.bases[i % design.bases.length]);
       addToTotal(totals.cap, design.caps[i % design.caps.length]);
       addToTotal(totals.letter, design.letters[i % design.letters.length]);
@@ -740,10 +864,7 @@ function formatTotals(title, totals) {
 }
 
 function createEmailMiniPreview(name, design) {
-  return name
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .split("")
+  return Array.from(sanitizeName(name))
     .map((letter, i) => {
       const base = design.bases[i % design.bases.length];
       const cap = design.caps[i % design.caps.length];
@@ -752,7 +873,7 @@ function createEmailMiniPreview(name, design) {
       return `
         <span style="display:inline-block;width:36px;height:36px;background:${base};border-radius:10px;margin:4px;position:relative;vertical-align:middle;">
           <span style="display:block;width:23px;height:23px;background:${cap};border-radius:7px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;line-height:23px;font-size:13px;font-weight:bold;color:${letterColour};">
-            ${letter}
+            ${displayIcon(letter)}
           </span>
         </span>
       `;
@@ -765,9 +886,9 @@ function getBaseSummary() {
 
   names.forEach(item => {
     const design = getDesign(item);
-    const cleanName = item.name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const cleanName = sanitizeName(item.name);
 
-    cleanName.split("").forEach((_, i) => {
+    Array.from(cleanName).forEach((_, i) => {
       const colour = getColourName(design.bases[i % design.bases.length]);
       totals[colour] = (totals[colour] || 0) + 1;
     });
@@ -781,9 +902,9 @@ function getKeycapSummary() {
 
   names.forEach(item => {
     const design = getDesign(item);
-    const cleanName = item.name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const cleanName = sanitizeName(item.name);
 
-    cleanName.split("").forEach((letter, i) => {
+    Array.from(cleanName).forEach((letter, i) => {
       const cap = getColourName(design.caps[i % design.caps.length]);
       const letterColour = getColourName(design.letters[i % design.letters.length]);
 
@@ -941,6 +1062,7 @@ async function submitOrder() {
         );
 
         celebrateOrder();
+        orderSubmitted = true;
         localStorage.removeItem("littleKeepsDraft");
         submitStatus.innerText =
             "Order submitted successfully!";
@@ -1105,6 +1227,7 @@ closeModalBtn.onclick = () => {
 };
 
 function saveDraft() {
+  if (orderSubmitted) return;
 
     const draft = {
 
@@ -1270,12 +1393,39 @@ function setMinimumDate() {
   neededBy.min = `${yyyy}-${mm}-${dd}`;
 }
 
+function renderIconPicker() {
+  const iconPicker = document.getElementById("iconPicker");
+  if (!iconPicker) return;
+
+  iconPicker.innerHTML = "";
+
+  iconChoices.forEach(icon => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "icon-btn";
+    btn.innerHTML = icon;
+
+    btn.onclick = () => {
+      // Append the icon
+      singleName.value += icon;
+
+      // Refresh preview immediately
+      updateNames();
+
+      // Keep cursor at end
+      singleName.focus();
+      singleName.selectionStart = singleName.value.length;
+      singleName.selectionEnd = singleName.value.length;
+    };
+
+    iconPicker.appendChild(btn);
+  });
+}
+
+renderIconPicker();
 updateNames();
 loadDraft();
-
 setMinimumDate();
-
 validateForm();
-
 animate();
 
