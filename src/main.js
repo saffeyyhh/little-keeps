@@ -66,7 +66,7 @@ Chloe</textarea>
 
                 <br><br>
 
-                We may be able to specially order the filament colour for you at
+                We may be able to specially order the colour for you at
                 <strong>no extra cost!</strong>
             </div>
 
