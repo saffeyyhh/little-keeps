@@ -218,47 +218,56 @@ const colours = [
   {
     name: "Dark Green",
     colour: "#0b3d2e",
-    available: false
+    available: false,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Rouge Red",
     colour: "#c9184a",
-    available: true
+    available: true,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Jade White",
     colour: "#f4f1e8",
-    available: true
+    available: true,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Cyan",
     colour: "#00a6d6",
-    available: true
+    available: true,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Pink",
     colour: "#ff8fab",
-    available: true
+    available: true,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Gold",
     colour: "#d6a84f",
-    available: true
+    available: true,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Warm Yellow",
     colour: "#ffd166",
-    available: true
+    available: true,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Christmas Green",
     colour: "#1f8f4d",
-    available: true
+    available: true,
+    note: "Restocking in ~5 days"
   },
   {
     name: "Charcoal",
     colour: "#2b2b2b",
-    available: false
+    available: false,
+    note: "Restocking in ~5 days"
   }
 ];
 
