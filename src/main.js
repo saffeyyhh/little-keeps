@@ -906,17 +906,13 @@ function renderReviewOrder() {
 }
 
 function getColourName(hex) {
-  const colourNames = {
-    "#ff8fab": "Pink",
-    "#8ecae6": "Blue",
-    "#cdb4db": "Purple",
-    "#ffd166": "Yellow",
-    "#95d5b2": "Green",
-    "#ffffff": "White",
-    "#222222": "Black"
-  };
 
-  return colourNames[hex] || hex;
+    const colour = colours.find(
+        c => c.colour.toLowerCase() === hex.toLowerCase()
+    );
+
+    return colour ? colour.name : hex;
+
 }
 
 function addToTotal(totals, colour) {
