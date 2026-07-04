@@ -6,6 +6,11 @@ import confetti from "canvas-confetti";
 import emailjs from "@emailjs/browser";
 import { createClient } from "@supabase/supabase-js";
 
+const isManualOrder =
+  new URLSearchParams(window.location.search).get("manual") === "true";
+
+console.log("Manual mode:", isManualOrder);
+
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
 
@@ -1238,7 +1243,9 @@ async function submitOrder() {
 
         total,
 
-        status: "Pending",
+      payment_type: isManualOrder ? "Manual" : "Paid",
+
+      status: isManualOrder ? "Payment Verified" : "Pending Payment",
 
         order_data: names.map(item => {
             const design = getDesign(item);
@@ -1272,6 +1279,18 @@ async function submitOrder() {
     try {
 
         await saveOrderToDatabase(order);
+
+        if (isManualOrder) {
+          celebrateOrder();
+          orderSubmitted = true;
+          localStorage.removeItem("littleKeepsDraft");
+
+          submitStatus.innerText = "Manual order saved!";
+          orderRefText.innerText = `Order Reference: ${orderRef}`;
+          successModal.classList.remove("hidden");
+
+          return;
+        }
 
         await emailjs.send(
             EMAILJS_SERVICE,
