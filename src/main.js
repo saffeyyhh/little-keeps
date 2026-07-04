@@ -24,39 +24,48 @@ document.querySelector("#app").innerHTML = `
         <p>Design your own personalised, clicky &amp; fidget-friendly modular keychain.</p>
       </div>
 
-      <div class="promo-banner">
-        <strong>FREE islandwide delivery on orders above $50!</strong>
+      <div class="info-panels">
+
+  <div class="info-panel">
+    <div class="included-header">
+      <h3>🌸 What's Included</h3>
+
+      <div class="mini-price-bubble">
+        $3.50
+        <span>/ keychain</span>
       </div>
+    </div>
 
-      <div class="welcome-card">
-        <h2>Before You Start ♡</h2>
+    <div class="included-grid">
+      <span>No max letters</span>
+      <span>2 Base colours</span>
+      <span>2 Cap colours</span>
+      <span>2 Letter colours</span>
+      <span>Icons included</span>
+    </div>
 
-        <p>
-          Design your own personalised, clicky &amp; fidget-friendly modular keychain.
-          Your preview updates instantly while you customise.
-        </p>
+    <p class="extra-colour-note">
+      Additional colours are <strong>+$0.50 per extra Base, Cap or Letter colour.</strong>
+    </p>
+  </div>
 
-        <div class="welcome-divider"></div>
+  <div class="info-panel">
+    <h3>📢 Notice</h3>
 
-        <h3>What's included</h3>
+    <div class="notice-box">
+      🚚 FREE islandwide delivery on orders above <strong>$50</strong>.
+    </div>
 
-        <ul>
-          <li>No maximum letter limit</li>
-          <li>Up to <strong>2 Base Colours</strong></li>
-          <li>Up to <strong>2 Cap Colours</strong></li>
-          <li>Up to <strong>2 Letter Colours</strong></li>
-          <li>Cute icons included at no extra cost</li>
-        </ul>
+    <div class="notice-box">
+      <strong>✈️ Holiday Notice</strong><br>
+      <span id="holidayNoticeText">No current announcements.</span>
+    </div>
+  </div>
 
-        <div class="price-highlight">
-          $3.50 per keychain
-        </div>
+</div>
 
-        <p class="hint">
-          Additional colours are <strong>+$0.50 per extra Base, Cap or Letter colour</strong>.
-        </p>
-      </div>
 
+    </div>
       <div class="design-grid">
         <section class="left-panel">
           <div class="card">
@@ -176,9 +185,10 @@ Chloe</textarea>
         <input id="customerPhone" placeholder="Contact Number">
 
         <label>Needed By</label>
-        <p class="hint">Please allow at least 5 days for production.</p>
+        <p class="hint">Please allow at least 2-3 days for production and 2 days for delivery.</p>
 
         <input id="neededBy" type="date">
+        <p id="dateAvailability" class="hint"></p>
 
       <label>Collection Method</label>
 
@@ -317,8 +327,6 @@ document.getElementById("deliveryAddress");
 
 emailjs.init(EMAILJS_PUBLIC);
 
-
-
 const colours = [
   {
     name: "Jade White",
@@ -402,6 +410,40 @@ const specialKeycaps = {
 };
 
 const iconChoices = Object.keys(specialKeycaps);
+
+const dateAvailability = document.getElementById("dateAvailability");
+
+let neededByAllowed = false;
+let neededByMessage = "";
+
+async function checkNeededByDate() {
+  if (!neededBy.value) {
+    neededByAllowed = false;
+    neededByMessage = "";
+    dateAvailability.innerText = "";
+    return false;
+  }
+
+  const { data, error } = await supabase.rpc("check_needed_by_date", {
+    p_date: neededBy.value
+  });
+
+  if (error) {
+    console.error(error);
+    neededByAllowed = false;
+    neededByMessage = "Unable to check date availability.";
+    dateAvailability.innerText = neededByMessage;
+    return false;
+  }
+
+  neededByAllowed = data.allowed;
+  neededByMessage = data.reason;
+
+  dateAvailability.innerText = neededByMessage;
+  dateAvailability.style.color = data.allowed ? "#3c9d67" : "#c9184a";
+
+  return data.allowed;
+}
 
 function sanitizeName(name) {
   return Array.from(name || "")
@@ -611,6 +653,28 @@ function addColourToDesign(type, colour) {
       item.custom = null;
     });
   }
+}
+
+async function loadShopNotices() {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("shop_closures")
+    .select("*")
+    .gte("end_date", today)
+    .order("start_date", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  if (!data.length) return;
+
+  const notice = data[0];
+
+  document.getElementById("holidayNoticeText").innerText =
+    notice.reason || `We will be away from ${notice.start_date} to ${notice.end_date}.`;
 }
 
 function removeColourFromDesign(type, index) {
@@ -1278,6 +1342,12 @@ async function submitOrder() {
     };
 
     try {
+        const dateOk = await checkNeededByDate();
+
+        if (!dateOk) {
+          submitStatus.innerText = neededByMessage || "Please choose another date.";
+          return;
+        }
 
         await saveOrderToDatabase(order);
 
@@ -1444,10 +1514,10 @@ customerPhone.addEventListener(
     validateForm
 );
 
-neededBy.addEventListener(
-    "change",
-    validateForm
-);
+neededBy.addEventListener("change", async () => {
+  await checkNeededByDate();
+  validateForm();
+});
 
 collectionMethod.addEventListener("change", () => {
 
@@ -1540,6 +1610,11 @@ function validateForm() {
     else if (!neededBy.value) {
         valid = false;
         message = "Please select a required date.";
+    }
+
+    else if (!neededByAllowed) {
+      valid = false;
+      message = neededByMessage || "Please choose another date.";
     }
 
     else if(
@@ -1788,6 +1863,7 @@ function renderIconPicker() {
   buildPicker(groupPicker, nameList);
 }
 
+loadShopNotices();
 renderIconPicker();
 updateNames();
 loadDraft();

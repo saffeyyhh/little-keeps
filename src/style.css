@@ -530,21 +530,6 @@ textarea {
   margin: 18px 0;
 }
 
-.price-highlight {
-  background: white;
-  border: 2px solid #ff8fab;
-  color: #ff6f9f;
-  border-radius: 16px;
-  padding: 14px;
-  font-size: 22px;
-  font-weight: bold;
-  text-align: center;
-  margin: 16px 0 10px;
-}
-
-.included-box {
-  margin-top: 18px;
-}
 
 .included-grid {
   display: flex;
@@ -561,4 +546,212 @@ textarea {
   font-size: 14px;
   font-weight: 700;
   color: #444;
+}
+
+.info-grid{
+
+    display:grid;
+
+    grid-template-columns:1fr 1fr;
+
+    gap:22px;
+
+    margin-bottom:28px;
+
+}
+
+.info-card{
+
+    background:white;
+
+    border-radius:24px;
+
+    padding:24px;
+
+    box-shadow:0 12px 28px rgba(0,0,0,.05);
+
+}
+
+.info-card h2{
+
+    margin-top:0;
+
+    color:#5fa8d3;
+
+}
+
+.info-list{
+
+    padding-left:18px;
+
+    line-height:2;
+
+}
+
+.notice-item{
+
+    background:#f8fbff;
+
+    border-left:5px solid #8bc8eb;
+
+    border-radius:12px;
+
+    padding:14px 16px;
+
+    margin-bottom:14px;
+
+    line-height:1.6;
+
+}
+
+.price-pill{
+
+    display:inline-block;
+
+    margin-top:18px;
+
+    background:#dff4ff;
+
+    color:#3386b6;
+
+    padding:10px 18px;
+
+    border-radius:999px;
+
+    font-weight:700;
+
+}
+
+.info-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  margin: 24px 0 28px;
+}
+
+@media (max-width: 800px) {
+  .info-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.info-panel{
+
+    background:white;
+
+    border:2px solid #ffe3ec;
+
+    border-radius:22px;
+
+    padding:22px;
+
+}
+
+.info-panel h3{
+
+    margin-top:0;
+
+    margin-bottom:18px;
+
+    color:#ff6b9a;
+
+}
+
+.notice-box{
+
+    background:#fff8fb;
+
+    border:1px solid #ffd7e7;
+
+    border-radius:16px;
+
+    padding:14px;
+
+    margin-bottom:12px;
+
+    line-height:1.6;
+
+}
+
+.price-row{
+
+    margin-top:26px;
+
+    display:flex;
+
+    flex-direction:column;
+
+    align-items:center;
+
+    gap:10px;
+
+}
+
+.extra-colour-note{
+
+    background:#f8fbff;
+
+    border:1px solid #dceeff;
+
+    padding:10px 18px;
+
+    border-radius:999px;
+
+    color:#5a6d7c;
+
+}
+
+.price-pill{
+
+    background:#ff6b9a;
+
+    color:white;
+
+    padding:14px 26px;
+
+    border-radius:999px;
+
+    font-size:22px;
+
+    font-weight:700;
+
+    box-shadow:0 8px 20px rgba(255,107,154,.25);
+
+}
+
+.included-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.included-header h3 {
+    margin: 0;
+}
+
+.mini-price-bubble {
+    min-width: 92px;
+    text-align: center;
+    background: #ff6b9a;
+    color: white;
+    border-radius: 18px;
+    padding: 9px 12px;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.05;
+    box-shadow: 0 6px 14px rgba(255,107,154,.22);
+}
+
+.mini-price-bubble span {
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.extra-colour-note {
+    margin-top: 22px;
+    color: #666;
+    line-height: 1.5;
+    font-size: 15px;
 }
