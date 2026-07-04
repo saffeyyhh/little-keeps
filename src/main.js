@@ -4,6 +4,12 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import confetti from "canvas-confetti";
 import emailjs from "@emailjs/browser";
+import { createClient } from "@supabase/supabase-js";
+
+const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 document.querySelector("#app").innerHTML = `
   <main class="page">
@@ -1171,6 +1177,21 @@ function getCustomerEmailHtml() {
   return html;
 }
 
+async function saveOrderToDatabase(order) {
+
+    const { data, error } = await supabase
+        .from("orders")
+        .insert([order]);
+
+    if (error) {
+        console.error(error);
+        throw error;
+    }
+
+    return data;
+
+}
+
 async function submitOrder() {
 
     submitStatus.innerText = "Sending order...";
@@ -1179,7 +1200,78 @@ async function submitOrder() {
 
     const orderRef = generateOrderRef();
 
+    const subtotal = names.reduce(
+    (sum, item) => sum + calculatePrice(getDesign(item)),
+    0
+);
+
+    const delivery =
+        collectionMethod.value === "delivery" && subtotal < 50
+            ? 5
+            : 0;
+
+    const total = subtotal + delivery;
+
+    const order = {
+
+        order_ref: orderRef,
+
+        customer_name: customerName.value,
+
+        customer_email: customerEmail.value,
+
+        customer_phone: customerPhone.value,
+
+        collection_method: collectionMethod.value,
+
+        delivery_address: deliveryAddress.value,
+
+        preferred_time: orderNotes.value,
+
+        needed_by: neededBy.value,
+
+        notes: orderNotes.value,
+
+        subtotal,
+
+        delivery_fee: delivery,
+
+        total,
+
+        status: "Pending",
+
+        order_data: names.map(item => {
+            const design = getDesign(item);
+
+            return {
+                name: item.name,
+                clean_name: sanitizeName(item.name),
+                price: calculatePrice(design),
+
+                design: {
+                    bases: design.bases.map(hex => ({
+                        name: getColourName(hex),
+                        hex
+                    })),
+
+                    caps: design.caps.map(hex => ({
+                        name: getColourName(hex),
+                        hex
+                    })),
+
+                    letters: design.letters.map(hex => ({
+                        name: getColourName(hex),
+                        hex
+                    }))
+                }
+            };
+        })
+
+    };
+
     try {
+
+        await saveOrderToDatabase(order);
 
         await emailjs.send(
             EMAILJS_SERVICE,
@@ -1196,18 +1288,6 @@ async function submitOrder() {
                 message: summary
             }
         );
-
-        const subtotal = names.reduce(
-          (sum, item) => sum + calculatePrice(getDesign(item)),
-          0
-        );
-
-        const delivery =
-          collectionMethod.value === "delivery" && subtotal < 50
-            ? 5
-            : 0;
-
-        const total = subtotal + delivery;
 
         await emailjs.send(
           EMAILJS_SERVICE,
