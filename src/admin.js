@@ -49,10 +49,10 @@ if (!sessionData.session) {
 document.querySelector("#app").innerHTML = `
   <main class="admin-page">
     <header class="admin-header">
-    <button id="logoutBtn">Logout</button>
       <p class="eyebrow">Little Keeps</p>
       <h1>Workshop ♡</h1>
       <p>Manage orders, printing and pickups in one place.</p>
+          <button id="logoutBtn">Logout</button>
     </header>
 
     <section id="stats" class="stats-grid"></section>
