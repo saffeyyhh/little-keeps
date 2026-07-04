@@ -1243,7 +1243,8 @@ async function submitOrder() {
 
         total,
 
-      payment_type: isManualOrder ? "Manual" : "Paid",
+        payment_type: "Paid",
+        order_source: isManualOrder ? "Manual" : "Website",
 
       status: isManualOrder ? "Payment Verified" : "Pending Payment",
 
