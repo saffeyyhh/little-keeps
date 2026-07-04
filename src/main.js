@@ -10,17 +10,47 @@ document.querySelector("#app").innerHTML = `
     <section id="designScreen" class="design-screen">
       <div class="brand-box">
         <h1>Little Keeps ♡</h1>
-        <p>Personalised gifts made just for you.</p>
+        <p>Design your own personalised, clicky &amp; fidget-friendly modular keychain.</p>
       </div>
 
       <div class="promo-banner">
-        🚚 <strong>FREE islandwide delivery on orders above $50!</strong>
+        <strong>FREE islandwide delivery on orders above $50!</strong>
+      </div>
+
+      <div class="welcome-card">
+        <h2>Before You Start ♡</h2>
+
+        <p>
+          Design your own personalised, clicky &amp; fidget-friendly modular keychain.
+          Your preview updates instantly while you customise.
+        </p>
+
+        <div class="welcome-divider"></div>
+
+        <h3>What's included</h3>
+
+        <ul>
+          <li>No maximum letter limit</li>
+          <li>Up to <strong>2 Base Colours</strong></li>
+          <li>Up to <strong>2 Cap Colours</strong></li>
+          <li>Up to <strong>2 Letter Colours</strong></li>
+          <li>Cute icons included at no extra cost</li>
+        </ul>
+
+        <div class="price-highlight">
+          $3.50 per keychain
+        </div>
+
+        <p class="hint">
+          Additional colours are <strong>+$0.50 per extra Base, Cap or Letter colour</strong>.
+        </p>
       </div>
 
       <div class="design-grid">
         <section class="left-panel">
           <div class="card">
-            <h3>Order Type</h3>
+            <h3>① Choose order type</h3>
+            <p class="hint">Choose single for one keychain, or group for multiple names.</p>
             <div class="toggle-row">
               <button id="singleBtn" class="toggle active">Single Order</button>
               <button id="groupBtn" class="toggle">Group Order</button>
@@ -29,13 +59,15 @@ document.querySelector("#app").innerHTML = `
 
           <div class="card">
             <div id="singleSection">
-              <h3>Name</h3>
+              <h3>② Enter your name</h3>
+              <p class="hint">Type your name, then tap an icon if you want to add one.</p>
               <input id="singleName" value="Alicia" maxlength="10">
               <div id="iconPicker" class="icon-picker"></div>
             </div>
 
             <div id="groupSection" class="hidden">
-              <h3>Name List</h3>
+              <h3>② Enter name list</h3>
+              <p class="hint">For group orders, enter one name per line.</p>
               <textarea id="nameList" placeholder="Paste names here, one per line">Alicia
 Ben
 Chloe</textarea>
@@ -46,19 +78,12 @@ Chloe</textarea>
               <div id="groupIconPicker" class="icon-picker"></div>
             </div>
 
-            <h3>Names</h3>
-            <div id="nameCards"></div>
-
-            <div class="pricing-box">
-
-                <h3>💖 Pricing Guide</h3>
-
-                <ul>
-                    <li>Starts from <strong>$3.50 per name</strong>.</li>
-                    <li>Includes up to <strong>2 Base</strong>, <strong>2 Cap</strong> and <strong>2 Letter</strong> colours.</li>
-                    <li>Additional colours: <strong>+$0.50</strong> per extra colour.</li>
-                </ul>
-
+            <div id="nameCardsSection">
+              <h3>③ Select a keychain to customise</h3>
+              <p class="hint">
+                For group orders, choose which keychain you want to edit.
+              </p>
+              <div id="nameCards"></div>
             </div>
 
             <div class="stock-note">
@@ -90,12 +115,19 @@ Chloe</textarea>
           </div>
 
           <div class="card colours-card">
-            <h3>Colours</h3>
+            <h3>③ Customise colours</h3>
+            <p class="hint">Choose colours for the base, top cap and letter. Your preview updates automatically.</p>
+
+          <div id="applyAllSection">
 
             <label class="apply-row">
               <input id="applyAllToggle" type="checkbox" checked>
-              Apply colour changes to all names
+              🎨 Use the same colours for all keychains
             </label>
+
+            <p id="editingLabel" class="hint"></p>
+
+          </div>
 
             <p id="editModeText" class="hint">Currently editing: all names</p>
 
@@ -116,7 +148,7 @@ Chloe</textarea>
         </section>
       </div>
 
-      <button id="nextBtn" class="submit-btn">Next: Checkout</button>
+      <button id="nextBtn" class="submit-btn">④ Continue to checkout</button>
     </section>
 
     <section id="checkoutScreen" class="checkout-screen hidden">
@@ -225,8 +257,10 @@ const singleName = document.getElementById("singleName");
 const nameList = document.getElementById("nameList");
 const nameCount = document.getElementById("nameCount");
 const nameCards = document.getElementById("nameCards");
+const nameCardsSection = document.getElementById("nameCardsSection");
 const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
+const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
 const reviewCount = document.getElementById("reviewCount");
 const reviewPrice = document.getElementById("reviewPrice");
@@ -794,6 +828,17 @@ function updateNames() {
 
   if (nameCount) {
     nameCount.innerText = `${names.length} name${names.length === 1 ? "" : "s"}`;
+  }
+  if (orderType === "single") {
+
+      nameCardsSection.classList.add("hidden");
+      applyAllSection.classList.add("hidden");
+
+  } else {
+
+      nameCardsSection.classList.remove("hidden");
+      applyAllSection.classList.remove("hidden");
+
   }
 
   refreshUI();
