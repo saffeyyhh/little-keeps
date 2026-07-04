@@ -726,3 +726,74 @@ body {
     flex-wrap:wrap;
 
 }
+
+.login-card {
+  max-width: 420px;
+  margin: 80px auto;
+  background: white;
+  border-radius: 28px;
+  padding: 32px;
+  box-shadow: 0 18px 45px rgba(0,0,0,.06);
+  text-align: center;
+}
+
+.login-card h1 {
+  color: #4b9fd0;
+}
+
+.login-card input {
+  width: 100%;
+  margin: 10px 0;
+  padding: 14px;
+  border: 2px solid #cfeaf5;
+  border-radius: 14px;
+  font-size: 16px;
+}
+
+#loginBtn,
+#logoutBtn {
+  border: none;
+  background: #4b9fd0;
+  color: white;
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-header{
+    position:relative;
+}
+
+#logoutBtn{
+
+    position:absolute;
+
+    top:22px;
+    right:22px;
+
+    background:white;
+
+    border:2px solid #d6eefa;
+
+    color:#5fa8d3;
+
+    border-radius:999px;
+
+    padding:10px 18px;
+
+    font-weight:700;
+
+    cursor:pointer;
+
+    transition:.2s;
+
+}
+
+#logoutBtn:hover{
+
+    background:#5fa8d3;
+
+    color:white;
+
+}

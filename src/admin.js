@@ -6,9 +6,50 @@ const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const { data: sessionData } = await supabase.auth.getSession();
+
+if (!sessionData.session) {
+  document.querySelector("#app").innerHTML = `
+    <main class="admin-page">
+      <div class="login-card">
+        <h1>Little Keeps Workshop ♡</h1>
+        <p>Admin login required.</p>
+
+        <input id="loginEmail" type="email" placeholder="Email">
+        <input id="loginPassword" type="password" placeholder="Password">
+
+        <button id="loginBtn">Login</button>
+
+        <p id="loginStatus" class="hint"></p>
+      </div>
+    </main>
+  `;
+
+  document.getElementById("loginBtn").onclick = async () => {
+    const email = document.getElementById("loginEmail").value;
+    const password = document.getElementById("loginPassword").value;
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      document.getElementById("loginStatus").innerText =
+        "Login failed. Check email/password.";
+      return;
+    }
+
+    location.reload();
+  };
+
+  throw new Error("Not logged in");
+}
+
 document.querySelector("#app").innerHTML = `
   <main class="admin-page">
     <header class="admin-header">
+    <button id="logoutBtn">Logout</button>
       <p class="eyebrow">Little Keeps</p>
       <h1>Workshop ♡</h1>
       <p>Manage orders, printing and pickups in one place.</p>
@@ -51,6 +92,17 @@ const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
 const ordersActions = document.getElementById("ordersActions");
 const assemblyViewBtn = document.getElementById("assemblyViewBtn");
+
+const logoutBtn = document.getElementById("logoutBtn");
+
+const { data: { session } } = await supabase.auth.getSession();
+
+console.log(session);
+
+logoutBtn.onclick = async () => {
+  await supabase.auth.signOut();
+  location.reload();
+};
 
 let latestOrders = [];
 let productionProgress = {};
