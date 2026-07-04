@@ -13,6 +13,10 @@ document.querySelector("#app").innerHTML = `
         <p>Personalised gifts made just for you.</p>
       </div>
 
+      <div class="promo-banner">
+        🚚 <strong>FREE islandwide delivery on orders above $50!</strong>
+      </div>
+
       <div class="design-grid">
         <section class="left-panel">
           <div class="card">
@@ -116,6 +120,9 @@ Chloe</textarea>
     </section>
 
     <section id="checkoutScreen" class="checkout-screen hidden">
+    <div class="promo-banner">
+      🚚 <strong>FREE islandwide delivery on orders above $50!</strong>
+    </div>
       <button id="backBtn" class="secondary-btn">← Back to Design</button>
 
       <div class="contact-box">
@@ -130,13 +137,14 @@ Chloe</textarea>
 
         <input id="neededBy" type="date">
 
-        <label>Collection Method</label>
-        <select id="collectionMethod">
-          <option value="pickup">Pick Up at Woodlands MRT</option>
-          <option value="delivery">Delivery islandwide</option>
-        </select>
+      <label>Collection Method</label>
 
-        <div id="deliveryAddressSection" class="hidden">
+      <select id="collectionMethod">
+        <option value="pickup">📍 Pick Up at Woodlands MRT</option>
+        <option value="delivery">🚚 Islandwide Delivery (+$5)</option>
+      </select>
+
+      <div id="deliveryAddressSection" class="hidden">
 
         <label>Delivery Address</label>
 
@@ -147,11 +155,12 @@ Chloe</textarea>
 
       </div>
 
-        <p id="deliveryNote" class="hint">
-          Pick up at Woodlands. We will contact you nearer to the date.
-        </p>
+      <p id="deliveryNote" class="hint"></p>
 
-        <textarea id="orderNotes" placeholder="Additional notes..."></textarea>
+      <textarea
+        id="orderNotes"
+        placeholder="Preferred pickup timing, delivery instructions, or any additional notes..."
+      ></textarea>
       </div>
 
       <div class="review-box">
@@ -183,6 +192,10 @@ Chloe</textarea>
         <p>Thank you! We’ve received your order.</p>
         <p id="orderRefText"></p>
         <p>We’ll contact you nearer to your collection/delivery date.</p>
+        <p class="hint">
+          📧 Please check your email for payment instructions.<br>
+          If you don’t see it, kindly check your Junk/Spam folder too.
+        </p>
         <button id="closeModalBtn" class="submit-btn">Done</button>
       </div>
     </div>
@@ -901,14 +914,23 @@ function renderReviewOrder() {
     Total: $${grandTotal.toFixed(2)}
   `;
 
-  if (collectionMethod.value === "pickup") {
-    deliveryNote.innerText =
-      "Pick up at Woodlands. We will contact you nearer to the date.";
-  } else if (total >= 50) {
-    deliveryNote.innerText = "Free islandwide delivery.";
-  } else {
-    deliveryNote.innerText = "$5 islandwide delivery.";
+  const deliveryOption =
+    collectionMethod.querySelector('option[value="delivery"]');
+
+  if (total >= 50) {
+
+      deliveryOption.text =
+          "🚚 Islandwide Delivery (FREE)";
+
   }
+  else {
+
+      deliveryOption.text =
+          "🚚 Islandwide Delivery (+$5)";
+
+  }
+
+  updateCollectionNote();
 }
 
 function getColourName(hex) {
@@ -1177,6 +1199,36 @@ async function submitOrder() {
 
 }
 
+function updateCollectionNote() {
+
+    const subtotal = names.reduce(
+        (sum, item) => sum + calculatePrice(getDesign(item)),
+        0
+    );
+
+    if (collectionMethod.value === "pickup") {
+
+        deliveryNote.innerHTML = `
+            📍 <strong>Pickup Location:</strong> Woodlands MRT.<br><br>
+
+            Weekdays: <strong>After 7:00 PM</strong><br>
+            Weekends: We'll arrange a mutually convenient time.<br><br>
+
+            Please indicate your <strong>preferred pickup timing</strong> in the notes below.
+        `;
+
+    } else {
+
+        const fee = subtotal >= 50 ? "FREE 🎉" : "$5";
+
+        deliveryNote.innerHTML = `
+            Please enter your delivery address and any delivery instructions below.
+        `;
+
+    }
+
+}
+
 function refreshUI() {
   renderNameCards();
   renderColourSlots();
@@ -1291,7 +1343,23 @@ resetSelected.onclick = () => {
 
 submitOrderBtn.onclick = submitOrder;
 collectionMethod.addEventListener("change", () => {
-  refreshUI();
+
+    if (collectionMethod.value === "delivery") {
+
+        deliveryAddressSection.classList.remove("hidden");
+
+    }
+
+    else {
+
+        deliveryAddressSection.classList.add("hidden");
+
+    }
+
+    updateCollectionNote();
+
+    refreshUI();
+
 });
 
 makeSwatches("baseColours", baseColours, "base");
@@ -1574,10 +1642,15 @@ function renderIconPicker() {
   buildPicker(singlePicker, singleName);
   buildPicker(groupPicker, nameList);
 }
+
 renderIconPicker();
 updateNames();
 loadDraft();
 setMinimumDate();
+
+updateCollectionNote();
+
 validateForm();
 animate();
+
 
