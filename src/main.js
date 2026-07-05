@@ -194,7 +194,7 @@ Chloe</textarea>
 
       <select id="collectionMethod">
         <option value="pickup">📍 Pick Up at Woodlands MRT</option>
-        <option value="delivery">🚚 Islandwide Delivery (+$5)</option>
+        <option value="delivery">🚚 Islandwide Delivery (+$2.50)</option>
       </select>
 
       <div id="deliveryAddressSection" class="hidden">
@@ -1046,7 +1046,7 @@ function renderReviewOrder() {
   else {
 
       deliveryOption.text =
-          "🚚 Islandwide Delivery (+$5)";
+          "🚚 Islandwide Delivery (+$2.50)";
 
   }
 
@@ -1434,7 +1434,7 @@ function updateCollectionNote() {
 
     } else {
 
-        const fee = subtotal >= 50 ? "FREE 🎉" : "$5";
+        const fee = subtotal >= 50 ? "FREE 🎉" : "$2.50";
 
         deliveryNote.innerHTML = `
             Please enter your delivery address and any delivery instructions below.
