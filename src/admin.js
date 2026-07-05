@@ -104,6 +104,7 @@ logoutBtn.onclick = async () => {
   location.reload();
 };
 
+let currentView = "orders";
 let latestOrders = [];
 let productionProgress = {};
 let collapsedGroups =
@@ -124,6 +125,27 @@ async function loadProductionProgress() {
   data.forEach(row => {
     productionProgress[`${row.group_key}|${row.item_key}`] = row.completed;
   });
+}
+
+function renderCurrentView() {
+  if (currentView === "orders") {
+    sectionTitle.innerText = "Orders";
+    ordersActions.style.display = "flex";
+    renderStats(latestOrders);
+    renderOrders(latestOrders);
+  }
+
+  if (currentView === "production") {
+    sectionTitle.innerText = "Production";
+    ordersActions.style.display = "none";
+    renderProductionPlanner(latestOrders);
+  }
+
+  if (currentView === "assembly") {
+    sectionTitle.innerText = "Assembly";
+    ordersActions.style.display = "none";
+    renderAssemblyQueue();
+  }
 }
 
 async function saveProductionProgress(groupKey, itemKey, completed) {
@@ -169,7 +191,43 @@ window.saveCollapse = function(groupKey, isOpen){
 };
 
 window.markReady = async function(id) {
-  await updateOrderStatus(id, "Ready for Pickup/Delivery");
+  const order = latestOrders.find(order => String(order.id) === String(id));
+
+  if (!order) return;
+
+  const totalLetters = (order.order_data || []).reduce((sum, item) => {
+    return sum + (item.clean_name || item.name || "").length;
+  }, 0);
+
+  const keychainCount = (order.order_data || []).length;
+
+  const ok = confirm(
+    `Mark this order as ready?\n\nThis will deduct:\n- ${totalLetters} mechanical switch(es)\n- ${keychainCount} key ring(s)\n- ${keychainCount} jump ring(s)`
+  );
+
+  if (!ok) return;
+
+  await deductInventory("Mechanical Switch", totalLetters);
+  await deductInventory("Key Ring", keychainCount);
+  await deductInventory("Jump Ring", keychainCount);
+
+  const { error } = await supabase
+    .from("orders")
+    .update({ status: "Ready for Pickup/Delivery" })
+    .eq("id", id);
+
+  if (error) {
+    console.error(error);
+    alert("Unable to update order status.");
+    return;
+  }
+
+  latestOrders = latestOrders.filter(order => order.id !== id);
+
+  currentView = "assembly";
+  setActiveTab(assemblyViewBtn);
+  await renderAssemblyQueue();
+  await loadOrders();
 };
 
 function formatMoney(value) {
@@ -462,6 +520,7 @@ function createAssemblyMiniPreview(name, design) {
 }
 
 async function renderAssemblyQueue() {
+
   await loadProductionProgress();
 
   const readyOrders = latestOrders.filter(order =>
@@ -522,7 +581,7 @@ async function renderAssemblyQueue() {
 
                 <button
                   class="ready-btn"
-                  onclick="window.markReady('${order.id}')"
+                  onclick="console.log('clicked assembly', '${order.id}'); window.markReady('${order.id}')"
                 >
                   Assembly Complete
                 </button>
@@ -722,6 +781,8 @@ async function renderProductionPlanner(orders) {
 }
 
 async function updateOrderStatus(id, status) {
+  const scrollY = window.scrollY;
+
   const { error } = await supabase
     .from("orders")
     .update({ status })
@@ -733,10 +794,16 @@ async function updateOrderStatus(id, status) {
     return;
   }
 
-  loadOrders();
+  await loadOrders();
+
+  setTimeout(() => {
+    window.scrollTo(0, scrollY);
+  }, 50);
 }
 
 async function updatePaymentType(id, paymentType) {
+  const scrollY = window.scrollY;
+
   const { error } = await supabase
     .from("orders")
     .update({ payment_type: paymentType })
@@ -748,7 +815,43 @@ async function updatePaymentType(id, paymentType) {
     return;
   }
 
-  loadOrders();
+  await loadOrders();
+
+  setTimeout(() => {
+    window.scrollTo(0, scrollY);
+  }, 50);
+}
+
+async function deductInventory(itemName, qtyToDeduct) {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("*")
+    .eq("item_name", itemName)
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert(`Unable to find inventory item: ${itemName}`);
+    return false;
+  }
+
+  const newQty = Math.max(0, Number(data.qty || 0) - qtyToDeduct);
+
+  const { error: updateError } = await supabase
+    .from("inventory_items")
+    .update({
+      qty: newQty,
+      updated_at: new Date().toISOString()
+    })
+    .eq("item_name", itemName);
+
+  if (updateError) {
+    console.error(updateError);
+    alert(`Unable to update inventory: ${itemName}`);
+    return false;
+  }
+
+  return true;
 }
 
 async function loadOrders() {
@@ -772,10 +875,9 @@ async function loadOrders() {
     return;
   }
 
-  latestOrders = data || [];
+latestOrders = data || [];
 
-  renderStats(latestOrders);
-  renderOrders(latestOrders);
+renderCurrentView();
 }
 
 window.updateOrderStatus = updateOrderStatus;
@@ -792,38 +894,21 @@ function setActiveTab(activeTab) {
 }
 
 ordersViewBtn.onclick = () => {
-
-    setActiveTab(ordersViewBtn);
-
-    sectionTitle.innerText = "Orders";
-    ordersActions.style.display = "flex";
-
-    renderStats(latestOrders);
-    renderOrders(latestOrders);
-
+  currentView = "orders";
+  setActiveTab(ordersViewBtn);
+  renderCurrentView();
 };
 
 productionViewBtn.onclick = () => {
-
-    setActiveTab(productionViewBtn);
-
-    sectionTitle.innerText = "Production";
-    ordersActions.style.display = "none";
-
-    renderProductionPlanner(latestOrders);
-
+  currentView = "production";
+  setActiveTab(productionViewBtn);
+  renderCurrentView();
 };
 
 assemblyViewBtn.onclick = () => {
-
-    setActiveTab(assemblyViewBtn);
-
-    sectionTitle.innerText = "Assembly";
-
-    ordersActions.style.display = "none";
-
-    renderAssemblyQueue();
-
+  currentView = "assembly";
+  setActiveTab(assemblyViewBtn);
+  renderCurrentView();
 };
 
 refreshBtn.onclick = loadOrders;

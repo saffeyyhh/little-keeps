@@ -330,66 +330,78 @@ emailjs.init(EMAILJS_PUBLIC);
 const colours = [
   {
     name: "Jade White",
-    colour: "#f4f1e8",
+    colour: "#FFFFFF",
     available: true,
     note: ""
   },
   {
-    name: "Warm Yellow",
-    colour: "#ffd166",
+    name: "Sunflower Yellow",
+    colour: "#FEC600",
     available: true,
     note: ""
   },
   {
     name: "Gold",
-    colour: "#d6a84f",
+    colour: "#E4BD68",
     available: true,
     note: ""
   },
   {
     name: "Pink",
-    colour: "#ff8fab",
+    colour: "#F55A74",
     available: true,
     note: ""
   },
   {
-    name: "Rouge Red",
-    colour: "#c9184a",
+    name: "Maroon Red",
+    colour: "#9D2235",
     available: true,
     note: ""
   },
   {
-    name: "Purple",
-    colour: "#8a4fff",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Indigo Purple",
-    colour: "#4b4fa8",
+    name: "Turquoise",
+    colour: "#00B1B7",
     available: true,
     note: ""
   },
   {
     name: "Cyan",
-    colour: "#00a6d6",
+    colour: "#0086D6",
     available: true,
     note: ""
   },
   {
-    name: "Christmas Green",
-    colour: "#1f8f4d",
+    name: "Mistletoe Green",
+    colour: "#3F8E43",
+    available: true,
+    note: ""
+  },
+  {
+    name: "Dark Green",
+    colour: "#68724D",
+    available: true,
+    note: ""
+  },
+
+  {
+    name: "Purple",
+    colour: "#5E43B7",
+    available: true,
+    note: ""
+  },
+  {
+    name: "Indigo Purple",
+    colour: "#482960",
     available: true,
     note: ""
   },
   {
     name: "Black",
-    colour: "#222222",
+    colour: "#000000",
     available: true,
     note: ""
   }
 ];
-
 const baseColours = colours;
 const capColours = colours;
 const letterColours = colours;
