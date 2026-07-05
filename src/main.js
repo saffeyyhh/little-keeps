@@ -1024,7 +1024,7 @@ function renderReviewOrder() {
   });
 
   const deliveryFee =
-  collectionMethod.value === "delivery" && total < 50 ? 5 : 0;
+  collectionMethod.value === "delivery" && total < 50 ? 2.5 : 0;
 
   const grandTotal = total + deliveryFee;
 
@@ -1173,7 +1173,7 @@ function getEmailHtml() {
     `;
   });
 
-  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 5 : 0;
+  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 2.5 : 0;
   const total = subtotal + delivery;
 
   html += `
@@ -1240,7 +1240,7 @@ function getCustomerEmailHtml() {
     `;
   });
 
-  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 5 : 0;
+  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 2.5 : 0;
   const total = subtotal + delivery;
 
   return html;
@@ -1276,7 +1276,7 @@ async function submitOrder() {
 
     const delivery =
         collectionMethod.value === "delivery" && subtotal < 50
-            ? 5
+            ? 2.5
             : 0;
 
     const total = subtotal + delivery;
