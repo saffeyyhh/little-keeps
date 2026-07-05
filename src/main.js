@@ -313,7 +313,7 @@ document.getElementById("continueDraftBtn");
 const discardDraftBtn =
 document.getElementById("discardDraftBtn");
 
-const EMAILJS_SERVICE = "service_joll6ie";
+const EMAILJS_SERVICE = "service_tm3z0gd";
 const EMAILJS_TEMPLATE = "template_3kt0yd9";
 const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
 
