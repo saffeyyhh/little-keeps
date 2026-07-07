@@ -258,11 +258,17 @@ Chloe</textarea>
     <h3>Total Amount</h3>
     <strong id="paymentTotal"></strong>
 
-<img src="/paynow.png" class="paynowQR" alt="PayNow QR">
+<img
+  src="/models/paynow.png"
+  class="paynowQR"
+  alt="PayNow QR"
+>
 
-<a href="/paynow.png"
-   download="LittleKeeps-PayNow.png"
-   class="save-qr-btn">
+<a
+  href="/models/paynow.png"
+  download="LittleKeeps-PayNow.png"
+  class="save-qr-btn"
+>
   ↑ Save QR Code
 </a>
 
