@@ -45,7 +45,8 @@ document.querySelector("#app").innerHTML = `
     </div>
 
     <p class="extra-colour-note">
-      Additional colours are <strong>+$0.50 per extra Base, Cap or Letter colour.</strong>
+      🌈 Colour upgrades are based on extra unique colours:<br>
+      <strong>Base +$0.50</strong> · <strong>Cap +$0.30</strong> · <strong>Letter +$0.20</strong>
     </p>
   </div>
 
@@ -150,6 +151,10 @@ Chloe</textarea>
           </div>
 
             <p id="editModeText" class="hint">Currently editing: all names</p>
+
+            <div id="livePriceBox" class="live-price-box">
+              Current design: <strong id="livePrice">$3.50</strong>
+            </div>
 
             <p>Base Colours</p>
             <div id="baseSlots" class="slot-row"></div>
@@ -335,7 +340,14 @@ Chloe</textarea>
 `;
 
 const BASE_PRICE = 3.5;
-const EXTRA_COLOUR_PRICE = 0.5;
+
+const INCLUDED_BASE_COLOURS = 2;
+const INCLUDED_CAP_COLOURS = 2;
+const INCLUDED_LETTER_COLOURS = 2;
+
+const EXTRA_BASE_COLOUR_PRICE = 0.5;
+const EXTRA_CAP_COLOUR_PRICE = 0.3;
+const EXTRA_LETTER_COLOUR_PRICE = 0.2;
 
 const canvas = document.getElementById("previewCanvas");
 const singleBtn = document.getElementById("singleBtn");
@@ -349,6 +361,7 @@ const nameCards = document.getElementById("nameCards");
 const nameCardsSection = document.getElementById("nameCardsSection");
 const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
+const livePrice = document.getElementById("livePrice");
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
 const reviewCount = document.getElementById("reviewCount");
@@ -651,13 +664,28 @@ function createMat(colour) {
   });
 }
 
-function calculatePrice(design) {
-  const extraColours =
-    Math.max(0, design.bases.length - 2) +
-    Math.max(0, design.caps.length - 2) +
-    Math.max(0, design.letters.length - 2);
+function getUniqueColourCount(colours) {
+  return new Set(
+    colours.map(colour => colour.toLowerCase())
+  ).size;
+}
 
-  return BASE_PRICE + extraColours * EXTRA_COLOUR_PRICE;
+function calculatePrice(design) {
+  const baseExtra =
+    Math.max(0, getUniqueColourCount(design.bases) - INCLUDED_BASE_COLOURS);
+
+  const capExtra =
+    Math.max(0, getUniqueColourCount(design.caps) - INCLUDED_CAP_COLOURS);
+
+  const letterExtra =
+    Math.max(0, getUniqueColourCount(design.letters) - INCLUDED_LETTER_COLOURS);
+
+  return (
+    BASE_PRICE +
+    baseExtra * EXTRA_BASE_COLOUR_PRICE +
+    capExtra * EXTRA_CAP_COLOUR_PRICE +
+    letterExtra * EXTRA_LETTER_COLOUR_PRICE
+  );
 }
 
 function getActiveDesign() {
@@ -1477,6 +1505,10 @@ function refreshUI() {
   renderNameCards();
   renderColourSlots();
   updateEditModeText();
+
+  const design = getActiveDesign();
+  livePrice.innerText = `$${calculatePrice(design).toFixed(2)}`;
+
   renderReviewOrder();
 }
 
