@@ -755,3 +755,145 @@ textarea {
     line-height: 1.5;
     font-size: 15px;
 }
+
+.paynowQR{
+    width:260px;
+    display:block;
+    margin:20px auto;
+    border-radius:18px;
+    box-shadow:0 8px 30px rgba(0,0,0,.08);
+}
+
+#paymentTotal{
+    display:block;
+    font-size:42px;
+    font-weight:800;
+    color:#ff5d95;
+    margin:10px 0 20px;
+}
+
+.payment-steps{
+    margin:20px 0;
+    background:#fff8fb;
+    border:1px solid #ffd3e3;
+    border-radius:14px;
+    padding:18px;
+    text-align:left;
+    line-height:1.8;
+}
+
+.save-qr-btn {
+  display: inline-block;
+  margin: 12px auto 18px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #fff0f6;
+  color: #ff5f96;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.payment-steps {
+  margin: 20px 0;
+  background: #fff8fb;
+  border: 1px solid #ffd3e3;
+  border-radius: 18px;
+  padding: 18px;
+  text-align: left;
+  line-height: 1.6;
+}
+
+.payment-steps p {
+  margin: 0 0 14px;
+}
+
+.payment-steps p:last-child {
+  margin-bottom: 0;
+}
+
+.paynowQR{
+    width:260px;
+    display:block;
+    margin:20px auto 10px;
+    border-radius:20px;
+    box-shadow:0 10px 30px rgba(0,0,0,.08);
+}
+
+.save-qr-btn{
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+
+    width:220px;
+    margin:0 auto 25px;
+
+    padding:12px 20px;
+
+    background:#fff2f7;
+    color:#ff5f95;
+
+    border-radius:999px;
+
+    font-weight:700;
+    text-decoration:none;
+
+    transition:.2s;
+}
+
+.save-qr-btn:hover{
+
+    background:#ffe5ef;
+    transform:translateY(-2px);
+
+}
+
+.payment-steps{
+
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+
+}
+
+.payment-step{
+
+    display:flex;
+    align-items:center;
+    gap:16px;
+
+    background:#fff8fb;
+    border:1px solid #ffd6e5;
+    border-radius:18px;
+
+    padding:16px 18px;
+
+}
+
+.payment-step span{
+
+    width:38px;
+    height:38px;
+
+    border-radius:50%;
+
+    background:#ff5f95;
+    color:white;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+
+    font-weight:700;
+    flex-shrink:0;
+
+}
+
+.payment-step p{
+
+    margin:0;
+    font-size:15px;
+    font-weight:600;
+
+}

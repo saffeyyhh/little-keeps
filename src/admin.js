@@ -1,8 +1,16 @@
 import "./admin.css";
 import { createClient } from "@supabase/supabase-js";
+import emailjs from "@emailjs/browser";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
+
+const EMAILJS_SERVICE = "service_joll6ie";
+const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
+const EMAILJS_PAYMENT_VERIFIED_TEMPLATE = "template_liazurv";
+
+
+emailjs.init(EMAILJS_PUBLIC);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -77,9 +85,31 @@ document.querySelector("#app").innerHTML = `
         </div>
         </div>
 
-      <div id="orders">
-        <p class="empty">Loading orders...</p>
-      </div>
+        <div id="orderFilters" class="order-filters">
+          <input id="orderSearch" placeholder="Search order ref or customer...">
+
+          <select id="statusFilter">
+            <option value="all">All Status</option>
+            <option value="Pending Payment">Pending Payment</option>
+            <option value="Payment Verified">Payment Verified</option>
+            <option value="Printing">Printing</option>
+            <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
+            <option value="Completed">Completed</option>
+          </select>
+
+          <select id="paymentFilter">
+            <option value="all">All Payment</option>
+            <option value="Pending">Pending</option>
+            <option value="Paid">Paid</option>
+            <option value="Free">Free</option>
+            <option value="Giveaway">Giveaway</option>
+            <option value="Replacement">Replacement</option>
+          </select>
+        </div>
+
+        <div id="orders">
+          <p class="empty">Loading orders...</p>
+        </div>
     </section>
   </main>
 `;
@@ -92,6 +122,11 @@ const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
 const ordersActions = document.getElementById("ordersActions");
 const assemblyViewBtn = document.getElementById("assemblyViewBtn");
+
+const orderFilters = document.getElementById("orderFilters");
+const orderSearch = document.getElementById("orderSearch");
+const statusFilter = document.getElementById("statusFilter");
+const paymentFilter = document.getElementById("paymentFilter");
 
 const logoutBtn = document.getElementById("logoutBtn");
 
@@ -127,7 +162,75 @@ async function loadProductionProgress() {
   });
 }
 
+function getCustomerSummaryHtml(order) {
+  let html = "";
+
+  (order.order_data || []).forEach(item => {
+    const design = item.design;
+
+    html += `
+      <div style="background:white;border:1px solid #eee;border-radius:16px;padding:14px;margin:12px 0;">
+        <h3 style="margin:0 0 8px;">${item.name}</h3>
+
+        <div>
+          ${createEmailMiniPreview(item.name, design)}
+        </div>
+
+        <p style="margin:10px 0 0;">
+          <b>$${Number(item.price).toFixed(2)}</b>
+        </p>
+      </div>
+    `;
+  });
+
+  return html;
+}
+
+function createEmailMiniPreview(name, design) {
+  return Array.from(sanitizeName(name))
+    .map((letter, i) => {
+      const base = design.bases[i % design.bases.length];
+      const cap = design.caps[i % design.caps.length];
+      const letterColour = design.letters[i % design.letters.length];
+
+      return `
+        <span style="
+          display:inline-block;
+          width:36px;
+          height:36px;
+          background:${base.hex};
+          border-radius:10px;
+          margin:4px;
+          position:relative;
+          vertical-align:middle;
+        ">
+          <span style="
+            display:block;
+            width:23px;
+            height:23px;
+            background:${cap.hex};
+            border-radius:7px;
+            position:absolute;
+            left:50%;
+            top:50%;
+            transform:translate(-50%,-50%);
+            text-align:center;
+            line-height:23px;
+            font-size:13px;
+            font-weight:bold;
+            color:${letterColour.hex};
+          ">
+            ${displayIcon(letter)}
+          </span>
+        </span>
+      `;
+    })
+    .join("");
+}
+
 function renderCurrentView() {
+
+  orderFilters.style.display = currentView === "orders" ? "flex" : "none";
   if (currentView === "orders") {
     sectionTitle.innerText = "Orders";
     ordersActions.style.display = "flex";
@@ -295,17 +398,36 @@ function renderStats(orders) {
 }
 
 function renderOrders(orders) {
-  if (!orders.length) {
+  const searchText = orderSearch.value.toLowerCase();
+  const statusValue = statusFilter.value;
+  const paymentValue = paymentFilter.value;
+
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch =
+      (order.order_ref || "").toLowerCase().includes(searchText) ||
+      (order.customer_name || "").toLowerCase().includes(searchText) ||
+      (order.customer_email || "").toLowerCase().includes(searchText);
+
+    const matchesStatus =
+      statusValue === "all" || order.status === statusValue;
+
+    const matchesPayment =
+      paymentValue === "all" || order.payment_type === paymentValue;
+
+    return matchesSearch && matchesStatus && matchesPayment;
+  });
+
+  if (!filteredOrders.length) {
     ordersContainer.innerHTML = `
       <div class="empty-card">
-        <h3>No orders yet ♡</h3>
-        <p>New Little Keeps orders will appear here.</p>
+        <h3>No matching orders</h3>
+        <p>Try changing the search or filters.</p>
       </div>
     `;
     return;
   }
 
-  ordersContainer.innerHTML = orders.map(order => `
+  ordersContainer.innerHTML = filteredOrders.map(order => `
     <article class="order-card">
       <div class="order-top">
         <div>
@@ -323,6 +445,17 @@ function renderOrders(orders) {
           <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for Pickup/Delivery</option>
           <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
         </select>
+      </div>
+
+      <div class="order-preview-list">
+        ${(order.order_data || []).map(item => `
+          <div class="order-preview-item">
+            <strong>${item.name}</strong>
+            <div class="mini-chain">
+              ${createAssemblyMiniPreview(item.name, item.design)}
+            </div>
+          </div>
+        `).join("")}
       </div>
 
       <div class="order-info">
@@ -343,11 +476,11 @@ function renderOrders(orders) {
 
         <div>
           <span>Payment</span>
-
           <select
             class="status-select"
             onchange="window.updatePaymentType('${order.id}', this.value)"
           >
+            <option value="Pending" ${order.payment_type === "Pending" ? "selected" : ""}>Pending</option>
             <option value="Paid" ${order.payment_type === "Paid" ? "selected" : ""}>Paid</option>
             <option value="Free" ${order.payment_type === "Free" ? "selected" : ""}>Free</option>
             <option value="Giveaway" ${order.payment_type === "Giveaway" ? "selected" : ""}>Giveaway</option>
@@ -780,18 +913,56 @@ async function renderProductionPlanner(orders) {
   };
 }
 
+async function sendPaymentVerifiedEmail(order) {
+  try {
+    await emailjs.send(
+      EMAILJS_SERVICE,
+      EMAILJS_PAYMENT_VERIFIED_TEMPLATE,
+      {
+        customer_name: order.customer_name,
+        customer_email: order.customer_email,
+        order_ref: order.order_ref,
+        total_amount: formatMoney(order.total),
+        needed_by: formatDate(order.needed_by),
+        collection_method: getMethodLabel(order.collection_method),
+
+        customer_summary: getCustomerSummaryHtml(order)
+      }
+    );
+  } catch (err) {
+    console.error(err);
+    alert("Payment verified, but email failed to send.");
+  }
+}
+
 async function updateOrderStatus(id, status) {
   const scrollY = window.scrollY;
 
+  const order = latestOrders.find(order => String(order.id) === String(id));
+
+  const updateData = { status };
+
+  if (status === "Payment Verified") {
+    updateData.payment_type = "Paid";
+  }
+
   const { error } = await supabase
     .from("orders")
-    .update({ status })
+    .update(updateData)
     .eq("id", id);
 
   if (error) {
     console.error(error);
     alert("Unable to update status.");
     return;
+  }
+
+  if (
+    order?.status === "Pending Payment" &&
+    status === "Payment Verified" &&
+    order.customer_email
+  ) {
+    await sendPaymentVerifiedEmail(order);
   }
 
   await loadOrders();
@@ -910,6 +1081,10 @@ assemblyViewBtn.onclick = () => {
   setActiveTab(assemblyViewBtn);
   renderCurrentView();
 };
+
+orderSearch.addEventListener("input", () => renderOrders(latestOrders));
+statusFilter.addEventListener("change", () => renderOrders(latestOrders));
+paymentFilter.addEventListener("change", () => renderOrders(latestOrders));
 
 refreshBtn.onclick = loadOrders;
 loadOrders();

@@ -797,3 +797,41 @@ body {
     color:white;
 
 }
+
+.order-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.order-filters input,
+.order-filters select {
+  padding: 12px 14px;
+  border: 1px solid #ffd3e3;
+  border-radius: 14px;
+  font-size: 14px;
+}
+
+.order-filters input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.order-preview-list {
+  margin: 16px 0;
+  display: grid;
+  gap: 12px;
+}
+
+.order-preview-item {
+  background: #fff8fb;
+  border: 1px solid #ffd3e3;
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.order-preview-item strong {
+  display: block;
+  margin-bottom: 8px;
+}

@@ -227,17 +227,85 @@ Chloe</textarea>
 
       <div class="payment-box">
         <h3>Payment</h3>
-        <p>Payment is via PayNow only. Instruction will be sent via email confirmation.</p>
-        <p>Thank you for your order! 💕</p>
+        <p>Payment is via PayNow only.</p>
+        <p>After submitting, you’ll see the QR code and exact amount to pay.</p>
       </div>
 
       <button id="submitOrderBtn" class="submit-btn" disabled>
-        Submit Order
+        Submit Order & Make Payment
       </button>
 
       <p id="formStatus" class="hint"></p>
       <p id="submitStatus" class="hint"></p>
     </section>
+
+<!-- NEW PAYMENT SCREEN -->
+<section id="paymentScreen" class="checkout-screen hidden">
+
+  <button id="paymentBackBtn" class="secondary-btn">
+    ← Back
+  </button>
+
+  <div class="payment-box">
+
+    <h2>🩷 Almost Done!</h2>
+
+    <p>Please complete payment to begin production.</p>
+
+    <h3>Order Reference</h3>
+    <strong id="paymentOrderRef"></strong>
+
+    <h3>Total Amount</h3>
+    <strong id="paymentTotal"></strong>
+
+<img
+  src="/paynow.png"
+  class="paynowQR"
+  alt="PayNow QR"
+>
+
+<a
+  href="/paynow.png"
+  download="LittleKeeps-PayNow.png"
+  class="save-qr-btn"
+>
+  ↑ Save QR Code
+</a>
+
+<div class="payment-steps">
+
+  <div class="payment-step">
+    <span>1</span>
+    <p>Scan or save the QR code</p>
+  </div>
+
+  <div class="payment-step">
+    <span>2</span>
+    <p>Pay <strong>the exact amount</strong></p>
+  </div>
+
+  <div class="payment-step">
+    <span>3</span>
+    <p>Send your payment screenshot</p>
+  </div>
+
+  <div class="payment-step">
+    <span>5</span>
+    <p>We'll verify your payment & send a confirmation email 💌</p>
+  </div>
+
+</div>
+
+    <button
+      id="whatsappBtn"
+      class="submit-btn"
+    >
+      💬 Send Payment Screenshot
+    </button>
+
+  </div>
+
+</section>
 
     <div id="successModal" class="modal hidden">
       <div class="modal-card">
@@ -301,6 +369,17 @@ const closeModalBtn = document.getElementById("closeModalBtn");
 
 const designScreen = document.getElementById("designScreen");
 const checkoutScreen = document.getElementById("checkoutScreen");
+const paymentScreen =
+document.getElementById("paymentScreen");
+const paymentOrderRef =
+document.getElementById("paymentOrderRef");
+const paymentTotal =
+document.getElementById("paymentTotal");
+const whatsappBtn =
+document.getElementById("whatsappBtn");
+const paymentBackBtn =
+document.getElementById("paymentBackBtn");
+
 const nextBtn = document.getElementById("nextBtn");
 const backBtn = document.getElementById("backBtn");
 
@@ -326,6 +405,7 @@ const deliveryAddress =
 document.getElementById("deliveryAddress");
 
 emailjs.init(EMAILJS_PUBLIC);
+
 
 const colours = [
   {
@@ -1231,33 +1311,6 @@ function getEmailHtml() {
   return html;
 }
 
-function getCustomerEmailHtml() {
-  let subtotal = 0;
-
-  let html = `
-    <h2 style="color:#ff6f9f;">Your Order Summary</h2>
-  `;
-
-  names.forEach(item => {
-    const design = getDesign(item);
-    const price = calculatePrice(design);
-    subtotal += price;
-
-    html += `
-      <div style="background:white;border:1px solid #eee;border-radius:16px;padding:14px;margin:12px 0;">
-        <h3 style="margin:0 0 8px;">${item.name}</h3>
-        <div>${createEmailMiniPreview(item.name, design)}</div>
-        <p style="margin:10px 0 0;"><b>$${price.toFixed(2)}</b></p>
-      </div>
-    `;
-  });
-
-  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 2.5 : 0;
-  const total = subtotal + delivery;
-
-  return html;
-}
-
 async function saveOrderToDatabase(order) {
 
     const { data, error } = await supabase
@@ -1275,157 +1328,121 @@ async function saveOrderToDatabase(order) {
 
 async function submitOrder() {
 
-    submitStatus.innerText = "Sending order...";
+  submitStatus.innerText = "Submitting order...";
 
-    const summary = getEmailHtml();
+  const orderRef = generateOrderRef();
 
-    const orderRef = generateOrderRef();
-
-    const subtotal = names.reduce(
+  const subtotal = names.reduce(
     (sum, item) => sum + calculatePrice(getDesign(item)),
     0
-);
+  );
 
-    const delivery =
-        collectionMethod.value === "delivery" && subtotal < 50
-            ? 2.5
-            : 0;
+  const delivery =
+    collectionMethod.value === "delivery" && subtotal < 50
+      ? 2.5
+      : 0;
 
-    const total = subtotal + delivery;
+  const total = subtotal + delivery;
 
-    const order = {
+  const order = {
+    order_ref: orderRef,
 
-        order_ref: orderRef,
+    customer_name: customerName.value,
+    customer_email: customerEmail.value,
+    customer_phone: customerPhone.value,
 
-        customer_name: customerName.value,
+    collection_method: collectionMethod.value,
+    delivery_address: deliveryAddress.value,
 
-        customer_email: customerEmail.value,
+    preferred_time: orderNotes.value,
+    needed_by: neededBy.value,
+    notes: orderNotes.value,
 
-        customer_phone: customerPhone.value,
+    subtotal,
+    delivery_fee: delivery,
+    total,
 
-        collection_method: collectionMethod.value,
+    payment_type: "Pending",
+    order_source: isManualOrder ? "Manual" : "Website",
+    status: isManualOrder ? "Payment Verified" : "Pending Payment",
 
-        delivery_address: deliveryAddress.value,
+    order_data: names.map(item => {
+      const design = getDesign(item);
 
-        preferred_time: orderNotes.value,
+      return {
+        name: item.name,
+        clean_name: sanitizeName(item.name),
+        price: calculatePrice(design),
 
-        needed_by: neededBy.value,
-
-        notes: orderNotes.value,
-
-        subtotal,
-
-        delivery_fee: delivery,
-
-        total,
-
-        payment_type: "Paid",
-        order_source: isManualOrder ? "Manual" : "Website",
-
-      status: isManualOrder ? "Payment Verified" : "Pending Payment",
-
-        order_data: names.map(item => {
-            const design = getDesign(item);
-
-            return {
-                name: item.name,
-                clean_name: sanitizeName(item.name),
-                price: calculatePrice(design),
-
-                design: {
-                    bases: design.bases.map(hex => ({
-                        name: getColourName(hex),
-                        hex
-                    })),
-
-                    caps: design.caps.map(hex => ({
-                        name: getColourName(hex),
-                        hex
-                    })),
-
-                    letters: design.letters.map(hex => ({
-                        name: getColourName(hex),
-                        hex
-                    }))
-                }
-            };
-        })
-
-    };
-
-    try {
-        const dateOk = await checkNeededByDate();
-
-        if (!dateOk) {
-          submitStatus.innerText = neededByMessage || "Please choose another date.";
-          return;
+        design: {
+          bases: design.bases.map(hex => ({
+            name: getColourName(hex),
+            hex
+          })),
+          caps: design.caps.map(hex => ({
+            name: getColourName(hex),
+            hex
+          })),
+          letters: design.letters.map(hex => ({
+            name: getColourName(hex),
+            hex
+          }))
         }
+      };
+    })
+  };
 
-        await saveOrderToDatabase(order);
+  try {
 
-        if (isManualOrder) {
-          celebrateOrder();
-          orderSubmitted = true;
-          localStorage.removeItem("littleKeepsDraft");
+    const ok = await checkNeededByDate();
 
-          submitStatus.innerText = "Manual order saved!";
-          orderRefText.innerText = `Order Reference: ${orderRef}`;
-          successModal.classList.remove("hidden");
-
-          return;
-        }
-
-        await emailjs.send(
-            EMAILJS_SERVICE,
-            EMAILJS_TEMPLATE,
-            {
-                order_ref: orderRef,
-                customer_name: customerName.value,
-                customer_email: customerEmail.value,
-                customer_phone: customerPhone.value,
-                needed_by: neededBy.value,
-                collection_method: collectionMethod.value,
-                delivery_address: deliveryAddress.value,
-                notes: orderNotes.value,
-                message: summary
-            }
-        );
-
-        await emailjs.send(
-          EMAILJS_SERVICE,
-          EMAILJS_CUSTOMER_TEMPLATE,
-          {
-            customer_name: customerName.value,
-            customer_email: customerEmail.value,
-            order_ref: orderRef,
-
-            total_amount: `$${total.toFixed(2)}`,
-
-            delivery_address: deliveryAddress.value,
-
-            customer_summary: getCustomerEmailHtml()
-          }
-        );
-
-        celebrateOrder();
-        orderSubmitted = true;
-        localStorage.removeItem("littleKeepsDraft");
-        submitStatus.innerText =
-            "Order submitted successfully!";
-        orderRefText.innerText =
-            `Order Reference: ${orderRef}`;
-        successModal.classList.remove("hidden");
+    if (!ok) {
+      submitStatus.innerText = neededByMessage;
+      return;
     }
 
-    catch (error) {
-    console.error("EMAILJS ERROR:", error);
-    alert(JSON.stringify(error));
+    await saveOrderToDatabase(order);
+
+    // ADMIN EMAIL ONLY
+    await emailjs.send(
+      EMAILJS_SERVICE,
+      EMAILJS_TEMPLATE,
+      {
+        order_ref: orderRef,
+        customer_name: customerName.value,
+        customer_email: customerEmail.value,
+        customer_phone: customerPhone.value,
+        collection_method: collectionMethod.value,
+        total_amount: `$${total.toFixed(2)}`,
+        message: getEmailHtml(),
+        customer_summary: getEmailHtml()
+      }
+    );
+
+    orderSubmitted = true;
+    localStorage.removeItem("littleKeepsDraft");
+
+    paymentOrderRef.innerText = orderRef;
+    paymentTotal.innerText = `$${total.toFixed(2)}`;
+
+    checkoutScreen.classList.add("hidden");
+    paymentScreen.classList.remove("hidden");
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
     submitStatus.innerText =
-        "Unable to send order.";
-}
+      "Unable to submit order.";
+
+  }
 
 }
-
 function updateCollectionNote() {
 
     const subtotal = names.reduce(
@@ -1449,7 +1466,7 @@ function updateCollectionNote() {
         const fee = subtotal >= 50 ? "FREE 🎉" : "$2.50";
 
         deliveryNote.innerHTML = `
-            Please enter your delivery address and any delivery instructions below.
+            Please enter any delivery instructions below.
         `;
 
     }
@@ -1569,6 +1586,35 @@ resetSelected.onclick = () => {
 };
 
 submitOrderBtn.onclick = submitOrder;
+
+paymentBackBtn.onclick = () => {
+
+    paymentScreen.classList.add("hidden");
+    checkoutScreen.classList.remove("hidden");
+
+};
+
+whatsappBtn.onclick = () => {
+
+    const msg =
+`Hi Little Keeps!
+
+I've completed payment for my order.
+
+Order Reference:
+${paymentOrderRef.innerText}.
+
+Amount Paid:
+${paymentTotal.innerText}.
+
+I'll attach my payment screenshot below`;
+
+    window.open(
+        `https://wa.me/6585121915?text=${encodeURIComponent(msg)}`,
+        "_blank"
+    );
+
+};
 collectionMethod.addEventListener("change", () => {
 
     if (collectionMethod.value === "delivery") {
