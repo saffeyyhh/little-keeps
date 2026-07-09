@@ -835,3 +835,78 @@ body {
   display: block;
   margin-bottom: 8px;
 }
+
+.order-details {
+  margin-top: 14px;
+  background: #fff7fb;
+  border: 1px solid #ffd3e3;
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+.order-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #ff5f99;
+}
+
+.order-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.order-detail-grid p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.order-detail-grid .full-row {
+  grid-column: 1 / -1;
+}
+
+.order-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  gap: 16px;
+}
+
+.order-summary::-webkit-details-marker {
+  display: none;
+}
+
+.order-summary-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.order-summary-meta strong {
+  color: #ff6f9f;
+  font-size: 18px;
+}
+
+.order-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+  background: #fff7fb;
+  border: 1px solid #ffd3e3;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.order-detail-grid p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.order-detail-grid .full-row {
+  grid-column: 1 / -1;
+}

@@ -85,28 +85,34 @@ document.querySelector("#app").innerHTML = `
         </div>
         </div>
 
-        <div id="orderFilters" class="order-filters">
-          <input id="orderSearch" placeholder="Search order ref or customer...">
+      <div id="orderFilters" class="order-filters">
+        <input id="orderSearch" placeholder="Search order ref or customer...">
 
-          <select id="statusFilter">
-            <option value="all">All Status</option>
-            <option value="Pending Payment">Pending Payment</option>
-            <option value="Payment Verified">Payment Verified</option>
-            <option value="Printing">Printing</option>
-            <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
-            <option value="Completed">Completed</option>
-          </select>
+        <select id="orderViewFilter">
+          <option value="active">Active Orders</option>
+          <option value="all">All Orders</option>
+          <option value="completed">Completed Only</option>
+        </select>
 
-          <select id="paymentFilter">
-            <option value="all">All Payment</option>
-            <option value="Pending">Pending</option>
-            <option value="Paid">Paid</option>
-            <option value="Free">Free</option>
-            <option value="Giveaway">Giveaway</option>
-            <option value="Replacement">Replacement</option>
-          </select>
-        </div>
+        <select id="statusFilter">
+          <option value="all">All Status</option>
+          <option value="Pending Payment">Pending Payment</option>
+          <option value="Payment Verification">Pending Verification</option>
+          <option value="Payment Verified">Payment Verified</option>
+          <option value="Printing">Printing</option>
+          <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
+          <option value="Completed">Completed</option>
+        </select>
 
+        <select id="paymentFilter">
+          <option value="all">All Payment</option>
+          <option value="Pending">Pending</option>
+          <option value="Paid">Paid</option>
+          <option value="Free">Free</option>
+          <option value="Giveaway">Giveaway</option>
+          <option value="Replacement">Replacement</option>
+        </select>
+      </div>
         <div id="orders">
           <p class="empty">Loading orders...</p>
         </div>
@@ -125,6 +131,7 @@ const assemblyViewBtn = document.getElementById("assemblyViewBtn");
 
 const orderFilters = document.getElementById("orderFilters");
 const orderSearch = document.getElementById("orderSearch");
+const orderViewFilter = document.getElementById("orderViewFilter");
 const statusFilter = document.getElementById("statusFilter");
 const paymentFilter = document.getElementById("paymentFilter");
 
@@ -141,26 +148,7 @@ logoutBtn.onclick = async () => {
 
 let currentView = "orders";
 let latestOrders = [];
-let productionProgress = {};
-let collapsedGroups =
-    JSON.parse(localStorage.getItem("collapsedGroups") || "{}");
-
-async function loadProductionProgress() {
-  const { data, error } = await supabase
-    .from("production_progress")
-    .select("*");
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  productionProgress = {};
-
-  data.forEach(row => {
-    productionProgress[`${row.group_key}|${row.item_key}`] = row.completed;
-  });
-}
+let inventoryItems = {};
 
 function getCustomerSummaryHtml(order) {
   let html = "";
@@ -251,68 +239,23 @@ function renderCurrentView() {
   }
 }
 
-async function saveProductionProgress(groupKey, itemKey, completed) {
-  const { error } = await supabase
-    .from("production_progress")
-    .upsert({
-      group_key: groupKey,
-      item_key: itemKey,
-      completed
-    }, {
-      onConflict: "group_key,item_key"
-    });
-
-  if (error) {
-    console.error(error);
-    alert("Unable to save checkbox.");
-  }
-}
-
-window.toggleProductionItem = async function(groupKey, itemKey, checked) {
-  await saveProductionProgress(groupKey, itemKey, checked);
-  productionProgress[`${groupKey}|${itemKey}`] = checked;
-};
-
-window.toggleProductionGroup = async function(groupKey, itemKeys, checked) {
-  for (const itemKey of itemKeys) {
-    await saveProductionProgress(groupKey, itemKey, checked);
-    productionProgress[`${groupKey}|${itemKey}`] = checked;
-  }
-
-  renderProductionPlanner(latestOrders);
-};
-
-window.saveCollapse = function(groupKey, isOpen){
-
-    collapsedGroups[groupKey] = !isOpen;
-
-    localStorage.setItem(
-        "collapsedGroups",
-        JSON.stringify(collapsedGroups)
-    );
-
-};
-
 window.markReady = async function(id) {
   const order = latestOrders.find(order => String(order.id) === String(id));
-
   if (!order) return;
 
-  const totalLetters = (order.order_data || []).reduce((sum, item) => {
-    return sum + (item.clean_name || item.name || "").length;
-  }, 0);
+  await loadInventoryItems();
 
-  const keychainCount = (order.order_data || []).length;
+  const needs = getOrderInventoryNeeds(order);
 
   const ok = confirm(
-    `Mark this order as ready?\n\nThis will deduct:\n- ${totalLetters} mechanical switch(es)\n- ${keychainCount} key ring(s)\n- ${keychainCount} jump ring(s)`
+    `Mark this order as ready?\n\nThis will deduct all printed parts and hardware from inventory.`
   );
 
   if (!ok) return;
 
-  await deductInventory("Mechanical Switch", totalLetters);
-  await deductInventory("Key Ring", keychainCount);
-  await deductInventory("Jump Ring", keychainCount);
+  for (const [itemName, qty] of Object.entries(needs)) {
+    await deductInventory(itemName, qty);
+  }
 
   const { error } = await supabase
     .from("orders")
@@ -325,11 +268,8 @@ window.markReady = async function(id) {
     return;
   }
 
-  latestOrders = latestOrders.filter(order => order.id !== id);
-
   currentView = "assembly";
   setActiveTab(assemblyViewBtn);
-  await renderAssemblyQueue();
   await loadOrders();
 };
 
@@ -399,8 +339,17 @@ function renderStats(orders) {
 
 function renderOrders(orders) {
   const searchText = orderSearch.value.toLowerCase();
+  const orderViewValue = orderViewFilter.value;
   const statusValue = statusFilter.value;
   const paymentValue = paymentFilter.value;
+
+  const activeStatuses = [
+    "Pending Payment",
+    "Payment Verification",
+    "Payment Verified",
+    "Printing",
+    "Ready for Pickup/Delivery"
+  ];
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch =
@@ -408,13 +357,18 @@ function renderOrders(orders) {
       (order.customer_name || "").toLowerCase().includes(searchText) ||
       (order.customer_email || "").toLowerCase().includes(searchText);
 
+    const matchesOrderView =
+      orderViewValue === "all" ||
+      (orderViewValue === "active" && activeStatuses.includes(order.status)) ||
+      (orderViewValue === "completed" && order.status === "Completed");
+
     const matchesStatus =
       statusValue === "all" || order.status === statusValue;
 
     const matchesPayment =
       paymentValue === "all" || order.payment_type === paymentValue;
 
-    return matchesSearch && matchesStatus && matchesPayment;
+    return matchesSearch && matchesOrderView && matchesStatus && matchesPayment;
   });
 
   if (!filteredOrders.length) {
@@ -428,24 +382,86 @@ function renderOrders(orders) {
   }
 
   ordersContainer.innerHTML = filteredOrders.map(order => `
-    <article class="order-card">
-      <div class="order-top">
+    <details class="order-card">
+      <summary class="order-summary">
         <div>
           <h3>${order.order_ref}</h3>
           <p>${order.customer_name || "-"}</p>
         </div>
 
-        <select
-          class="status-select"
-          onchange="window.updateOrderStatus('${order.id}', this.value)"
-        >
-          <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Pending Payment</option>
-          <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Payment Verified</option>
-          <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
-          <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for Pickup/Delivery</option>
-          <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
-        </select>
+        <div class="order-summary-meta">
+          <strong>${formatMoney(order.total)}</strong>
+          <span>${order.status || "-"}</span>
+          <span>${getMethodLabel(order.collection_method)}</span>
+        </div>
+      </summary>
+
+      <div class="order-detail-grid">
+        <p><strong>Customer Name:</strong><br>${order.customer_name || "-"}</p>
+        <p><strong>Email:</strong><br>${order.customer_email || "-"}</p>
+        <p><strong>Phone:</strong><br>${order.customer_phone || "-"}</p>
+        <p><strong>Order Ref:</strong><br>${order.order_ref || "-"}</p>
+
+        <p><strong>Collection Method:</strong><br>${getMethodLabel(order.collection_method)}</p>
+        <p><strong>Needed By:</strong><br>${formatDate(order.needed_by)}</p>
+
+        ${
+          order.collection_method === "delivery"
+            ? `
+              <p class="full-row">
+                <strong>Delivery Address:</strong><br>
+                ${order.delivery_address || "-"}
+              </p>
+            `
+            : `
+              <p class="full-row">
+                <strong>Pickup Location:</strong><br>
+                Woodlands MRT
+              </p>
+            `
+        }
+
+        <p class="full-row">
+          <strong>Customer Notes / Preferred Timing:</strong><br>
+          ${order.notes || order.preferred_time || "-"}
+        </p>
+
+        <p><strong>Subtotal:</strong><br>${formatMoney(order.subtotal)}</p>
+        <p><strong>Delivery Fee:</strong><br>${formatMoney(order.delivery_fee)}</p>
+        <p><strong>Total:</strong><br>${formatMoney(order.total)}</p>
+        <p><strong>Order Source:</strong><br>${order.order_source || "-"}</p>
       </div>
+
+      <div class="order-info">
+  <div>
+    <span>Status</span>
+    <select
+      class="status-select"
+      onchange="window.updateOrderStatus('${order.id}', this.value)"
+    >
+      <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Pending Payment</option>
+      <option value="Payment Verification" ${order.status === "Payment Verification" ? "selected" : ""}>Payment Verification</option>
+      <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Payment Verified</option>
+      <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
+      <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for Pickup/Delivery</option>
+      <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
+    </select>
+  </div>
+
+  <div>
+    <span>Payment</span>
+    <select
+      class="status-select"
+      onchange="window.updatePaymentType('${order.id}', this.value)"
+    >
+      <option value="Pending" ${order.payment_type === "Pending" ? "selected" : ""}>Pending</option>
+      <option value="Paid" ${order.payment_type === "Paid" ? "selected" : ""}>Paid</option>
+      <option value="Free" ${order.payment_type === "Free" ? "selected" : ""}>Free</option>
+      <option value="Giveaway" ${order.payment_type === "Giveaway" ? "selected" : ""}>Giveaway</option>
+      <option value="Replacement" ${order.payment_type === "Replacement" ? "selected" : ""}>Replacement</option>
+    </select>
+  </div>
+</div>
 
       <div class="order-preview-list">
         ${(order.order_data || []).map(item => `
@@ -458,39 +474,63 @@ function renderOrders(orders) {
         `).join("")}
       </div>
 
-      <div class="order-info">
-        <div>
-          <span>Needed By</span>
-          <strong>${formatDate(order.needed_by)}</strong>
-        </div>
-
-        <div>
-          <span>Method</span>
-          <strong>${getMethodLabel(order.collection_method)}</strong>
-        </div>
-
-        <div>
-          <span>Total</span>
-          <strong>${formatMoney(order.total)}</strong>
-        </div>
-
-        <div>
-          <span>Payment</span>
-          <select
-            class="status-select"
-            onchange="window.updatePaymentType('${order.id}', this.value)"
-          >
-            <option value="Pending" ${order.payment_type === "Pending" ? "selected" : ""}>Pending</option>
-            <option value="Paid" ${order.payment_type === "Paid" ? "selected" : ""}>Paid</option>
-            <option value="Free" ${order.payment_type === "Free" ? "selected" : ""}>Free</option>
-            <option value="Giveaway" ${order.payment_type === "Giveaway" ? "selected" : ""}>Giveaway</option>
-            <option value="Replacement" ${order.payment_type === "Replacement" ? "selected" : ""}>Replacement</option>
-          </select>
-        </div>
-      </div>
-    </article>
+    </details>
   `).join("");
 }
+
+async function loadInventoryItems() {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("*");
+
+  if (error) {
+    console.error(error);
+    alert("Unable to load inventory.");
+    return;
+  }
+
+  inventoryItems = {};
+
+  (data || []).forEach(item => {
+    inventoryItems[item.item_name] = {
+      qty: Number(item.qty || 0),
+      category: item.category || "Hardware"
+    };
+  });
+}
+
+function getInventoryQty(itemName) {
+  return inventoryItems[itemName]?.qty || 0;
+}
+
+async function addInventory(itemName, qtyToAdd, category) {
+  const currentQty = getInventoryQty(itemName);
+  const newQty = currentQty + Number(qtyToAdd || 0);
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .upsert(
+      {
+        item_name: itemName,
+        qty: newQty,
+        category,
+        updated_at: new Date().toISOString()
+      },
+      {
+        onConflict: "item_name"
+      }
+    );
+
+  if (error) {
+    console.error(error);
+    alert("Unable to update inventory.");
+    return;
+  }
+
+  await renderProductionPlanner(latestOrders);
+}
+
+window.addInventory = addInventory;
 
 function getProductionSummary(orders) {
   const baseTotals = {};
@@ -555,39 +595,49 @@ function getProductionSummary(orders) {
   return { baseTotals, keycapGroups, count: activeOrders.length };
 }
 
-function isOrderReadyForAssembly(order) {
-  const items = order.order_data || [];
+function getOrderInventoryNeeds(order) {
+  const needs = {};
 
-  for (const item of items) {
-    const cleanName = item.clean_name || item.name || "";
-    const letters = Array.from(cleanName);
+  function add(itemName, qty) {
+    needs[itemName] = (needs[itemName] || 0) + qty;
+  }
+
+  (order.order_data || []).forEach(item => {
+    const letters = Array.from(item.clean_name || item.name || "");
     const design = item.design;
 
-    if (!design) return false;
+    if (!design) return;
 
-    for (let i = 0; i < letters.length; i++) {
-      const letter = letters[i];
-
-      const base = design.bases[i % design.bases.length];
-      const cap = design.caps[i % design.caps.length];
-      const letterColour = design.letters[i % design.letters.length];
+    letters.forEach((letter, index) => {
+      const base = design.bases[index % design.bases.length];
+      const cap = design.caps[index % design.caps.length];
+      const letterColour = design.letters[index % design.letters.length];
 
       const baseName = base.name || base.hex || base;
       const capName = cap.name || cap.hex || cap;
       const letterName = letterColour.name || letterColour.hex || letterColour;
 
-      const baseDone = productionProgress[`Base Printing|${baseName}`];
+      add(`${baseName} Base`, 1);
+      add(`${capName} Cap + ${letterName} Letter`, 1);
+    });
+  });
 
-      const keycapGroup = `${capName} Cap + ${letterName} Letter`;
-      const keycapDone = productionProgress[`${keycapGroup}|${letter}`];
+  add("Mechanical Switch", (order.order_data || []).reduce((sum, item) => {
+    return sum + (item.clean_name || item.name || "").length;
+  }, 0));
 
-      if (!baseDone || !keycapDone) {
-        return false;
-      }
-    }
-  }
+  add("Key Ring", (order.order_data || []).length);
+  add("Jump Ring", (order.order_data || []).length);
 
-  return true;
+  return needs;
+}
+
+function isOrderReadyForAssembly(order) {
+  const needs = getOrderInventoryNeeds(order);
+
+  return Object.entries(needs).every(([itemName, qtyNeeded]) => {
+    return getInventoryQty(itemName) >= qtyNeeded;
+  });
 }
 
 const specialKeycaps = {
@@ -654,7 +704,7 @@ function createAssemblyMiniPreview(name, design) {
 
 async function renderAssemblyQueue() {
 
-  await loadProductionProgress();
+  await loadInventoryItems();
 
   const readyOrders = latestOrders.filter(order =>
     ["Payment Verified", "Printing"].includes(order.status) &&
@@ -734,11 +784,9 @@ async function renderAssemblyQueue() {
 }
 
 async function renderProductionPlanner(orders) {
-  await loadProductionProgress();
+  await loadInventoryItems();
 
   const { baseTotals, keycapGroups, count } = getProductionSummary(orders);
-
-  const baseItemKeys = Object.values(baseTotals).map(item => item.name);
 
   ordersContainer.innerHTML = `
     <div class="production-card">
@@ -746,171 +794,115 @@ async function renderProductionPlanner(orders) {
         <div>
           <h2>Production Planner ♡</h2>
           <p class="hint">
-            Showing orders with status: Payment Verified or Printing.
+            Inventory-based planner for Payment Verified / Printing orders.
           </p>
         </div>
 
-        <p class="active-count">
-          ${count} active order(s)
-        </p>
+        <p class="active-count">${count} active order(s)</p>
       </div>
 
       <h3>Base Printing</h3>
 
       <div class="print-group">
-        <div class="print-group-top">
-          <h4>Base Colours</h4>
-
-          <label class="select-all">
-            <input
-              type="checkbox"
-              onchange='window.toggleProductionGroup(
-                "Base Printing",
-                ${JSON.stringify(baseItemKeys)},
-                this.checked
-              )'
-            >
-            Select All
-          </label>
-        </div>
-
         ${Object.values(baseTotals).map(item => {
-          const groupKey = "Base Printing";
-          const itemKey = item.name;
-          const checked = productionProgress[`${groupKey}|${itemKey}`];
+          const itemName = `${item.name} Base`;
+          const need = item.qty;
+          const stock = getInventoryQty(itemName);
+          const toPrint = Math.max(0, need - stock);
 
           return `
-            <label class="print-check-row">
-              <input
-                type="checkbox"
-                ${checked ? "checked" : ""}
-                onchange='window.toggleProductionItem(
-                  "Base Printing",
-                  ${JSON.stringify(itemKey)},
-                  this.checked
-                )'
-              >
-
+            <div class="print-check-row">
               <span class="colour-dot" style="background:${item.hex}"></span>
-              <span>${item.name}</span>
-              <strong>${item.qty}</strong>
-            </label>
+
+              <div style="flex:1;">
+                <strong>${itemName}</strong>
+                <p class="hint">
+                  Need: ${need} · Stock: ${stock} · To Print: ${toPrint}
+                </p>
+              </div>
+
+              ${
+                toPrint > 0
+                  ? `
+                    <button
+                      class="ready-btn"
+                      onclick="window.addInventory('${itemName}', ${toPrint}, 'Base')"
+                    >
+                      +${toPrint} Printed
+                    </button>
+                  `
+                  : `<span class="assembly-tag">Enough Stock</span>`
+              }
+            </div>
           `;
-        }).join("") || "<p>No bases to print.</p>"}
+        }).join("") || "<p>No bases needed.</p>"}
       </div>
 
-<h3>Keycap Printing</h3>
+      <h3>Keycap Printing</h3>
 
-<div class="keycap-grid">
-  ${Object.entries(keycapGroups)
-
-.sort((a, b) => {
-
-    const getProgress = ([groupKey, group]) => {
-
-        const total = Object.keys(group.letters).length;
-
-        const done = Object.keys(group.letters)
-            .filter(letter =>
-                productionProgress[`${groupKey}|${letter}`]
-            ).length;
-
-        return done / total;
-
-    };
-
-    const pa = getProgress(a);
-    const pb = getProgress(b);
-
-    // Unfinished groups first
-    if (pa !== pb) return pa - pb;
-
-    // If same progress, sort alphabetically
-    return a[0].localeCompare(b[0]);
-
-})
-
-.map(([groupKey, group]) => {
-    const sortedLetters = Object.entries(group.letters)
-      .sort((a, b) => b[1] - a[1]);
-
-    const itemKeys = sortedLetters.map(([letter]) => letter);
-    const totalItems = sortedLetters.length;
-
-    const completedItems = sortedLetters.filter(([letter]) =>
-      productionProgress[`${groupKey}|${letter}`]
-    ).length;
-
-    const progressPercent =
-      totalItems === 0 ? 0 : Math.round((completedItems / totalItems) * 100);
-
-    return `
-        <details
-            class="print-group ${completedItems === totalItems ? "completed-group" : ""}"
-            ${collapsedGroups[groupKey] ? "" : "open"}
-            ontoggle="window.saveCollapse('${groupKey}', this.open)"
-        >
-        <summary>
-          <div class="group-summary">
-            <div class="sample-keycap" style="background:${group.capHex}; color:${group.letterHex};">
-              A
-            </div>
-
-            <div>
-              <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
-              <p>${completedItems} / ${totalItems} item types completed</p>
-            </div>
-          </div>
-
-          <div class="progress-bar">
-            <div style="width:${progressPercent}%"></div>
-          </div>
-        </summary>
-
-        <label class="select-all">
-          <input
-            type="checkbox"
-            ${completedItems === totalItems ? "checked" : ""}
-            onchange='window.toggleProductionGroup(
-              ${JSON.stringify(groupKey)},
-              ${JSON.stringify(itemKeys)},
-              this.checked
-            )'
-          >
-          Select All
-        </label>
-
-        ${sortedLetters.map(([letter, qty]) => {
-          const checked = productionProgress[`${groupKey}|${letter}`];
+      <div class="keycap-grid">
+        ${Object.entries(keycapGroups).map(([groupKey, group]) => {
+          const sortedLetters = Object.entries(group.letters)
+            .sort((a, b) => b[1] - a[1]);
 
           return `
-            <label class="print-check-row">
-              <input
-                type="checkbox"
-                ${checked ? "checked" : ""}
-                onchange='window.toggleProductionItem(
-                  ${JSON.stringify(groupKey)},
-                  ${JSON.stringify(letter)},
-                  this.checked
-                )'
-              >
+            <details class="print-group" open>
+              <summary>
+                <div class="group-summary">
+                  <div
+                    class="sample-keycap"
+                    style="background:${group.capHex}; color:${group.letterHex};"
+                  >
+                    A
+                  </div>
 
-              <span class="letter-chip">${letter}</span>
-              <span>Letter</span>
-              <strong>${qty}</strong>
-            </label>
+                  <div>
+                    <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
+                    <p>Need / Stock / To Print by letter</p>
+                  </div>
+                </div>
+              </summary>
+
+              ${sortedLetters.map(([letter, qty]) => {
+              const itemName =
+                `${group.capName} Cap + ${group.letterName} Letter`;
+
+                const need = qty;
+                const stock = getInventoryQty(itemName);
+                const toPrint = Math.max(0, need - stock);
+
+                return `
+                  <div class="print-check-row">
+                    <span class="letter-chip">${letter}</span>
+
+                    <div style="flex:1;">
+                      <strong>${letter}</strong>
+                      <p class="hint">
+                        Need: ${need} · Stock: ${stock} · To Print: ${toPrint}
+                      </p>
+                    </div>
+
+                    ${
+                      toPrint > 0
+                        ? `
+                          <button
+                            class="ready-btn"
+                            onclick="window.addInventory('${itemName}', ${toPrint}, 'Keycap')"
+                          >
+                            +${toPrint} Printed
+                          </button>
+                        `
+                        : `<span class="assembly-tag">Enough Stock</span>`
+                    }
+                  </div>
+                `;
+              }).join("")}
+            </details>
           `;
-        }).join("")}
-      </details>
-    `;
-  }).join("") || "<p>No keycaps to print.</p>"}
-</div>
+        }).join("") || "<p>No keycaps needed.</p>"}
+      </div>
+    </div>
   `;
-
-  document.getElementById("backToOrdersBtn").onclick = () => {
-    renderStats(latestOrders);
-    renderOrders(latestOrders);
-  };
 }
 
 async function sendPaymentVerifiedEmail(order) {
@@ -1082,6 +1074,7 @@ assemblyViewBtn.onclick = () => {
   renderCurrentView();
 };
 
+orderViewFilter.addEventListener("change", () => renderOrders(latestOrders));
 orderSearch.addEventListener("input", () => renderOrders(latestOrders));
 statusFilter.addEventListener("change", () => renderOrders(latestOrders));
 paymentFilter.addEventListener("change", () => renderOrders(latestOrders));
