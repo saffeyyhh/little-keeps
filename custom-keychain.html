@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom Pet Keychain | Little Keeps</title>
+  <link rel="stylesheet" href="/src/custom-keychain.css" />
+</head>
+<body>
+  <main class="custom-page">
+    <section class="wizard">
+      <p class="brand">🐾 Little Keeps Custom</p>
+
+      <div class="progress">
+        <span id="stepText">Step 1 of 5</span>
+        <div class="bar"><div id="progressBar"></div></div>
+      </div>
+
+      <form id="customForm">
+        <section class="step active">
+          <h1>Turn your pet into a keepsake.</h1>
+          <p>Upload your favourite pet photo and we’ll create a custom 3D printed keychain.</p>
+
+          <label class="upload-box">
+            <input type="file" id="petPhoto" accept="image/*" />
+            <span class="upload-icon">📷</span>
+            <strong>Choose photo</strong>
+            <small>Clear front-facing photos work best</small>
+          </label>
+
+          <img id="photoPreview" class="photo-preview hidden" />
+          <button type="button" class="next primary">Next</button>
+        </section>
+
+        <section class="step">
+          <h1>What’s your pet’s name?</h1>
+          <p>Optional, but cute if you want the name added.</p>
+          <input class="text-input" type="text" id="petName" placeholder="e.g. Mochi" />
+
+          <div class="nav-buttons">
+            <button type="button" class="back secondary">Back</button>
+            <button type="button" class="next primary">Next</button>
+          </div>
+        </section>
+
+        <section class="step">
+          <h1>Choose a style.</h1>
+          <p>Pick how detailed you want the design to be.</p>
+
+          <label class="option-card">
+            <input type="radio" name="style" value="Minimal" checked />
+            <span>✨ Minimal</span>
+            <small>Simple lines, fast print, 0.4 nozzle friendly.</small>
+          </label>
+
+          <label class="option-card">
+            <input type="radio" name="style" value="Cute" />
+            <span>🐶 Cute</span>
+            <small>More character and small details.</small>
+          </label>
+
+          <label class="option-card">
+            <input type="radio" name="style" value="Premium" />
+            <span>🌟 Premium</span>
+            <small>Most detailed portrait style.</small>
+          </label>
+
+          <div class="nav-buttons">
+            <button type="button" class="back secondary">Back</button>
+            <button type="button" class="next primary">Next</button>
+          </div>
+        </section>
+
+        <section class="step">
+          <h1>Choose size.</h1>
+          <p>5cm is the most balanced size for keychains.</p>
+
+          <div class="size-grid">
+            <label class="size-card">
+              <input type="radio" name="size" value="4cm" />
+              <span>4cm</span>
+              <small>Mini</small>
+            </label>
+
+            <label class="size-card">
+              <input type="radio" name="size" value="5cm" checked />
+              <span>5cm</span>
+              <small>Recommended ⭐</small>
+            </label>
+
+            <label class="size-card">
+              <input type="radio" name="size" value="6cm" />
+              <span>6cm</span>
+              <small>Statement</small>
+            </label>
+          </div>
+
+          <div class="nav-buttons">
+            <button type="button" class="back secondary">Back</button>
+            <button type="button" class="next primary">Review</button>
+          </div>
+        </section>
+
+        <section class="step">
+          <h1>Review your order.</h1>
+          <div id="reviewBox" class="review-box"></div>
+
+          <div class="nav-buttons">
+            <button type="button" class="back secondary">Back</button>
+            <button type="submit" class="primary">Submit Order</button>
+          </div>
+        </section>
+      </form>
+    </section>
+  </main>
+
+  <script src="/src/custom-keychain.js"></script>
+</body>
+</html>

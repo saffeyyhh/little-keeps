@@ -5,6 +5,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import confetti from "canvas-confetti";
 import emailjs from "@emailjs/browser";
 import { createClient } from "@supabase/supabase-js";
+import flatpickr from "flatpickr";
+import "flatpickr/dist/flatpickr.min.css";
 
 const isManualOrder =
   new URLSearchParams(window.location.search).get("manual") === "true";
@@ -156,6 +158,12 @@ Chloe</textarea>
               Current design: <strong id="livePrice">$3.50</strong>
             </div>
 
+            <p>Base Shape</p>
+            <div class="toggle-row">
+              <button id="ribbedBaseBtn" class="toggle active">Ribbed</button>
+              <button id="bubblyBaseBtn" class="toggle">Bubbly</button>
+            </div>
+
             <p>Base Colours</p>
             <div id="baseSlots" class="slot-row"></div>
             <div id="baseColours" class="swatches"></div>
@@ -192,7 +200,7 @@ Chloe</textarea>
         <label>Needed By</label>
         <p class="hint">Please allow at least 2-3 days for production and 2 days for delivery.</p>
 
-        <input id="neededBy" type="date">
+        <input id="neededBy" type="text" placeholder="Select date">
         <p id="dateAvailability" class="hint"></p>
 
       <label>Collection Method</label>
@@ -417,6 +425,9 @@ document.getElementById("deliveryAddressSection");
 const deliveryAddress =
 document.getElementById("deliveryAddress");
 
+const ribbedBaseBtn = document.getElementById("ribbedBaseBtn");
+const bubblyBaseBtn = document.getElementById("bubblyBaseBtn");
+
 emailjs.init(EMAILJS_PUBLIC);
 
 
@@ -606,6 +617,19 @@ let globalDesign = {
   ]
 };
 
+const BASE_SHAPES = {
+  ribbed: {
+    label: "Ribbed",
+    file: "/models/base_ribbed.stl"
+  },
+  bubbly: {
+    label: "Bubbly",
+    file: "/models/base_bubbly.stl"
+  }
+};
+
+let baseShape = "ribbed";
+
 let names = [];
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -773,6 +797,46 @@ function addColourToDesign(type, colour) {
       item.custom = null;
     });
   }
+}
+
+async function setupNeededByCalendar() {
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + 3);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: closures, error: closureError } = await supabase
+    .from("shop_closures")
+    .select("start_date, end_date")
+    .gte("end_date", today);
+
+  if (closureError) console.error(closureError);
+
+  const { data: fullyBooked, error: bookedError } = await supabase
+    .from("fully_booked_dates")
+    .select("date")
+    .gte("date", today);
+
+  if (bookedError) console.error(bookedError);
+
+  const disabledDates = [
+    ...(closures || []).map(item => ({
+      from: item.start_date,
+      to: item.end_date
+    })),
+    ...(fullyBooked || []).map(item => item.date)
+  ];
+
+  flatpickr(neededBy, {
+    dateFormat: "Y-m-d",
+    minDate,
+    disable: disabledDates,
+
+    onChange: async () => {
+      await checkNeededByDate();
+      validateForm();
+    }
+  });
 }
 
 async function loadShopNotices() {
@@ -948,7 +1012,7 @@ async function createKeycap(letter, index, design) {
   const capColour = design.caps[index % design.caps.length];
   const letterColour = design.letters[index % design.letters.length];
 
-  const baseGeo = await loadSTL("/models/base.stl");
+  const baseGeo = await loadSTL(BASE_SHAPES[baseShape].file);
   const base = new THREE.Mesh(baseGeo, createMat(baseColour));
   base.rotation.z = Math.PI / 2;
   group.add(base);
@@ -1402,8 +1466,13 @@ async function submitOrder() {
         clean_name: sanitizeName(item.name),
         price: calculatePrice(design),
 
-        design: {
-          bases: design.bases.map(hex => ({
+          design: {
+            base_shape: {
+              key: baseShape,
+              label: BASE_SHAPES[baseShape].label
+            },
+
+            bases: design.bases.map(hex => ({
             name: getColourName(hex),
             hex
           })),
@@ -1558,6 +1627,24 @@ groupBtn.onclick = () => {
   updateNames();
 };
 
+ribbedBaseBtn.onclick = () => {
+  baseShape = "ribbed";
+
+  ribbedBaseBtn.classList.add("active");
+  bubblyBaseBtn.classList.remove("active");
+
+  buildSelectedPreview();
+};
+
+bubblyBaseBtn.onclick = () => {
+  baseShape = "bubbly";
+
+  bubblyBaseBtn.classList.add("active");
+  ribbedBaseBtn.classList.remove("active");
+
+  buildSelectedPreview();
+};
+
 singleName.addEventListener("input", updateNames);
 
 customerName.addEventListener(
@@ -1575,10 +1662,6 @@ customerPhone.addEventListener(
     validateForm
 );
 
-neededBy.addEventListener("change", async () => {
-  await checkNeededByDate();
-  validateForm();
-});
 
 collectionMethod.addEventListener("change", () => {
 
@@ -1900,20 +1983,6 @@ function celebrateOrder() {
 
 }
 
-function setMinimumDate() {
-
-  const today = new Date();
-
-  // Earliest date = today + 5 days
-  today.setDate(today.getDate() + 5);
-
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
-
-  neededBy.min = `${yyyy}-${mm}-${dd}`;
-}
-
 function renderIconPicker() {
   const singlePicker = document.getElementById("iconPicker");
   const groupPicker = document.getElementById("groupIconPicker");
@@ -1957,7 +2026,7 @@ loadShopNotices();
 renderIconPicker();
 updateNames();
 loadDraft();
-setMinimumDate();
+setupNeededByCalendar();
 
 updateCollectionNote();
 

@@ -617,8 +617,8 @@ function getOrderInventoryNeeds(order) {
       const capName = cap.name || cap.hex || cap;
       const letterName = letterColour.name || letterColour.hex || letterColour;
 
-      add(`${baseName} Base`, 1);
-      add(`${capName} Cap + ${letterName} Letter`, 1);
+      add(`${baseName} Base`, 1);   
+      add(`${capName} Cap + ${letterName} Letter - ${letter}`, 1);
     });
   });
 
@@ -788,14 +788,79 @@ async function renderProductionPlanner(orders) {
 
   const { baseTotals, keycapGroups, count } = getProductionSummary(orders);
 
+  const baseRows = Object.values(baseTotals)
+    .map(item => {
+      const itemName = `${item.name} Base`;
+      const need = item.qty;
+      const stock = getInventoryQty(itemName);
+      const toPrint = Math.max(0, need - stock);
+
+      return { ...item, itemName, need, stock, toPrint };
+    })
+    .filter(item => item.toPrint > 0);
+
+  const keycapGroupHtml = Object.entries(keycapGroups).map(([groupKey, group]) => {
+    const rows = Object.entries(group.letters)
+      .sort((a, b) => b[1] - a[1])
+      .map(([letter, qty]) => {
+        const itemName = `${group.capName} Cap + ${group.letterName} Letter - ${letter}`;
+        const need = qty;
+        const stock = getInventoryQty(itemName);
+        const toPrint = Math.max(0, need - stock);
+
+        return { letter, itemName, need, stock, toPrint };
+      })
+      .filter(row => row.toPrint > 0);
+
+    if (!rows.length) return "";
+
+    return `
+      <details class="print-group" open>
+        <summary>
+          <div class="group-summary">
+            <div
+              class="sample-keycap"
+              style="background:${group.capHex}; color:${group.letterHex};"
+            >
+              A
+            </div>
+
+            <div>
+              <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
+              <p>Only showing letters that still need printing</p>
+            </div>
+          </div>
+        </summary>
+
+        ${rows.map(row => `
+          <div class="print-check-row">
+            <span class="letter-chip">${displayIcon(row.letter)}</span>
+
+            <div style="flex:1;">
+              <strong>${displayIcon(row.letter)}</strong>
+              <p class="hint">
+                Need: ${row.need} · Stock: ${row.stock} · To Print: ${row.toPrint}
+              </p>
+            </div>
+
+            <button
+              class="ready-btn"
+              onclick='window.addInventory(${JSON.stringify(row.itemName)}, ${row.toPrint}, "Keycap")'
+            >
+              +${row.toPrint} Printed
+            </button>
+          </div>
+        `).join("")}
+      </details>
+    `;
+  }).join("");
+
   ordersContainer.innerHTML = `
     <div class="production-card">
       <div class="production-header">
         <div>
           <h2>Production Planner ♡</h2>
-          <p class="hint">
-            Inventory-based planner for Payment Verified / Printing orders.
-          </p>
+          <p class="hint">Only items that still need printing are shown.</p>
         </div>
 
         <p class="active-count">${count} active order(s)</p>
@@ -804,102 +869,31 @@ async function renderProductionPlanner(orders) {
       <h3>Base Printing</h3>
 
       <div class="print-group">
-        ${Object.values(baseTotals).map(item => {
-          const itemName = `${item.name} Base`;
-          const need = item.qty;
-          const stock = getInventoryQty(itemName);
-          const toPrint = Math.max(0, need - stock);
+        ${baseRows.map(item => `
+          <div class="print-check-row">
+            <span class="colour-dot" style="background:${item.hex}"></span>
 
-          return `
-            <div class="print-check-row">
-              <span class="colour-dot" style="background:${item.hex}"></span>
-
-              <div style="flex:1;">
-                <strong>${itemName}</strong>
-                <p class="hint">
-                  Need: ${need} · Stock: ${stock} · To Print: ${toPrint}
-                </p>
-              </div>
-
-              ${
-                toPrint > 0
-                  ? `
-                    <button
-                      class="ready-btn"
-                      onclick="window.addInventory('${itemName}', ${toPrint}, 'Base')"
-                    >
-                      +${toPrint} Printed
-                    </button>
-                  `
-                  : `<span class="assembly-tag">Enough Stock</span>`
-              }
+            <div style="flex:1;">
+              <strong>${item.itemName}</strong>
+              <p class="hint">
+                Need: ${item.need} · Stock: ${item.stock} · To Print: ${item.toPrint}
+              </p>
             </div>
-          `;
-        }).join("") || "<p>No bases needed.</p>"}
+
+            <button
+              class="ready-btn"
+              onclick='window.addInventory(${JSON.stringify(item.itemName)}, ${item.toPrint}, "Base")'
+            >
+              +${item.toPrint} Printed
+            </button>
+          </div>
+        `).join("") || "<p>No bases need printing.</p>"}
       </div>
 
       <h3>Keycap Printing</h3>
 
       <div class="keycap-grid">
-        ${Object.entries(keycapGroups).map(([groupKey, group]) => {
-          const sortedLetters = Object.entries(group.letters)
-            .sort((a, b) => b[1] - a[1]);
-
-          return `
-            <details class="print-group" open>
-              <summary>
-                <div class="group-summary">
-                  <div
-                    class="sample-keycap"
-                    style="background:${group.capHex}; color:${group.letterHex};"
-                  >
-                    A
-                  </div>
-
-                  <div>
-                    <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
-                    <p>Need / Stock / To Print by letter</p>
-                  </div>
-                </div>
-              </summary>
-
-              ${sortedLetters.map(([letter, qty]) => {
-              const itemName =
-                `${group.capName} Cap + ${group.letterName} Letter`;
-
-                const need = qty;
-                const stock = getInventoryQty(itemName);
-                const toPrint = Math.max(0, need - stock);
-
-                return `
-                  <div class="print-check-row">
-                    <span class="letter-chip">${letter}</span>
-
-                    <div style="flex:1;">
-                      <strong>${letter}</strong>
-                      <p class="hint">
-                        Need: ${need} · Stock: ${stock} · To Print: ${toPrint}
-                      </p>
-                    </div>
-
-                    ${
-                      toPrint > 0
-                        ? `
-                          <button
-                            class="ready-btn"
-                            onclick="window.addInventory('${itemName}', ${toPrint}, 'Keycap')"
-                          >
-                            +${toPrint} Printed
-                          </button>
-                        `
-                        : `<span class="assembly-tag">Enough Stock</span>`
-                    }
-                  </div>
-                `;
-              }).join("")}
-            </details>
-          `;
-        }).join("") || "<p>No keycaps needed.</p>"}
+        ${keycapGroupHtml || "<p>No keycaps need printing.</p>"}
       </div>
     </div>
   `;
