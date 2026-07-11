@@ -19,339 +19,886 @@ const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 document.querySelector("#app").innerHTML = `
-  <main class="page">
-    <section id="designScreen" class="design-screen">
-      <div class="brand-box">
-        <h1>Little Keeps ♡</h1>
-        <p>Design your own personalised, clicky &amp; fidget-friendly modular keychain.</p>
-      </div>
+<main class="page">
 
-      <div class="info-panels">
+<div class="announcement-bar">
+  <div class="announcement-item">
+    <span class="announcement-icon">♡</span>
+    <span>Handmade in Singapore</span>
+  </div>
 
-  <div class="info-panel">
-    <div class="included-header">
-      <h3>🌸 What's Included</h3>
+  <span class="announcement-divider"></span>
 
-      <div class="mini-price-bubble">
-        $3.50
-        <span>/ keychain</span>
-      </div>
+  <div class="announcement-item">
+    <span class="announcement-icon">▣</span>
+    <span>Free islandwide delivery above $50</span>
+  </div>
+
+  <span class="announcement-divider"></span>
+
+  <div class="announcement-item announcement-holiday">
+    <span class="announcement-icon">▧</span>
+
+    <span>
+      <strong>Holiday Notice:</strong>
+      <span id="holidayNoticeText">
+        No current announcements.
+      </span>
+    </span>
+  </div>
+</div>
+
+<header class="site-header">
+  <button
+    id="menuOpenBtn"
+    type="button"
+    class="menu-icon-btn"
+    aria-label="Open menu"
+  >
+    ☰
+  </button>
+
+  <a href="#" class="site-logo">
+    <span class="logo-flower">✿</span>
+    Little Keeps
+  </a>
+
+  <button
+    id="headerCartBtn"
+    type="button"
+    class="header-cart-btn"
+  >
+    <span>Cart</span>
+
+    <span id="headerCartCount" class="cart-count">
+      0
+    </span>
+  </button>
+</header>
+
+<div id="menuOverlay" class="menu-overlay hidden"></div>
+
+<aside id="sideMenu" class="side-menu">
+  <div class="side-menu-top">
+    <div>
+      <p class="side-menu-eyebrow">Little Keeps</p>
+      <h2>Menu ♡</h2>
     </div>
 
-    <div class="included-grid">
-      <span>No max letters</span>
-      <span>2 Base colours</span>
-      <span>2 Cap colours</span>
-      <span>2 Letter colours</span>
-      <span>Icons included</span>
+    <button
+      id="menuCloseBtn"
+      type="button"
+      class="menu-close-btn"
+      aria-label="Close menu"
+    >
+      ×
+    </button>
+  </div>
+
+  <nav class="side-nav">
+    <button
+      type="button"
+      class="side-nav-link"
+      data-scroll-target="homeSection"
+    >
+      <span>⌂</span>
+      Home
+    </button>
+
+    <button
+      type="button"
+      class="side-nav-link"
+      data-scroll-target="designArea"
+    >
+      <span>✿</span>
+      Design Your Keychain
+    </button>
+
+    <button
+      type="button"
+      class="side-nav-link"
+      data-scroll-target="contactSection"
+    >
+      <span>♡</span>
+      Contact
+    </button>
+
+    <button
+      id="sideCartBtn"
+      type="button"
+      class="side-nav-link side-cart-link"
+    >
+      <span>🛍</span>
+
+      <span>View Cart</span>
+
+      <span id="sideCartCount" class="side-cart-count">
+        0
+      </span>
+    </button>
+  </nav>
+
+  <div class="side-menu-footer">
+    <p>Personalised and made with love in Singapore.</p>
+
+    <a
+      href="https://www.instagram.com/madebylittlekeeps"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      @madebylittlekeeps
+    </a>
+  </div>
+</aside>
+
+<div id="cartOverlay" class="cart-overlay hidden"></div>
+
+<aside id="cartDrawer" class="cart-drawer">
+  <div class="cart-drawer-header">
+    <div>
+      <p class="side-menu-eyebrow">Your order</p>
+      <h2>Shopping Cart ♡</h2>
     </div>
 
-    <p class="extra-colour-note">
-      🌈 Colour upgrades are based on extra unique colours:<br>
-      <strong>Base +$0.50</strong> · <strong>Cap +$0.30</strong> · <strong>Letter +$0.20</strong>
+    <button
+      id="cartCloseBtn"
+      type="button"
+      class="menu-close-btn"
+      aria-label="Close cart"
+    >
+      ×
+    </button>
+  </div>
+
+  <div id="cartDrawerItems" class="cart-drawer-items"></div>
+
+  <div class="cart-drawer-footer">
+    <div class="cart-drawer-total">
+      <span>Subtotal</span>
+      <strong id="cartDrawerSubtotal">$0.00</strong>
+    </div>
+
+    <p class="cart-delivery-hint">
+      Delivery is calculated during checkout.
+    </p>
+
+    <button
+      id="continueShoppingBtn"
+      type="button"
+      class="cart-secondary-btn"
+    >
+      Continue Designing
+    </button>
+
+    <button
+      id="checkoutFromCartBtn"
+      type="button"
+      class="submit-btn"
+    >
+      Checkout
+    </button>
+  </div>
+</aside>
+
+<section id="designScreen" class="design-screen">
+
+<section id="homeSection" class="storefront-hero">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <p class="hero-eyebrow">
+        Made especially for you
+      </p>
+
+      <h1>
+        Tiny keepsakes,
+        <span>made personal.</span>
+      </h1>
+
+      <p class="hero-description">
+        Design your own personalised, clicky and
+        fidget-friendly keychain in your favourite colours.
+      </p>
+
+      <button
+        id="startDesignBtn"
+        type="button"
+        class="hero-button"
+      >
+        Start Designing
+        <span>→</span>
+      </button>
+    </div>
+
+    <div class="hero-offer-card">
+      <div class="hero-offer-top">
+        <div>
+          <p>Personalised</p>
+          <strong>Clicky Keychains</strong>
+        </div>
+
+        <div class="hero-price-badge">
+          <small>From</small>
+          <span>$3.20</span>
+        </div>
+      </div>
+
+      <div class="hero-included-list">
+        <p class="hero-card-label">What's included</p>
+
+        <span>✓ No maximum letters</span>
+        <span>✓ 1 base colour included</span>
+        <span>✓ 1 cap colour included</span>
+        <span>✓ 1 letter colour included</span>
+        <span>✓ Icons included</span>
+      </div>
+
+      <div class="hero-pricing-guide">
+        <p>Additional colours</p>
+
+        <div class="hero-price-row">
+          <span>Extra base colour</span>
+          <strong>+$0.50</strong>
+        </div>
+
+        <div class="hero-price-row">
+          <span>Extra cap colour</span>
+          <strong>+$0.30</strong>
+        </div>
+
+        <div class="hero-price-row">
+          <span>Extra letter colour</span>
+          <strong>+$0.20</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-decoration hero-decoration-one"></div>
+  <div class="hero-decoration hero-decoration-two"></div>
+</section>
+
+<section id="designArea" class="shop-section">
+  <div class="section-heading">
+    <p class="section-eyebrow">Create yours</p>
+
+    <h2>Design Your Keychain</h2>
+
+    <p>
+      Enter your name, choose your style and preview
+      your personalised keychain in 3D.
     </p>
   </div>
 
-  <div class="info-panel">
-    <h3>📢 Notice</h3>
+  <div class="designer-setup">
+    <div class="designer-setup-heading">
+      <p class="section-eyebrow">Start here</p>
+      <h2>Who are you designing for?</h2>
 
-    <div class="notice-box">
-      🚚 FREE islandwide delivery on orders above <strong>$50</strong>.
+      <p>
+        Choose one keychain or enter several names for a group order.
+      </p>
     </div>
 
-    <div class="notice-box">
-      <strong>✈️ Holiday Notice</strong><br>
-      <span id="holidayNoticeText">No current announcements.</span>
-    </div>
-  </div>
+    <div class="setup-grid">
+      <div class="card order-type-card">
+        <h3>Order Type</h3>
 
-</div>
+        <p class="hint">
+          Choose single for one keychain, or group for multiple names.
+        </p>
 
+        <div class="toggle-row">
+          <button
+            id="singleBtn"
+            type="button"
+            class="toggle active"
+          >
+            Single Order
+          </button>
 
-    </div>
-      <div class="design-grid">
-        <section class="left-panel">
-          <div class="card">
-            <h3>① Choose order type</h3>
-            <p class="hint">Choose single for one keychain, or group for multiple names.</p>
-            <div class="toggle-row">
-              <button id="singleBtn" class="toggle active">Single Order</button>
-              <button id="groupBtn" class="toggle">Group Order</button>
-            </div>
-          </div>
+          <button
+            id="groupBtn"
+            type="button"
+            class="toggle"
+          >
+            Group Order
+          </button>
+        </div>
+      </div>
 
-          <div class="card">
-            <div id="singleSection">
-              <h3>② Enter your name</h3>
-              <p class="hint">Type your name, then tap an icon if you want to add one.</p>
-              <input id="singleName" value="Alicia" maxlength="10">
-              <div id="iconPicker" class="icon-picker"></div>
-            </div>
+      <div class="card names-card">
+        <div id="singleSection">
+          <h3>Enter Name</h3>
 
-            <div id="groupSection" class="hidden">
-              <h3>② Enter name list</h3>
-              <p class="hint">For group orders, enter one name per line.</p>
-              <textarea id="nameList" placeholder="Paste names here, one per line">Alicia
+          <p class="hint">
+            Type your name, then tap an icon if you want to add one.
+          </p>
+
+          <input
+            id="singleName"
+            value="Alicia"
+            maxlength="10"
+          >
+
+          <div id="iconPicker" class="icon-picker"></div>
+        </div>
+
+        <div id="groupSection" class="hidden">
+          <h3>Enter Names</h3>
+
+          <p class="hint">
+            Enter one name per line.
+          </p>
+
+          <textarea
+            id="nameList"
+            placeholder="Paste names here, one per line"
+          >Alicia
 Ben
 Chloe</textarea>
 
-              <p id="nameCount">3 names</p>
+          <p id="nameCount">3 names</p>
 
-              <p class="hint">Tap an icon to add it to the current line.</p>
-              <div id="groupIconPicker" class="icon-picker"></div>
-            </div>
+          <p class="hint">
+            Tap an icon to add it to the current line.
+          </p>
 
-            <div id="nameCardsSection">
-              <h3>③ Select a keychain to customise</h3>
-              <p class="hint">
-                For group orders, choose which keychain you want to edit.
-              </p>
-              <div id="nameCards"></div>
-            </div>
+          <div
+            id="groupIconPicker"
+            class="icon-picker"
+          ></div>
+        </div>
+      </div>
+    </div>
 
-            <div class="stock-note">
+    <div id="nameCardsSection" class="card keychain-selector">
+      <div class="keychain-selector-heading">
+        <div>
+          <h3>Choose a Keychain to Edit</h3>
 
-                💌 <strong>Need another colour?</strong><br>
+          <p class="hint">
+            For group orders, select the keychain you want to customise.
+          </p>
+        </div>
 
-                Can't find the colour you're looking for?
-                WhatsApp us at <strong>8512 1915</strong>.
+        <div id="applyAllSection">
+          <label class="apply-row">
+            <input id="applyAllToggle" type="checkbox">
+            Use the same design for all keychains
+          </label>
 
-                <br><br>
-
-                We may be able to specially order the colour for you at
-                <strong>no extra cost!</strong>
-            </div>
-
-            <div class="colour-note">
-
-                🖨️ Colours shown on screen are for reference only.
-                Slight colour variations may occur due to monitor settings and filament batches.
-
-            </div>
-
-          </div>
-        </section>
-
-        <section class="right-panel">
-          <div class="preview-card">
-            <canvas id="previewCanvas"></canvas>
-          </div>
-
-          <div class="card colours-card">
-            <h3>③ Customise colours</h3>
-            <p class="hint">Choose colours for the base, top cap and letter. Your preview updates automatically.</p>
-
-          <div id="applyAllSection">
-
-            <label class="apply-row">
-              <input id="applyAllToggle" type="checkbox" checked>
-              🎨 Use the same colours for all keychains
-            </label>
-
-            <p id="editingLabel" class="hint"></p>
-
-          </div>
-
-            <p id="editModeText" class="hint">Currently editing: all names</p>
-
-            <div id="livePriceBox" class="live-price-box">
-              Current design: <strong id="livePrice">$3.50</strong>
-            </div>
-
-            <p>Base Shape</p>
-            <div class="toggle-row">
-              <button id="ribbedBaseBtn" class="toggle active">Ribbed</button>
-              <button id="bubblyBaseBtn" class="toggle">Bubbly</button>
-            </div>
-
-            <p>Base Colours</p>
-            <div id="baseSlots" class="slot-row"></div>
-            <div id="baseColours" class="swatches"></div>
-
-            <p>Cap Colours</p>
-            <div id="capSlots" class="slot-row"></div>
-            <div id="capColours" class="swatches"></div>
-
-            <p>Letter Colours</p>
-            <div id="letterSlots" class="slot-row"></div>
-            <div id="letterColours" class="swatches"></div>
-
-            <button id="resetSelected" class="reset-btn">Reset selected name to global design</button>
-          </div>
-        </section>
+          <p id="editingLabel" class="hint"></p>
+        </div>
       </div>
 
-      <button id="nextBtn" class="submit-btn">④ Continue to checkout</button>
+      <div id="nameCards"></div>
+    </div>
+  </div>
+
+  <div class="product-customiser">
+    <section class="preview-column">
+      <div class="preview-sticky">
+        <div class="preview-card">
+          <div class="preview-card-heading">
+            <div>
+              <p class="section-eyebrow">Live preview</p>
+              <h2>Your Keychain</h2>
+            </div>
+          </div>
+
+          <canvas id="previewCanvas"></canvas>
+
+          <p id="editModeText" class="preview-editing-text">
+            Currently editing: Alicia only
+          </p>
+        </div>
+
+      <div class="preview-tip">
+        <p>
+          Drag the preview to rotate your keychain.
+        </p>
+      </div>
+      </div>
     </section>
 
-    <section id="checkoutScreen" class="checkout-screen hidden">
-    <div class="promo-banner">
-      🚚 <strong>FREE islandwide delivery on orders above $50!</strong>
+    <section class="options-column">
+      <div class="card colours-card">
+        <div class="customiser-heading">
+          <p class="section-eyebrow">Make it yours</p>
+          <h2>Customise Your Design</h2>
+
+          <p>
+            Choose your base shape, base colours,
+            cap colours and letter colours.
+          </p>
+        </div>
+
+        <div class="customisation-section">
+          <div class="customisation-title">
+            <div>
+              <h3>Base Shape</h3>
+              <p>Choose the shape of the keychain base.</p>
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <button
+              id="ribbedBaseBtn"
+              type="button"
+              class="toggle active"
+            >
+              Ribbed
+            </button>
+
+            <button
+              id="bubblyBaseBtn"
+              type="button"
+              class="toggle"
+            >
+              Bubbly
+            </button>
+          </div>
+        </div>
+
+        <div class="customisation-section">
+          <div class="customisation-title">
+            <div>
+              <h3>Base Colours</h3>
+              <p>Select one or more base colours.</p>
+            </div>
+          </div>
+
+          <div id="baseSlots" class="slot-row"></div>
+
+          <p id="baseColourHint" class="colour-hint">
+            Hover or tap a colour
+          </p>
+
+          <div id="baseColours" class="swatches"></div>
+        </div>
+
+        <div class="customisation-section">
+          <div class="customisation-title">
+            <div>
+              <h3>Cap Colours</h3>
+              <p>Select one or more top cap colours.</p>
+            </div>
+          </div>
+
+          <div id="capSlots" class="slot-row"></div>
+
+          <p id="capColourHint" class="colour-hint">
+            Hover or tap a colour
+          </p>
+
+          <div id="capColours" class="swatches"></div>
+        </div>
+
+        <div class="customisation-section">
+          <div class="customisation-title">
+            <div>
+              <h3>Letter Colours</h3>
+              <p>Select one or more raised letter colours.</p>
+            </div>
+          </div>
+
+          <div id="letterSlots" class="slot-row"></div>
+
+          <p id="letterColourHint" class="colour-hint">
+            Hover or tap a colour
+          </p>
+
+          <div id="letterColours" class="swatches"></div>
+        </div>
+
+        <div class="special-colour-note">
+          <div class="special-colour-icon">♡</div>
+
+          <div>
+            <strong>Looking for another colour?</strong>
+
+            <p>
+              Message us on WhatsApp. We may be able to
+              specially order it at no additional cost.
+            </p>
+
+            <a
+              href="https://wa.me/6585121915"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Ask about another colour →
+            </a>
+          </div>
+        </div>
+
+        <p class="screen-colour-note">
+          Colours shown on screen are for reference only.
+          Slight differences may occur between monitors
+          and filament batches.
+        </p>
+
+        <button
+          id="resetSelected"
+          type="button"
+          class="reset-btn"
+        >
+          Reset Selected Keychain
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <div class="add-cart-area">
+    <div class="cart-price-summary">
+      <span>Your current design</span>
+      <strong id="designTotalDisplay">$3.20</strong>
     </div>
-      <button id="backBtn" class="secondary-btn">← Back to Design</button>
+
+    <button
+      id="nextBtn"
+      type="button"
+      class="submit-btn add-cart-btn"
+    >
+      <span>Add to Cart</span>
+      <span>♡</span>
+    </button>
+  </div>
+</section>
+</section>
+
+<section
+  id="checkoutScreen"
+  class="checkout-screen hidden"
+>
+      <button id="backBtn" class="secondary-btn">
+        ← Back to Design
+      </button>
 
       <div class="contact-box">
-        <h3>Contact Details</h3>
+<div class="checkout-heading">
+  <p class="section-eyebrow">Checkout</p>
+  <h2>Your Details</h2>
+  <p>Tell us where and when you need your order.</p>
+</div>
 
         <input id="customerName" placeholder="Name">
-        <input id="customerEmail" type="email" placeholder="Email">
-        <input id="customerPhone" placeholder="Contact Number">
 
-        <label>Needed By</label>
-        <p class="hint">Please allow at least 2-3 days for production and 2 days for delivery.</p>
+        <input
+          id="customerEmail"
+          type="email"
+          placeholder="Email"
+        >
 
-        <input id="neededBy" type="text" placeholder="Select date">
+        <input
+          id="customerPhone"
+          placeholder="Contact Number"
+        >
+
+        <label for="neededBy">Needed By</label>
+
+        <p class="hint">
+          Please allow at least 2–3 days for production
+          and 2 days for delivery.
+        </p>
+
+        <input
+          id="neededBy"
+          type="text"
+          placeholder="Select date"
+        >
+
         <p id="dateAvailability" class="hint"></p>
 
-      <label>Collection Method</label>
+        <label for="collectionMethod">
+          Collection Method
+        </label>
 
-      <select id="collectionMethod">
-        <option value="pickup">📍 Pick Up at Woodlands MRT</option>
-        <option value="delivery">🚚 Islandwide Delivery (+$2.50)</option>
-      </select>
+        <select id="collectionMethod">
+          <option value="pickup">
+            📍 Pick Up at Woodlands MRT
+          </option>
 
-      <div id="deliveryAddressSection" class="hidden">
+          <option value="delivery">
+            🚚 Islandwide Delivery (+$2.50)
+          </option>
+        </select>
 
-        <label>Delivery Address</label>
+        <div
+          id="deliveryAddressSection"
+          class="hidden"
+        >
+          <label for="deliveryAddressLine1">
+            Delivery Address
+          </label>
+
+          <input
+            id="deliveryAddressLine1"
+            type="text"
+            placeholder="Block and street name"
+          >
+
+          <input
+            id="deliveryAddressLine2"
+            type="text"
+            placeholder="Unit number, e.g. #12-34"
+          >
+
+          <input
+            id="deliveryPostalCode"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="Postal code"
+          >
+        </div>
+
+        <p id="deliveryNote" class="hint"></p>
 
         <textarea
-          id="deliveryAddress"
-          placeholder="Enter your delivery address..."
+          id="orderNotes"
+          placeholder="Preferred pickup timing, delivery instructions, or additional notes..."
         ></textarea>
-
-      </div>
-
-      <p id="deliveryNote" class="hint"></p>
-
-      <textarea
-        id="orderNotes"
-        placeholder="Preferred pickup timing, delivery instructions, or any additional notes..."
-      ></textarea>
       </div>
 
       <div class="review-box">
-        <h3>Review Order</h3>
+<h3>Order Summary</h3>
+
         <div class="review-summary">
-          <p>Total names: <strong id="reviewCount">0</strong></p>
-          <p>Estimated total: <strong id="reviewPrice">$0.00</strong></p>
+          <p>
+            Total names:
+            <strong id="reviewCount">0</strong>
+          </p>
+
+          <p>
+            Estimated total:
+            <strong id="reviewPrice">$0.00</strong>
+          </p>
         </div>
+
         <div id="reviewList"></div>
       </div>
 
       <div class="payment-box">
-        <h3>Payment</h3>
-        <p>Payment is via PayNow only.</p>
-        <p>After submitting, you’ll see the QR code and exact amount to pay.</p>
+<h3>Ready to Order?</h3>
+
+        <p>
+          Payment is via PayNow only.
+        </p>
+
+        <p>
+          After submitting, you’ll see the QR code
+          and exact amount to pay.
+        </p>
       </div>
 
-      <button id="submitOrderBtn" class="submit-btn" disabled>
-        Submit Order & Make Payment
-      </button>
+<button
+  id="submitOrderBtn"
+  class="submit-btn"
+  disabled
+>
+  Submit Order & Continue to Payment
+</button>
 
       <p id="formStatus" class="hint"></p>
       <p id="submitStatus" class="hint"></p>
     </section>
 
-<!-- NEW PAYMENT SCREEN -->
-<section id="paymentScreen" class="checkout-screen hidden">
-
-  <button id="paymentBackBtn" class="secondary-btn">
-    ← Back
-  </button>
-
-  <div class="payment-box">
-
-    <h2>🩷 Almost Done!</h2>
-
-    <p>Please complete payment to begin production.</p>
-
-    <h3>Order Reference</h3>
-    <strong id="paymentOrderRef"></strong>
-
-    <h3>Total Amount</h3>
-    <strong id="paymentTotal"></strong>
-
-<img
-  src="/models/paynow.png"
-  class="paynowQR"
-  alt="PayNow QR"
->
-
-<a
-  href="/models/paynow.png"
-  download="LittleKeeps-PayNow.png"
-  class="save-qr-btn"
->
-  ↑ Save QR Code
-</a>
-
-<div class="payment-steps">
-
-  <div class="payment-step">
-    <span>1</span>
-    <p>Scan or save the QR code</p>
-  </div>
-
-  <div class="payment-step">
-    <span>2</span>
-    <p>Pay <strong>the exact amount</strong></p>
-  </div>
-
-  <div class="payment-step">
-    <span>3</span>
-    <p>Send your payment screenshot</p>
-  </div>
-
-  <div class="payment-step">
-    <span>4</span>
-    <p>We'll verify your payment & send a confirmation email 💌</p>
-  </div>
-
-</div>
-
-    <button
-      id="whatsappBtn"
-      class="submit-btn"
+    <section
+      id="paymentScreen"
+      class="checkout-screen hidden"
     >
-      💬 Send Payment Screenshot
-    </button>
+      <button
+        id="paymentBackBtn"
+        class="secondary-btn"
+      >
+        ← Back
+      </button>
 
-  </div>
+      <div class="payment-box">
+<h2>Complete Your Payment</h2>
 
-</section>
+        <p>
+          Please complete payment to begin production.
+        </p>
+
+        <h3>Order Reference</h3>
+        <strong id="paymentOrderRef"></strong>
+
+        <h3>Total Amount</h3>
+        <strong id="paymentTotal"></strong>
+
+        <img
+          src="/models/paynow.png"
+          class="paynowQR"
+          alt="PayNow QR"
+        >
+
+        <a
+          href="/models/paynow.png"
+          download="LittleKeeps-PayNow.png"
+          class="save-qr-btn"
+        >
+          ↑ Save QR Code
+        </a>
+
+        <div class="payment-steps">
+          <div class="payment-step">
+            <span>1</span>
+            <p>Scan or save the QR code</p>
+          </div>
+
+          <div class="payment-step">
+            <span>2</span>
+            <p>
+              Pay <strong>the exact amount</strong>
+            </p>
+          </div>
+
+          <div class="payment-step">
+            <span>3</span>
+            <p>Send your payment screenshot</p>
+          </div>
+
+          <div class="payment-step">
+            <span>4</span>
+            <p>
+              We'll verify your payment and send
+              a confirmation email 💌
+            </p>
+          </div>
+        </div>
+
+<button
+  id="whatsappBtn"
+  class="submit-btn"
+>
+  Send Payment Proof via WhatsApp
+</button>
+      </div>
+    </section>
 
     <div id="successModal" class="modal hidden">
       <div class="modal-card">
         <h2>Order Submitted ♡</h2>
+
         <p>Thank you! We’ve received your order.</p>
+
         <p id="orderRefText"></p>
-        <p>We’ll contact you nearer to your collection/delivery date.</p>
+
+        <p>
+          We’ll contact you nearer to your
+          collection or delivery date.
+        </p>
+
         <p class="hint">
           📧 Please check your email for payment instructions.<br>
-          If you don’t see it, kindly check your Junk/Spam folder too.
+          If you don’t see it, kindly check your Junk or Spam folder too.
         </p>
-        <button id="closeModalBtn" class="submit-btn">Done</button>
+
+        <button
+          id="closeModalBtn"
+          class="submit-btn"
+        >
+          Done
+        </button>
       </div>
     </div>
 
     <div id="draftModal" class="modal hidden">
       <div class="modal-card">
         <h2>🩷 Welcome Back!</h2>
-        <p>We found an unfinished order.</p>
-        <p>Would you like to continue where you left off?</p>
 
-        <button id="continueDraftBtn" class="submit-btn">Continue Order</button>
-        <button id="discardDraftBtn" class="secondary-btn">Start New</button>
+        <p>We found an unfinished order.</p>
+
+        <p>
+          Would you like to continue where you left off?
+        </p>
+
+        <button
+          id="continueDraftBtn"
+          class="submit-btn"
+        >
+          Continue Order
+        </button>
+
+        <button
+          id="discardDraftBtn"
+          class="secondary-btn"
+        >
+          Start New
+        </button>
       </div>
     </div>
+
+<section id="contactSection" class="contact-section">
+  <div class="contact-copy">
+    <p class="section-eyebrow">Say hello</p>
+    <h2>Need a little help?</h2>
+
+    <p>
+      Have a colour request, group order or custom idea?
+      Send us a message and we’ll be happy to help.
+    </p>
+  </div>
+
+  <div class="contact-links">
+    <a
+      href="https://wa.me/6585121915"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="contact-link-card"
+    >
+      <span class="contact-link-icon">💬</span>
+
+      <span>
+        <small>Message us</small>
+        <strong>WhatsApp</strong>
+      </span>
+
+      <span>→</span>
+    </a>
+
+    <a
+      href="https://www.instagram.com/madebylittlekeeps"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="contact-link-card"
+    >
+      <span class="contact-link-icon">♡</span>
+
+      <span>
+        <small>Follow us</small>
+        <strong>@madebylittlekeeps</strong>
+      </span>
+
+      <span>→</span>
+    </a>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <a href="#" class="footer-logo">
+    Little Keeps ♡
+  </a>
+
+  <p>
+    Personalised keepsakes, lovingly made in Singapore.
+  </p>
+
+  <small>
+    © ${new Date().getFullYear()} Little Keeps
+  </small>
+</footer>
+
   </main>
 `;
 
-const BASE_PRICE = 3.5;
+const BASE_PRICE = 3.2;
 
-const INCLUDED_BASE_COLOURS = 2;
-const INCLUDED_CAP_COLOURS = 2;
-const INCLUDED_LETTER_COLOURS = 2;
+const INCLUDED_BASE_COLOURS = 1;
+const INCLUDED_CAP_COLOURS = 1;
+const INCLUDED_LETTER_COLOURS = 1;
 
 const EXTRA_BASE_COLOUR_PRICE = 0.5;
 const EXTRA_CAP_COLOUR_PRICE = 0.3;
@@ -369,7 +916,7 @@ const nameCards = document.getElementById("nameCards");
 const nameCardsSection = document.getElementById("nameCardsSection");
 const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
-const livePrice = document.getElementById("livePrice");
+
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
 const reviewCount = document.getElementById("reviewCount");
@@ -387,6 +934,56 @@ const submitStatus = document.getElementById("submitStatus");
 const successModal = document.getElementById("successModal");
 const orderRefText = document.getElementById("orderRefText");
 const closeModalBtn = document.getElementById("closeModalBtn");
+const menuOpenBtn =
+  document.getElementById("menuOpenBtn");
+
+const menuCloseBtn =
+  document.getElementById("menuCloseBtn");
+
+const sideMenu =
+  document.getElementById("sideMenu");
+
+const menuOverlay =
+  document.getElementById("menuOverlay");
+
+const headerCartBtn =
+  document.getElementById("headerCartBtn");
+
+const sideCartBtn =
+  document.getElementById("sideCartBtn");
+
+const headerCartCount =
+  document.getElementById("headerCartCount");
+
+const sideCartCount =
+  document.getElementById("sideCartCount");
+
+const startDesignBtn =
+  document.getElementById("startDesignBtn");
+
+const designTotalDisplay =
+  document.getElementById("designTotalDisplay");
+
+  const cartDrawer =
+  document.getElementById("cartDrawer");
+
+const cartOverlay =
+  document.getElementById("cartOverlay");
+
+const cartCloseBtn =
+  document.getElementById("cartCloseBtn");
+
+const cartDrawerItems =
+  document.getElementById("cartDrawerItems");
+
+const cartDrawerSubtotal =
+  document.getElementById("cartDrawerSubtotal");
+
+const continueShoppingBtn =
+  document.getElementById("continueShoppingBtn");
+
+const checkoutFromCartBtn =
+  document.getElementById("checkoutFromCartBtn");
 
 const designScreen = document.getElementById("designScreen");
 const checkoutScreen = document.getElementById("checkoutScreen");
@@ -422,8 +1019,26 @@ const EMAILJS_CUSTOMER_TEMPLATE = "template_liazurv";
 const deliveryAddressSection =
 document.getElementById("deliveryAddressSection");
 
-const deliveryAddress =
-document.getElementById("deliveryAddress");
+const deliveryAddressLine1 =
+  document.getElementById("deliveryAddressLine1");
+
+const deliveryAddressLine2 =
+  document.getElementById("deliveryAddressLine2");
+
+const deliveryPostalCode =
+  document.getElementById("deliveryPostalCode");
+
+function getDeliveryAddress() {
+  return [
+    deliveryAddressLine1.value.trim(),
+    deliveryAddressLine2.value.trim(),
+    deliveryPostalCode.value.trim()
+      ? `Singapore ${deliveryPostalCode.value.trim()}`
+      : ""
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
 
 const ribbedBaseBtn = document.getElementById("ribbedBaseBtn");
 const bubblyBaseBtn = document.getElementById("bubblyBaseBtn");
@@ -511,18 +1126,34 @@ const capColours = colours;
 const letterColours = colours;
 
 const specialKeycaps = {
+  // Original
   "♡": "heart",
   "★": "star",
   "✿": "flower",
   "🎀": "ribbon",
   "🐾": "paw",
   "☘": "clover",
+  "☁": "cloud",
   "🌙": "moon",
   "♪": "music",
   "⚡": "lightning",
   "🔥": "fire",
   "☕": "coffee",
-  "🦆": "duck"
+  "🦆": "duck",
+  "🐱": "cat",
+  "✈": "airplane",
+
+  // Sports
+  "⚽": "soccer",
+  "🏐": "volleyball",
+  "🏉": "rugby",
+  "⛷": "ski",
+  "🚲": "bicycle",
+  "⛳": "golf",
+  "🥒": "pickleball",
+  "🎳": "bowling",
+  "⚾": "baseball",
+  "♟": "chess"
 };
 
 const iconChoices = Object.keys(specialKeycaps);
@@ -531,6 +1162,8 @@ const dateAvailability = document.getElementById("dateAvailability");
 
 let neededByAllowed = false;
 let neededByMessage = "";
+
+
 
 async function checkNeededByDate() {
   if (!neededBy.value) {
@@ -592,6 +1225,9 @@ let orderType = "single";
 let selectedIndex = 0;
 let orderSubmitted = false;
 
+let cartHasItems = false;
+let draftHasMeaningfulChanges = false;
+
 function getAvailableColours() {
   return colours
     .filter(c => c.available)
@@ -601,19 +1237,18 @@ function getAvailableColours() {
 const available = getAvailableColours();
 
 let globalDesign = {
-  bases: [
-    available[0],
-    available[1]
-  ],
+  baseShape: "ribbed",
 
-  caps: [
-    available[1] || available[0],
+  bases: [
     available[0]
   ],
 
+  caps: [
+    available[1] || available[0]
+  ],
+
   letters: [
-    available[2] || available[0],
-    available[3] || available[1] || available[0]
+    available[2] || available[0]
   ]
 };
 
@@ -628,7 +1263,6 @@ const BASE_SHAPES = {
   }
 };
 
-let baseShape = "ribbed";
 
 let names = [];
 
@@ -695,30 +1329,42 @@ function getUniqueColourCount(colours) {
 }
 
 function calculatePrice(design) {
-  const baseExtra =
-    Math.max(0, getUniqueColourCount(design.bases) - INCLUDED_BASE_COLOURS);
+  const extraBaseColours = Math.max(
+    0,
+    getUniqueColourCount(design.bases) -
+      INCLUDED_BASE_COLOURS
+  );
 
-  const capExtra =
-    Math.max(0, getUniqueColourCount(design.caps) - INCLUDED_CAP_COLOURS);
+  const extraCapColours = Math.max(
+    0,
+    getUniqueColourCount(design.caps) -
+      INCLUDED_CAP_COLOURS
+  );
 
-  const letterExtra =
-    Math.max(0, getUniqueColourCount(design.letters) - INCLUDED_LETTER_COLOURS);
+  const extraLetterColours = Math.max(
+    0,
+    getUniqueColourCount(design.letters) -
+      INCLUDED_LETTER_COLOURS
+  );
 
   return (
     BASE_PRICE +
-    baseExtra * EXTRA_BASE_COLOUR_PRICE +
-    capExtra * EXTRA_CAP_COLOUR_PRICE +
-    letterExtra * EXTRA_LETTER_COLOUR_PRICE
+    extraBaseColours * EXTRA_BASE_COLOUR_PRICE +
+    extraCapColours * EXTRA_CAP_COLOUR_PRICE +
+    extraLetterColours * EXTRA_LETTER_COLOUR_PRICE
   );
 }
 
 function getActiveDesign() {
   const item = names[selectedIndex];
 
-  if (applyAllToggle.checked || !item) return globalDesign;
+  if (applyAllToggle.checked || !item) {
+    return globalDesign;
+  }
 
   if (!item.custom) {
     item.custom = {
+      baseShape: globalDesign.baseShape || "ribbed",
       bases: [...globalDesign.bases],
       caps: [...globalDesign.caps],
       letters: [...globalDesign.letters]
@@ -728,62 +1374,108 @@ function getActiveDesign() {
   return item.custom;
 }
 
-function makeSwatches(containerId, colours, type) {
-
+function makeSwatches(containerId, colourOptions, type) {
   const container = document.getElementById(containerId);
+  const hint = document.getElementById(`${type}ColourHint`);
+
   container.innerHTML = "";
 
-  colours.forEach(item => {
+  if (hint) {
+    hint.textContent = "Hover or tap a colour";
+  }
 
+  colourOptions.forEach(item => {
     const btn = document.createElement("button");
+
+    btn.type = "button";
     btn.className = "swatch";
-    btn.style.background = item.colour;
+    btn.style.backgroundColor = item.colour;
+    btn.title = item.name;
+    btn.setAttribute("aria-label", item.name);
+
+    const showColourName = () => {
+      if (!hint) return;
+
+      hint.innerHTML = `
+        <span
+          class="colour-hint-dot"
+          style="background:${item.colour}"
+        ></span>
+        ${item.name}
+      `;
+    };
+
+    btn.addEventListener("mouseenter", showColourName);
+    btn.addEventListener("focus", showColourName);
+    btn.addEventListener("touchstart", showColourName, {
+      passive: true
+    });
 
     if (!item.available) {
-
       btn.classList.add("oos");
 
-      btn.title = `${item.name}\n${item.note}`;
-
       btn.onclick = () => {
+        showColourName();
 
-        alert(`${item.name} is currently out of stock.\n\n${item.note}`);
-
+        alert(
+          `${item.name} is currently out of stock.` +
+          `${item.note ? `\n\n${item.note}` : ""}`
+        );
       };
-
     } else {
-
       btn.onclick = () => {
+        showColourName();
 
         addColourToDesign(type, item.colour);
-
         refreshUI();
-
         buildSelectedPreview();
-
       };
-
     }
 
     container.appendChild(btn);
-
   });
-
 }
-
-nextBtn.onclick = () => {
-  designScreen.classList.add("hidden");
-  checkoutScreen.classList.remove("hidden");
-  window.scrollTo(0, 0);
-  refreshUI();
-  validateForm();
-};
 
 backBtn.onclick = () => {
   checkoutScreen.classList.add("hidden");
+  paymentScreen.classList.add("hidden");
   designScreen.classList.remove("hidden");
-  window.scrollTo(0, 0);
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
 };
+
+function getOrderSubtotal() {
+  return names.reduce(
+    (sum, item) =>
+      sum + calculatePrice(getDesign(item)),
+    0
+  );
+}
+
+function updateCartDisplay() {
+  const cartCount = cartHasItems ? names.length : 0;
+  const currentDesignTotal = getOrderSubtotal();
+  const cartSubtotal = cartHasItems ? currentDesignTotal : 0;
+
+  headerCartCount.textContent = cartCount;
+  sideCartCount.textContent = cartCount;
+  cartDrawerSubtotal.textContent = `$${cartSubtotal.toFixed(2)}`;
+
+  if (designTotalDisplay) {
+    designTotalDisplay.textContent =
+      `$${currentDesignTotal.toFixed(2)}`;
+  }
+
+  headerCartBtn.setAttribute(
+    "aria-label",
+    cartHasItems
+      ? `Open cart with ${cartCount} keychain${cartCount === 1 ? "" : "s"}`
+      : "Cart is empty"
+  );
+}
 
 function addColourToDesign(type, colour) {
   const design = getActiveDesign();
@@ -812,20 +1504,12 @@ async function setupNeededByCalendar() {
 
   if (closureError) console.error(closureError);
 
-  const { data: fullyBooked, error: bookedError } = await supabase
-    .from("fully_booked_dates")
-    .select("date")
-    .gte("date", today);
-
-  if (bookedError) console.error(bookedError);
-
-  const disabledDates = [
-    ...(closures || []).map(item => ({
-      from: item.start_date,
-      to: item.end_date
-    })),
-    ...(fullyBooked || []).map(item => item.date)
-  ];
+const disabledDates = [
+  ...(closures || []).map(item => ({
+    from: item.start_date,
+    to: item.end_date
+  }))
+];
 
   flatpickr(neededBy, {
     dateFormat: "Y-m-d",
@@ -999,9 +1683,22 @@ function getDesign(item) {
   if (!item.custom) return globalDesign;
 
   return {
-    bases: item.custom.bases || globalDesign.bases,
-    caps: item.custom.caps || globalDesign.caps,
-    letters: item.custom.letters || globalDesign.letters
+    baseShape:
+      item.custom.baseShape ||
+      globalDesign.baseShape ||
+      "ribbed",
+
+    bases:
+      item.custom.bases ||
+      globalDesign.bases,
+
+    caps:
+      item.custom.caps ||
+      globalDesign.caps,
+
+    letters:
+      item.custom.letters ||
+      globalDesign.letters
   };
 }
 
@@ -1012,7 +1709,12 @@ async function createKeycap(letter, index, design) {
   const capColour = design.caps[index % design.caps.length];
   const letterColour = design.letters[index % design.letters.length];
 
-  const baseGeo = await loadSTL(BASE_SHAPES[baseShape].file);
+  const selectedBaseShape =
+    design.baseShape || "ribbed";
+
+  const baseGeo = await loadSTL(
+    BASE_SHAPES[selectedBaseShape].file
+  );
   const base = new THREE.Mesh(baseGeo, createMat(baseColour));
   base.rotation.z = Math.PI / 2;
   group.add(base);
@@ -1066,43 +1768,149 @@ async function buildKeychain(name, design) {
 }
 
 function updateNames() {
-  const previous = names;
+  const previousNames = [...names];
 
   if (orderType === "single") {
     const value = singleName.value.trim() || "Alicia";
-    const existing = previous.find(n => n.name === value);
-    names = [existing || { name: value, custom: null }];
+
+    const previousItem = previousNames[0];
+
+    names = [
+      {
+        name: value,
+
+        // Keep the existing colours/design even when
+        // the name or icon changes.
+        custom: previousItem?.custom
+          ? {
+              baseShape:
+                previousItem.custom.baseShape ||
+                globalDesign.baseShape ||
+                "ribbed",
+
+              bases: [...previousItem.custom.bases],
+              caps: [...previousItem.custom.caps],
+              letters: [...previousItem.custom.letters]
+            }
+          : null
+      }
+    ];
   } else {
-    names = nameList.value
+    const newNameValues = nameList.value
       .split("\n")
       .map(name => name.trim())
-      .filter(Boolean)
-      .map(value => {
-        const existing = previous.find(n => n.name === value);
-        return existing || { name: value, custom: null };
-      });
+      .filter(Boolean);
+
+    names = newNameValues.map((value, index) => {
+      // First try matching the exact existing name.
+      const exactMatch = previousNames.find(
+        item => item.name === value
+      );
+
+      // If the name changed because an icon was added,
+      // preserve the design from the same line/index.
+      const previousItem =
+        exactMatch || previousNames[index];
+
+      return {
+        name: value,
+
+        custom: previousItem?.custom
+          ? {
+              baseShape:
+                previousItem.custom.baseShape ||
+                globalDesign.baseShape ||
+                "ribbed",
+
+              bases: [...previousItem.custom.bases],
+              caps: [...previousItem.custom.caps],
+              letters: [...previousItem.custom.letters]
+            }
+          : null
+      };
+    });
   }
 
-  if (selectedIndex >= names.length) selectedIndex = 0;
-
-  if (nameCount) {
-    nameCount.innerText = `${names.length} name${names.length === 1 ? "" : "s"}`;
+  if (selectedIndex >= names.length) {
+    selectedIndex = Math.max(0, names.length - 1);
   }
-  if (orderType === "single") {
 
-      nameCardsSection.classList.add("hidden");
-      applyAllSection.classList.add("hidden");
+  nameCount.textContent =
+    `${names.length} name${names.length === 1 ? "" : "s"}`;
 
+  const isGroupOrder = orderType === "group";
+
+  applyAllSection.classList.toggle(
+    "hidden",
+    !isGroupOrder
+  );
+
+  nameCardsSection.classList.toggle(
+    "hidden",
+    !isGroupOrder
+  );
+
+  draftHasMeaningfulChanges = true;
+
+  refreshUI();
+  buildSelectedPreview();
+}
+
+function updateBaseShapeButtons() {
+  const design = getActiveDesign();
+  const shape = design.baseShape || "ribbed";
+
+  ribbedBaseBtn.classList.toggle(
+    "active",
+    shape === "ribbed"
+  );
+
+  bubblyBaseBtn.classList.toggle(
+    "active",
+    shape === "bubbly"
+  );
+}
+
+function setBaseShape(shape) {
+  if (!BASE_SHAPES[shape]) {
+    console.error("Unknown base shape:", shape);
+    return;
+  }
+
+  if (applyAllToggle.checked) {
+    globalDesign.baseShape = shape;
+
+    names.forEach(item => {
+      item.custom = null;
+    });
   } else {
+    const item = names[selectedIndex];
 
-      nameCardsSection.classList.remove("hidden");
-      applyAllSection.classList.remove("hidden");
+    if (!item) return;
 
+    if (!item.custom) {
+      item.custom = {
+        baseShape: globalDesign.baseShape || "ribbed",
+        bases: [...globalDesign.bases],
+        caps: [...globalDesign.caps],
+        letters: [...globalDesign.letters]
+      };
+    }
+
+    item.custom.baseShape = shape;
   }
 
   refreshUI();
   buildSelectedPreview();
 }
+
+ribbedBaseBtn.onclick = () => {
+  setBaseShape("ribbed");
+};
+
+bubblyBaseBtn.onclick = () => {
+  setBaseShape("bubbly");
+};
 
 function createMiniPreview(name, design) {
   return Array.from(sanitizeName(name))
@@ -1140,6 +1948,10 @@ function renderNameCards() {
         <span class="price-tag">$${price.toFixed(2)}</span>
       </div>
 
+      <p class="hint">
+        ${design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+      </p>
+
       <div class="mini-chain">
         ${createMiniPreview(item.name, design)}
       </div>
@@ -1156,19 +1968,27 @@ function renderNameCards() {
 }
 
 function updateEditModeText() {
-  if (applyAllToggle.checked) {
-    editModeText.innerText = "Currently editing: all names";
+  if (
+    orderType === "group" &&
+    applyAllToggle.checked
+  ) {
+    editModeText.textContent =
+      "Currently editing: all keychains";
+
     resetSelected.style.display = "none";
     return;
   }
 
-  const item = names[selectedIndex];
+  const selectedItem = names[selectedIndex];
 
-  editModeText.innerText = item
-    ? `Currently editing: ${item.name} only`
-    : "Currently editing: selected name only";
+  editModeText.textContent = selectedItem
+    ? `Currently editing: ${selectedItem.name}`
+    : "Currently editing: selected keychain";
 
-  resetSelected.style.display = "block";
+  resetSelected.style.display =
+    orderType === "group"
+      ? "block"
+      : "none";
 }
 
 function autoSave(){
@@ -1198,6 +2018,10 @@ function renderReviewOrder() {
         <strong>${item.name}</strong>
         <span class="price-tag">$${price.toFixed(2)}</span>
       </div>
+
+      <p class="hint">
+        ${design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+      </p>
 
       <div class="mini-chain">
         ${createMiniPreview(item.name, design)}
@@ -1444,7 +2268,10 @@ async function submitOrder() {
     customer_phone: customerPhone.value,
 
     collection_method: collectionMethod.value,
-    delivery_address: deliveryAddress.value,
+    delivery_address:
+      collectionMethod.value === "delivery"
+        ? getDeliveryAddress()
+        : "",
 
     preferred_time: orderNotes.value,
     needed_by: neededBy.value,
@@ -1468,8 +2295,11 @@ async function submitOrder() {
 
           design: {
             base_shape: {
-              key: baseShape,
-              label: BASE_SHAPES[baseShape].label
+              key: design.baseShape || "ribbed",
+              label:
+                BASE_SHAPES[
+                  design.baseShape || "ribbed"
+                ].label
             },
 
             bases: design.bases.map(hex => ({
@@ -1574,10 +2404,8 @@ function refreshUI() {
   renderNameCards();
   renderColourSlots();
   updateEditModeText();
-
-  const design = getActiveDesign();
-  livePrice.innerText = `$${calculatePrice(design).toFixed(2)}`;
-
+  updateBaseShapeButtons();
+  updateCartDisplay();
   renderReviewOrder();
 }
 
@@ -1607,42 +2435,266 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
-singleBtn.onclick = () => {
-  orderType = "single";
-  singleBtn.classList.add("active");
-  groupBtn.classList.remove("active");
-  singleSection.classList.remove("hidden");
-  groupSection.classList.add("hidden");
-  selectedIndex = 0;
+function setOrderType(type) {
+  orderType = type;
+
+  const isGroupOrder = type === "group";
+
+  singleBtn.classList.toggle(
+    "active",
+    !isGroupOrder
+  );
+
+  groupBtn.classList.toggle(
+    "active",
+    isGroupOrder
+  );
+
+  singleSection.classList.toggle(
+    "hidden",
+    isGroupOrder
+  );
+
+  groupSection.classList.toggle(
+    "hidden",
+    !isGroupOrder
+  );
+
+  applyAllToggle.checked = false;
+
   updateNames();
+}
+
+singleBtn.onclick = () => {
+  setOrderType("single");
 };
 
 groupBtn.onclick = () => {
-  orderType = "group";
-  groupBtn.classList.add("active");
-  singleBtn.classList.remove("active");
-  groupSection.classList.remove("hidden");
-  singleSection.classList.add("hidden");
-  selectedIndex = 0;
-  updateNames();
+  setOrderType("group");
 };
 
-ribbedBaseBtn.onclick = () => {
-  baseShape = "ribbed";
+function openCartDrawer() {
+  closeSideMenu();
+  renderCartDrawer();
 
-  ribbedBaseBtn.classList.add("active");
-  bubblyBaseBtn.classList.remove("active");
+  cartDrawer.classList.add("open");
+  cartOverlay.classList.remove("hidden");
+  document.body.classList.add("cart-open");
+}
 
+function closeCartDrawer() {
+  cartDrawer.classList.remove("open");
+  cartOverlay.classList.add("hidden");
+  document.body.classList.remove("cart-open");
+}
+
+function renderCartDrawer() {
+  const subtotal =
+    cartHasItems ? getOrderSubtotal() : 0;
+
+  cartDrawerSubtotal.textContent =
+    `$${subtotal.toFixed(2)}`;
+
+  if (!cartHasItems || !names.length) {
+    cartDrawerItems.innerHTML = `
+      <div class="empty-cart">
+        <div class="empty-cart-icon">♡</div>
+        <h3>Your cart is empty</h3>
+        <p>Design a personalised keychain to get started.</p>
+      </div>
+    `;
+
+    checkoutFromCartBtn.disabled = true;
+    return;
+  }
+
+  checkoutFromCartBtn.disabled = false;
+
+  cartDrawerItems.innerHTML = names
+    .map((item, index) => {
+      const design = getDesign(item);
+      const price = calculatePrice(design);
+      const baseShape =
+        design.baseShape === "bubbly"
+          ? "Bubbly Base"
+          : "Ribbed Base";
+
+      return `
+        <div class="cart-drawer-item">
+          <div class="cart-item-top">
+            <div>
+              <strong>${item.name}</strong>
+              <p>${baseShape}</p>
+            </div>
+
+            <strong class="cart-item-price">
+              $${price.toFixed(2)}
+            </strong>
+          </div>
+
+          <div class="mini-chain">
+            ${createMiniPreview(item.name, design)}
+          </div>
+
+          <div class="cart-item-actions">
+            <button
+              type="button"
+              onclick="window.editCartItem(${index})"
+            >
+              Edit
+            </button>
+
+            ${
+              names.length > 1
+                ? `
+                  <button
+                    type="button"
+                    class="remove-cart-item"
+                    onclick="window.removeCartItem(${index})"
+                  >
+                    Remove
+                  </button>
+                `
+                : ""
+            }
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+window.editCartItem = function(index) {
+  selectedIndex = index;
+
+  closeCartDrawer();
+
+  designScreen.classList.remove("hidden");
+  checkoutScreen.classList.add("hidden");
+  paymentScreen.classList.add("hidden");
+
+  refreshUI();
   buildSelectedPreview();
+
+  document
+    .getElementById("designArea")
+    .scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
 };
 
-bubblyBaseBtn.onclick = () => {
-  baseShape = "bubbly";
+window.removeCartItem = function(index) {
+  if (!cartHasItems) return;
 
-  bubblyBaseBtn.classList.add("active");
-  ribbedBaseBtn.classList.remove("active");
+  const itemName =
+    names[index]?.name || "this keychain";
 
+  const confirmed = confirm(
+    `Remove ${itemName} from your cart?`
+  );
+
+  if (!confirmed) return;
+
+  names.splice(index, 1);
+
+  if (names.length === 0) {
+    cartHasItems = false;
+    selectedIndex = 0;
+  } else if (selectedIndex >= names.length) {
+    selectedIndex = names.length - 1;
+  }
+
+  if (orderType === "group") {
+    nameList.value =
+      names.map(item => item.name).join("\n");
+  }
+
+  refreshUI();
   buildSelectedPreview();
+  renderCartDrawer();
+};
+
+function proceedToCheckout() {
+  if (!cartHasItems || !names.length) {
+    return;
+  }
+
+  closeCartDrawer();
+
+  designScreen.classList.add("hidden");
+  checkoutScreen.classList.remove("hidden");
+  paymentScreen.classList.add("hidden");
+
+  refreshUI();
+  validateForm();
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+}
+
+nextBtn.onclick = () => {
+  if (!names.length) {
+    alert("Please enter at least one name.");
+    return;
+  }
+
+  cartHasItems = true;
+  draftHasMeaningfulChanges = true;
+
+  updateCartDisplay();
+  openCartDrawer();
+};
+
+headerCartBtn.onclick = openCartDrawer;
+sideCartBtn.onclick = openCartDrawer;
+
+cartCloseBtn.onclick = closeCartDrawer;
+cartOverlay.onclick = closeCartDrawer;
+continueShoppingBtn.onclick = closeCartDrawer;
+checkoutFromCartBtn.onclick = proceedToCheckout;
+
+function openSideMenu() {
+  sideMenu.classList.add("open");
+  menuOverlay.classList.remove("hidden");
+  document.body.classList.add("menu-open");
+}
+
+function closeSideMenu() {
+  sideMenu.classList.remove("open");
+  menuOverlay.classList.add("hidden");
+  document.body.classList.remove("menu-open");
+}
+
+menuOpenBtn.onclick = openSideMenu;
+menuCloseBtn.onclick = closeSideMenu;
+menuOverlay.onclick = closeSideMenu;
+
+document
+  .querySelectorAll("[data-scroll-target]")
+  .forEach(button => {
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.scrollTarget;
+      const target = document.getElementById(targetId);
+
+      closeSideMenu();
+
+      target?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    });
+  });
+
+startDesignBtn.onclick = () => {
+  document
+    .getElementById("designArea")
+    .scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
 };
 
 singleName.addEventListener("input", updateNames);
@@ -1664,26 +2716,39 @@ customerPhone.addEventListener(
 
 
 collectionMethod.addEventListener("change", () => {
+  const isDelivery =
+    collectionMethod.value === "delivery";
 
-    if(collectionMethod.value==="delivery"){
+  deliveryAddressSection.classList.toggle(
+    "hidden",
+    !isDelivery
+  );
 
-        deliveryAddressSection.classList.remove("hidden");
+  if (!isDelivery) {
+    deliveryAddressLine1.value = "";
+    deliveryAddressLine2.value = "";
+    deliveryPostalCode.value = "";
+  }
 
-    }
-
-    else{
-
-        deliveryAddressSection.classList.add("hidden");
-
-        deliveryAddress.value="";
-
-    }
-
-    refreshUI();
-
-    validateForm();
-
+  updateCollectionNote();
+  refreshUI();
+  validateForm();
 });
+
+deliveryAddressLine1.addEventListener(
+  "input",
+  validateForm
+);
+
+deliveryAddressLine2.addEventListener(
+  "input",
+  validateForm
+);
+
+deliveryPostalCode.addEventListener(
+  "input",
+  validateForm
+);
 
 nameList.addEventListener("input", updateNames);
 
@@ -1730,25 +2795,6 @@ I'll attach my payment screenshot below`;
     );
 
 };
-collectionMethod.addEventListener("change", () => {
-
-    if (collectionMethod.value === "delivery") {
-
-        deliveryAddressSection.classList.remove("hidden");
-
-    }
-
-    else {
-
-        deliveryAddressSection.classList.add("hidden");
-
-    }
-
-    updateCollectionNote();
-
-    refreshUI();
-
-});
 
 makeSwatches("baseColours", baseColours, "base");
 makeSwatches("capColours", capColours, "cap");
@@ -1790,16 +2836,29 @@ function validateForm() {
       message = neededByMessage || "Please choose another date.";
     }
 
-    else if(
-    collectionMethod.value==="delivery" &&
-    !deliveryAddress.value.trim()
-  ){
+else if (
+  collectionMethod.value === "delivery" &&
+  !deliveryAddressLine1.value.trim()
+) {
+  valid = false;
+  message = "Please enter your block and street name.";
+}
 
-    valid = false;
+else if (
+  collectionMethod.value === "delivery" &&
+  !deliveryAddressLine2.value.trim()
+) {
+  valid = false;
+  message = "Please enter your unit number.";
+}
 
-    message = "Please enter your delivery address.";
-
-  }
+else if (
+  collectionMethod.value === "delivery" &&
+  !/^\d{6}$/.test(deliveryPostalCode.value.trim())
+) {
+  valid = false;
+  message = "Postal code must be 6 digits.";
+}
 
     submitOrderBtn.disabled = !valid;
     submitOrderBtn.classList.toggle("disabled", !valid);
@@ -1813,43 +2872,44 @@ closeModalBtn.onclick = () => {
 };
 
 function saveDraft() {
-  if (orderSubmitted) return;
+  if (
+    orderSubmitted ||
+    !draftHasMeaningfulChanges
+  ) {
+    return;
+  }
 
-    const draft = {
+  const draft = {
+    orderType,
+    names,
+    selectedIndex,
+    globalDesign,
+    cartHasItems,
 
-        orderType,
+    customerName: customerName.value,
+    customerEmail: customerEmail.value,
+    customerPhone: customerPhone.value,
 
-        names,
+    neededBy: neededBy.value,
+    collectionMethod: collectionMethod.value,
+    deliveryAddressLine1:
+      deliveryAddressLine1.value,
 
-        selectedIndex,
+    deliveryAddressLine2:
+      deliveryAddressLine2.value,
 
-        globalDesign,
+    deliveryPostalCode:
+      deliveryPostalCode.value,
+    orderNotes: orderNotes.value,
 
-        customerName: customerName.value,
+    singleName: singleName.value,
+    nameList: nameList.value
+  };
 
-        customerEmail: customerEmail.value,
-
-        customerPhone: customerPhone.value,
-
-        neededBy: neededBy.value,
-
-        collectionMethod: collectionMethod.value,
-
-        deliveryAddress: deliveryAddress.value,
-
-        orderNotes: orderNotes.value,
-
-        singleName: singleName.value,
-
-        nameList: nameList.value
-
-    };
-
-    localStorage.setItem(
-        "littleKeepsDraft",
-        JSON.stringify(draft)
-    );
-
+  localStorage.setItem(
+    "littleKeepsDraft",
+    JSON.stringify(draft)
+  );
 }
 
 function loadDraft() {
@@ -1865,79 +2925,99 @@ function loadDraft() {
 }
 
 continueDraftBtn.onclick = () => {
+  draftModal.classList.add("hidden");
 
-    draftModal.classList.add("hidden");
+  orderType =
+    draftData.orderType || "single";
 
-    orderType = draftData.orderType;
+  names =
+    Array.isArray(draftData.names)
+      ? draftData.names
+      : [];
 
-    names = draftData.names;
+  selectedIndex =
+    Number.isInteger(draftData.selectedIndex)
+      ? draftData.selectedIndex
+      : 0;
 
-    selectedIndex = draftData.selectedIndex;
+  globalDesign = {
+    ...globalDesign,
+    ...(draftData.globalDesign || {})
+  };
 
-    globalDesign = draftData.globalDesign;
+  globalDesign.baseShape =
+    globalDesign.baseShape || "ribbed";
 
-    customerName.value = draftData.customerName;
-
-    customerEmail.value = draftData.customerEmail;
-
-    customerPhone.value = draftData.customerPhone;
-
-    neededBy.value = draftData.neededBy;
-
-    collectionMethod.value =
-        draftData.collectionMethod;
-
-    deliveryAddress.value =
-        draftData.deliveryAddress || "";
-
-    if (collectionMethod.value === "delivery") {
-
-        deliveryAddressSection.classList.remove("hidden");
-
-    } else {
-
-        deliveryAddressSection.classList.add("hidden");
-
+  names.forEach(item => {
+    if (item.custom) {
+      item.custom.baseShape =
+        item.custom.baseShape ||
+        globalDesign.baseShape;
     }
+  });
 
-    orderNotes.value =
-        draftData.orderNotes;
+  cartHasItems =
+    Boolean(draftData.cartHasItems);
 
-    orderNotes.value =
-        draftData.orderNotes;
+  customerName.value =
+    draftData.customerName || "";
 
-    singleName.value =
-        draftData.singleName;
+  customerEmail.value =
+    draftData.customerEmail || "";
 
-    nameList.value =
-        draftData.nameList;
+  customerPhone.value =
+    draftData.customerPhone || "";
 
-    if(orderType==="group"){
+  neededBy.value =
+    draftData.neededBy || "";
 
-        groupBtn.click();
+  collectionMethod.value =
+    draftData.collectionMethod || "pickup";
 
-    }
+  deliveryAddressLine1.value =
+    draftData.deliveryAddressLine1 || "";
 
-    else{
+  deliveryAddressLine2.value =
+    draftData.deliveryAddressLine2 || "";
 
-        singleBtn.click();
+  deliveryPostalCode.value =
+    draftData.deliveryPostalCode || "";
 
-    }
+  orderNotes.value =
+    draftData.orderNotes || "";
 
-    refreshUI();
+  singleName.value =
+    draftData.singleName || "Alicia";
 
-    buildSelectedPreview();
+  nameList.value =
+    draftData.nameList || "Alicia\nBen\nChloe";
 
+  setOrderType(orderType);
+
+  deliveryAddressSection.classList.toggle(
+    "hidden",
+    collectionMethod.value !== "delivery"
+  );
+
+  draftHasMeaningfulChanges = true;
+
+  refreshUI();
+  buildSelectedPreview();
+  validateForm();
 };
 
 discardDraftBtn.onclick = () => {
+  localStorage.removeItem(
+    "littleKeepsDraft"
+  );
 
-    localStorage.removeItem(
-        "littleKeepsDraft"
-    );
+  draftData = null;
+  cartHasItems = false;
+  draftHasMeaningfulChanges = false;
 
-    draftModal.classList.add("hidden");
+  draftModal.classList.add("hidden");
 
+  updateCartDisplay();
 };
 
 function celebrateOrder() {
@@ -2024,13 +3104,18 @@ function renderIconPicker() {
 
 loadShopNotices();
 renderIconPicker();
-updateNames();
-loadDraft();
+
+setOrderType("single");
+cartHasItems = false;
+draftHasMeaningfulChanges = false;
+
 setupNeededByCalendar();
-
 updateCollectionNote();
-
 validateForm();
+updateCartDisplay();
+buildSelectedPreview();
 animate();
+
+loadDraft();
 
 

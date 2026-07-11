@@ -910,3 +910,17 @@ body {
 .order-detail-grid .full-row {
   grid-column: 1 / -1;
 }
+
+.print-qty-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-qty-control input {
+  width: 70px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  text-align: center;
+}

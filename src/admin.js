@@ -148,7 +148,26 @@ logoutBtn.onclick = async () => {
 
 let currentView = "orders";
 let latestOrders = [];
+
 let inventoryItems = {};
+
+const hardwareItems = [
+  {
+    itemName: "Mechanical Switch",
+    label: "Mechanical Switch",
+    category: "Hardware"
+  },
+  {
+    itemName: "Key Ring",
+    label: "Key Ring",
+    category: "Hardware"
+  },
+  {
+    itemName: "Jump Ring",
+    label: "Jump Ring",
+    category: "Hardware"
+  }
+];
 
 function getCustomerSummaryHtml(order) {
   let html = "";
@@ -240,26 +259,67 @@ function renderCurrentView() {
 }
 
 window.markReady = async function(id) {
-  const order = latestOrders.find(order => String(order.id) === String(id));
+  const order = latestOrders.find(
+    order => String(order.id) === String(id)
+  );
+
   if (!order) return;
 
   await loadInventoryItems();
 
   const needs = getOrderInventoryNeeds(order);
 
+  const missingItems = Object.entries(needs)
+    .map(([itemName, qtyNeeded]) => {
+      const stock = getInventoryQty(itemName);
+      const missing = Math.max(0, qtyNeeded - stock);
+
+      return {
+        itemName,
+        qtyNeeded,
+        stock,
+        missing
+      };
+    })
+    .filter(item => item.missing > 0);
+
+  if (missingItems.length) {
+    alert(
+      "This order is missing stock:\n\n" +
+      missingItems
+        .map(item =>
+          `${item.itemName}: need ${item.qtyNeeded}, stock ${item.stock}`
+        )
+        .join("\n")
+    );
+
+    await renderAssemblyQueue();
+    return;
+  }
+
   const ok = confirm(
-    `Mark this order as ready?\n\nThis will deduct all printed parts and hardware from inventory.`
+    `Mark ${order.order_ref} as ready?\n\n` +
+    `This will deduct the printed parts and hardware for this order only.`
   );
 
   if (!ok) return;
 
   for (const [itemName, qty] of Object.entries(needs)) {
-    await deductInventory(itemName, qty);
+    const deducted = await deductInventory(itemName, qty);
+
+    if (!deducted) {
+      alert(
+        `Stopped because ${itemName} could not be deducted.`
+      );
+      return;
+    }
   }
 
   const { error } = await supabase
     .from("orders")
-    .update({ status: "Ready for Pickup/Delivery" })
+    .update({
+      status: "Ready for Pickup/Delivery"
+    })
     .eq("id", id);
 
   if (error) {
@@ -268,8 +328,6 @@ window.markReady = async function(id) {
     return;
   }
 
-  currentView = "assembly";
-  setActiveTab(assemblyViewBtn);
   await loadOrders();
 };
 
@@ -462,20 +520,43 @@ function renderOrders(orders) {
     </select>
   </div>
 </div>
+<div class="order-preview-list">
+  ${(order.order_data || []).map(item => {
+    const baseShape =
+      item.design?.base_shape?.key ||
+      item.design?.baseShape ||
+      "ribbed";
 
-      <div class="order-preview-list">
-        ${(order.order_data || []).map(item => `
-          <div class="order-preview-item">
-            <strong>${item.name}</strong>
-            <div class="mini-chain">
-              ${createAssemblyMiniPreview(item.name, item.design)}
-            </div>
-          </div>
-        `).join("")}
+    return `
+      <div class="order-preview-item">
+        <div class="assembly-item-top">
+          <strong>${item.name}</strong>
+
+          <span class="assembly-tag">
+            ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+          </span>
+        </div>
+
+        <div class="mini-chain">
+          ${createAssemblyMiniPreview(item.name, item.design)}
+        </div>
       </div>
-
+    `;
+  }).join("")}
+</div>
     </details>
   `).join("");
+}
+
+function getBaseInventoryName(baseName, baseShape = "ribbed") {
+  const shapeLabel =
+    baseShape === "bubbly" ? "Bubbly" : "Ribbed";
+
+  return `${baseName} ${shapeLabel} Base`;
+}
+
+function getKeycapInventoryName(capName, letterName, character) {
+  return `${capName} Cap + ${letterName} Letter - ${character}`;
 }
 
 async function loadInventoryItems() {
@@ -493,6 +574,7 @@ async function loadInventoryItems() {
 
   (data || []).forEach(item => {
     inventoryItems[item.item_name] = {
+      id: item.id,
       qty: Number(item.qty || 0),
       category: item.category || "Hardware"
     };
@@ -504,31 +586,66 @@ function getInventoryQty(itemName) {
 }
 
 async function addInventory(itemName, qtyToAdd, category) {
-  const currentQty = getInventoryQty(itemName);
-  const newQty = currentQty + Number(qtyToAdd || 0);
+  const qty = Number(qtyToAdd);
 
-  const { error } = await supabase
-    .from("inventory_items")
-    .upsert(
-      {
-        item_name: itemName,
+  if (!Number.isInteger(qty) || qty <= 0) {
+    alert("Please enter a valid quantity.");
+    return;
+  }
+
+  await loadInventoryItems();
+
+  const existingItem = inventoryItems[itemName];
+
+  if (existingItem) {
+    const newQty = existingItem.qty + qty;
+
+    const { error } = await supabase
+      .from("inventory_items")
+      .update({
         qty: newQty,
         category,
         updated_at: new Date().toISOString()
-      },
-      {
-        onConflict: "item_name"
-      }
-    );
+      })
+      .eq("id", existingItem.id);
 
-  if (error) {
-    console.error(error);
-    alert("Unable to update inventory.");
-    return;
+    if (error) {
+      console.error(error);
+      alert(`Unable to update ${itemName}.`);
+      return;
+    }
+  } else {
+    const { error } = await supabase
+      .from("inventory_items")
+      .insert({
+        item_name: itemName,
+        qty,
+        category,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error(error);
+      alert(`Unable to create ${itemName}.`);
+      return;
+    }
   }
 
   await renderProductionPlanner(latestOrders);
 }
+
+async function addCustomInventory(itemName, qtyToAdd, category) {
+  const qty = Number(qtyToAdd);
+
+  if (!Number.isInteger(qty) || qty <= 0) {
+    alert("Please enter a valid printed quantity.");
+    return;
+  }
+
+  await addInventory(itemName, qty, category);
+}
+
+window.addCustomInventory = addCustomInventory;
 
 window.addInventory = addInventory;
 
@@ -564,15 +681,23 @@ function getProductionSummary(orders) {
         const letterName = letterColour.name || letterColour.hex || letterColour;
         const letterHex = letterColour.hex || letterColour;
 
-        if (!baseTotals[baseName]) {
-          baseTotals[baseName] = {
+        const baseShape =
+          design.base_shape?.key ||
+          design.baseShape ||
+          "ribbed";
+
+        const baseKey = `${baseShape}|${baseName}`;
+
+        if (!baseTotals[baseKey]) {
+          baseTotals[baseKey] = {
             name: baseName,
             hex: baseHex,
+            baseShape,
             qty: 0
           };
         }
 
-        baseTotals[baseName].qty += 1;
+        baseTotals[baseKey].qty += 1;
 
         const groupKey = `${capName} Cap + ${letterName} Letter`;
 
@@ -617,8 +742,37 @@ function getOrderInventoryNeeds(order) {
       const capName = cap.name || cap.hex || cap;
       const letterName = letterColour.name || letterColour.hex || letterColour;
 
-      add(`${baseName} Base`, 1);   
-      add(`${capName} Cap + ${letterName} Letter - ${letter}`, 1);
+      const baseShape =
+
+        design.base_shape?.key ||
+
+        design.baseShape ||
+
+        "ribbed";
+
+      add(
+
+        getBaseInventoryName(baseName, baseShape),
+
+        1
+
+      );
+
+      add(
+
+        getKeycapInventoryName(
+
+          capName,
+
+          letterName,
+
+          letter
+
+        ),
+
+        1
+
+      );
     });
   });
 
@@ -641,18 +795,34 @@ function isOrderReadyForAssembly(order) {
 }
 
 const specialKeycaps = {
+  // Original
   "♡": "heart",
   "★": "star",
   "✿": "flower",
   "🎀": "ribbon",
   "🐾": "paw",
   "☘": "clover",
+  "☁": "cloud",
   "🌙": "moon",
   "♪": "music",
   "⚡": "lightning",
   "🔥": "fire",
   "☕": "coffee",
-  "🦆": "duck"
+  "🦆": "duck",
+  "🐱": "cat",
+  "✈": "airplane",
+
+  // Sports
+  "⚽": "soccer",
+  "🏐": "volleyball",
+  "🏉": "rugby",
+  "⛷": "ski",
+  "🚲": "bicycle",
+  "⛳": "golf",
+  "🥒": "pickleball",
+  "🎳": "bowling",
+  "⚾": "baseball",
+  "♟": "chess"
 };
 
 function sanitizeName(name) {
@@ -688,11 +858,15 @@ function createAssemblyMiniPreview(name, design) {
       const cap = design.caps[i % design.caps.length];
       const letterColour = design.letters[i % design.letters.length];
 
+      const baseHex = base.hex || base;
+      const capHex = cap.hex || cap;
+      const letterHex = letterColour.hex || letterColour;
+
       return `
-        <div class="mini-block" style="background:${base.hex};">
+        <div class="mini-block" style="background:${baseHex};">
           <div
             class="mini-cap"
-            style="background:${cap.hex}; color:${letterColour.hex};"
+            style="background:${capHex}; color:${letterHex};"
           >
             ${displayIcon(letter)}
           </div>
@@ -703,20 +877,33 @@ function createAssemblyMiniPreview(name, design) {
 }
 
 async function renderAssemblyQueue() {
-
   await loadInventoryItems();
 
-  const readyOrders = latestOrders.filter(order =>
-    ["Payment Verified", "Printing"].includes(order.status) &&
-    isOrderReadyForAssembly(order)
-  );
+  const candidateOrders = latestOrders
+    .filter(order =>
+      ["Payment Verified", "Printing"].includes(order.status)
+    )
+    .sort((a, b) =>
+      new Date(a.needed_by || "9999-12-31") -
+      new Date(b.needed_by || "9999-12-31")
+    );
 
-  ordersContainer.innerHTML = `
-    <div class="production-card">
+  const readyOrders = candidateOrders.filter(order => {
+    const needs = getOrderInventoryNeeds(order);
+
+    return Object.entries(needs).every(([itemName, qtyNeeded]) => {
+      return getInventoryQty(itemName) >= qtyNeeded;
+    });
+  });
+
+  ordersContainer.innerHTML = `    
+  <div class="production-card">
       <div class="production-header">
         <div>
           <h2>Assembly Queue</h2>
-          <p class="hint">Orders shown here have all bases and keycaps printed.</p>
+          <p class="hint">
+            Printed stock is reserved by needed-by date.
+          </p>
         </div>
 
         <p class="active-count">${readyOrders.length} order(s)</p>
@@ -727,7 +914,7 @@ async function renderAssemblyQueue() {
           ? `
             <div class="empty-card">
               <h3>No orders ready for assembly yet</h3>
-              <p>Complete the production checklist first.</p>
+              <p>Print the missing parts shown in Production first.</p>
             </div>
           `
           : readyOrders.map((order, index) => `
@@ -746,25 +933,38 @@ async function renderAssemblyQueue() {
               </summary>
 
               <div class="assembly-body">
-                ${(order.order_data || []).map(item => `
-                <div class="assembly-item">
-                    <div class="assembly-item-top">
-                    <strong>${item.name}</strong>
+                ${(order.order_data || []).map(item => {
+                  const baseShape =
+                    item.design?.base_shape?.key ||
+                    item.design?.baseShape ||
+                    "ribbed";
 
-                    <span class="assembly-tag">
-                        ${sanitizeName(item.name).length} Letters
-                    </span>
-                    </div>
+                  return `
+                    <div class="assembly-item">
+                      <div class="assembly-item-top">
+                        <strong>${item.name}</strong>
 
-                    <div class="mini-chain">
-                    ${createAssemblyMiniPreview(item.name, item.design)}
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                          <span class="assembly-tag">
+                            ${sanitizeName(item.name).length} Letters
+                          </span>
+
+                          <span class="assembly-tag">
+                            ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="mini-chain">
+                        ${createAssemblyMiniPreview(item.name, item.design)}
+                      </div>
                     </div>
-                </div>
-                `).join("")}
+                  `;
+                }).join("")}
 
                 <button
                   class="ready-btn"
-                  onclick="console.log('clicked assembly', '${order.id}'); window.markReady('${order.id}')"
+                  onclick="window.markReady('${order.id}')"
                 >
                   Assembly Complete
                 </button>
@@ -772,15 +972,8 @@ async function renderAssemblyQueue() {
             </details>
           `).join("")
       }
-
-      <button id="backToOrdersBtn">Back to Orders</button>
     </div>
   `;
-
-  document.getElementById("backToOrdersBtn").onclick = () => {
-    renderStats(latestOrders);
-    renderOrders(latestOrders);
-  };
 }
 
 async function renderProductionPlanner(orders) {
@@ -790,7 +983,12 @@ async function renderProductionPlanner(orders) {
 
   const baseRows = Object.values(baseTotals)
     .map(item => {
-      const itemName = `${item.name} Base`;
+      const baseShape = item.baseShape || "ribbed";
+
+      const itemName = getBaseInventoryName(
+        item.name,
+        baseShape
+      );
       const need = item.qty;
       const stock = getInventoryQty(itemName);
       const toPrint = Math.max(0, need - stock);
@@ -803,7 +1001,11 @@ async function renderProductionPlanner(orders) {
     const rows = Object.entries(group.letters)
       .sort((a, b) => b[1] - a[1])
       .map(([letter, qty]) => {
-        const itemName = `${group.capName} Cap + ${group.letterName} Letter - ${letter}`;
+    const itemName = getKeycapInventoryName(
+      group.capName,
+      group.letterName,
+      letter
+    );
         const need = qty;
         const stock = getInventoryQty(itemName);
         const toPrint = Math.max(0, need - stock);
@@ -843,12 +1045,25 @@ async function renderProductionPlanner(orders) {
               </p>
             </div>
 
-            <button
-              class="ready-btn"
-              onclick='window.addInventory(${JSON.stringify(row.itemName)}, ${row.toPrint}, "Keycap")'
-            >
-              +${row.toPrint} Printed
-            </button>
+            <div class="print-qty-control">
+              <input
+                type="number"
+                min="1"
+                value="${row.toPrint}"
+                id="printQty-${encodeURIComponent(row.itemName)}"
+              >
+
+              <button
+                class="ready-btn"
+                onclick='window.addCustomInventory(
+                  ${JSON.stringify(row.itemName)},
+                  document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(row.itemName)}`)}).value,
+                  "Keycap"
+                )'
+              >
+                Add Printed
+              </button>
+            </div>
           </div>
         `).join("")}
       </details>
@@ -880,15 +1095,69 @@ async function renderProductionPlanner(orders) {
               </p>
             </div>
 
-            <button
-              class="ready-btn"
-              onclick='window.addInventory(${JSON.stringify(item.itemName)}, ${item.toPrint}, "Base")'
-            >
-              +${item.toPrint} Printed
-            </button>
+            <div class="print-qty-control">
+              <input
+                type="number"
+                min="1"
+                value="${item.toPrint}"
+                id="printQty-${encodeURIComponent(item.itemName)}"
+              >
+
+              <button
+                class="ready-btn"
+                onclick='window.addCustomInventory(
+                  ${JSON.stringify(item.itemName)},
+                  document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(item.itemName)}`)}).value,
+                  "Base"
+                )'
+              >
+                Add Printed
+              </button>
+            </div>
           </div>
         `).join("") || "<p>No bases need printing.</p>"}
       </div>
+
+      <h3>Hardware Stock</h3>
+
+<div class="print-group">
+  ${hardwareItems.map(item => {
+    const stock = getInventoryQty(item.itemName);
+
+    return `
+      <div class="print-check-row">
+
+        <div style="flex:1;">
+          <strong>${item.label}</strong>
+          <p class="hint">
+            Current Stock: ${stock}
+          </p>
+        </div>
+
+        <div class="print-qty-control">
+          <input
+            type="number"
+            min="1"
+            value="1"
+            id="hardware-${encodeURIComponent(item.itemName)}"
+          >
+
+          <button
+            class="ready-btn"
+            onclick='window.addCustomInventory(
+              ${JSON.stringify(item.itemName)},
+              document.getElementById(${JSON.stringify(`hardware-${encodeURIComponent(item.itemName)}`)}).value,
+              "Hardware"
+            )'
+          >
+            Add Stock
+          </button>
+        </div>
+
+      </div>
+    `;
+  }).join("")}
+</div>
 
       <h3>Keycap Printing</h3>
 
@@ -992,7 +1261,19 @@ async function deductInventory(itemName, qtyToDeduct) {
     return false;
   }
 
-  const newQty = Math.max(0, Number(data.qty || 0) - qtyToDeduct);
+  const currentQty = Number(data.qty || 0);
+
+if (currentQty < qtyToDeduct) {
+  alert(
+    `Not enough ${itemName}.\n` +
+    `Needed: ${qtyToDeduct}\n` +
+    `Available: ${currentQty}`
+  );
+
+  return false;
+}
+
+const newQty = currentQty - qtyToDeduct;
 
   const { error: updateError } = await supabase
     .from("inventory_items")
