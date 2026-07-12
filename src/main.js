@@ -1016,6 +1016,9 @@ const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
 
 const EMAILJS_CUSTOMER_TEMPLATE = "template_liazurv";
 
+const addCartArea =
+  document.querySelector(".add-cart-area");
+
 const deliveryAddressSection =
 document.getElementById("deliveryAddressSection");
 
@@ -1163,7 +1166,45 @@ const dateAvailability = document.getElementById("dateAvailability");
 let neededByAllowed = false;
 let neededByMessage = "";
 
+function updateAddCartVisibility() {
+  if (!addCartArea) return;
 
+  const designArea =
+    document.getElementById("designArea");
+
+  const customiser =
+    document.querySelector(".product-customiser");
+
+  if (!designArea || !customiser) return;
+
+  const customiserTop =
+    customiser.getBoundingClientRect().top;
+
+  const designBottom =
+    designArea.getBoundingClientRect().bottom;
+
+  const shouldShow =
+    customiserTop < window.innerHeight * 0.9 &&
+    designBottom > 100;
+
+  addCartArea.classList.toggle(
+    "mobile-cart-visible",
+    shouldShow
+  );
+}
+
+window.addEventListener(
+  "scroll",
+  updateAddCartVisibility,
+  { passive: true }
+);
+
+window.addEventListener(
+  "resize",
+  updateAddCartVisibility
+);
+
+updateAddCartVisibility();
 
 async function checkNeededByDate() {
   if (!neededBy.value) {
@@ -2005,57 +2046,162 @@ function renderReviewOrder() {
   reviewCount.innerText = names.length;
   reviewList.innerHTML = "";
 
-  names.forEach(item => {
+  names.forEach((item, index) => {
     const design = getDesign(item);
     const price = calculatePrice(design);
+
     total += price;
 
     const row = document.createElement("div");
     row.className = "review-item";
 
     row.innerHTML = `
-      <div class="name-card-top">
-        <strong>${item.name}</strong>
-        <span class="price-tag">$${price.toFixed(2)}</span>
-      </div>
+      <div class="review-item-heading">
+        <div>
+          <strong>${item.name}</strong>
 
-      <p class="hint">
-        ${design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
-      </p>
+          <p class="hint">
+            ${
+              design.baseShape === "bubbly"
+                ? "Bubbly Base"
+                : "Ribbed Base"
+            }
+          </p>
+        </div>
+
+        <span class="price-tag">
+          $${price.toFixed(2)}
+        </span>
+      </div>
 
       <div class="mini-chain">
         ${createMiniPreview(item.name, design)}
+      </div>
+
+      <div class="review-item-actions">
+        <button
+          type="button"
+          class="review-edit-btn"
+          data-review-edit="${index}"
+        >
+          Edit
+        </button>
+
+        <button
+          type="button"
+          class="review-remove-btn"
+          data-review-remove="${index}"
+        >
+          Remove
+        </button>
       </div>
     `;
 
     reviewList.appendChild(row);
   });
 
+  reviewList
+    .querySelectorAll("[data-review-edit]")
+    .forEach(button => {
+      button.addEventListener("click", () => {
+        selectedIndex = Number(button.dataset.reviewEdit);
+
+        checkoutScreen.classList.add("hidden");
+        paymentScreen.classList.add("hidden");
+        designScreen.classList.remove("hidden");
+
+        refreshUI();
+        buildSelectedPreview();
+
+        document
+          .getElementById("designArea")
+          .scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+          });
+      });
+    });
+
+  reviewList
+    .querySelectorAll("[data-review-remove]")
+    .forEach(button => {
+      button.addEventListener("click", () => {
+        const index = Number(button.dataset.reviewRemove);
+        const item = names[index];
+
+        if (!item) return;
+
+        const confirmed = confirm(
+          `Remove ${item.name} from your order?`
+        );
+
+        if (!confirmed) return;
+
+        names.splice(index, 1);
+
+        if (orderType === "group") {
+          nameList.value = names
+            .map(entry => entry.name)
+            .join("\n");
+        } else if (!names.length) {
+          singleName.value = "";
+        }
+
+        if (selectedIndex >= names.length) {
+          selectedIndex = Math.max(0, names.length - 1);
+        }
+
+        if (!names.length) {
+          cartHasItems = false;
+        }
+
+        draftHasMeaningfulChanges = true;
+
+        refreshUI();
+        buildSelectedPreview();
+        validateForm();
+      });
+    });
+
   const deliveryFee =
-  collectionMethod.value === "delivery" && total < 50 ? 2.5 : 0;
+    collectionMethod.value === "delivery" &&
+    total < 50
+      ? 2.5
+      : 0;
 
   const grandTotal = total + deliveryFee;
 
   reviewPrice.innerHTML = `
-    Subtotal: $${total.toFixed(2)}<br>
-    Delivery: $${deliveryFee.toFixed(2)}<br>
-    Total: $${grandTotal.toFixed(2)}
+    <span>Subtotal</span>
+    <strong>$${total.toFixed(2)}</strong>
+
+    <span>Delivery</span>
+    <strong>
+      ${
+        deliveryFee === 0 &&
+        collectionMethod.value === "delivery"
+          ? "FREE"
+          : `$${deliveryFee.toFixed(2)}`
+      }
+    </strong>
+
+    <span class="review-total-label">Total</span>
+    <strong class="review-grand-total">
+      $${grandTotal.toFixed(2)}
+    </strong>
   `;
 
   const deliveryOption =
-    collectionMethod.querySelector('option[value="delivery"]');
+    collectionMethod.querySelector(
+      'option[value="delivery"]'
+    );
 
   if (total >= 50) {
-
-      deliveryOption.text =
-          "🚚 Islandwide Delivery (FREE)";
-
-  }
-  else {
-
-      deliveryOption.text =
-          "🚚 Islandwide Delivery (+$2.50)";
-
+    deliveryOption.text =
+      "🚚 Islandwide Delivery (FREE)";
+  } else {
+    deliveryOption.text =
+      "🚚 Islandwide Delivery (+$2.50)";
   }
 
   updateCollectionNote();
@@ -2544,19 +2690,13 @@ function renderCartDrawer() {
               Edit
             </button>
 
-            ${
-              names.length > 1
-                ? `
-                  <button
-                    type="button"
-                    class="remove-cart-item"
-                    onclick="window.removeCartItem(${index})"
-                  >
-                    Remove
-                  </button>
-                `
-                : ""
-            }
+            <button
+              type="button"
+              class="remove-cart-item"
+              onclick="window.removeCartItem(${index})"
+            >
+              Remove
+            </button>
           </div>
         </div>
       `;
