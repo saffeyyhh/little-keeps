@@ -3,7 +3,6 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import confetti from "canvas-confetti";
-import emailjs from "@emailjs/browser";
 import { createClient } from "@supabase/supabase-js";
 import flatpickr from "flatpickr";
 import "flatpickr/dist/flatpickr.min.css";
@@ -1010,12 +1009,6 @@ document.getElementById("continueDraftBtn");
 const discardDraftBtn =
 document.getElementById("discardDraftBtn");
 
-const EMAILJS_SERVICE = "service_joll6ie";
-const EMAILJS_TEMPLATE = "template_3kt0yd9";
-const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
-
-const EMAILJS_CUSTOMER_TEMPLATE = "template_liazurv";
-
 const addCartArea =
   document.querySelector(".add-cart-area");
 
@@ -1045,9 +1038,6 @@ function getDeliveryAddress() {
 
 const ribbedBaseBtn = document.getElementById("ribbedBaseBtn");
 const bubblyBaseBtn = document.getElementById("bubblyBaseBtn");
-
-emailjs.init(EMAILJS_PUBLIC);
-
 
 const colours = [
   {
@@ -2217,162 +2207,6 @@ function getColourName(hex) {
 
 }
 
-function addToTotal(totals, colour) {
-  const name = getColourName(colour);
-  totals[name] = (totals[name] || 0) + 1;
-}
-
-function getColourTotals() {
-  const totals = {
-    base: {},
-    cap: {},
-    letter: {}
-  };
-
-  names.forEach(item => {
-    const design = getDesign(item);
-    const cleanName = sanitizeName(item.name);
-
-    Array.from(cleanName).forEach((_, i) => {
-      addToTotal(totals.base, design.bases[i % design.bases.length]);
-      addToTotal(totals.cap, design.caps[i % design.caps.length]);
-      addToTotal(totals.letter, design.letters[i % design.letters.length]);
-    });
-  });
-
-  return totals;
-}
-
-function formatTotals(title, totals) {
-  const lines = [title];
-
-  Object.entries(totals).forEach(([colour, count]) => {
-    lines.push(`- ${colour}: ${count}`);
-  });
-
-  return lines.join("\n");
-}
-
-function createEmailMiniPreview(name, design) {
-  return Array.from(sanitizeName(name))
-    .map((letter, i) => {
-      const base = design.bases[i % design.bases.length];
-      const cap = design.caps[i % design.caps.length];
-      const letterColour = design.letters[i % design.letters.length];
-
-      return `
-        <span style="display:inline-block;width:36px;height:36px;background:${base};border-radius:10px;margin:4px;position:relative;vertical-align:middle;">
-          <span style="display:block;width:23px;height:23px;background:${cap};border-radius:7px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;line-height:23px;font-size:13px;font-weight:bold;color:${letterColour};">
-            ${displayIcon(letter)}
-          </span>
-        </span>
-      `;
-    })
-    .join("");
-}
-
-function getBaseSummary() {
-  const totals = {};
-
-  names.forEach(item => {
-    const design = getDesign(item);
-    const cleanName = sanitizeName(item.name);
-
-    Array.from(cleanName).forEach((_, i) => {
-      const colour = getColourName(design.bases[i % design.bases.length]);
-      totals[colour] = (totals[colour] || 0) + 1;
-    });
-  });
-
-  return totals;
-}
-
-function getKeycapSummary() {
-  const totals = {};
-
-  names.forEach(item => {
-    const design = getDesign(item);
-    const cleanName = sanitizeName(item.name);
-
-    Array.from(cleanName).forEach((letter, i) => {
-      const cap = getColourName(design.caps[i % design.caps.length]);
-      const letterColour = getColourName(design.letters[i % design.letters.length]);
-
-      const key = `${letter} — Cap: ${cap}, Letter: ${letterColour}`;
-      totals[key] = (totals[key] || 0) + 1;
-    });
-  });
-
-  return totals;
-}
-
-function getEmailHtml() {
-  let subtotal = 0;
-
-  let html = `
-    <h2 style="color:#ff6f9f;">Review Order</h2>
-  `;
-
-  names.forEach(item => {
-    const design = getDesign(item);
-    const price = calculatePrice(design);
-    subtotal += price;
-
-    html += `
-      <div style="background:white;border:1px solid #eee;border-radius:16px;padding:14px;margin:12px 0;">
-        <h3 style="margin:0 0 8px;">${item.name}</h3>
-        <div>${createEmailMiniPreview(item.name, design)}</div>
-        <p style="margin:10px 0 0;"><b>$${price.toFixed(2)}</b></p>
-      </div>
-    `;
-  });
-
-  const delivery = collectionMethod.value === "delivery" && subtotal < 50 ? 2.5 : 0;
-  const total = subtotal + delivery;
-
-  html += `
-    <hr>
-    <h2 style="color:#ff6f9f;">Total</h2>
-    <p>Subtotal: <b>$${subtotal.toFixed(2)}</b></p>
-    <p>Delivery: <b>$${delivery.toFixed(2)}</b></p>
-    <h2>Total: $${total.toFixed(2)}</h2>
-  `;
-
-  const bases = getBaseSummary();
-  const keycaps = getKeycapSummary();
-
-  html += `
-    <hr>
-    <h2 style="color:#ff6f9f;">Production Summary</h2>
-    <h3>Base Printing</h3>
-  `;
-
-  Object.entries(bases).forEach(([colour, count]) => {
-    html += `<p>${colour}: <b>${count}</b></p>`;
-  });
-
-  html += `<hr><h3>Keycap Printing</h3>`;
-
-  Object.entries(keycaps).forEach(([item, count]) => {
-    html += `
-      <div style="background:#fff7fb;border:1px solid #eee;border-radius:12px;padding:10px;margin:8px 0;">
-        <p style="margin:0;"><b>${item}</b></p>
-        <p style="margin:4px 0 0;">Quantity: <b>${count}</b></p>
-      </div>
-    `;
-  });
-
-  html += `
-  <hr>
-  <h2 style="color:#ff6f9f;">Payment Status</h2>
-  <p><b>Pending Payment</b></p>
-  <p>Customer has been instructed to send payment screenshot via WhatsApp.</p>
-  <p>Ship out timeline: <b>3–5 working days after payment confirmation</b></p>
-`;
-
-  return html;
-}
-
 async function saveOrderToDatabase(order) {
 
     const { data, error } = await supabase
@@ -2389,18 +2223,19 @@ async function saveOrderToDatabase(order) {
 }
 
 async function submitOrder() {
-
   submitStatus.innerText = "Submitting order...";
 
   const orderRef = generateOrderRef();
 
   const subtotal = names.reduce(
-    (sum, item) => sum + calculatePrice(getDesign(item)),
+    (sum, item) =>
+      sum + calculatePrice(getDesign(item)),
     0
   );
 
   const delivery =
-    collectionMethod.value === "delivery" && subtotal < 50
+    collectionMethod.value === "delivery" &&
+    subtotal < 50
       ? 2.5
       : 0;
 
@@ -2409,11 +2244,12 @@ async function submitOrder() {
   const order = {
     order_ref: orderRef,
 
-    customer_name: customerName.value,
-    customer_email: customerEmail.value,
-    customer_phone: customerPhone.value,
+    customer_name: customerName.value.trim(),
+    customer_email: customerEmail.value.trim(),
+    customer_phone: customerPhone.value.trim(),
 
     collection_method: collectionMethod.value,
+
     delivery_address:
       collectionMethod.value === "delivery"
         ? getDeliveryAddress()
@@ -2428,8 +2264,14 @@ async function submitOrder() {
     total,
 
     payment_type: "Pending",
-    order_source: isManualOrder ? "Manual" : "Website",
-    status: isManualOrder ? "Payment Verified" : "Pending Payment",
+
+    order_source: isManualOrder
+      ? "Manual"
+      : "Website",
+
+    status: isManualOrder
+      ? "Payment Verified"
+      : "Pending Payment",
 
     order_data: names.map(item => {
       const design = getDesign(item);
@@ -2439,23 +2281,26 @@ async function submitOrder() {
         clean_name: sanitizeName(item.name),
         price: calculatePrice(design),
 
-          design: {
-            base_shape: {
-              key: design.baseShape || "ribbed",
-              label:
-                BASE_SHAPES[
-                  design.baseShape || "ribbed"
-                ].label
-            },
+        design: {
+          base_shape: {
+            key: design.baseShape || "ribbed",
 
-            bases: design.bases.map(hex => ({
+            label:
+              BASE_SHAPES[
+                design.baseShape || "ribbed"
+              ].label
+          },
+
+          bases: design.bases.map(hex => ({
             name: getColourName(hex),
             hex
           })),
+
           caps: design.caps.map(hex => ({
             name: getColourName(hex),
             hex
           })),
+
           letters: design.letters.map(hex => ({
             name: getColourName(hex),
             hex
@@ -2465,57 +2310,43 @@ async function submitOrder() {
     })
   };
 
-  try {
+  const dateAvailable = await checkNeededByDate();
 
-    const ok = await checkNeededByDate();
-
-    if (!ok) {
-      submitStatus.innerText = neededByMessage;
-      return;
-    }
-
-    await saveOrderToDatabase(order);
-
-    // ADMIN EMAIL ONLY
-    await emailjs.send(
-      EMAILJS_SERVICE,
-      EMAILJS_TEMPLATE,
-      {
-        order_ref: orderRef,
-        customer_name: customerName.value,
-        customer_email: customerEmail.value,
-        customer_phone: customerPhone.value,
-        collection_method: collectionMethod.value,
-        total_amount: `$${total.toFixed(2)}`,
-        message: getEmailHtml(),
-        customer_summary: getEmailHtml()
-      }
-    );
-
-    orderSubmitted = true;
-    localStorage.removeItem("littleKeepsDraft");
-
-    paymentOrderRef.innerText = orderRef;
-    paymentTotal.innerText = `$${total.toFixed(2)}`;
-
-    checkoutScreen.classList.add("hidden");
-    paymentScreen.classList.remove("hidden");
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth"
-    });
-
-  } catch (error) {
-
-    console.error(error);
-
-    submitStatus.innerText =
-      "Unable to submit order.";
-
+  if (!dateAvailable) {
+    submitStatus.innerText = neededByMessage;
+    return;
   }
 
+  // First save the order.
+  try {
+    await saveOrderToDatabase(order);
+  } catch (error) {
+    console.error("Unable to save order:", error);
+
+    submitStatus.innerText =
+      "Unable to save your order. Please try again.";
+
+    return;
+  }
+
+  // The order is now safely saved.
+  orderSubmitted = true;
+  localStorage.removeItem("littleKeepsDraft");
+
+  // Supabase sends the Telegram alert through a database webhook.
+  // The customer-facing website does not contain the Telegram bot token.
+  paymentOrderRef.innerText = orderRef;
+  paymentTotal.innerText = `$${total.toFixed(2)}`;
+
+  checkoutScreen.classList.add("hidden");
+  paymentScreen.classList.remove("hidden");
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
 }
+
 function updateCollectionNote() {
 
     const subtotal = names.reduce(
@@ -3257,5 +3088,4 @@ buildSelectedPreview();
 animate();
 
 loadDraft();
-
 

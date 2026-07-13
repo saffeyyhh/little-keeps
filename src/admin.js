@@ -139,6 +139,11 @@ const logoutBtn = document.getElementById("logoutBtn");
 
 const { data: { session } } = await supabase.auth.getSession();
 
+const EMAILJS_SERVICE = "service_joll6ie";
+const EMAILJS_TEMPLATE = "template_3kt0yd9";
+const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
+
+
 console.log(session);
 
 logoutBtn.onclick = async () => {
@@ -169,28 +174,68 @@ const hardwareItems = [
   }
 ];
 
+function escapeEmailHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function getCustomerSummaryHtml(order) {
-  let html = "";
+  const items = Array.isArray(order.order_data)
+    ? order.order_data
+    : [];
 
-  (order.order_data || []).forEach(item => {
-    const design = item.design;
-
-    html += `
-      <div style="background:white;border:1px solid #eee;border-radius:16px;padding:14px;margin:12px 0;">
-        <h3 style="margin:0 0 8px;">${item.name}</h3>
-
-        <div>
-          ${createEmailMiniPreview(item.name, design)}
-        </div>
-
-        <p style="margin:10px 0 0;">
-          <b>$${Number(item.price).toFixed(2)}</b>
-        </p>
-      </div>
+  if (!items.length) {
+    return `
+      <p style="color:#888;">
+        Your order details are available under reference
+        <strong>${escapeEmailHtml(order.order_ref)}</strong>.
+      </p>
     `;
-  });
+  }
 
-  return html;
+  const itemRows = items
+    .slice(0, 50)
+    .map((item, index) => {
+      return `
+        <div style="
+          background:#ffffff;
+          border:1px solid #f2dce5;
+          border-radius:12px;
+          padding:12px;
+          margin:8px 0;
+        ">
+          <strong>
+            ${index + 1}. ${escapeEmailHtml(item.name || "Personalised keychain")}
+          </strong>
+
+          <span style="float:right;">
+            ${formatMoney(item.price)}
+          </span>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <h2 style="color:#ff6f9f;">
+      Your Order
+    </h2>
+
+    ${itemRows}
+
+    <p style="
+      text-align:right;
+      font-size:18px;
+      margin-top:16px;
+    ">
+      Total:
+      <strong>${formatMoney(order.total)}</strong>
+    </p>
+  `;
 }
 
 function createEmailMiniPreview(name, design) {
@@ -1169,32 +1214,50 @@ async function renderProductionPlanner(orders) {
 }
 
 async function sendPaymentVerifiedEmail(order) {
-  try {
-    await emailjs.send(
-      EMAILJS_SERVICE,
-      EMAILJS_PAYMENT_VERIFIED_TEMPLATE,
-      {
-        customer_name: order.customer_name,
-        customer_email: order.customer_email,
-        order_ref: order.order_ref,
-        total_amount: formatMoney(order.total),
-        needed_by: formatDate(order.needed_by),
-        collection_method: getMethodLabel(order.collection_method),
+  const customerEmail = order.customer_email?.trim();
 
-        customer_summary: getCustomerSummaryHtml(order)
-      }
+  if (!customerEmail) {
+    throw new Error(
+      "The order does not have a customer email address."
     );
-  } catch (err) {
-    console.error(err);
-    alert("Payment verified, but email failed to send.");
   }
+
+  const response = await emailjs.send(
+    EMAILJS_SERVICE,
+    EMAILJS_PAYMENT_VERIFIED_TEMPLATE,
+    {
+      to_email: customerEmail,
+      customer_name: order.customer_name || "Customer",
+      order_ref: order.order_ref || "-",
+      total_amount: formatMoney(order.total),
+      needed_by: formatDate(order.needed_by),
+      collection_method: getMethodLabel(
+        order.collection_method
+      ),
+      customer_summary: getCustomerSummaryHtml(order)
+    }
+  );
+
+  console.log(
+    "Verification email sent:",
+    response.status,
+    response.text
+  );
 }
 
 async function updateOrderStatus(id, status) {
   const scrollY = window.scrollY;
 
-  const order = latestOrders.find(order => String(order.id) === String(id));
+  const order = latestOrders.find(
+    order => String(order.id) === String(id)
+  );
 
+  if (!order) {
+    alert("Order could not be found.");
+    return;
+  }
+
+  const previousStatus = order.status;
   const updateData = { status };
 
   if (status === "Payment Verified") {
@@ -1207,17 +1270,30 @@ async function updateOrderStatus(id, status) {
     .eq("id", id);
 
   if (error) {
-    console.error(error);
+    console.error("Unable to update status:", error);
     alert("Unable to update status.");
     return;
   }
 
-  if (
-    order?.status === "Pending Payment" &&
-    status === "Payment Verified" &&
-    order.customer_email
-  ) {
-    await sendPaymentVerifiedEmail(order);
+  const isNewlyVerified =
+    previousStatus !== "Payment Verified" &&
+    status === "Payment Verified";
+
+  if (isNewlyVerified) {
+    try {
+      await sendPaymentVerifiedEmail(order);
+
+      alert(
+        `Payment verified and email sent to ${order.customer_email}.`
+      );
+    } catch (error) {
+      console.error("Verification email failed:", error);
+
+      alert(
+        "Payment was verified, but the customer email failed to send.\n\n" +
+        (error?.text || error?.message || "Unknown email error")
+      );
+    }
   }
 
   await loadOrders();
