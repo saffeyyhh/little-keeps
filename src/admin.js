@@ -139,10 +139,6 @@ const logoutBtn = document.getElementById("logoutBtn");
 
 const { data: { session } } = await supabase.auth.getSession();
 
-const EMAILJS_SERVICE = "service_joll6ie";
-const EMAILJS_TEMPLATE = "template_3kt0yd9";
-const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
-
 
 console.log(session);
 
