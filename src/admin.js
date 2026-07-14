@@ -1590,6 +1590,292 @@ async function generateOrderPdfAttachment(order, items) {
   }
 }
 
+function getPdfRgb(value, fallback) {
+  let hex = getSafePdfColour(value, fallback).slice(1);
+
+  if (hex.length === 3) {
+    hex = hex.split("").map(character => character + character).join("");
+  }
+
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16)
+  ];
+}
+
+function getCompactPdfText(value) {
+  return String(value ?? "-")
+    .replace(/[–—]/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[^\x20-\x7E]/g, "*");
+}
+
+async function generateCompactOrderPdfAttachment(order, items) {
+  const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 14;
+  const contentWidth = pageWidth - margin * 2;
+  let y = margin;
+
+  const pink = [255, 103, 153];
+  const palePink = [255, 234, 242];
+  const softPink = [255, 248, 251];
+  const dark = [51, 45, 48];
+  const muted = [117, 107, 112];
+
+  function drawPageHeader(showTitle = true) {
+    pdf.setFillColor(...palePink);
+    pdf.roundedRect(margin, y, contentWidth, showTitle ? 31 : 17, 4, 4, "F");
+
+    pdf.setTextColor(...pink);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(showTitle ? 20 : 14);
+    pdf.text("Little Keeps", pageWidth / 2, y + (showTitle ? 10 : 7), {
+      align: "center"
+    });
+
+    if (showTitle) {
+      pdf.setTextColor(...dark);
+      pdf.setFontSize(14);
+      pdf.text("Confirmed Order", pageWidth / 2, y + 19, {
+        align: "center"
+      });
+      pdf.setTextColor(...muted);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.text(
+        getCompactPdfText(order.order_ref || "-"),
+        pageWidth / 2,
+        y + 26,
+        { align: "center" }
+      );
+    }
+
+    y += showTitle ? 37 : 23;
+  }
+
+  function addPageIfNeeded(requiredHeight) {
+    if (y + requiredHeight <= pageHeight - margin) {
+      return;
+    }
+
+    pdf.addPage();
+    y = margin;
+    drawPageHeader(false);
+  }
+
+  function drawWrappedDetail(label, value) {
+    const lines = pdf.splitTextToSize(
+      `${label}: ${getCompactPdfText(value || "-")}`,
+      contentWidth - 12
+    );
+    const requiredHeight = lines.length * 4.5 + 1;
+    addPageIfNeeded(requiredHeight);
+    pdf.setTextColor(...dark);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9.5);
+    pdf.text(lines, margin + 6, y);
+    y += requiredHeight;
+  }
+
+  drawPageHeader(true);
+
+  pdf.setFillColor(...softPink);
+  pdf.roundedRect(margin, y, contentWidth, 8, 3, 3, "F");
+  pdf.setTextColor(...pink);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(12);
+  pdf.text("Customer & Fulfilment Details", margin + 5, y + 5.5);
+  y += 13;
+
+  drawWrappedDetail("Customer", order.customer_name || "Customer");
+  drawWrappedDetail("Email", order.customer_email || "-");
+  drawWrappedDetail("Contact number", order.customer_phone || "-");
+  drawWrappedDetail(
+    "Collection method",
+    getMethodLabel(order.collection_method)
+  );
+
+  if (order.collection_method === "delivery") {
+    drawWrappedDetail("Delivery address", order.delivery_address || "-");
+  } else {
+    drawWrappedDetail("Pickup location", "Woodlands MRT");
+  }
+
+  drawWrappedDetail("Needed by", formatDate(order.needed_by));
+  drawWrappedDetail(
+    "Notes / preferred timing",
+    order.notes || order.preferred_time || "No additional notes"
+  );
+
+  y += 4;
+  addPageIfNeeded(12);
+  pdf.setTextColor(...pink);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(15);
+  pdf.text("Your Order", margin, y);
+  y += 7;
+
+  items.forEach((item, index) => {
+    const design = item.design || {};
+    const bases = Array.isArray(design.bases) && design.bases.length
+      ? design.bases
+      : ["#f6a9c2"];
+    const caps = Array.isArray(design.caps) && design.caps.length
+      ? design.caps
+      : ["#ffffff"];
+    const letters = Array.isArray(design.letters) && design.letters.length
+      ? design.letters
+      : ["#332d30"];
+    const baseShape =
+      design.base_shape?.label ||
+      (design.base_shape?.key === "bubbly"
+        ? "Bubbly Base"
+        : "Ribbed Base");
+    const baseNames = getPdfColourNames(bases);
+    const capNames = getPdfColourNames(caps);
+    const letterNames = getPdfColourNames(letters);
+    const colourLines = [
+      ...pdf.splitTextToSize(
+        `Base colours: ${getCompactPdfText(baseNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Cap colours: ${getCompactPdfText(capNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Letter colours: ${getCompactPdfText(letterNames)}`,
+        contentWidth - 12
+      )
+    ];
+    const cardHeight = 34 + colourLines.length * 3.8;
+
+    addPageIfNeeded(cardHeight + 5);
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(241, 215, 226);
+    pdf.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD");
+
+    pdf.setTextColor(...dark);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.text(
+      `${index + 1}. ${getCompactPdfText(item.name || "Personalised keychain")}`,
+      margin + 5,
+      y + 7
+    );
+    pdf.setTextColor(...pink);
+    pdf.text(
+      getCompactPdfText(formatMoney(item.price)),
+      pageWidth - margin - 5,
+      y + 7,
+      { align: "right" }
+    );
+
+    pdf.setTextColor(...muted);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.5);
+    pdf.text(getCompactPdfText(baseShape), margin + 5, y + 12);
+
+    const characters = Array.from(
+      item.clean_name || sanitizeName(item.name || "")
+    );
+    let blockX = margin + 5;
+    const blockY = y + 16;
+
+    characters.forEach((character, characterIndex) => {
+      const baseRgb = getPdfRgb(
+        bases[characterIndex % bases.length],
+        "#f6a9c2"
+      );
+      const capRgb = getPdfRgb(
+        caps[characterIndex % caps.length],
+        "#ffffff"
+      );
+      const letterRgb = getPdfRgb(
+        letters[characterIndex % letters.length],
+        "#332d30"
+      );
+
+      pdf.setFillColor(...baseRgb);
+      pdf.roundedRect(blockX, blockY, 9, 11, 1.5, 1.5, "F");
+      pdf.setFillColor(...capRgb);
+      pdf.roundedRect(blockX + 1, blockY + 1, 7, 7, 1, 1, "F");
+      pdf.setTextColor(...letterRgb);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7);
+      const printableCharacter = /^[A-Za-z0-9]$/.test(character)
+        ? character
+        : "*";
+      pdf.text(printableCharacter, blockX + 4.5, blockY + 5.7, {
+        align: "center"
+      });
+      blockX += 10.5;
+    });
+
+    pdf.setTextColor(...muted);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7.5);
+    pdf.text(colourLines, margin + 5, y + 31);
+    y += cardHeight + 5;
+  });
+
+  if (!items.length) {
+    drawWrappedDetail("Order items", "No item details were saved");
+  }
+
+  addPageIfNeeded(37);
+  pdf.setFillColor(...softPink);
+  pdf.roundedRect(margin, y, contentWidth, 33, 4, 4, "F");
+  pdf.setTextColor(...dark);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.text("Subtotal", margin + 6, y + 8);
+  pdf.text(
+    getCompactPdfText(formatMoney(order.subtotal)),
+    pageWidth - margin - 6,
+    y + 8,
+    { align: "right" }
+  );
+  pdf.text("Delivery", margin + 6, y + 16);
+  pdf.text(
+    Number(order.delivery_fee || 0) === 0
+      ? "Free"
+      : getCompactPdfText(formatMoney(order.delivery_fee)),
+    pageWidth - margin - 6,
+    y + 16,
+    { align: "right" }
+  );
+  pdf.setTextColor(...pink);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(13);
+  pdf.text("Total Paid", margin + 6, y + 27);
+  pdf.text(
+    getCompactPdfText(formatMoney(order.total)),
+    pageWidth - margin - 6,
+    y + 27,
+    { align: "right" }
+  );
+
+  const dataUri = pdf.output("datauristring");
+  const base64 = dataUri.slice(dataUri.indexOf(",") + 1);
+  console.log(
+    "Compact PDF attachment size:",
+    `${Math.ceil(base64.length / 1024)} KB base64`
+  );
+
+  return base64;
+}
+
 async function sendPaymentVerifiedEmail(order) {
   const customerEmail = order.customer_email?.trim();
 
@@ -1616,7 +1902,7 @@ async function sendPaymentVerifiedEmail(order) {
 
   console.log("Order list being emailed:", orderList);
 
-  const orderPdf = await generateOrderPdfAttachment(order, items);
+  const orderPdf = await generateCompactOrderPdfAttachment(order, items);
 
   const response = await emailjs.send(
     EMAILJS_SERVICE,
