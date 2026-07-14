@@ -776,7 +776,10 @@ Chloe</textarea>
             <span>4</span>
             <p>
               We'll verify your payment and send
-              a confirmation email with your order PDF 💌
+              a confirmation email with your order PDF 💌<br>
+              <small>
+                If you can’t find it, please check your Spam or Junk folder.
+              </small>
             </p>
           </div>
         </div>
