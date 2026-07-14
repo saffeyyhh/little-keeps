@@ -724,6 +724,16 @@ Chloe</textarea>
         <h3>Order Reference</h3>
         <strong id="paymentOrderRef"></strong>
 
+        <button
+          id="copyOrderRefBtn"
+          type="button"
+          class="save-qr-btn"
+        >
+          Copy Order Reference
+        </button>
+
+        <p id="copyOrderRefStatus" class="hint"></p>
+
         <h3>Total Amount</h3>
         <strong id="paymentTotal"></strong>
 
@@ -993,6 +1003,10 @@ const paymentScreen =
 document.getElementById("paymentScreen");
 const paymentOrderRef =
 document.getElementById("paymentOrderRef");
+const copyOrderRefBtn =
+document.getElementById("copyOrderRefBtn");
+const copyOrderRefStatus =
+document.getElementById("copyOrderRefStatus");
 const paymentTotal =
 document.getElementById("paymentTotal");
 const paymentDoneBtn =
@@ -2750,6 +2764,32 @@ paymentBackBtn.onclick = () => {
 
 paymentDoneBtn.onclick = () => {
   window.location.href = "/";
+};
+
+copyOrderRefBtn.onclick = async () => {
+  const orderRef = paymentOrderRef.innerText.trim();
+
+  if (!orderRef) return;
+
+  try {
+    await navigator.clipboard.writeText(orderRef);
+  } catch (error) {
+    const temporaryInput = document.createElement("textarea");
+    temporaryInput.value = orderRef;
+    temporaryInput.style.position = "fixed";
+    temporaryInput.style.opacity = "0";
+    document.body.appendChild(temporaryInput);
+    temporaryInput.select();
+    document.execCommand("copy");
+    temporaryInput.remove();
+  }
+
+  copyOrderRefStatus.innerText =
+    "Copied! Paste this into your PayNow reference or remarks.";
+
+  setTimeout(() => {
+    copyOrderRefStatus.innerText = "";
+  }, 4000);
 };
 
 makeSwatches("baseColours", baseColours, "base");
