@@ -607,7 +607,7 @@ Chloe</textarea>
           placeholder="Select date"
         >
 
-        <p id="dateAvailability" class="hint"></p>
+        <p id="dateAvailability" class="hint hidden"></p>
 
         <label for="collectionMethod">
           Collection Method
@@ -1232,15 +1232,11 @@ async function checkNeededByDate() {
     console.error(error);
     neededByAllowed = false;
     neededByMessage = "Unable to check date availability.";
-    dateAvailability.innerText = neededByMessage;
     return false;
   }
 
   neededByAllowed = data.allowed;
   neededByMessage = data.reason;
-
-  dateAvailability.innerText = neededByMessage;
-  dateAvailability.style.color = data.allowed ? "#3c9d67" : "#c9184a";
 
   return data.allowed;
 }
@@ -1546,25 +1542,59 @@ async function setupNeededByCalendar() {
   const minDate = new Date();
   minDate.setDate(minDate.getDate() + 3);
 
+  const maxDate = new Date(minDate);
+  maxDate.setFullYear(maxDate.getFullYear() + 1);
+
+  const toLocalDateString = date => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
+
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: closures, error: closureError } = await supabase
-    .from("shop_closures")
-    .select("start_date, end_date")
-    .gte("end_date", today);
+  const [closureResult, unavailableDateResult] = await Promise.all([
+    supabase
+      .from("shop_closures")
+      .select("start_date, end_date")
+      .gte("end_date", today),
+    supabase.rpc("get_unavailable_needed_by_dates", {
+      p_start: toLocalDateString(minDate),
+      p_end: toLocalDateString(maxDate)
+    })
+  ]);
 
-  if (closureError) console.error(closureError);
+  if (closureResult.error) {
+    console.error("Unable to load shop closures:", closureResult.error);
+  }
 
-const disabledDates = [
-  ...(closures || []).map(item => ({
+  if (unavailableDateResult.error) {
+    console.error(
+      "Unable to load full order dates:",
+      unavailableDateResult.error
+    );
+  }
+
+  const closureDates = (closureResult.data || []).map(item => ({
     from: item.start_date,
     to: item.end_date
-  }))
-];
+  }));
+
+  const fullOrderDates = (unavailableDateResult.data || [])
+    .map(item => item.unavailable_date)
+    .filter(Boolean);
+
+  const disabledDates = [
+    ...closureDates,
+    ...fullOrderDates
+  ];
 
   flatpickr(neededBy, {
     dateFormat: "Y-m-d",
     minDate,
+    maxDate,
     disable: disabledDates,
 
     onChange: async () => {
