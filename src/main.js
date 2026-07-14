@@ -750,29 +750,32 @@ Chloe</textarea>
           <div class="payment-step">
             <span>2</span>
             <p>
-              Pay <strong>the exact amount</strong>
+              Pay <strong>the exact amount</strong> and include
+              your order reference in the payment reference or remarks
             </p>
           </div>
 
           <div class="payment-step">
             <span>3</span>
-            <p>Send your payment screenshot</p>
+            <p>
+              No screenshot or WhatsApp message is required
+            </p>
           </div>
 
           <div class="payment-step">
             <span>4</span>
             <p>
               We'll verify your payment and send
-              a confirmation email 💌
+              a confirmation email with your order PDF 💌
             </p>
           </div>
         </div>
 
 <button
-  id="whatsappBtn"
+  id="paymentDoneBtn"
   class="submit-btn"
 >
-  Send Payment Proof via WhatsApp
+  Done — Return to Shop
 </button>
       </div>
     </section>
@@ -992,8 +995,8 @@ const paymentOrderRef =
 document.getElementById("paymentOrderRef");
 const paymentTotal =
 document.getElementById("paymentTotal");
-const whatsappBtn =
-document.getElementById("whatsappBtn");
+const paymentDoneBtn =
+document.getElementById("paymentDoneBtn");
 const paymentBackBtn =
 document.getElementById("paymentBackBtn");
 
@@ -2745,26 +2748,8 @@ paymentBackBtn.onclick = () => {
 
 };
 
-whatsappBtn.onclick = () => {
-
-    const msg =
-`Hi Little Keeps!
-
-I've completed payment for my order.
-
-Order Reference:
-${paymentOrderRef.innerText}.
-
-Amount Paid:
-${paymentTotal.innerText}.
-
-I'll attach my payment screenshot below`;
-
-    window.open(
-        `https://wa.me/6585121915?text=${encodeURIComponent(msg)}`,
-        "_blank"
-    );
-
+paymentDoneBtn.onclick = () => {
+  window.location.href = "/";
 };
 
 makeSwatches("baseColours", baseColours, "base");
@@ -3088,4 +3073,3 @@ buildSelectedPreview();
 animate();
 
 loadDraft();
-
