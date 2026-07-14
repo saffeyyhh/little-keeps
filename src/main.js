@@ -3113,3 +3113,39 @@ buildSelectedPreview();
 animate();
 
 loadDraft();
+
+// Payment-page preview for layout testing only.
+// This does not create, save or update an order.
+if (
+  new URLSearchParams(window.location.search)
+    .get("payment-preview") === "true"
+) {
+  draftModal.classList.add("hidden");
+  designScreen.classList.add("hidden");
+  checkoutScreen.classList.add("hidden");
+  paymentScreen.classList.remove("hidden");
+
+  paymentOrderRef.innerText = "LK-PREVIEW-1234";
+  paymentTotal.innerText = "$5.70";
+
+  const paymentBox = paymentScreen.querySelector(".payment-box");
+
+  if (paymentBox) {
+    const previewNotice = document.createElement("div");
+    previewNotice.style.cssText = `
+      margin-bottom:16px;
+      padding:12px;
+      background:#fff0f6;
+      border:1px solid #ffc6d9;
+      border-radius:12px;
+      color:#a83d65;
+      font-weight:700;
+      text-align:center;
+    `;
+    previewNotice.innerText =
+      "Preview mode only — no order has been submitted.";
+    paymentBox.prepend(previewNotice);
+  }
+
+  window.scrollTo(0, 0);
+}
