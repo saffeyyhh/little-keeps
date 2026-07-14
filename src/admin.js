@@ -1236,6 +1236,21 @@ function getEmailOrderItems(order) {
       : [];
 }
 
+function escapeEmailHtml(value) {
+  const characters = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  };
+
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    character => characters[character]
+  );
+}
+
 function getSafePdfColour(value, fallback) {
   const colour = value?.hex || value;
 
