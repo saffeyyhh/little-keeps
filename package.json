@@ -19,6 +19,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "flatpickr": "^4.6.13",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "multer": "^2.2.0",
     "openai": "^6.45.0",
     "three": "^0.185.0"
