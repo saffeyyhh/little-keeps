@@ -1,1125 +1,847 @@
-import "./style.css";
-import * as THREE from "three";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import confetti from "canvas-confetti";
+import "./admin.css";
 import { createClient } from "@supabase/supabase-js";
-import flatpickr from "flatpickr";
-import "flatpickr/dist/flatpickr.min.css";
-
-const isManualOrder =
-  new URLSearchParams(window.location.search).get("manual") === "true";
-
-console.log("Manual mode:", isManualOrder);
+import emailjs from "@emailjs/browser";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
 
+const EMAILJS_SERVICE = "service_joll6ie";
+const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
+const EMAILJS_PAYMENT_VERIFIED_TEMPLATE = "template_liazurv";
+
+
+emailjs.init(EMAILJS_PUBLIC);
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const { data: sessionData } = await supabase.auth.getSession();
+
+if (!sessionData.session) {
+  document.querySelector("#app").innerHTML = `
+    <main class="admin-page">
+      <div class="login-card">
+        <h1>Little Keeps Workshop ♡</h1>
+        <p>Admin login required.</p>
+
+        <input id="loginEmail" type="email" placeholder="Email">
+        <input id="loginPassword" type="password" placeholder="Password">
+
+        <button id="loginBtn">Login</button>
+
+        <p id="loginStatus" class="hint"></p>
+      </div>
+    </main>
+  `;
+
+  document.getElementById("loginBtn").onclick = async () => {
+    const email = document.getElementById("loginEmail").value;
+    const password = document.getElementById("loginPassword").value;
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      document.getElementById("loginStatus").innerText =
+        "Login failed. Check email/password.";
+      return;
+    }
+
+    location.reload();
+  };
+
+  throw new Error("Not logged in");
+}
+
 document.querySelector("#app").innerHTML = `
-<main class="page">
+  <main class="admin-page">
+    <header class="admin-header">
+      <p class="eyebrow">Little Keeps</p>
+      <h1>Workshop ♡</h1>
+      <p>Manage orders, printing and pickups in one place.</p>
+          <button id="logoutBtn">Logout</button>
+    </header>
 
-<div class="announcement-bar">
-  <div class="announcement-item">
-    <span class="announcement-icon">♡</span>
-    <span>Handmade in Singapore</span>
-  </div>
+    <section id="stats" class="stats-grid"></section>
 
-  <span class="announcement-divider"></span>
-
-  <div class="announcement-item">
-    <span class="announcement-icon">▣</span>
-    <span>Free islandwide delivery above $50</span>
-  </div>
-
-  <span class="announcement-divider"></span>
-
-  <div class="announcement-item announcement-holiday">
-    <span class="announcement-icon">▧</span>
-
-    <span>
-      <strong>Holiday Notice:</strong>
-      <span id="holidayNoticeText">
-        No current announcements.
-      </span>
-    </span>
-  </div>
-</div>
-
-<header class="site-header">
-  <button
-    id="menuOpenBtn"
-    type="button"
-    class="menu-icon-btn"
-    aria-label="Open menu"
-  >
-    ☰
-  </button>
-
-  <a href="#" class="site-logo">
-    <span class="logo-flower">✿</span>
-    Little Keeps
-  </a>
-
-  <button
-    id="headerCartBtn"
-    type="button"
-    class="header-cart-btn"
-  >
-    <span>Cart</span>
-
-    <span id="headerCartCount" class="cart-count">
-      0
-    </span>
-  </button>
-</header>
-
-<div id="menuOverlay" class="menu-overlay hidden"></div>
-
-<aside id="sideMenu" class="side-menu">
-  <div class="side-menu-top">
-    <div>
-      <p class="side-menu-eyebrow">Little Keeps</p>
-      <h2>Menu ♡</h2>
-    </div>
-
-    <button
-      id="menuCloseBtn"
-      type="button"
-      class="menu-close-btn"
-      aria-label="Close menu"
-    >
-      ×
-    </button>
-  </div>
-
-  <nav class="side-nav">
-    <button
-      type="button"
-      class="side-nav-link"
-      data-scroll-target="homeSection"
-    >
-      <span>⌂</span>
-      Home
-    </button>
-
-    <button
-      type="button"
-      class="side-nav-link"
-      data-scroll-target="designArea"
-    >
-      <span>✿</span>
-      Design Your Keychain
-    </button>
-
-    <button
-      type="button"
-      class="side-nav-link"
-      data-scroll-target="contactSection"
-    >
-      <span>♡</span>
-      Contact
-    </button>
-
-    <button
-      id="sideCartBtn"
-      type="button"
-      class="side-nav-link side-cart-link"
-    >
-      <span>🛍</span>
-
-      <span>View Cart</span>
-
-      <span id="sideCartCount" class="side-cart-count">
-        0
-      </span>
-    </button>
-  </nav>
-
-  <div class="side-menu-footer">
-    <p>Personalised and made with love in Singapore.</p>
-
-    <a
-      href="https://www.instagram.com/madebylittlekeeps"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      @madebylittlekeeps
-    </a>
-  </div>
-</aside>
-
-<div id="cartOverlay" class="cart-overlay hidden"></div>
-
-<aside id="cartDrawer" class="cart-drawer">
-  <div class="cart-drawer-header">
-    <div>
-      <p class="side-menu-eyebrow">Your order</p>
-      <h2>Shopping Cart ♡</h2>
-    </div>
-
-    <button
-      id="cartCloseBtn"
-      type="button"
-      class="menu-close-btn"
-      aria-label="Close cart"
-    >
-      ×
-    </button>
-  </div>
-
-  <div id="cartDrawerItems" class="cart-drawer-items"></div>
-
-  <div class="cart-drawer-footer">
-    <div class="cart-drawer-total">
-      <span>Subtotal</span>
-      <strong id="cartDrawerSubtotal">$0.00</strong>
-    </div>
-
-    <p class="cart-delivery-hint">
-      Delivery is calculated during checkout.
-    </p>
-
-    <button
-      id="continueShoppingBtn"
-      type="button"
-      class="cart-secondary-btn"
-    >
-      Continue Designing
-    </button>
-
-    <button
-      id="checkoutFromCartBtn"
-      type="button"
-      class="submit-btn"
-    >
-      Checkout
-    </button>
-  </div>
-</aside>
-
-<section id="designScreen" class="design-screen">
-
-<section id="homeSection" class="storefront-hero">
-  <div class="hero-inner">
-    <div class="hero-copy">
-      <p class="hero-eyebrow">
-        Made especially for you
-      </p>
-
-      <h1>
-        Tiny keepsakes,
-        <span>made personal.</span>
-      </h1>
-
-      <p class="hero-description">
-        Design your own personalised, clicky and
-        fidget-friendly keychain in your favourite colours.
-      </p>
-
-      <button
-        id="startDesignBtn"
-        type="button"
-        class="hero-button"
-      >
-        Start Designing
-        <span>→</span>
-      </button>
-    </div>
-
-    <div class="hero-offer-card">
-      <div class="hero-offer-top">
-        <div>
-          <p>Personalised</p>
-          <strong>Clicky Keychains</strong>
+        <div class="workshop-tabs">
+        <button id="ordersViewBtn" class="workshop-tab active">Orders</button>
+        <button id="productionViewBtn" class="workshop-tab">Production</button>
+        <button id="assemblyViewBtn" class="workshop-tab">Assembly</button>
         </div>
 
-        <div class="hero-price-badge">
-          <small>From</small>
-          <span>$3.20</span>
-        </div>
-      </div>
+        <div class="section-title">
+        <h2 id="sectionTitle">Orders</h2>
 
-      <div class="hero-included-list">
-        <p class="hero-card-label">What's included</p>
-
-        <span>✓ No maximum letters</span>
-        <span>✓ 1 base colour included</span>
-        <span>✓ 1 cap colour included</span>
-        <span>✓ 1 letter colour included</span>
-        <span>✓ Icons included</span>
-      </div>
-
-      <div class="hero-pricing-guide">
-        <p>Additional colours</p>
-
-        <div class="hero-price-row">
-          <span>Extra base colour</span>
-          <strong>+$0.50</strong>
-        </div>
-
-        <div class="hero-price-row">
-          <span>Extra cap colour</span>
-          <strong>+$0.30</strong>
-        </div>
-
-        <div class="hero-price-row">
-          <span>Extra letter colour</span>
-          <strong>+$0.20</strong>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="hero-decoration hero-decoration-one"></div>
-  <div class="hero-decoration hero-decoration-two"></div>
-</section>
-
-<section id="designArea" class="shop-section">
-  <div class="section-heading">
-    <p class="section-eyebrow">Create yours</p>
-
-    <h2>Design Your Keychain</h2>
-
-    <p>
-      Enter your name, choose your style and preview
-      your personalised keychain in 3D.
-    </p>
-  </div>
-
-  <div class="designer-setup">
-    <div class="designer-setup-heading">
-      <p class="section-eyebrow">Start here</p>
-      <h2>Who are you designing for?</h2>
-
-      <p>
-        Choose one keychain or enter several names for a group order.
-      </p>
-    </div>
-
-    <div class="setup-grid">
-      <div class="card order-type-card">
-        <h3>Order Type</h3>
-
-        <p class="hint">
-          Choose single for one keychain, or group for multiple names.
-        </p>
-
-        <div class="toggle-row">
-          <button
-            id="singleBtn"
-            type="button"
-            class="toggle active"
-          >
-            Single Order
-          </button>
-
-          <button
-            id="groupBtn"
-            type="button"
-            class="toggle"
-          >
-            Group Order
-          </button>
-        </div>
-      </div>
-
-      <div class="card names-card">
-        <div id="singleSection">
-          <h3>Enter Name</h3>
-
-          <p class="hint">
-            Type your name, then tap an icon if you want to add one.
-          </p>
-
-          <input
-            id="singleName"
-            value="Alicia"
-            maxlength="10"
-          >
-
-          <div id="iconPicker" class="icon-picker"></div>
-        </div>
-
-        <div id="groupSection" class="hidden">
-          <h3>Enter Names</h3>
-
-          <p class="hint">
-            Enter one name per line.
-          </p>
-
-          <textarea
-            id="nameList"
-            placeholder="Paste names here, one per line"
-          >Alicia
-Ben
-Chloe</textarea>
-
-          <p id="nameCount">3 names</p>
-
-          <p class="hint">
-            Tap an icon to add it to the current line.
-          </p>
-
-          <div
-            id="groupIconPicker"
-            class="icon-picker"
-          ></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="nameCardsSection" class="card keychain-selector">
-      <div class="keychain-selector-heading">
-        <div>
-          <h3>Choose a Keychain to Edit</h3>
-
-          <p class="hint">
-            For group orders, select the keychain you want to customise.
-          </p>
-        </div>
-
-        <div id="applyAllSection">
-          <label class="apply-row">
-            <input id="applyAllToggle" type="checkbox">
-            Use the same design for all keychains
-          </label>
-
-          <p id="editingLabel" class="hint"></p>
-        </div>
-      </div>
-
-      <div id="nameCards"></div>
-    </div>
-  </div>
-
-  <div class="product-customiser">
-    <section class="preview-column">
-      <div class="preview-sticky">
-        <div class="preview-card">
-          <div class="preview-card-heading">
-            <div>
-              <p class="section-eyebrow">Live preview</p>
-              <h2>Your Keychain</h2>
-            </div>
-          </div>
-
-          <canvas id="previewCanvas"></canvas>
-
-          <p id="editModeText" class="preview-editing-text">
-            Currently editing: Alicia only
-          </p>
-        </div>
-
-      <div class="preview-tip">
-        <p>
-          Drag the preview to rotate your keychain.
-        </p>
-      </div>
-      </div>
-    </section>
-
-    <section class="options-column">
-      <div class="card colours-card">
-        <div class="customiser-heading">
-          <p class="section-eyebrow">Make it yours</p>
-          <h2>Customise Your Design</h2>
-
-          <p>
-            Choose your base shape, base colours,
-            cap colours and letter colours.
-          </p>
-        </div>
-
-        <div class="customisation-section">
-          <div class="customisation-title">
-            <div>
-              <h3>Base Shape</h3>
-              <p>Choose the shape of the keychain base.</p>
-            </div>
-          </div>
-
-          <div class="toggle-row">
-            <button
-              id="ribbedBaseBtn"
-              type="button"
-              class="toggle active"
-            >
-              Ribbed
-            </button>
-
-            <button
-              id="bubblyBaseBtn"
-              type="button"
-              class="toggle"
-            >
-              Bubbly
-            </button>
-          </div>
-        </div>
-
-        <div class="customisation-section">
-          <div class="customisation-title">
-            <div>
-              <h3>Base Colours</h3>
-              <p>Select one or more base colours.</p>
-            </div>
-          </div>
-
-          <div id="baseSlots" class="slot-row"></div>
-
-          <p id="baseColourHint" class="colour-hint">
-            Hover or tap a colour
-          </p>
-
-          <div id="baseColours" class="swatches"></div>
-        </div>
-
-        <div class="customisation-section">
-          <div class="customisation-title">
-            <div>
-              <h3>Cap Colours</h3>
-              <p>Select one or more top cap colours.</p>
-            </div>
-          </div>
-
-          <div id="capSlots" class="slot-row"></div>
-
-          <p id="capColourHint" class="colour-hint">
-            Hover or tap a colour
-          </p>
-
-          <div id="capColours" class="swatches"></div>
-        </div>
-
-        <div class="customisation-section">
-          <div class="customisation-title">
-            <div>
-              <h3>Letter Colours</h3>
-              <p>Select one or more raised letter colours.</p>
-            </div>
-          </div>
-
-          <div id="letterSlots" class="slot-row"></div>
-
-          <p id="letterColourHint" class="colour-hint">
-            Hover or tap a colour
-          </p>
-
-          <div id="letterColours" class="swatches"></div>
-        </div>
-
-        <div class="special-colour-note">
-          <div class="special-colour-icon">♡</div>
-
-          <div>
-            <strong>Looking for another colour?</strong>
-
-            <p>
-              Message us on WhatsApp. We may be able to
-              specially order it at no additional cost.
-            </p>
-
-            <a
-              href="https://wa.me/6585121915"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Ask about another colour →
+        <div class="admin-actions" id="ordersActions">
+            <a class="new-order-btn" href="./index.html?manual=true">
+            + New Manual Order
             </a>
-          </div>
+
+            <button id="refreshBtn" title="Refresh Orders">
+                ↻
+            </button>
+        </div>
         </div>
 
-        <p class="screen-colour-note">
-          Colours shown on screen are for reference only.
-          Slight differences may occur between monitors
-          and filament batches.
-        </p>
+      <div id="orderFilters" class="order-filters">
+        <input id="orderSearch" placeholder="Search order ref or customer...">
 
-        <button
-          id="resetSelected"
-          type="button"
-          class="reset-btn"
-        >
-          Reset Selected Keychain
-        </button>
-      </div>
-    </section>
-  </div>
-
-  <div class="add-cart-area">
-    <div class="cart-price-summary">
-      <span>Your current design</span>
-      <strong id="designTotalDisplay">$3.20</strong>
-    </div>
-
-    <button
-      id="nextBtn"
-      type="button"
-      class="submit-btn add-cart-btn"
-    >
-      <span>Add to Cart</span>
-      <span>♡</span>
-    </button>
-  </div>
-</section>
-</section>
-
-<section
-  id="checkoutScreen"
-  class="checkout-screen hidden"
->
-      <button id="backBtn" class="secondary-btn">
-        ← Back to Design
-      </button>
-
-      <div class="contact-box">
-<div class="checkout-heading">
-  <p class="section-eyebrow">Checkout</p>
-  <h2>Your Details</h2>
-  <p>Tell us where and when you need your order.</p>
-</div>
-
-        <input id="customerName" placeholder="Name">
-
-        <input
-          id="customerEmail"
-          type="email"
-          placeholder="Email"
-        >
-
-        <input
-          id="customerPhone"
-          placeholder="Contact Number"
-        >
-
-        <label for="neededBy">Needed By</label>
-
-        <p class="hint">
-          Please allow at least 2–3 days for production
-          and 2 days for delivery.
-        </p>
-
-        <input
-          id="neededBy"
-          type="text"
-          placeholder="Select date"
-        >
-
-        <p id="dateAvailability" class="hint"></p>
-
-        <label for="collectionMethod">
-          Collection Method
-        </label>
-
-        <select id="collectionMethod">
-          <option value="pickup">
-            📍 Pick Up at Woodlands MRT
-          </option>
-
-          <option value="delivery">
-            🚚 Islandwide Delivery (+$2.50)
-          </option>
+        <select id="orderViewFilter">
+          <option value="active">Active Orders</option>
+          <option value="all">All Orders</option>
+          <option value="completed">Completed Only</option>
         </select>
 
-        <div
-          id="deliveryAddressSection"
-          class="hidden"
-        >
-          <label for="deliveryAddressLine1">
-            Delivery Address
-          </label>
+        <select id="statusFilter">
+          <option value="all">All Status</option>
+          <option value="Pending Payment">Pending Payment</option>
+          <option value="Payment Verification">Pending Verification</option>
+          <option value="Payment Verified">Payment Verified</option>
+          <option value="Printing">Printing</option>
+          <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
+          <option value="Completed">Completed</option>
+        </select>
 
-          <input
-            id="deliveryAddressLine1"
-            type="text"
-            placeholder="Block and street name"
-          >
-
-          <input
-            id="deliveryAddressLine2"
-            type="text"
-            placeholder="Unit number, e.g. #12-34"
-          >
-
-          <input
-            id="deliveryPostalCode"
-            type="text"
-            inputmode="numeric"
-            maxlength="6"
-            placeholder="Postal code"
-          >
+        <select id="paymentFilter">
+          <option value="all">All Payment</option>
+          <option value="Pending">Pending</option>
+          <option value="Paid">Paid</option>
+          <option value="Free">Free</option>
+          <option value="Giveaway">Giveaway</option>
+          <option value="Replacement">Replacement</option>
+        </select>
+      </div>
+        <div id="orders">
+          <p class="empty">Loading orders...</p>
         </div>
-
-        <p id="deliveryNote" class="hint"></p>
-
-        <textarea
-          id="orderNotes"
-          placeholder="Preferred pickup timing, delivery instructions, or additional notes..."
-        ></textarea>
-      </div>
-
-      <div class="review-box">
-<h3>Order Summary</h3>
-
-        <div class="review-summary">
-          <p>
-            Total names:
-            <strong id="reviewCount">0</strong>
-          </p>
-
-          <p>
-            Estimated total:
-            <strong id="reviewPrice">$0.00</strong>
-          </p>
-        </div>
-
-        <div id="reviewList"></div>
-      </div>
-
-      <div class="payment-box">
-<h3>Ready to Order?</h3>
-
-        <p>
-          Payment is via PayNow only.
-        </p>
-
-        <p>
-          After submitting, you’ll see the QR code
-          and exact amount to pay.
-        </p>
-      </div>
-
-<button
-  id="submitOrderBtn"
-  class="submit-btn"
-  disabled
->
-  Submit Order & Continue to Payment
-</button>
-
-      <p id="formStatus" class="hint"></p>
-      <p id="submitStatus" class="hint"></p>
     </section>
-
-    <section
-      id="paymentScreen"
-      class="checkout-screen hidden"
-    >
-      <button
-        id="paymentBackBtn"
-        class="secondary-btn"
-      >
-        ← Back
-      </button>
-
-      <div class="payment-box">
-<h2>Complete Your Payment</h2>
-
-        <p>
-          Please complete payment to begin production.
-        </p>
-
-        <h3>Order Reference</h3>
-        <strong id="paymentOrderRef"></strong>
-
-        <h3>Total Amount</h3>
-        <strong id="paymentTotal"></strong>
-
-        <img
-          src="/models/paynow.png"
-          class="paynowQR"
-          alt="PayNow QR"
-        >
-
-        <a
-          href="/models/paynow.png"
-          download="LittleKeeps-PayNow.png"
-          class="save-qr-btn"
-        >
-          ↑ Save QR Code
-        </a>
-
-        <div class="payment-steps">
-          <div class="payment-step">
-            <span>1</span>
-            <p>Scan or save the QR code</p>
-          </div>
-
-          <div class="payment-step">
-            <span>2</span>
-            <p>
-              Pay <strong>the exact amount</strong> and include
-              your order reference in the payment reference or remarks
-            </p>
-          </div>
-
-          <div class="payment-step">
-            <span>3</span>
-            <p>
-              No screenshot or WhatsApp message is required
-            </p>
-          </div>
-
-          <div class="payment-step">
-            <span>4</span>
-            <p>
-              We'll verify your payment and send
-              a confirmation email with your order PDF 💌
-            </p>
-          </div>
-        </div>
-
-<button
-  id="paymentDoneBtn"
-  class="submit-btn"
->
-  Done — Return to Shop
-</button>
-      </div>
-    </section>
-
-    <div id="successModal" class="modal hidden">
-      <div class="modal-card">
-        <h2>Order Submitted ♡</h2>
-
-        <p>Thank you! We’ve received your order.</p>
-
-        <p id="orderRefText"></p>
-
-        <p>
-          We’ll contact you nearer to your
-          collection or delivery date.
-        </p>
-
-        <p class="hint">
-          📧 Please check your email for payment instructions.<br>
-          If you don’t see it, kindly check your Junk or Spam folder too.
-        </p>
-
-        <button
-          id="closeModalBtn"
-          class="submit-btn"
-        >
-          Done
-        </button>
-      </div>
-    </div>
-
-    <div id="draftModal" class="modal hidden">
-      <div class="modal-card">
-        <h2>🩷 Welcome Back!</h2>
-
-        <p>We found an unfinished order.</p>
-
-        <p>
-          Would you like to continue where you left off?
-        </p>
-
-        <button
-          id="continueDraftBtn"
-          class="submit-btn"
-        >
-          Continue Order
-        </button>
-
-        <button
-          id="discardDraftBtn"
-          class="secondary-btn"
-        >
-          Start New
-        </button>
-      </div>
-    </div>
-
-<section id="contactSection" class="contact-section">
-  <div class="contact-copy">
-    <p class="section-eyebrow">Say hello</p>
-    <h2>Need a little help?</h2>
-
-    <p>
-      Have a colour request, group order or custom idea?
-      Send us a message and we’ll be happy to help.
-    </p>
-  </div>
-
-  <div class="contact-links">
-    <a
-      href="https://wa.me/6585121915"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="contact-link-card"
-    >
-      <span class="contact-link-icon">💬</span>
-
-      <span>
-        <small>Message us</small>
-        <strong>WhatsApp</strong>
-      </span>
-
-      <span>→</span>
-    </a>
-
-    <a
-      href="https://www.instagram.com/madebylittlekeeps"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="contact-link-card"
-    >
-      <span class="contact-link-icon">♡</span>
-
-      <span>
-        <small>Follow us</small>
-        <strong>@madebylittlekeeps</strong>
-      </span>
-
-      <span>→</span>
-    </a>
-  </div>
-</section>
-
-<footer class="site-footer">
-  <a href="#" class="footer-logo">
-    Little Keeps ♡
-  </a>
-
-  <p>
-    Personalised keepsakes, lovingly made in Singapore.
-  </p>
-
-  <small>
-    © ${new Date().getFullYear()} Little Keeps
-  </small>
-</footer>
-
   </main>
 `;
 
-const BASE_PRICE = 3.2;
+const ordersContainer = document.getElementById("orders");
+const statsContainer = document.getElementById("stats");
+const refreshBtn = document.getElementById("refreshBtn");
+const ordersViewBtn = document.getElementById("ordersViewBtn");
+const productionViewBtn = document.getElementById("productionViewBtn");
+const sectionTitle = document.getElementById("sectionTitle");
+const ordersActions = document.getElementById("ordersActions");
+const assemblyViewBtn = document.getElementById("assemblyViewBtn");
 
-const INCLUDED_BASE_COLOURS = 1;
-const INCLUDED_CAP_COLOURS = 1;
-const INCLUDED_LETTER_COLOURS = 1;
+const orderFilters = document.getElementById("orderFilters");
+const orderSearch = document.getElementById("orderSearch");
+const orderViewFilter = document.getElementById("orderViewFilter");
+const statusFilter = document.getElementById("statusFilter");
+const paymentFilter = document.getElementById("paymentFilter");
 
-const EXTRA_BASE_COLOUR_PRICE = 0.5;
-const EXTRA_CAP_COLOUR_PRICE = 0.3;
-const EXTRA_LETTER_COLOUR_PRICE = 0.2;
+const logoutBtn = document.getElementById("logoutBtn");
 
-const canvas = document.getElementById("previewCanvas");
-const singleBtn = document.getElementById("singleBtn");
-const groupBtn = document.getElementById("groupBtn");
-const singleSection = document.getElementById("singleSection");
-const groupSection = document.getElementById("groupSection");
-const singleName = document.getElementById("singleName");
-const nameList = document.getElementById("nameList");
-const nameCount = document.getElementById("nameCount");
-const nameCards = document.getElementById("nameCards");
-const nameCardsSection = document.getElementById("nameCardsSection");
-const applyAllToggle = document.getElementById("applyAllToggle");
-const editModeText = document.getElementById("editModeText");
+const { data: { session } } = await supabase.auth.getSession();
 
-const applyAllSection = document.getElementById("applyAllSection");
-const resetSelected = document.getElementById("resetSelected");
-const reviewCount = document.getElementById("reviewCount");
-const reviewPrice = document.getElementById("reviewPrice");
-const reviewList = document.getElementById("reviewList");
-const customerName = document.getElementById("customerName");
-const customerEmail = document.getElementById("customerEmail");
-const customerPhone = document.getElementById("customerPhone");
-const neededBy = document.getElementById("neededBy");
-const collectionMethod = document.getElementById("collectionMethod");
-const deliveryNote = document.getElementById("deliveryNote");
-const orderNotes = document.getElementById("orderNotes");
-const submitOrderBtn = document.getElementById("submitOrderBtn");
-const submitStatus = document.getElementById("submitStatus");
-const successModal = document.getElementById("successModal");
-const orderRefText = document.getElementById("orderRefText");
-const closeModalBtn = document.getElementById("closeModalBtn");
-const menuOpenBtn =
-  document.getElementById("menuOpenBtn");
 
-const menuCloseBtn =
-  document.getElementById("menuCloseBtn");
+console.log(session);
 
-const sideMenu =
-  document.getElementById("sideMenu");
+logoutBtn.onclick = async () => {
+  await supabase.auth.signOut();
+  location.reload();
+};
 
-const menuOverlay =
-  document.getElementById("menuOverlay");
+let currentView = "orders";
+let latestOrders = [];
 
-const headerCartBtn =
-  document.getElementById("headerCartBtn");
+let inventoryItems = {};
 
-const sideCartBtn =
-  document.getElementById("sideCartBtn");
-
-const headerCartCount =
-  document.getElementById("headerCartCount");
-
-const sideCartCount =
-  document.getElementById("sideCartCount");
-
-const startDesignBtn =
-  document.getElementById("startDesignBtn");
-
-const designTotalDisplay =
-  document.getElementById("designTotalDisplay");
-
-  const cartDrawer =
-  document.getElementById("cartDrawer");
-
-const cartOverlay =
-  document.getElementById("cartOverlay");
-
-const cartCloseBtn =
-  document.getElementById("cartCloseBtn");
-
-const cartDrawerItems =
-  document.getElementById("cartDrawerItems");
-
-const cartDrawerSubtotal =
-  document.getElementById("cartDrawerSubtotal");
-
-const continueShoppingBtn =
-  document.getElementById("continueShoppingBtn");
-
-const checkoutFromCartBtn =
-  document.getElementById("checkoutFromCartBtn");
-
-const designScreen = document.getElementById("designScreen");
-const checkoutScreen = document.getElementById("checkoutScreen");
-const paymentScreen =
-document.getElementById("paymentScreen");
-const paymentOrderRef =
-document.getElementById("paymentOrderRef");
-const paymentTotal =
-document.getElementById("paymentTotal");
-const paymentDoneBtn =
-document.getElementById("paymentDoneBtn");
-const paymentBackBtn =
-document.getElementById("paymentBackBtn");
-
-const nextBtn = document.getElementById("nextBtn");
-const backBtn = document.getElementById("backBtn");
-
-const draftModal =
-document.getElementById("draftModal");
-
-const continueDraftBtn =
-document.getElementById("continueDraftBtn");
-
-const discardDraftBtn =
-document.getElementById("discardDraftBtn");
-
-const addCartArea =
-  document.querySelector(".add-cart-area");
-
-const deliveryAddressSection =
-document.getElementById("deliveryAddressSection");
-
-const deliveryAddressLine1 =
-  document.getElementById("deliveryAddressLine1");
-
-const deliveryAddressLine2 =
-  document.getElementById("deliveryAddressLine2");
-
-const deliveryPostalCode =
-  document.getElementById("deliveryPostalCode");
-
-function getDeliveryAddress() {
-  return [
-    deliveryAddressLine1.value.trim(),
-    deliveryAddressLine2.value.trim(),
-    deliveryPostalCode.value.trim()
-      ? `Singapore ${deliveryPostalCode.value.trim()}`
-      : ""
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-const ribbedBaseBtn = document.getElementById("ribbedBaseBtn");
-const bubblyBaseBtn = document.getElementById("bubblyBaseBtn");
-
-const colours = [
+const hardwareItems = [
   {
-    name: "Jade White",
-    colour: "#FFFFFF",
-    available: true,
-    note: ""
+    itemName: "Mechanical Switch",
+    label: "Mechanical Switch",
+    category: "Hardware"
   },
   {
-    name: "Sunflower Yellow",
-    colour: "#FEC600",
-    available: true,
-    note: ""
+    itemName: "Key Ring",
+    label: "Key Ring",
+    category: "Hardware"
   },
   {
-    name: "Gold",
-    colour: "#E4BD68",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Pink",
-    colour: "#F55A74",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Maroon Red",
-    colour: "#9D2235",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Turquoise",
-    colour: "#00B1B7",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Cyan",
-    colour: "#0086D6",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Mistletoe Green",
-    colour: "#3F8E43",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Dark Green",
-    colour: "#68724D",
-    available: true,
-    note: ""
-  },
-
-  {
-    name: "Purple",
-    colour: "#5E43B7",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Indigo Purple",
-    colour: "#482960",
-    available: true,
-    note: ""
-  },
-  {
-    name: "Black",
-    colour: "#000000",
-    available: true,
-    note: ""
+    itemName: "Jump Ring",
+    label: "Jump Ring",
+    category: "Hardware"
   }
 ];
-const baseColours = colours;
-const capColours = colours;
-const letterColours = colours;
+
+function getCustomerSummaryHtml(order) {
+  let savedOrderData = order.order_data;
+
+  // Supabase may return JSON/JSONB as an array, or older rows may
+  // contain the same information as a JSON string.
+  if (typeof savedOrderData === "string") {
+    try {
+      savedOrderData = JSON.parse(savedOrderData);
+    } catch (error) {
+      console.error("Unable to read order_data:", error);
+      savedOrderData = [];
+    }
+  }
+
+  const items = Array.isArray(savedOrderData)
+    ? savedOrderData
+    : Array.isArray(savedOrderData?.items)
+      ? savedOrderData.items
+      : [];
+
+  if (!items.length) {
+    return `
+      <p style="color:#888;">
+        Your order details are available under reference
+        <strong>${escapeEmailHtml(order.order_ref)}</strong>.
+      </p>
+    `;
+  }
+
+  const itemRows = items
+    .slice(0, 50)
+    .map((item, index) => {
+      return `
+        <div style="
+          background:#ffffff;
+          border:1px solid #f2dce5;
+          border-radius:12px;
+          padding:12px;
+          margin:8px 0;
+        ">
+          <strong>
+            ${index + 1}. ${escapeEmailHtml(item.name || "Personalised keychain")}
+          </strong>
+
+          <span style="float:right;">
+            ${formatMoney(item.price)}
+          </span>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <h2 style="color:#ff6f9f;">
+      Your Order
+    </h2>
+
+    ${itemRows}
+
+    <p style="
+      text-align:right;
+      font-size:18px;
+      margin-top:16px;
+    ">
+      Total:
+      <strong>${formatMoney(order.total)}</strong>
+    </p>
+  `;
+}
+
+function createEmailMiniPreview(name, design) {
+  return Array.from(sanitizeName(name))
+    .map((letter, i) => {
+      const base = design.bases[i % design.bases.length];
+      const cap = design.caps[i % design.caps.length];
+      const letterColour = design.letters[i % design.letters.length];
+
+      return `
+        <span style="
+          display:inline-block;
+          width:36px;
+          height:36px;
+          background:${base.hex};
+          border-radius:10px;
+          margin:4px;
+          position:relative;
+          vertical-align:middle;
+        ">
+          <span style="
+            display:block;
+            width:23px;
+            height:23px;
+            background:${cap.hex};
+            border-radius:7px;
+            position:absolute;
+            left:50%;
+            top:50%;
+            transform:translate(-50%,-50%);
+            text-align:center;
+            line-height:23px;
+            font-size:13px;
+            font-weight:bold;
+            color:${letterColour.hex};
+          ">
+            ${displayIcon(letter)}
+          </span>
+        </span>
+      `;
+    })
+    .join("");
+}
+
+function renderCurrentView() {
+
+  orderFilters.style.display = currentView === "orders" ? "flex" : "none";
+  if (currentView === "orders") {
+    sectionTitle.innerText = "Orders";
+    ordersActions.style.display = "flex";
+    renderStats(latestOrders);
+    renderOrders(latestOrders);
+  }
+
+  if (currentView === "production") {
+    sectionTitle.innerText = "Production";
+    ordersActions.style.display = "none";
+    renderProductionPlanner(latestOrders);
+  }
+
+  if (currentView === "assembly") {
+    sectionTitle.innerText = "Assembly";
+    ordersActions.style.display = "none";
+    renderAssemblyQueue();
+  }
+}
+
+window.markReady = async function(id) {
+  const order = latestOrders.find(
+    order => String(order.id) === String(id)
+  );
+
+  if (!order) return;
+
+  await loadInventoryItems();
+
+  const needs = getOrderInventoryNeeds(order);
+
+  const missingItems = Object.entries(needs)
+    .map(([itemName, qtyNeeded]) => {
+      const stock = getInventoryQty(itemName);
+      const missing = Math.max(0, qtyNeeded - stock);
+
+      return {
+        itemName,
+        qtyNeeded,
+        stock,
+        missing
+      };
+    })
+    .filter(item => item.missing > 0);
+
+  if (missingItems.length) {
+    alert(
+      "This order is missing stock:\n\n" +
+      missingItems
+        .map(item =>
+          `${item.itemName}: need ${item.qtyNeeded}, stock ${item.stock}`
+        )
+        .join("\n")
+    );
+
+    await renderAssemblyQueue();
+    return;
+  }
+
+  const ok = confirm(
+    `Mark ${order.order_ref} as ready?\n\n` +
+    `This will deduct the printed parts and hardware for this order only.`
+  );
+
+  if (!ok) return;
+
+  for (const [itemName, qty] of Object.entries(needs)) {
+    const deducted = await deductInventory(itemName, qty);
+
+    if (!deducted) {
+      alert(
+        `Stopped because ${itemName} could not be deducted.`
+      );
+      return;
+    }
+  }
+
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      status: "Ready for Pickup/Delivery"
+    })
+    .eq("id", id);
+
+  if (error) {
+    console.error(error);
+    alert("Unable to update order status.");
+    return;
+  }
+
+  await loadOrders();
+};
+
+function formatMoney(value) {
+  return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function formatDate(date) {
+  if (!date) return "-";
+
+  return new Date(date).toLocaleDateString("en-SG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function getMethodLabel(method) {
+  return method === "delivery" ? "Delivery" : "Pickup";
+}
+
+function renderStats(orders) {
+  const totalOrders = orders.length;
+
+  const pending = orders.filter(order =>
+    (order.status || "").toLowerCase().includes("pending")
+  ).length;
+
+  const revenue = orders.reduce((sum, order) => {
+    if (
+      order.payment_type === "Free" ||
+      order.payment_type === "Giveaway" ||
+      order.payment_type === "Replacement"
+    ) {
+      return sum;
+    }
+
+    return sum + Number(order.total || 0);
+  }, 0);
+
+  const deliveryOrders = orders.filter(
+    order => order.collection_method === "delivery"
+  ).length;
+
+  statsContainer.innerHTML = `
+    <div class="stat-card">
+      <span>Total Orders</span>
+      <strong>${totalOrders}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span>Pending</span>
+      <strong>${pending}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span>Revenue</span>
+      <strong>${formatMoney(revenue)}</strong>
+    </div>
+
+    <div class="stat-card">
+      <span>Delivery</span>
+      <strong>${deliveryOrders}</strong>
+    </div>
+  `;
+}
+
+function renderOrders(orders) {
+  const searchText = orderSearch.value.toLowerCase();
+  const orderViewValue = orderViewFilter.value;
+  const statusValue = statusFilter.value;
+  const paymentValue = paymentFilter.value;
+
+  const activeStatuses = [
+    "Pending Payment",
+    "Payment Verification",
+    "Payment Verified",
+    "Printing",
+    "Ready for Pickup/Delivery"
+  ];
+
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch =
+      (order.order_ref || "").toLowerCase().includes(searchText) ||
+      (order.customer_name || "").toLowerCase().includes(searchText) ||
+      (order.customer_email || "").toLowerCase().includes(searchText);
+
+    const matchesOrderView =
+      orderViewValue === "all" ||
+      (orderViewValue === "active" && activeStatuses.includes(order.status)) ||
+      (orderViewValue === "completed" && order.status === "Completed");
+
+    const matchesStatus =
+      statusValue === "all" || order.status === statusValue;
+
+    const matchesPayment =
+      paymentValue === "all" || order.payment_type === paymentValue;
+
+    return matchesSearch && matchesOrderView && matchesStatus && matchesPayment;
+  });
+
+  if (!filteredOrders.length) {
+    ordersContainer.innerHTML = `
+      <div class="empty-card">
+        <h3>No matching orders</h3>
+        <p>Try changing the search or filters.</p>
+      </div>
+    `;
+    return;
+  }
+
+  ordersContainer.innerHTML = filteredOrders.map(order => `
+    <details class="order-card">
+      <summary class="order-summary">
+        <div>
+          <h3>${order.order_ref}</h3>
+          <p>${order.customer_name || "-"}</p>
+        </div>
+
+        <div class="order-summary-meta">
+          <strong>${formatMoney(order.total)}</strong>
+          <span>${order.status || "-"}</span>
+          <span>${getMethodLabel(order.collection_method)}</span>
+        </div>
+      </summary>
+
+      <div class="order-detail-grid">
+        <p><strong>Customer Name:</strong><br>${order.customer_name || "-"}</p>
+        <p><strong>Email:</strong><br>${order.customer_email || "-"}</p>
+        <p><strong>Phone:</strong><br>${order.customer_phone || "-"}</p>
+        <p><strong>Order Ref:</strong><br>${order.order_ref || "-"}</p>
+
+        <p><strong>Collection Method:</strong><br>${getMethodLabel(order.collection_method)}</p>
+        <p><strong>Needed By:</strong><br>${formatDate(order.needed_by)}</p>
+
+        ${
+          order.collection_method === "delivery"
+            ? `
+              <p class="full-row">
+                <strong>Delivery Address:</strong><br>
+                ${order.delivery_address || "-"}
+              </p>
+            `
+            : `
+              <p class="full-row">
+                <strong>Pickup Location:</strong><br>
+                Woodlands MRT
+              </p>
+            `
+        }
+
+        <p class="full-row">
+          <strong>Customer Notes / Preferred Timing:</strong><br>
+          ${order.notes || order.preferred_time || "-"}
+        </p>
+
+        <p><strong>Subtotal:</strong><br>${formatMoney(order.subtotal)}</p>
+        <p><strong>Delivery Fee:</strong><br>${formatMoney(order.delivery_fee)}</p>
+        <p><strong>Total:</strong><br>${formatMoney(order.total)}</p>
+        <p><strong>Order Source:</strong><br>${order.order_source || "-"}</p>
+      </div>
+
+      <div class="order-info">
+  <div>
+    <span>Status</span>
+    <select
+      class="status-select"
+      onchange="window.updateOrderStatus('${order.id}', this.value)"
+    >
+      <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Pending Payment</option>
+      <option value="Payment Verification" ${order.status === "Payment Verification" ? "selected" : ""}>Payment Verification</option>
+      <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Payment Verified</option>
+      <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
+      <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for Pickup/Delivery</option>
+      <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
+    </select>
+  </div>
+
+  <div>
+    <span>Payment</span>
+    <select
+      class="status-select"
+      onchange="window.updatePaymentType('${order.id}', this.value)"
+    >
+      <option value="Pending" ${order.payment_type === "Pending" ? "selected" : ""}>Pending</option>
+      <option value="Paid" ${order.payment_type === "Paid" ? "selected" : ""}>Paid</option>
+      <option value="Free" ${order.payment_type === "Free" ? "selected" : ""}>Free</option>
+      <option value="Giveaway" ${order.payment_type === "Giveaway" ? "selected" : ""}>Giveaway</option>
+      <option value="Replacement" ${order.payment_type === "Replacement" ? "selected" : ""}>Replacement</option>
+    </select>
+  </div>
+</div>
+<div class="order-preview-list">
+  ${(order.order_data || []).map(item => {
+    const baseShape =
+      item.design?.base_shape?.key ||
+      item.design?.baseShape ||
+      "ribbed";
+
+    return `
+      <div class="order-preview-item">
+        <div class="assembly-item-top">
+          <strong>${item.name}</strong>
+
+          <span class="assembly-tag">
+            ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+          </span>
+        </div>
+
+        <div class="mini-chain">
+          ${createAssemblyMiniPreview(item.name, item.design)}
+        </div>
+      </div>
+    `;
+  }).join("")}
+</div>
+    </details>
+  `).join("");
+}
+
+function getBaseInventoryName(baseName, baseShape = "ribbed") {
+  const shapeLabel =
+    baseShape === "bubbly" ? "Bubbly" : "Ribbed";
+
+  return `${baseName} ${shapeLabel} Base`;
+}
+
+function getKeycapInventoryName(capName, letterName, character) {
+  return `${capName} Cap + ${letterName} Letter - ${character}`;
+}
+
+async function loadInventoryItems() {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("*");
+
+  if (error) {
+    console.error(error);
+    alert("Unable to load inventory.");
+    return;
+  }
+
+  inventoryItems = {};
+
+  (data || []).forEach(item => {
+    inventoryItems[item.item_name] = {
+      id: item.id,
+      qty: Number(item.qty || 0),
+      category: item.category || "Hardware"
+    };
+  });
+}
+
+function getInventoryQty(itemName) {
+  return inventoryItems[itemName]?.qty || 0;
+}
+
+async function addInventory(itemName, qtyToAdd, category) {
+  const qty = Number(qtyToAdd);
+
+  if (!Number.isInteger(qty) || qty <= 0) {
+    alert("Please enter a valid quantity.");
+    return;
+  }
+
+  await loadInventoryItems();
+
+  const existingItem = inventoryItems[itemName];
+
+  if (existingItem) {
+    const newQty = existingItem.qty + qty;
+
+    const { error } = await supabase
+      .from("inventory_items")
+      .update({
+        qty: newQty,
+        category,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", existingItem.id);
+
+    if (error) {
+      console.error(error);
+      alert(`Unable to update ${itemName}.`);
+      return;
+    }
+  } else {
+    const { error } = await supabase
+      .from("inventory_items")
+      .insert({
+        item_name: itemName,
+        qty,
+        category,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error(error);
+      alert(`Unable to create ${itemName}.`);
+      return;
+    }
+  }
+
+  await renderProductionPlanner(latestOrders);
+}
+
+async function addCustomInventory(itemName, qtyToAdd, category) {
+  const qty = Number(qtyToAdd);
+
+  if (!Number.isInteger(qty) || qty <= 0) {
+    alert("Please enter a valid printed quantity.");
+    return;
+  }
+
+  await addInventory(itemName, qty, category);
+}
+
+window.addCustomInventory = addCustomInventory;
+
+window.addInventory = addInventory;
+
+function getProductionSummary(orders) {
+  const baseTotals = {};
+  const keycapGroups = {};
+
+  const activeOrders = orders.filter(order =>
+    ["Payment Verified", "Printing"].includes(order.status)
+  );
+
+  activeOrders.forEach(order => {
+    const items = order.order_data || [];
+
+    items.forEach(item => {
+      const cleanName = item.clean_name || item.name || "";
+      const letters = Array.from(cleanName);
+      const design = item.design;
+
+      if (!design) return;
+
+      letters.forEach((letter, index) => {
+        const base = design.bases[index % design.bases.length];
+        const cap = design.caps[index % design.caps.length];
+        const letterColour = design.letters[index % design.letters.length];
+
+        const baseName = base.name || base.hex || base;
+        const baseHex = base.hex || base;
+
+        const capName = cap.name || cap.hex || cap;
+        const capHex = cap.hex || cap;
+
+        const letterName = letterColour.name || letterColour.hex || letterColour;
+        const letterHex = letterColour.hex || letterColour;
+
+        const baseShape =
+          design.base_shape?.key ||
+          design.baseShape ||
+          "ribbed";
+
+        const baseKey = `${baseShape}|${baseName}`;
+
+        if (!baseTotals[baseKey]) {
+          baseTotals[baseKey] = {
+            name: baseName,
+            hex: baseHex,
+            baseShape,
+            qty: 0
+          };
+        }
+
+        baseTotals[baseKey].qty += 1;
+
+        const groupKey = `${capName} Cap + ${letterName} Letter`;
+
+        if (!keycapGroups[groupKey]) {
+          keycapGroups[groupKey] = {
+            capName,
+            capHex,
+            letterName,
+            letterHex,
+            letters: {}
+          };
+        }
+
+        keycapGroups[groupKey].letters[letter] =
+          (keycapGroups[groupKey].letters[letter] || 0) + 1;
+      });
+    });
+  });
+
+  return { baseTotals, keycapGroups, count: activeOrders.length };
+}
+
+function getOrderInventoryNeeds(order) {
+  const needs = {};
+
+  function add(itemName, qty) {
+    needs[itemName] = (needs[itemName] || 0) + qty;
+  }
+
+  (order.order_data || []).forEach(item => {
+    const letters = Array.from(item.clean_name || item.name || "");
+    const design = item.design;
+
+    if (!design) return;
+
+    letters.forEach((letter, index) => {
+      const base = design.bases[index % design.bases.length];
+      const cap = design.caps[index % design.caps.length];
+      const letterColour = design.letters[index % design.letters.length];
+
+      const baseName = base.name || base.hex || base;
+      const capName = cap.name || cap.hex || cap;
+      const letterName = letterColour.name || letterColour.hex || letterColour;
+
+      const baseShape =
+
+        design.base_shape?.key ||
+
+        design.baseShape ||
+
+        "ribbed";
+
+      add(
+
+        getBaseInventoryName(baseName, baseShape),
+
+        1
+
+      );
+
+      add(
+
+        getKeycapInventoryName(
+
+          capName,
+
+          letterName,
+
+          letter
+
+        ),
+
+        1
+
+      );
+    });
+  });
+
+  add("Mechanical Switch", (order.order_data || []).reduce((sum, item) => {
+    return sum + (item.clean_name || item.name || "").length;
+  }, 0));
+
+  add("Key Ring", (order.order_data || []).length);
+  add("Jump Ring", (order.order_data || []).length);
+
+  return needs;
+}
+
+function isOrderReadyForAssembly(order) {
+  const needs = getOrderInventoryNeeds(order);
+
+  return Object.entries(needs).every(([itemName, qtyNeeded]) => {
+    return getInventoryQty(itemName) >= qtyNeeded;
+  });
+}
 
 const specialKeycaps = {
   // Original
@@ -1152,82 +874,6 @@ const specialKeycaps = {
   "♟": "chess"
 };
 
-const iconChoices = Object.keys(specialKeycaps);
-
-const dateAvailability = document.getElementById("dateAvailability");
-
-let neededByAllowed = false;
-let neededByMessage = "";
-
-function updateAddCartVisibility() {
-  if (!addCartArea) return;
-
-  const designArea =
-    document.getElementById("designArea");
-
-  const customiser =
-    document.querySelector(".product-customiser");
-
-  if (!designArea || !customiser) return;
-
-  const customiserTop =
-    customiser.getBoundingClientRect().top;
-
-  const designBottom =
-    designArea.getBoundingClientRect().bottom;
-
-  const shouldShow =
-    customiserTop < window.innerHeight * 0.9 &&
-    designBottom > 100;
-
-  addCartArea.classList.toggle(
-    "mobile-cart-visible",
-    shouldShow
-  );
-}
-
-window.addEventListener(
-  "scroll",
-  updateAddCartVisibility,
-  { passive: true }
-);
-
-window.addEventListener(
-  "resize",
-  updateAddCartVisibility
-);
-
-updateAddCartVisibility();
-
-async function checkNeededByDate() {
-  if (!neededBy.value) {
-    neededByAllowed = false;
-    neededByMessage = "";
-    dateAvailability.innerText = "";
-    return false;
-  }
-
-  const { data, error } = await supabase.rpc("check_needed_by_date", {
-    p_date: neededBy.value
-  });
-
-  if (error) {
-    console.error(error);
-    neededByAllowed = false;
-    neededByMessage = "Unable to check date availability.";
-    dateAvailability.innerText = neededByMessage;
-    return false;
-  }
-
-  neededByAllowed = data.allowed;
-  neededByMessage = data.reason;
-
-  dateAvailability.innerText = neededByMessage;
-  dateAvailability.style.color = data.allowed ? "#3c9d67" : "#c9184a";
-
-  return data.allowed;
-}
-
 function sanitizeName(name) {
   return Array.from(name || "")
     .map(char => /[a-z]/i.test(char) ? char.toUpperCase() : char)
@@ -1254,708 +900,23 @@ function displayIcon(char) {
   return map[char] || char;
 }
 
-let draftData = null;
-let orderType = "single";
-let selectedIndex = 0;
-let orderSubmitted = false;
-
-let cartHasItems = false;
-let draftHasMeaningfulChanges = false;
-
-function getAvailableColours() {
-  return colours
-    .filter(c => c.available)
-    .map(c => c.colour);
-}
-
-const available = getAvailableColours();
-
-let globalDesign = {
-  baseShape: "ribbed",
-
-  bases: [
-    available[0]
-  ],
-
-  caps: [
-    available[1] || available[0]
-  ],
-
-  letters: [
-    available[2] || available[0]
-  ]
-};
-
-const BASE_SHAPES = {
-  ribbed: {
-    label: "Ribbed",
-    file: "/models/base_ribbed.stl"
-  },
-  bubbly: {
-    label: "Bubbly",
-    file: "/models/base_bubbly.stl"
-  }
-};
-
-
-let names = [];
-
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color("#efe9e1");
-
-const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
-camera.position.set(0, 0, 180);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-
-controls.enableDamping = true;
-controls.enablePan = false;
-
-// Don't allow flipping underneath
-controls.minPolarAngle = Math.PI * 0.28;
-controls.maxPolarAngle = Math.PI * 0.58;
-
-// Limit left/right rotation slightly
-controls.minAzimuthAngle = -Math.PI / 5;
-controls.maxAzimuthAngle = Math.PI / 5;
-
-// Optional: prevent zooming
-// controls.enableZoom = false;
-
-scene.add(new THREE.AmbientLight(0xffffff, 1.6));
-
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
-keyLight.position.set(50, 80, 70);
-scene.add(keyLight);
-
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.8);
-fillLight.position.set(-40, 30, 30);
-scene.add(fillLight);
-
-const loader = new STLLoader();
-const keychain = new THREE.Group();
-scene.add(keychain);
-
-const geometryCache = {};
-
-function generateOrderRef() {
-  const date = new Date();
-  const yymmdd = date.toISOString().slice(2, 10).replaceAll("-", "");
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return `LK-${yymmdd}-${random}`;
-}
-
-function createMat(colour) {
-  return new THREE.MeshStandardMaterial({
-    color: colour,
-    roughness: 0.42,
-    metalness: 0
-  });
-}
-
-function getUniqueColourCount(colours) {
-  return new Set(
-    colours.map(colour => colour.toLowerCase())
-  ).size;
-}
-
-function calculatePrice(design) {
-  const extraBaseColours = Math.max(
-    0,
-    getUniqueColourCount(design.bases) -
-      INCLUDED_BASE_COLOURS
-  );
-
-  const extraCapColours = Math.max(
-    0,
-    getUniqueColourCount(design.caps) -
-      INCLUDED_CAP_COLOURS
-  );
-
-  const extraLetterColours = Math.max(
-    0,
-    getUniqueColourCount(design.letters) -
-      INCLUDED_LETTER_COLOURS
-  );
-
-  return (
-    BASE_PRICE +
-    extraBaseColours * EXTRA_BASE_COLOUR_PRICE +
-    extraCapColours * EXTRA_CAP_COLOUR_PRICE +
-    extraLetterColours * EXTRA_LETTER_COLOUR_PRICE
-  );
-}
-
-function getActiveDesign() {
-  const item = names[selectedIndex];
-
-  if (applyAllToggle.checked || !item) {
-    return globalDesign;
-  }
-
-  if (!item.custom) {
-    item.custom = {
-      baseShape: globalDesign.baseShape || "ribbed",
-      bases: [...globalDesign.bases],
-      caps: [...globalDesign.caps],
-      letters: [...globalDesign.letters]
-    };
-  }
-
-  return item.custom;
-}
-
-function makeSwatches(containerId, colourOptions, type) {
-  const container = document.getElementById(containerId);
-  const hint = document.getElementById(`${type}ColourHint`);
-
-  container.innerHTML = "";
-
-  if (hint) {
-    hint.textContent = "Hover or tap a colour";
-  }
-
-  colourOptions.forEach(item => {
-    const btn = document.createElement("button");
-
-    btn.type = "button";
-    btn.className = "swatch";
-    btn.style.backgroundColor = item.colour;
-    btn.title = item.name;
-    btn.setAttribute("aria-label", item.name);
-
-    const showColourName = () => {
-      if (!hint) return;
-
-      hint.innerHTML = `
-        <span
-          class="colour-hint-dot"
-          style="background:${item.colour}"
-        ></span>
-        ${item.name}
-      `;
-    };
-
-    btn.addEventListener("mouseenter", showColourName);
-    btn.addEventListener("focus", showColourName);
-    btn.addEventListener("touchstart", showColourName, {
-      passive: true
-    });
-
-    if (!item.available) {
-      btn.classList.add("oos");
-
-      btn.onclick = () => {
-        showColourName();
-
-        alert(
-          `${item.name} is currently out of stock.` +
-          `${item.note ? `\n\n${item.note}` : ""}`
-        );
-      };
-    } else {
-      btn.onclick = () => {
-        showColourName();
-
-        addColourToDesign(type, item.colour);
-        refreshUI();
-        buildSelectedPreview();
-      };
-    }
-
-    container.appendChild(btn);
-  });
-}
-
-backBtn.onclick = () => {
-  checkoutScreen.classList.add("hidden");
-  paymentScreen.classList.add("hidden");
-  designScreen.classList.remove("hidden");
-
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth"
-  });
-};
-
-function getOrderSubtotal() {
-  return names.reduce(
-    (sum, item) =>
-      sum + calculatePrice(getDesign(item)),
-    0
-  );
-}
-
-function updateCartDisplay() {
-  const cartCount = cartHasItems ? names.length : 0;
-  const currentDesignTotal = getOrderSubtotal();
-  const cartSubtotal = cartHasItems ? currentDesignTotal : 0;
-
-  headerCartCount.textContent = cartCount;
-  sideCartCount.textContent = cartCount;
-  cartDrawerSubtotal.textContent = `$${cartSubtotal.toFixed(2)}`;
-
-  if (designTotalDisplay) {
-    designTotalDisplay.textContent =
-      `$${currentDesignTotal.toFixed(2)}`;
-  }
-
-  headerCartBtn.setAttribute(
-    "aria-label",
-    cartHasItems
-      ? `Open cart with ${cartCount} keychain${cartCount === 1 ? "" : "s"}`
-      : "Cart is empty"
-  );
-}
-
-function addColourToDesign(type, colour) {
-  const design = getActiveDesign();
-
-  if (type === "base") design.bases.push(colour);
-  if (type === "cap") design.caps.push(colour);
-  if (type === "letter") design.letters.push(colour);
-
-  if (applyAllToggle.checked) {
-    names.forEach(item => {
-      item.custom = null;
-    });
-  }
-}
-
-async function setupNeededByCalendar() {
-  const minDate = new Date();
-  minDate.setDate(minDate.getDate() + 3);
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  const { data: closures, error: closureError } = await supabase
-    .from("shop_closures")
-    .select("start_date, end_date")
-    .gte("end_date", today);
-
-  if (closureError) console.error(closureError);
-
-const disabledDates = [
-  ...(closures || []).map(item => ({
-    from: item.start_date,
-    to: item.end_date
-  }))
-];
-
-  flatpickr(neededBy, {
-    dateFormat: "Y-m-d",
-    minDate,
-    disable: disabledDates,
-
-    onChange: async () => {
-      await checkNeededByDate();
-      validateForm();
-    }
-  });
-}
-
-async function loadShopNotices() {
-  const today = new Date().toISOString().slice(0, 10);
-
-  const { data, error } = await supabase
-    .from("shop_closures")
-    .select("*")
-    .gte("end_date", today)
-    .order("start_date", { ascending: true });
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  if (!data.length) return;
-
-  const notice = data[0];
-
-  document.getElementById("holidayNoticeText").innerText =
-    notice.reason || `We will be away from ${notice.start_date} to ${notice.end_date}.`;
-}
-
-function removeColourFromDesign(type, index) {
-  const design = getActiveDesign();
-
-  if (type === "base" && design.bases.length > 1) design.bases.splice(index, 1);
-  if (type === "cap" && design.caps.length > 1) design.caps.splice(index, 1);
-  if (type === "letter" && design.letters.length > 1) design.letters.splice(index, 1);
-
-  if (applyAllToggle.checked) {
-    names.forEach(item => {
-      item.custom = null;
-    });
-  }
-
-  refreshUI();
-  buildSelectedPreview();
-}
-
-function renderColourSlots() {
-  const design = getActiveDesign();
-  renderSlots("baseSlots", design.bases, "base");
-  renderSlots("capSlots", design.caps, "cap");
-  renderSlots("letterSlots", design.letters, "letter");
-}
-
-function renderSlots(containerId, colours, type) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = "";
-
-  colours.forEach((colour, index) => {
-    const slot = document.createElement("button");
-    slot.className = "colour-slot";
-    slot.style.background = colour;
-    slot.title = "Click to remove this colour";
-    slot.onclick = () => removeColourFromDesign(type, index);
-    container.appendChild(slot);
-  });
-}
-
-function loadSTL(path) {
-  if (geometryCache[path]) return Promise.resolve(geometryCache[path].clone());
-
-  return new Promise((resolve, reject) => {
-    loader.load(
-      path,
-      geometry => {
-        geometry.computeVertexNormals();
-        geometry.center();
-        geometryCache[path] = geometry;
-        resolve(geometry.clone());
-      },
-      undefined,
-      reject
-    );
-  });
-}
-
-function splitCapGeometry(geometry) {
-  const pos = geometry.attributes.position;
-  const triangleCount = pos.count / 3;
-  const visited = new Array(triangleCount).fill(false);
-  const components = [];
-
-  function getVertexKey(i) {
-    return [
-      pos.getX(i).toFixed(3),
-      pos.getY(i).toFixed(3),
-      pos.getZ(i).toFixed(3)
-    ].join(",");
-  }
-
-  const vertexMap = new Map();
-
-  for (let t = 0; t < triangleCount; t++) {
-    for (let j = 0; j < 3; j++) {
-      const key = getVertexKey(t * 3 + j);
-      if (!vertexMap.has(key)) vertexMap.set(key, []);
-      vertexMap.get(key).push(t);
-    }
-  }
-
-  for (let t = 0; t < triangleCount; t++) {
-    if (visited[t]) continue;
-
-    const stack = [t];
-    const component = [];
-    visited[t] = true;
-
-    while (stack.length > 0) {
-      const current = stack.pop();
-      component.push(current);
-
-      for (let j = 0; j < 3; j++) {
-        const key = getVertexKey(current * 3 + j);
-        const neighbours = vertexMap.get(key) || [];
-
-        neighbours.forEach(n => {
-          if (!visited[n]) {
-            visited[n] = true;
-            stack.push(n);
-          }
-        });
-      }
-    }
-
-    components.push(component);
-  }
-
-  components.sort((a, b) => b.length - a.length);
-
-  const tileTriangles = components[0] || [];
-  const letterTriangles = components.slice(1).flat();
-
-  function makeGeometry(triangles) {
-    const vertices = [];
-
-    triangles.forEach(t => {
-      for (let j = 0; j < 3; j++) {
-        const i = t * 3 + j;
-        vertices.push(pos.getX(i), pos.getY(i), pos.getZ(i));
-      }
-    });
-
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-    g.computeVertexNormals();
-    return g;
-  }
-
-  return {
-    tile: makeGeometry(tileTriangles),
-    letter: makeGeometry(letterTriangles)
-  };
-}
-
-function getDesign(item) {
-  if (!item.custom) return globalDesign;
-
-  return {
-    baseShape:
-      item.custom.baseShape ||
-      globalDesign.baseShape ||
-      "ribbed",
-
-    bases:
-      item.custom.bases ||
-      globalDesign.bases,
-
-    caps:
-      item.custom.caps ||
-      globalDesign.caps,
-
-    letters:
-      item.custom.letters ||
-      globalDesign.letters
-  };
-}
-
-async function createKeycap(letter, index, design) {
-  const group = new THREE.Group();
-
-  const baseColour = design.bases[index % design.bases.length];
-  const capColour = design.caps[index % design.caps.length];
-  const letterColour = design.letters[index % design.letters.length];
-
-  const selectedBaseShape =
-    design.baseShape || "ribbed";
-
-  const baseGeo = await loadSTL(
-    BASE_SHAPES[selectedBaseShape].file
-  );
-  const base = new THREE.Mesh(baseGeo, createMat(baseColour));
-  base.rotation.z = Math.PI / 2;
-  group.add(base);
-
-  // Load the correct keycap STL
-  const special = specialKeycaps[letter];
-
-  const capPath = special
-    ? `/models/keycap - ${special}.stl`
-    : `/models/keycap-char-${letter}.stl`;
-
-  const capGeo = await loadSTL(capPath);
-
-  const parts = splitCapGeometry(capGeo);
-
-  const tile = new THREE.Mesh(parts.tile, createMat(capColour));
-  const raisedLetter = new THREE.Mesh(parts.letter, createMat(letterColour));
-
-  const capGroup = new THREE.Group();
-  capGroup.add(tile);
-  capGroup.add(raisedLetter);
-  capGroup.position.set(4.2, 0, 11);
-  group.add(capGroup);
-
-  group.position.x = index * 28;
-
-  return group;
-}
-
-async function buildKeychain(name, design) {
-  keychain.clear();
-
-  const cleanName = sanitizeName(name || "A");
-  const letters = Array.from(cleanName);
-
-  for (let i = 0; i < letters.length; i++) {
-    try {
-      const item = await createKeycap(letters[i], i, design);
-      keychain.add(item);
-    } catch (err) {
-      console.warn(`Missing STL for ${letters[i]}`, err);
-    }
-  }
-
-  keychain.position.x = -((letters.length - 1) * 28) / 2;
-  keychain.rotation.x = -0.8;
-  keychain.rotation.y = 0.2;
-
-  controls.target.set(0, 0, 0);
-  controls.update();
-}
-
-function updateNames() {
-  const previousNames = [...names];
-
-  if (orderType === "single") {
-    const value = singleName.value.trim() || "Alicia";
-
-    const previousItem = previousNames[0];
-
-    names = [
-      {
-        name: value,
-
-        // Keep the existing colours/design even when
-        // the name or icon changes.
-        custom: previousItem?.custom
-          ? {
-              baseShape:
-                previousItem.custom.baseShape ||
-                globalDesign.baseShape ||
-                "ribbed",
-
-              bases: [...previousItem.custom.bases],
-              caps: [...previousItem.custom.caps],
-              letters: [...previousItem.custom.letters]
-            }
-          : null
-      }
-    ];
-  } else {
-    const newNameValues = nameList.value
-      .split("\n")
-      .map(name => name.trim())
-      .filter(Boolean);
-
-    names = newNameValues.map((value, index) => {
-      // First try matching the exact existing name.
-      const exactMatch = previousNames.find(
-        item => item.name === value
-      );
-
-      // If the name changed because an icon was added,
-      // preserve the design from the same line/index.
-      const previousItem =
-        exactMatch || previousNames[index];
-
-      return {
-        name: value,
-
-        custom: previousItem?.custom
-          ? {
-              baseShape:
-                previousItem.custom.baseShape ||
-                globalDesign.baseShape ||
-                "ribbed",
-
-              bases: [...previousItem.custom.bases],
-              caps: [...previousItem.custom.caps],
-              letters: [...previousItem.custom.letters]
-            }
-          : null
-      };
-    });
-  }
-
-  if (selectedIndex >= names.length) {
-    selectedIndex = Math.max(0, names.length - 1);
-  }
-
-  nameCount.textContent =
-    `${names.length} name${names.length === 1 ? "" : "s"}`;
-
-  const isGroupOrder = orderType === "group";
-
-  applyAllSection.classList.toggle(
-    "hidden",
-    !isGroupOrder
-  );
-
-  nameCardsSection.classList.toggle(
-    "hidden",
-    !isGroupOrder
-  );
-
-  draftHasMeaningfulChanges = true;
-
-  refreshUI();
-  buildSelectedPreview();
-}
-
-function updateBaseShapeButtons() {
-  const design = getActiveDesign();
-  const shape = design.baseShape || "ribbed";
-
-  ribbedBaseBtn.classList.toggle(
-    "active",
-    shape === "ribbed"
-  );
-
-  bubblyBaseBtn.classList.toggle(
-    "active",
-    shape === "bubbly"
-  );
-}
-
-function setBaseShape(shape) {
-  if (!BASE_SHAPES[shape]) {
-    console.error("Unknown base shape:", shape);
-    return;
-  }
-
-  if (applyAllToggle.checked) {
-    globalDesign.baseShape = shape;
-
-    names.forEach(item => {
-      item.custom = null;
-    });
-  } else {
-    const item = names[selectedIndex];
-
-    if (!item) return;
-
-    if (!item.custom) {
-      item.custom = {
-        baseShape: globalDesign.baseShape || "ribbed",
-        bases: [...globalDesign.bases],
-        caps: [...globalDesign.caps],
-        letters: [...globalDesign.letters]
-      };
-    }
-
-    item.custom.baseShape = shape;
-  }
-
-  refreshUI();
-  buildSelectedPreview();
-}
-
-ribbedBaseBtn.onclick = () => {
-  setBaseShape("ribbed");
-};
-
-bubblyBaseBtn.onclick = () => {
-  setBaseShape("bubbly");
-};
-
-function createMiniPreview(name, design) {
+function createAssemblyMiniPreview(name, design) {
   return Array.from(sanitizeName(name))
     .map((letter, i) => {
       const base = design.bases[i % design.bases.length];
       const cap = design.caps[i % design.caps.length];
       const letterColour = design.letters[i % design.letters.length];
 
+      const baseHex = base.hex || base;
+      const capHex = cap.hex || cap;
+      const letterHex = letterColour.hex || letterColour;
+
       return `
-        <div class="mini-block" style="background:${base}">
-          <div class="mini-cap" style="background:${cap}; color:${letterColour}">
+        <div class="mini-block" style="background:${baseHex};">
+          <div
+            class="mini-cap"
+            style="background:${capHex}; color:${letterHex};"
+          >
             ${displayIcon(letter)}
           </div>
         </div>
@@ -1964,1112 +925,1204 @@ function createMiniPreview(name, design) {
     .join("");
 }
 
-function renderNameCards() {
-  nameCards.innerHTML = "";
+async function renderAssemblyQueue() {
+  await loadInventoryItems();
 
-  names.forEach((item, index) => {
-    const card = document.createElement("button");
-    card.className = "student-card";
+  const candidateOrders = latestOrders
+    .filter(order =>
+      ["Payment Verified", "Printing"].includes(order.status)
+    )
+    .sort((a, b) =>
+      new Date(a.needed_by || "9999-12-31") -
+      new Date(b.needed_by || "9999-12-31")
+    );
 
-    if (index === selectedIndex) card.classList.add("active");
+  const readyOrders = candidateOrders.filter(order => {
+    const needs = getOrderInventoryNeeds(order);
 
-    const design = getDesign(item);
-    const price = calculatePrice(design);
-
-    card.innerHTML = `
-      <div class="name-card-top">
-        <strong>${item.name}</strong>
-        <span class="price-tag">$${price.toFixed(2)}</span>
-      </div>
-
-      <p class="hint">
-        ${design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
-      </p>
-
-      <div class="mini-chain">
-        ${createMiniPreview(item.name, design)}
-      </div>
-    `;
-
-    card.onclick = () => {
-      selectedIndex = index;
-      refreshUI();
-      buildSelectedPreview();
-    };
-
-    nameCards.appendChild(card);
+    return Object.entries(needs).every(([itemName, qtyNeeded]) => {
+      return getInventoryQty(itemName) >= qtyNeeded;
+    });
   });
-}
 
-function updateEditModeText() {
-  if (
-    orderType === "group" &&
-    applyAllToggle.checked
-  ) {
-    editModeText.textContent =
-      "Currently editing: all keychains";
-
-    resetSelected.style.display = "none";
-    return;
-  }
-
-  const selectedItem = names[selectedIndex];
-
-  editModeText.textContent = selectedItem
-    ? `Currently editing: ${selectedItem.name}`
-    : "Currently editing: selected keychain";
-
-  resetSelected.style.display =
-    orderType === "group"
-      ? "block"
-      : "none";
-}
-
-function autoSave(){
-
-    saveDraft();
-
-}
-
-setInterval(autoSave,3000);
-
-function renderReviewOrder() {
-  let total = 0;
-
-  reviewCount.innerText = names.length;
-  reviewList.innerHTML = "";
-
-  names.forEach((item, index) => {
-    const design = getDesign(item);
-    const price = calculatePrice(design);
-
-    total += price;
-
-    const row = document.createElement("div");
-    row.className = "review-item";
-
-    row.innerHTML = `
-      <div class="review-item-heading">
+  ordersContainer.innerHTML = `    
+  <div class="production-card">
+      <div class="production-header">
         <div>
-          <strong>${item.name}</strong>
-
+          <h2>Assembly Queue</h2>
           <p class="hint">
-            ${
-              design.baseShape === "bubbly"
-                ? "Bubbly Base"
-                : "Ribbed Base"
-            }
+            Printed stock is reserved by needed-by date.
           </p>
         </div>
 
-        <span class="price-tag">
-          $${price.toFixed(2)}
-        </span>
+        <p class="active-count">${readyOrders.length} order(s)</p>
       </div>
 
-      <div class="mini-chain">
-        ${createMiniPreview(item.name, design)}
-      </div>
-
-      <div class="review-item-actions">
-        <button
-          type="button"
-          class="review-edit-btn"
-          data-review-edit="${index}"
-        >
-          Edit
-        </button>
-
-        <button
-          type="button"
-          class="review-remove-btn"
-          data-review-remove="${index}"
-        >
-          Remove
-        </button>
-      </div>
-    `;
-
-    reviewList.appendChild(row);
-  });
-
-  reviewList
-    .querySelectorAll("[data-review-edit]")
-    .forEach(button => {
-      button.addEventListener("click", () => {
-        selectedIndex = Number(button.dataset.reviewEdit);
-
-        checkoutScreen.classList.add("hidden");
-        paymentScreen.classList.add("hidden");
-        designScreen.classList.remove("hidden");
-
-        refreshUI();
-        buildSelectedPreview();
-
-        document
-          .getElementById("designArea")
-          .scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-          });
-      });
-    });
-
-  reviewList
-    .querySelectorAll("[data-review-remove]")
-    .forEach(button => {
-      button.addEventListener("click", () => {
-        const index = Number(button.dataset.reviewRemove);
-        const item = names[index];
-
-        if (!item) return;
-
-        const confirmed = confirm(
-          `Remove ${item.name} from your order?`
-        );
-
-        if (!confirmed) return;
-
-        names.splice(index, 1);
-
-        if (orderType === "group") {
-          nameList.value = names
-            .map(entry => entry.name)
-            .join("\n");
-        } else if (!names.length) {
-          singleName.value = "";
-        }
-
-        if (selectedIndex >= names.length) {
-          selectedIndex = Math.max(0, names.length - 1);
-        }
-
-        if (!names.length) {
-          cartHasItems = false;
-        }
-
-        draftHasMeaningfulChanges = true;
-
-        refreshUI();
-        buildSelectedPreview();
-        validateForm();
-      });
-    });
-
-  const deliveryFee =
-    collectionMethod.value === "delivery" &&
-    total < 50
-      ? 2.5
-      : 0;
-
-  const grandTotal = total + deliveryFee;
-
-  reviewPrice.innerHTML = `
-    <span>Subtotal</span>
-    <strong>$${total.toFixed(2)}</strong>
-
-    <span>Delivery</span>
-    <strong>
       ${
-        deliveryFee === 0 &&
-        collectionMethod.value === "delivery"
-          ? "FREE"
-          : `$${deliveryFee.toFixed(2)}`
+        readyOrders.length === 0
+          ? `
+            <div class="empty-card">
+              <h3>No orders ready for assembly yet</h3>
+              <p>Print the missing parts shown in Production first.</p>
+            </div>
+          `
+          : readyOrders.map((order, index) => `
+            <details class="assembly-card" ${index === 0 ? "open" : ""}>
+              <summary class="assembly-summary">
+                <div>
+                  <h3>${order.customer_name || "-"}</h3>
+                  <p>${order.order_ref}</p>
+                </div>
+
+                <div class="assembly-meta">
+                  <span>${(order.order_data || []).length} keychain(s)</span>
+                  <span>${getMethodLabel(order.collection_method)}</span>
+                  <span>${formatDate(order.needed_by)}</span>
+                </div>
+              </summary>
+
+              <div class="assembly-body">
+                ${(order.order_data || []).map(item => {
+                  const baseShape =
+                    item.design?.base_shape?.key ||
+                    item.design?.baseShape ||
+                    "ribbed";
+
+                  return `
+                    <div class="assembly-item">
+                      <div class="assembly-item-top">
+                        <strong>${item.name}</strong>
+
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                          <span class="assembly-tag">
+                            ${sanitizeName(item.name).length} Letters
+                          </span>
+
+                          <span class="assembly-tag">
+                            ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="mini-chain">
+                        ${createAssemblyMiniPreview(item.name, item.design)}
+                      </div>
+                    </div>
+                  `;
+                }).join("")}
+
+                <button
+                  class="ready-btn"
+                  onclick="window.markReady('${order.id}')"
+                >
+                  Assembly Complete
+                </button>
+              </div>
+            </details>
+          `).join("")
       }
-    </strong>
-
-    <span class="review-total-label">Total</span>
-    <strong class="review-grand-total">
-      $${grandTotal.toFixed(2)}
-    </strong>
+    </div>
   `;
-
-  const deliveryOption =
-    collectionMethod.querySelector(
-      'option[value="delivery"]'
-    );
-
-  if (total >= 50) {
-    deliveryOption.text =
-      "🚚 Islandwide Delivery (FREE)";
-  } else {
-    deliveryOption.text =
-      "🚚 Islandwide Delivery (+$2.50)";
-  }
-
-  updateCollectionNote();
 }
 
-function getColourName(hex) {
+async function renderProductionPlanner(orders) {
+  await loadInventoryItems();
 
-    const colour = colours.find(
-        c => c.colour.toLowerCase() === hex.toLowerCase()
-    );
+  const { baseTotals, keycapGroups, count } = getProductionSummary(orders);
 
-    return colour ? colour.name : hex;
+  const baseRows = Object.values(baseTotals)
+    .map(item => {
+      const baseShape = item.baseShape || "ribbed";
 
-}
+      const itemName = getBaseInventoryName(
+        item.name,
+        baseShape
+      );
+      const need = item.qty;
+      const stock = getInventoryQty(itemName);
+      const toPrint = Math.max(0, need - stock);
 
-async function saveOrderToDatabase(order) {
-
-    const { data, error } = await supabase
-        .from("orders")
-        .insert([order]);
-
-    if (error) {
-        console.error(error);
-        throw error;
-    }
-
-    return data;
-
-}
-
-async function submitOrder() {
-  submitStatus.innerText = "Submitting order...";
-
-  const orderRef = generateOrderRef();
-
-  const subtotal = names.reduce(
-    (sum, item) =>
-      sum + calculatePrice(getDesign(item)),
-    0
-  );
-
-  const delivery =
-    collectionMethod.value === "delivery" &&
-    subtotal < 50
-      ? 2.5
-      : 0;
-
-  const total = subtotal + delivery;
-
-  const order = {
-    order_ref: orderRef,
-
-    customer_name: customerName.value.trim(),
-    customer_email: customerEmail.value.trim(),
-    customer_phone: customerPhone.value.trim(),
-
-    collection_method: collectionMethod.value,
-
-    delivery_address:
-      collectionMethod.value === "delivery"
-        ? getDeliveryAddress()
-        : "",
-
-    preferred_time: orderNotes.value,
-    needed_by: neededBy.value,
-    notes: orderNotes.value,
-
-    subtotal,
-    delivery_fee: delivery,
-    total,
-
-    payment_type: "Pending",
-
-    order_source: isManualOrder
-      ? "Manual"
-      : "Website",
-
-    status: isManualOrder
-      ? "Payment Verified"
-      : "Pending Payment",
-
-    order_data: names.map(item => {
-      const design = getDesign(item);
-
-      return {
-        name: item.name,
-        clean_name: sanitizeName(item.name),
-        price: calculatePrice(design),
-
-        design: {
-          base_shape: {
-            key: design.baseShape || "ribbed",
-
-            label:
-              BASE_SHAPES[
-                design.baseShape || "ribbed"
-              ].label
-          },
-
-          bases: design.bases.map(hex => ({
-            name: getColourName(hex),
-            hex
-          })),
-
-          caps: design.caps.map(hex => ({
-            name: getColourName(hex),
-            hex
-          })),
-
-          letters: design.letters.map(hex => ({
-            name: getColourName(hex),
-            hex
-          }))
-        }
-      };
+      return { ...item, itemName, need, stock, toPrint };
     })
-  };
+    .filter(item => item.toPrint > 0);
 
-  const dateAvailable = await checkNeededByDate();
-
-  if (!dateAvailable) {
-    submitStatus.innerText = neededByMessage;
-    return;
-  }
-
-  // First save the order.
-  try {
-    await saveOrderToDatabase(order);
-  } catch (error) {
-    console.error("Unable to save order:", error);
-
-    submitStatus.innerText =
-      "Unable to save your order. Please try again.";
-
-    return;
-  }
-
-  // The order is now safely saved.
-  orderSubmitted = true;
-  localStorage.removeItem("littleKeepsDraft");
-
-  // Supabase sends the Telegram alert through a database webhook.
-  // The customer-facing website does not contain the Telegram bot token.
-  paymentOrderRef.innerText = orderRef;
-  paymentTotal.innerText = `$${total.toFixed(2)}`;
-
-  checkoutScreen.classList.add("hidden");
-  paymentScreen.classList.remove("hidden");
-
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth"
-  });
-}
-
-function updateCollectionNote() {
-
-    const subtotal = names.reduce(
-        (sum, item) => sum + calculatePrice(getDesign(item)),
-        0
+  const keycapGroupHtml = Object.entries(keycapGroups).map(([groupKey, group]) => {
+    const rows = Object.entries(group.letters)
+      .sort((a, b) => b[1] - a[1])
+      .map(([letter, qty]) => {
+    const itemName = getKeycapInventoryName(
+      group.capName,
+      group.letterName,
+      letter
     );
+        const need = qty;
+        const stock = getInventoryQty(itemName);
+        const toPrint = Math.max(0, need - stock);
 
-    if (collectionMethod.value === "pickup") {
+        return { letter, itemName, need, stock, toPrint };
+      })
+      .filter(row => row.toPrint > 0);
 
-        deliveryNote.innerHTML = `
-            📍 <strong>Pickup Location:</strong> Woodlands MRT.<br><br>
+    if (!rows.length) return "";
 
-            Weekdays: <strong>After 7:00 PM</strong><br>
-            Weekends: We'll arrange a mutually convenient time.<br><br>
-
-            Please indicate your <strong>preferred pickup timing</strong> in the notes below.
-        `;
-
-    } else {
-
-        const fee = subtotal >= 50 ? "FREE 🎉" : "$2.50";
-
-        deliveryNote.innerHTML = `
-            Please enter any delivery instructions below.
-        `;
-
-    }
-
-}
-
-function refreshUI() {
-  renderNameCards();
-  renderColourSlots();
-  updateEditModeText();
-  updateBaseShapeButtons();
-  updateCartDisplay();
-  renderReviewOrder();
-}
-
-function buildSelectedPreview() {
-  if (!names.length) {
-    keychain.clear();
-    return;
-  }
-
-  const item = names[selectedIndex];
-  buildKeychain(item.name, getDesign(item));
-}
-
-function resize() {
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-}
-
-function animate() {
-  resize();
-  controls.update();
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
-}
-
-function setOrderType(type) {
-  orderType = type;
-
-  const isGroupOrder = type === "group";
-
-  singleBtn.classList.toggle(
-    "active",
-    !isGroupOrder
-  );
-
-  groupBtn.classList.toggle(
-    "active",
-    isGroupOrder
-  );
-
-  singleSection.classList.toggle(
-    "hidden",
-    isGroupOrder
-  );
-
-  groupSection.classList.toggle(
-    "hidden",
-    !isGroupOrder
-  );
-
-  applyAllToggle.checked = false;
-
-  updateNames();
-}
-
-singleBtn.onclick = () => {
-  setOrderType("single");
-};
-
-groupBtn.onclick = () => {
-  setOrderType("group");
-};
-
-function openCartDrawer() {
-  closeSideMenu();
-  renderCartDrawer();
-
-  cartDrawer.classList.add("open");
-  cartOverlay.classList.remove("hidden");
-  document.body.classList.add("cart-open");
-}
-
-function closeCartDrawer() {
-  cartDrawer.classList.remove("open");
-  cartOverlay.classList.add("hidden");
-  document.body.classList.remove("cart-open");
-}
-
-function renderCartDrawer() {
-  const subtotal =
-    cartHasItems ? getOrderSubtotal() : 0;
-
-  cartDrawerSubtotal.textContent =
-    `$${subtotal.toFixed(2)}`;
-
-  if (!cartHasItems || !names.length) {
-    cartDrawerItems.innerHTML = `
-      <div class="empty-cart">
-        <div class="empty-cart-icon">♡</div>
-        <h3>Your cart is empty</h3>
-        <p>Design a personalised keychain to get started.</p>
-      </div>
-    `;
-
-    checkoutFromCartBtn.disabled = true;
-    return;
-  }
-
-  checkoutFromCartBtn.disabled = false;
-
-  cartDrawerItems.innerHTML = names
-    .map((item, index) => {
-      const design = getDesign(item);
-      const price = calculatePrice(design);
-      const baseShape =
-        design.baseShape === "bubbly"
-          ? "Bubbly Base"
-          : "Ribbed Base";
-
-      return `
-        <div class="cart-drawer-item">
-          <div class="cart-item-top">
-            <div>
-              <strong>${item.name}</strong>
-              <p>${baseShape}</p>
+    return `
+      <details class="print-group" open>
+        <summary>
+          <div class="group-summary">
+            <div
+              class="sample-keycap"
+              style="background:${group.capHex}; color:${group.letterHex};"
+            >
+              A
             </div>
 
-            <strong class="cart-item-price">
-              $${price.toFixed(2)}
-            </strong>
+            <div>
+              <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
+              <p>Only showing letters that still need printing</p>
+            </div>
           </div>
+        </summary>
 
-          <div class="mini-chain">
-            ${createMiniPreview(item.name, design)}
+        ${rows.map(row => `
+          <div class="print-check-row">
+            <span class="letter-chip">${displayIcon(row.letter)}</span>
+
+            <div style="flex:1;">
+              <strong>${displayIcon(row.letter)}</strong>
+              <p class="hint">
+                Need: ${row.need} · Stock: ${row.stock} · To Print: ${row.toPrint}
+              </p>
+            </div>
+
+            <div class="print-qty-control">
+              <input
+                type="number"
+                min="1"
+                value="${row.toPrint}"
+                id="printQty-${encodeURIComponent(row.itemName)}"
+              >
+
+              <button
+                class="ready-btn"
+                onclick='window.addCustomInventory(
+                  ${JSON.stringify(row.itemName)},
+                  document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(row.itemName)}`)}).value,
+                  "Keycap"
+                )'
+              >
+                Add Printed
+              </button>
+            </div>
           </div>
+        `).join("")}
+      </details>
+    `;
+  }).join("");
 
-          <div class="cart-item-actions">
-            <button
-              type="button"
-              onclick="window.editCartItem(${index})"
-            >
-              Edit
-            </button>
+  ordersContainer.innerHTML = `
+    <div class="production-card">
+      <div class="production-header">
+        <div>
+          <h2>Production Planner ♡</h2>
+          <p class="hint">Only items that still need printing are shown.</p>
+        </div>
 
-            <button
-              type="button"
-              class="remove-cart-item"
-              onclick="window.removeCartItem(${index})"
-            >
-              Remove
-            </button>
+        <p class="active-count">${count} active order(s)</p>
+      </div>
+
+      <h3>Base Printing</h3>
+
+      <div class="print-group">
+        ${baseRows.map(item => `
+          <div class="print-check-row">
+            <span class="colour-dot" style="background:${item.hex}"></span>
+
+            <div style="flex:1;">
+              <strong>${item.itemName}</strong>
+              <p class="hint">
+                Need: ${item.need} · Stock: ${item.stock} · To Print: ${item.toPrint}
+              </p>
+            </div>
+
+            <div class="print-qty-control">
+              <input
+                type="number"
+                min="1"
+                value="${item.toPrint}"
+                id="printQty-${encodeURIComponent(item.itemName)}"
+              >
+
+              <button
+                class="ready-btn"
+                onclick='window.addCustomInventory(
+                  ${JSON.stringify(item.itemName)},
+                  document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(item.itemName)}`)}).value,
+                  "Base"
+                )'
+              >
+                Add Printed
+              </button>
+            </div>
           </div>
+        `).join("") || "<p>No bases need printing.</p>"}
+      </div>
+
+      <h3>Hardware Stock</h3>
+
+<div class="print-group">
+  ${hardwareItems.map(item => {
+    const stock = getInventoryQty(item.itemName);
+
+    return `
+      <div class="print-check-row">
+
+        <div style="flex:1;">
+          <strong>${item.label}</strong>
+          <p class="hint">
+            Current Stock: ${stock}
+          </p>
+        </div>
+
+        <div class="print-qty-control">
+          <input
+            type="number"
+            min="1"
+            value="1"
+            id="hardware-${encodeURIComponent(item.itemName)}"
+          >
+
+          <button
+            class="ready-btn"
+            onclick='window.addCustomInventory(
+              ${JSON.stringify(item.itemName)},
+              document.getElementById(${JSON.stringify(`hardware-${encodeURIComponent(item.itemName)}`)}).value,
+              "Hardware"
+            )'
+          >
+            Add Stock
+          </button>
+        </div>
+
+      </div>
+    `;
+  }).join("")}
+</div>
+
+      <h3>Keycap Printing</h3>
+
+      <div class="keycap-grid">
+        ${keycapGroupHtml || "<p>No keycaps need printing.</p>"}
+      </div>
+    </div>
+  `;
+}
+
+function getEmailOrderItems(order) {
+  let savedOrderData = order.order_data;
+
+  if (typeof savedOrderData === "string") {
+    try {
+      savedOrderData = JSON.parse(savedOrderData);
+    } catch (error) {
+      console.error("Unable to read order_data:", error);
+      savedOrderData = [];
+    }
+  }
+
+  return Array.isArray(savedOrderData)
+    ? savedOrderData
+    : Array.isArray(savedOrderData?.items)
+      ? savedOrderData.items
+      : [];
+}
+
+function escapeEmailHtml(value) {
+  const characters = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  };
+
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    character => characters[character]
+  );
+}
+
+function getSafePdfColour(value, fallback) {
+  const colour = value?.hex || value;
+
+  return typeof colour === "string" &&
+    /^#[0-9a-f]{3,8}$/i.test(colour)
+      ? colour
+      : fallback;
+}
+
+function getPdfColourNames(values) {
+  if (!Array.isArray(values) || !values.length) {
+    return "Not specified";
+  }
+
+  return values
+    .map(value => value?.name || value?.hex || value)
+    .filter(Boolean)
+    .join(", ");
+}
+
+function createPdfMiniPreview(item) {
+  const design = item.design || {};
+  const bases = Array.isArray(design.bases) && design.bases.length
+    ? design.bases
+    : ["#f6a9c2"];
+  const caps = Array.isArray(design.caps) && design.caps.length
+    ? design.caps
+    : ["#ffffff"];
+  const letters = Array.isArray(design.letters) && design.letters.length
+    ? design.letters
+    : ["#332d30"];
+
+  const characters = Array.from(
+    item.clean_name || sanitizeName(item.name || "")
+  );
+
+  return characters.map((character, index) => {
+    const base = getSafePdfColour(
+      bases[index % bases.length],
+      "#f6a9c2"
+    );
+    const cap = getSafePdfColour(
+      caps[index % caps.length],
+      "#ffffff"
+    );
+      const letter = getSafePdfColour(
+      letters[index % letters.length],
+      "#332d30"
+    );
+
+    return `
+      <span style="
+        display:inline-flex;
+        width:38px;
+        height:46px;
+        margin:3px;
+        padding:4px;
+        align-items:flex-start;
+        justify-content:center;
+        box-sizing:border-box;
+        border-radius:9px;
+        background:${base};
+        box-shadow:0 2px 5px rgba(51,45,48,.18);
+      ">
+        <span style="
+          display:flex;
+          width:29px;
+          height:29px;
+          align-items:center;
+          justify-content:center;
+          box-sizing:border-box;
+          border:1px solid rgba(51,45,48,.12);
+          border-radius:7px;
+          background:${cap};
+          color:${letter};
+          font-size:17px;
+          font-weight:700;
+          line-height:1;
+        ">${escapeEmailHtml(displayIcon(character))}</span>
+      </span>
+    `;
+  }).join("");
+}
+
+async function generateOrderPdfAttachment(order, items) {
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = `
+    position:fixed;
+    left:-10000px;
+    top:0;
+    width:794px;
+    box-sizing:border-box;
+    padding:44px;
+    background:#fff7fb;
+    color:#332d30;
+    font-family:Arial,Helvetica,sans-serif;
+  `;
+
+  const itemCards = items.length
+    ? items.map((item, index) => {
+        const design = item.design || {};
+        const baseShape =
+          design.base_shape?.label ||
+          (design.base_shape?.key === "bubbly"
+            ? "Bubbly Base"
+            : "Ribbed Base");
+        const baseColours = getPdfColourNames(design.bases);
+        const capColours = getPdfColourNames(design.caps);
+        const letterColours = getPdfColourNames(design.letters);
+
+        return `
+          <div style="
+            margin:0 0 14px;
+            padding:18px;
+            background:#ffffff;
+            border:1px solid #f1d7e2;
+            border-radius:15px;
+            page-break-inside:avoid;
+          ">
+            <div style="display:flex;justify-content:space-between;gap:20px;">
+              <div>
+                <div style="font-size:18px;font-weight:700;">
+                  ${index + 1}. ${escapeEmailHtml(item.name || "Personalised keychain")}
+                </div>
+                <div style="margin-top:4px;color:#756b70;font-size:13px;">
+                  ${escapeEmailHtml(baseShape)}
+                </div>
+              </div>
+              <div style="color:#ff6799;font-size:18px;font-weight:700;">
+                ${escapeEmailHtml(formatMoney(item.price))}
+              </div>
+            </div>
+            <div style="margin-top:14px;white-space:nowrap;">
+              ${createPdfMiniPreview(item)}
+            </div>
+            <div style="
+              margin-top:12px;
+              color:#756b70;
+              font-size:12px;
+              line-height:1.7;
+            ">
+              <strong style="color:#332d30;">Base colours:</strong>
+              ${escapeEmailHtml(baseColours)}<br>
+              <strong style="color:#332d30;">Cap colours:</strong>
+              ${escapeEmailHtml(capColours)}<br>
+              <strong style="color:#332d30;">Letter colours:</strong>
+              ${escapeEmailHtml(letterColours)}
+            </div>
+          </div>
+        `;
+      }).join("")
+    : `
+        <div style="padding:18px;background:#fff;border-radius:15px;">
+          No item details were saved for this order.
         </div>
       `;
-    })
-    .join("");
-}
 
-window.editCartItem = function(index) {
-  selectedIndex = index;
+  const deliveryText = Number(order.delivery_fee || 0) === 0
+    ? "Free"
+    : formatMoney(order.delivery_fee);
+  const fulfilmentDetails = order.collection_method === "delivery"
+    ? `
+        <strong>Delivery address:</strong>
+        ${escapeEmailHtml(order.delivery_address || "-")}<br>
+      `
+    : `
+        <strong>Pickup location:</strong> Woodlands MRT<br>
+      `;
+  const customerNotes =
+    order.notes || order.preferred_time || "No additional notes";
 
-  closeCartDrawer();
+  wrapper.innerHTML = `
+    <div style="
+      overflow:hidden;
+      background:#ffffff;
+      border:1px solid #f1d7e2;
+      border-radius:24px;
+    ">
+      <div style="padding:30px;text-align:center;background:#ffeaf2;">
+        <div style="color:#ff6799;font-size:28px;font-weight:700;">
+          Little Keeps
+        </div>
+        <div style="margin-top:9px;font-size:22px;font-weight:700;">
+          Confirmed Order
+        </div>
+        <div style="margin-top:6px;color:#756b70;font-size:14px;">
+          ${escapeEmailHtml(order.order_ref || "-")}
+        </div>
+      </div>
 
-  designScreen.classList.remove("hidden");
-  checkoutScreen.classList.add("hidden");
-  paymentScreen.classList.add("hidden");
+      <div style="padding:28px;">
+        <div style="
+          margin-bottom:22px;
+          padding:18px;
+          background:#fff8fb;
+          border-radius:15px;
+          font-size:14px;
+          line-height:1.75;
+        ">
+          <div style="margin-bottom:8px;color:#ff6799;font-size:18px;font-weight:700;">
+            Customer &amp; Fulfilment Details
+          </div>
+          <strong>Customer:</strong>
+          ${escapeEmailHtml(order.customer_name || "Customer")}<br>
+          <strong>Email:</strong>
+          ${escapeEmailHtml(order.customer_email || "-")}<br>
+          <strong>Contact number:</strong>
+          ${escapeEmailHtml(order.customer_phone || "-")}<br>
+          <strong>Collection method:</strong>
+          ${escapeEmailHtml(getMethodLabel(order.collection_method))}<br>
+          ${fulfilmentDetails}
+          <strong>Needed by:</strong>
+          ${escapeEmailHtml(formatDate(order.needed_by))}<br>
+          <strong>Notes / preferred timing:</strong>
+          ${escapeEmailHtml(customerNotes)}
+        </div>
 
-  refreshUI();
-  buildSelectedPreview();
+        <div style="margin:0 0 14px;color:#ff6799;font-size:21px;font-weight:700;">
+          Your Order
+        </div>
+        ${itemCards}
 
-  document
-    .getElementById("designArea")
-    .scrollIntoView({
-      behavior: "smooth",
-      block: "start"
+        <div style="
+          margin-top:22px;
+          padding:20px;
+          background:#fff8fb;
+          border-radius:15px;
+          font-size:16px;
+          line-height:2;
+        ">
+          <div style="display:flex;justify-content:space-between;">
+            <span>Subtotal</span>
+            <strong>${escapeEmailHtml(formatMoney(order.subtotal))}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span>Delivery</span>
+            <strong>${escapeEmailHtml(deliveryText)}</strong>
+          </div>
+          <div style="
+            display:flex;
+            justify-content:space-between;
+            margin-top:8px;
+            padding-top:10px;
+            border-top:1px solid #efd8e1;
+            color:#ff6799;
+            font-size:20px;
+          ">
+            <strong>Total Paid</strong>
+            <strong>${escapeEmailHtml(formatMoney(order.total))}</strong>
+          </div>
+        </div>
+
+        <div style="margin-top:26px;text-align:center;color:#8b8085;font-size:13px;">
+          Made with lots of love and a little click. Little Keeps
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(wrapper);
+
+  try {
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+
+    const canvas = await html2canvas(wrapper, {
+      backgroundColor: "#fff7fb",
+      logging: false,
+      scale: 1.5,
+      useCORS: true
     });
-};
 
-window.removeCartItem = function(index) {
-  if (!cartHasItems) return;
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+      compress: true
+    });
 
-  const itemName =
-    names[index]?.name || "this keychain";
+    const margin = 8;
+    const printableWidth = 210 - margin * 2;
+    const printableHeight = 297 - margin * 2;
+    const pixelsPerMm = canvas.width / printableWidth;
+    const sliceHeight = Math.floor(printableHeight * pixelsPerMm);
 
-  const confirmed = confirm(
-    `Remove ${itemName} from your cart?`
-  );
+    let sourceY = 0;
+    let pageNumber = 0;
 
-  if (!confirmed) return;
+    while (sourceY < canvas.height) {
+      const currentSliceHeight = Math.min(
+        sliceHeight,
+        canvas.height - sourceY
+      );
+      const pageCanvas = document.createElement("canvas");
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = currentSliceHeight;
 
-  names.splice(index, 1);
+      const context = pageCanvas.getContext("2d");
+      context.fillStyle = "#fff7fb";
+      context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      context.drawImage(
+        canvas,
+        0,
+        sourceY,
+        canvas.width,
+        currentSliceHeight,
+        0,
+        0,
+        canvas.width,
+        currentSliceHeight
+      );
 
-  if (names.length === 0) {
-    cartHasItems = false;
-    selectedIndex = 0;
-  } else if (selectedIndex >= names.length) {
-    selectedIndex = names.length - 1;
+      if (pageNumber > 0) {
+        pdf.addPage();
+      }
+
+      const renderedHeight = currentSliceHeight / pixelsPerMm;
+      pdf.addImage(
+        pageCanvas.toDataURL("image/jpeg", 0.82),
+        "JPEG",
+        margin,
+        margin,
+        printableWidth,
+        renderedHeight,
+        undefined,
+        "FAST"
+      );
+
+      sourceY += currentSliceHeight;
+      pageNumber += 1;
+    }
+
+    return pdf.output("datauristring");
+  } finally {
+    wrapper.remove();
+  }
+}
+
+function getPdfRgb(value, fallback) {
+  let hex = getSafePdfColour(value, fallback).slice(1);
+
+  if (hex.length === 3) {
+    hex = hex.split("").map(character => character + character).join("");
   }
 
-  if (orderType === "group") {
-    nameList.value =
-      names.map(item => item.name).join("\n");
-  }
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16)
+  ];
+}
 
-  refreshUI();
-  buildSelectedPreview();
-  renderCartDrawer();
-};
+function getCompactPdfText(value) {
+  return String(value ?? "-")
+    .replace(/[–—]/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[^\x20-\x7E]/g, "*");
+}
 
-function proceedToCheckout() {
-  if (!cartHasItems || !names.length) {
-    return;
-  }
-
-  closeCartDrawer();
-
-  designScreen.classList.add("hidden");
-  checkoutScreen.classList.remove("hidden");
-  paymentScreen.classList.add("hidden");
-
-  refreshUI();
-  validateForm();
-
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth"
+async function generateCompactOrderPdfAttachment(order, items) {
+  const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+    compress: true
   });
-}
 
-nextBtn.onclick = () => {
-  if (!names.length) {
-    alert("Please enter at least one name.");
-    return;
-  }
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 14;
+  const contentWidth = pageWidth - margin * 2;
+  let y = margin;
 
-  cartHasItems = true;
-  draftHasMeaningfulChanges = true;
+  const pink = [255, 103, 153];
+  const palePink = [255, 234, 242];
+  const softPink = [255, 248, 251];
+  const dark = [51, 45, 48];
+  const muted = [117, 107, 112];
 
-  updateCartDisplay();
-  openCartDrawer();
-};
+  function drawPageHeader(showTitle = true) {
+    pdf.setFillColor(...palePink);
+    pdf.roundedRect(margin, y, contentWidth, showTitle ? 31 : 17, 4, 4, "F");
 
-headerCartBtn.onclick = openCartDrawer;
-sideCartBtn.onclick = openCartDrawer;
+    pdf.setTextColor(...pink);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(showTitle ? 20 : 14);
+    pdf.text("Little Keeps", pageWidth / 2, y + (showTitle ? 10 : 7), {
+      align: "center"
+    });
 
-cartCloseBtn.onclick = closeCartDrawer;
-cartOverlay.onclick = closeCartDrawer;
-continueShoppingBtn.onclick = closeCartDrawer;
-checkoutFromCartBtn.onclick = proceedToCheckout;
-
-function openSideMenu() {
-  sideMenu.classList.add("open");
-  menuOverlay.classList.remove("hidden");
-  document.body.classList.add("menu-open");
-}
-
-function closeSideMenu() {
-  sideMenu.classList.remove("open");
-  menuOverlay.classList.add("hidden");
-  document.body.classList.remove("menu-open");
-}
-
-menuOpenBtn.onclick = openSideMenu;
-menuCloseBtn.onclick = closeSideMenu;
-menuOverlay.onclick = closeSideMenu;
-
-document
-  .querySelectorAll("[data-scroll-target]")
-  .forEach(button => {
-    button.addEventListener("click", () => {
-      const targetId = button.dataset.scrollTarget;
-      const target = document.getElementById(targetId);
-
-      closeSideMenu();
-
-      target?.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
+    if (showTitle) {
+      pdf.setTextColor(...dark);
+      pdf.setFontSize(14);
+      pdf.text("Confirmed Order", pageWidth / 2, y + 19, {
+        align: "center"
       });
-    });
-  });
+      pdf.setTextColor(...muted);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.text(
+        getCompactPdfText(order.order_ref || "-"),
+        pageWidth / 2,
+        y + 26,
+        { align: "center" }
+      );
+    }
 
-startDesignBtn.onclick = () => {
-  document
-    .getElementById("designArea")
-    .scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
-};
+    y += showTitle ? 37 : 23;
+  }
 
-singleName.addEventListener("input", updateNames);
+  function addPageIfNeeded(requiredHeight) {
+    if (y + requiredHeight <= pageHeight - margin) {
+      return;
+    }
 
-customerName.addEventListener(
-    "input",
-    validateForm
-);
+    pdf.addPage();
+    y = margin;
+    drawPageHeader(false);
+  }
 
-customerEmail.addEventListener(
-    "input",
-    validateForm
-);
+  function drawWrappedDetail(label, value) {
+    const lines = pdf.splitTextToSize(
+      `${label}: ${getCompactPdfText(value || "-")}`,
+      contentWidth - 12
+    );
+    const requiredHeight = lines.length * 4.5 + 1;
+    addPageIfNeeded(requiredHeight);
+    pdf.setTextColor(...dark);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9.5);
+    pdf.text(lines, margin + 6, y);
+    y += requiredHeight;
+  }
 
-customerPhone.addEventListener(
-    "input",
-    validateForm
-);
+  drawPageHeader(true);
 
+  pdf.setFillColor(...softPink);
+  pdf.roundedRect(margin, y, contentWidth, 8, 3, 3, "F");
+  pdf.setTextColor(...pink);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(12);
+  pdf.text("Customer & Fulfilment Details", margin + 5, y + 5.5);
+  y += 13;
 
-collectionMethod.addEventListener("change", () => {
-  const isDelivery =
-    collectionMethod.value === "delivery";
-
-  deliveryAddressSection.classList.toggle(
-    "hidden",
-    !isDelivery
+  drawWrappedDetail("Customer", order.customer_name || "Customer");
+  drawWrappedDetail("Email", order.customer_email || "-");
+  drawWrappedDetail("Contact number", order.customer_phone || "-");
+  drawWrappedDetail(
+    "Collection method",
+    getMethodLabel(order.collection_method)
   );
 
-  if (!isDelivery) {
-    deliveryAddressLine1.value = "";
-    deliveryAddressLine2.value = "";
-    deliveryPostalCode.value = "";
+  if (order.collection_method === "delivery") {
+    drawWrappedDetail("Delivery address", order.delivery_address || "-");
+  } else {
+    drawWrappedDetail("Pickup location", "Woodlands MRT");
   }
 
-  updateCollectionNote();
-  refreshUI();
-  validateForm();
-});
+  drawWrappedDetail("Needed by", formatDate(order.needed_by));
+  drawWrappedDetail(
+    "Notes / preferred timing",
+    order.notes || order.preferred_time || "No additional notes"
+  );
 
-deliveryAddressLine1.addEventListener(
-  "input",
-  validateForm
-);
+  y += 4;
+  addPageIfNeeded(12);
+  pdf.setTextColor(...pink);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(15);
+  pdf.text("Your Order", margin, y);
+  y += 7;
 
-deliveryAddressLine2.addEventListener(
-  "input",
-  validateForm
-);
+  items.forEach((item, index) => {
+    const design = item.design || {};
+    const bases = Array.isArray(design.bases) && design.bases.length
+      ? design.bases
+      : ["#f6a9c2"];
+    const caps = Array.isArray(design.caps) && design.caps.length
+      ? design.caps
+      : ["#ffffff"];
+    const letters = Array.isArray(design.letters) && design.letters.length
+      ? design.letters
+      : ["#332d30"];
+    const baseShape =
+      design.base_shape?.label ||
+      (design.base_shape?.key === "bubbly"
+        ? "Bubbly Base"
+        : "Ribbed Base");
+    const baseNames = getPdfColourNames(bases);
+    const capNames = getPdfColourNames(caps);
+    const letterNames = getPdfColourNames(letters);
+    const colourLines = [
+      ...pdf.splitTextToSize(
+        `Base colours: ${getCompactPdfText(baseNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Cap colours: ${getCompactPdfText(capNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Letter colours: ${getCompactPdfText(letterNames)}`,
+        contentWidth - 12
+      )
+    ];
+    const cardHeight = 34 + colourLines.length * 3.8;
 
-deliveryPostalCode.addEventListener(
-  "input",
-  validateForm
-);
+    addPageIfNeeded(cardHeight + 5);
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(241, 215, 226);
+    pdf.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD");
 
-nameList.addEventListener("input", updateNames);
+    pdf.setTextColor(...dark);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.text(
+      `${index + 1}. ${getCompactPdfText(item.name || "Personalised keychain")}`,
+      margin + 5,
+      y + 7
+    );
+    pdf.setTextColor(...pink);
+    pdf.text(
+      getCompactPdfText(formatMoney(item.price)),
+      pageWidth - margin - 5,
+      y + 7,
+      { align: "right" }
+    );
 
-applyAllToggle.addEventListener("change", () => {
-  refreshUI();
-  buildSelectedPreview();
-});
+    pdf.setTextColor(...muted);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.5);
+    pdf.text(getCompactPdfText(baseShape), margin + 5, y + 12);
 
-resetSelected.onclick = () => {
-  if (names[selectedIndex]) {
-    names[selectedIndex].custom = null;
-    refreshUI();
-    buildSelectedPreview();
+    const characters = Array.from(
+      item.clean_name || sanitizeName(item.name || "")
+    );
+    let blockX = margin + 5;
+    const blockY = y + 16;
+
+    characters.forEach((character, characterIndex) => {
+      const baseRgb = getPdfRgb(
+        bases[characterIndex % bases.length],
+        "#f6a9c2"
+      );
+      const capRgb = getPdfRgb(
+        caps[characterIndex % caps.length],
+        "#ffffff"
+      );
+      const letterRgb = getPdfRgb(
+        letters[characterIndex % letters.length],
+        "#332d30"
+      );
+
+      pdf.setFillColor(...baseRgb);
+      pdf.roundedRect(blockX, blockY, 9, 11, 1.5, 1.5, "F");
+      pdf.setFillColor(...capRgb);
+      pdf.roundedRect(blockX + 1, blockY + 1, 7, 7, 1, 1, "F");
+      pdf.setTextColor(...letterRgb);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7);
+      const printableCharacter = /^[A-Za-z0-9]$/.test(character)
+        ? character
+        : "*";
+      pdf.text(printableCharacter, blockX + 4.5, blockY + 5.7, {
+        align: "center"
+      });
+      blockX += 10.5;
+    });
+
+    pdf.setTextColor(...muted);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7.5);
+    pdf.text(colourLines, margin + 5, y + 31);
+    y += cardHeight + 5;
+  });
+
+  if (!items.length) {
+    drawWrappedDetail("Order items", "No item details were saved");
   }
-};
 
-submitOrderBtn.onclick = submitOrder;
+  addPageIfNeeded(37);
+  pdf.setFillColor(...softPink);
+  pdf.roundedRect(margin, y, contentWidth, 33, 4, 4, "F");
+  pdf.setTextColor(...dark);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.text("Subtotal", margin + 6, y + 8);
+  pdf.text(
+    getCompactPdfText(formatMoney(order.subtotal)),
+    pageWidth - margin - 6,
+    y + 8,
+    { align: "right" }
+  );
+  pdf.text("Delivery", margin + 6, y + 16);
+  pdf.text(
+    Number(order.delivery_fee || 0) === 0
+      ? "Free"
+      : getCompactPdfText(formatMoney(order.delivery_fee)),
+    pageWidth - margin - 6,
+    y + 16,
+    { align: "right" }
+  );
+  pdf.setTextColor(...pink);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(13);
+  pdf.text("Total Paid", margin + 6, y + 27);
+  pdf.text(
+    getCompactPdfText(formatMoney(order.total)),
+    pageWidth - margin - 6,
+    y + 27,
+    { align: "right" }
+  );
 
-paymentBackBtn.onclick = () => {
+  const dataUri = pdf.output("datauristring");
+  const base64 = dataUri.slice(dataUri.indexOf(",") + 1);
+  console.log(
+    "Compact PDF attachment size:",
+    `${Math.ceil(base64.length / 1024)} KB base64`
+  );
 
-    paymentScreen.classList.add("hidden");
-    checkoutScreen.classList.remove("hidden");
-
-};
-
-paymentDoneBtn.onclick = () => {
-  window.location.href = "/";
-};
-
-makeSwatches("baseColours", baseColours, "base");
-makeSwatches("capColours", capColours, "cap");
-makeSwatches("letterColours", letterColours, "letter");
-
-function validateForm() {
-
-    let valid = true;
-    let message = "";
-
-    if (!customerName.value.trim()) {
-        valid = false;
-        message = "Please enter your name.";
-    }
-
-    else if (
-        !customerEmail.value.match(
-            /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        )
-    ) {
-        valid = false;
-        message = "Please enter a valid email.";
-    }
-
-    else if (
-        !customerPhone.value.match(/^[0-9]{8}$/)
-    ) {
-        valid = false;
-        message = "Contact number must be 8 digits.";
-    }
-
-    else if (!neededBy.value) {
-        valid = false;
-        message = "Please select a required date.";
-    }
-
-    else if (!neededByAllowed) {
-      valid = false;
-      message = neededByMessage || "Please choose another date.";
-    }
-
-else if (
-  collectionMethod.value === "delivery" &&
-  !deliveryAddressLine1.value.trim()
-) {
-  valid = false;
-  message = "Please enter your block and street name.";
+  return base64;
 }
 
-else if (
-  collectionMethod.value === "delivery" &&
-  !deliveryAddressLine2.value.trim()
-) {
-  valid = false;
-  message = "Please enter your unit number.";
+async function sendPaymentVerifiedEmail(order) {
+  const customerEmail = order.customer_email?.trim();
+
+  if (!customerEmail) {
+    throw new Error(
+      "The order does not have a customer email address."
+    );
+  }
+
+  const items = getEmailOrderItems(order);
+
+  const orderList = items.length
+    ? items
+        .map((item, index) => {
+          const name =
+            item.name || "Personalised keychain";
+
+          const price = formatMoney(item.price);
+
+          return `${index + 1}. ${name} — ${price}`;
+        })
+        .join("\n")
+    : "No item details available.";
+
+  console.log("Order list being emailed:", orderList);
+
+  const orderPdf = await generateCompactOrderPdfAttachment(order, items);
+
+  const response = await emailjs.send(
+    EMAILJS_SERVICE,
+    EMAILJS_PAYMENT_VERIFIED_TEMPLATE,
+    {
+      to_email: customerEmail,
+      customer_name: order.customer_name || "Customer",
+      order_ref: order.order_ref || "-",
+
+      order_list: orderList,
+      order_pdf: orderPdf,
+
+      subtotal_amount: formatMoney(order.subtotal),
+
+      delivery_amount:
+        Number(order.delivery_fee || 0) === 0
+          ? "Free"
+          : formatMoney(order.delivery_fee),
+
+      total_amount: formatMoney(order.total),
+
+      needed_by: formatDate(order.needed_by),
+
+      collection_method: getMethodLabel(
+        order.collection_method
+      )
+    }
+  );
+
+  console.log(
+    "Verification email sent:",
+    response.status,
+    response.text
+  );
 }
 
-else if (
-  collectionMethod.value === "delivery" &&
-  !/^\d{6}$/.test(deliveryPostalCode.value.trim())
-) {
-  valid = false;
-  message = "Postal code must be 6 digits.";
-}
+async function updateOrderStatus(id, status) {
+  const scrollY = window.scrollY;
 
-    submitOrderBtn.disabled = !valid;
-    submitOrderBtn.classList.toggle("disabled", !valid);
+  const order = latestOrders.find(
+    order => String(order.id) === String(id)
+  );
 
-    document.getElementById("formStatus").innerText = message;
-
-}
-
-closeModalBtn.onclick = () => {
-  successModal.classList.add("hidden");
-};
-
-function saveDraft() {
-  if (
-    orderSubmitted ||
-    !draftHasMeaningfulChanges
-  ) {
+  if (!order) {
+    alert("Order could not be found.");
     return;
   }
 
-  const draft = {
-    orderType,
-    names,
-    selectedIndex,
-    globalDesign,
-    cartHasItems,
+  const previousStatus = order.status;
+  const updateData = { status };
 
-    customerName: customerName.value,
-    customerEmail: customerEmail.value,
-    customerPhone: customerPhone.value,
-
-    neededBy: neededBy.value,
-    collectionMethod: collectionMethod.value,
-    deliveryAddressLine1:
-      deliveryAddressLine1.value,
-
-    deliveryAddressLine2:
-      deliveryAddressLine2.value,
-
-    deliveryPostalCode:
-      deliveryPostalCode.value,
-    orderNotes: orderNotes.value,
-
-    singleName: singleName.value,
-    nameList: nameList.value
-  };
-
-  localStorage.setItem(
-    "littleKeepsDraft",
-    JSON.stringify(draft)
-  );
-}
-
-function loadDraft() {
-
-    const saved = localStorage.getItem("littleKeepsDraft");
-
-    if (!saved) return;
-
-    draftData = JSON.parse(saved);
-
-    draftModal.classList.remove("hidden");
-
-}
-
-continueDraftBtn.onclick = () => {
-  draftModal.classList.add("hidden");
-
-  orderType =
-    draftData.orderType || "single";
-
-  names =
-    Array.isArray(draftData.names)
-      ? draftData.names
-      : [];
-
-  selectedIndex =
-    Number.isInteger(draftData.selectedIndex)
-      ? draftData.selectedIndex
-      : 0;
-
-  globalDesign = {
-    ...globalDesign,
-    ...(draftData.globalDesign || {})
-  };
-
-  globalDesign.baseShape =
-    globalDesign.baseShape || "ribbed";
-
-  names.forEach(item => {
-    if (item.custom) {
-      item.custom.baseShape =
-        item.custom.baseShape ||
-        globalDesign.baseShape;
-    }
-  });
-
-  cartHasItems =
-    Boolean(draftData.cartHasItems);
-
-  customerName.value =
-    draftData.customerName || "";
-
-  customerEmail.value =
-    draftData.customerEmail || "";
-
-  customerPhone.value =
-    draftData.customerPhone || "";
-
-  neededBy.value =
-    draftData.neededBy || "";
-
-  collectionMethod.value =
-    draftData.collectionMethod || "pickup";
-
-  deliveryAddressLine1.value =
-    draftData.deliveryAddressLine1 || "";
-
-  deliveryAddressLine2.value =
-    draftData.deliveryAddressLine2 || "";
-
-  deliveryPostalCode.value =
-    draftData.deliveryPostalCode || "";
-
-  orderNotes.value =
-    draftData.orderNotes || "";
-
-  singleName.value =
-    draftData.singleName || "Alicia";
-
-  nameList.value =
-    draftData.nameList || "Alicia\nBen\nChloe";
-
-  setOrderType(orderType);
-
-  deliveryAddressSection.classList.toggle(
-    "hidden",
-    collectionMethod.value !== "delivery"
-  );
-
-  draftHasMeaningfulChanges = true;
-
-  refreshUI();
-  buildSelectedPreview();
-  validateForm();
-};
-
-discardDraftBtn.onclick = () => {
-  localStorage.removeItem(
-    "littleKeepsDraft"
-  );
-
-  draftData = null;
-  cartHasItems = false;
-  draftHasMeaningfulChanges = false;
-
-  draftModal.classList.add("hidden");
-
-  updateCartDisplay();
-};
-
-function celebrateOrder() {
-
-  const duration = 1800;
-  const end = Date.now() + duration;
-
-  (function frame() {
-
-    confetti({
-      particleCount: 3,
-      angle: 60,
-      spread: 60,
-      origin: { x: 0 },
-      colors: [
-        "#ff8fab",
-        "#ffd166",
-        "#8ecae6",
-        "#95d5b2",
-        "#ffffff"
-      ]
-    });
-
-    confetti({
-      particleCount: 3,
-      angle: 120,
-      spread: 60,
-      origin: { x: 1 },
-      colors: [
-        "#ff8fab",
-        "#ffd166",
-        "#8ecae6",
-        "#95d5b2",
-        "#ffffff"
-      ]
-    });
-
-    if (Date.now() < end) {
-      requestAnimationFrame(frame);
-    }
-
-  })();
-
-}
-
-function renderIconPicker() {
-  const singlePicker = document.getElementById("iconPicker");
-  const groupPicker = document.getElementById("groupIconPicker");
-
-  function buildPicker(container, targetInput) {
-    if (!container || !targetInput) return;
-
-    container.innerHTML = "";
-
-    iconChoices.forEach(icon => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "icon-btn";
-      btn.innerHTML = displayIcon(icon);
-
-      btn.onclick = () => {
-        const start = targetInput.selectionStart ?? targetInput.value.length;
-        const end = targetInput.selectionEnd ?? targetInput.value.length;
-
-        targetInput.value =
-          targetInput.value.slice(0, start) +
-          icon +
-          targetInput.value.slice(end);
-
-        targetInput.focus();
-        targetInput.selectionStart = start + icon.length;
-        targetInput.selectionEnd = start + icon.length;
-
-        updateNames();
-      };
-
-      container.appendChild(btn);
-    });
+  if (status === "Payment Verified") {
+    updateData.payment_type = "Paid";
   }
 
-  buildPicker(singlePicker, singleName);
-  buildPicker(groupPicker, nameList);
+  const { error } = await supabase
+    .from("orders")
+    .update(updateData)
+    .eq("id", id);
+
+  if (error) {
+    console.error("Unable to update status:", error);
+    alert("Unable to update status.");
+    return;
+  }
+
+  const isNewlyVerified =
+    previousStatus !== "Payment Verified" &&
+    status === "Payment Verified";
+
+  if (isNewlyVerified) {
+    try {
+      await sendPaymentVerifiedEmail(order);
+
+      alert(
+        `Payment verified and email sent to ${order.customer_email}.`
+      );
+    } catch (error) {
+      console.error("Verification email failed:", error);
+
+      alert(
+        "Payment was verified, but the customer email failed to send.\n\n" +
+        (error?.text || error?.message || "Unknown email error")
+      );
+    }
+  }
+
+  await loadOrders();
+
+  setTimeout(() => {
+    window.scrollTo(0, scrollY);
+  }, 50);
 }
 
-loadShopNotices();
-renderIconPicker();
+async function updatePaymentType(id, paymentType) {
+  const scrollY = window.scrollY;
 
-setOrderType("single");
-cartHasItems = false;
-draftHasMeaningfulChanges = false;
+  const { error } = await supabase
+    .from("orders")
+    .update({ payment_type: paymentType })
+    .eq("id", id);
 
-setupNeededByCalendar();
-updateCollectionNote();
-validateForm();
-updateCartDisplay();
-buildSelectedPreview();
-animate();
+  if (error) {
+    console.error(error);
+    alert("Unable to update payment type.");
+    return;
+  }
 
-loadDraft();
+  await loadOrders();
+
+  setTimeout(() => {
+    window.scrollTo(0, scrollY);
+  }, 50);
+}
+
+async function deductInventory(itemName, qtyToDeduct) {
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("*")
+    .eq("item_name", itemName)
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert(`Unable to find inventory item: ${itemName}`);
+    return false;
+  }
+
+  const currentQty = Number(data.qty || 0);
+
+if (currentQty < qtyToDeduct) {
+  alert(
+    `Not enough ${itemName}.\n` +
+    `Needed: ${qtyToDeduct}\n` +
+    `Available: ${currentQty}`
+  );
+
+  return false;
+}
+
+const newQty = currentQty - qtyToDeduct;
+
+  const { error: updateError } = await supabase
+    .from("inventory_items")
+    .update({
+      qty: newQty,
+      updated_at: new Date().toISOString()
+    })
+    .eq("item_name", itemName);
+
+  if (updateError) {
+    console.error(updateError);
+    alert(`Unable to update inventory: ${itemName}`);
+    return false;
+  }
+
+  return true;
+}
+
+async function loadOrders() {
+  ordersContainer.innerHTML = `<p class="empty">Loading orders...</p>`;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+
+    ordersContainer.innerHTML = `
+      <div class="empty-card">
+        <h3>Unable to load orders</h3>
+        <p>Please check Supabase permissions or the console error.</p>
+      </div>
+    `;
+
+    return;
+  }
+
+latestOrders = data || [];
+
+renderCurrentView();
+}
+
+window.updateOrderStatus = updateOrderStatus;
+window.updatePaymentType = updatePaymentType;
+
+function setActiveTab(activeTab) {
+
+    ordersViewBtn.classList.remove("active");
+    productionViewBtn.classList.remove("active");
+    assemblyViewBtn.classList.remove("active");
+
+    activeTab.classList.add("active");
+
+}
+
+ordersViewBtn.onclick = () => {
+  currentView = "orders";
+  setActiveTab(ordersViewBtn);
+  renderCurrentView();
+};
+
+productionViewBtn.onclick = () => {
+  currentView = "production";
+  setActiveTab(productionViewBtn);
+  renderCurrentView();
+};
+
+assemblyViewBtn.onclick = () => {
+  currentView = "assembly";
+  setActiveTab(assemblyViewBtn);
+  renderCurrentView();
+};
+
+orderViewFilter.addEventListener("change", () => renderOrders(latestOrders));
+orderSearch.addEventListener("input", () => renderOrders(latestOrders));
+statusFilter.addEventListener("change", () => renderOrders(latestOrders));
+paymentFilter.addEventListener("change", () => renderOrders(latestOrders));
+
+refreshBtn.onclick = loadOrders;
+loadOrders();
