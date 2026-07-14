@@ -1631,6 +1631,34 @@ async function generateCompactOrderPdfAttachment(order, items) {
   const softPink = [255, 248, 251];
   const dark = [51, 45, 48];
   const muted = [117, 107, 112];
+  const pdfIconCache = new Map();
+
+  function getPdfIconImage(character) {
+    if (pdfIconCache.has(character)) {
+      return pdfIconCache.get(character);
+    }
+
+    const iconCanvas = document.createElement("canvas");
+    iconCanvas.width = 48;
+    iconCanvas.height = 48;
+
+    const context = iconCanvas.getContext("2d");
+
+    if (!context) {
+      return null;
+    }
+
+    context.clearRect(0, 0, 48, 48);
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.font =
+      '32px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+    context.fillText(displayIcon(character), 24, 25);
+
+    const image = iconCanvas.toDataURL("image/png");
+    pdfIconCache.set(character, image);
+    return image;
+  }
 
   function drawPageHeader(showTitle = true) {
     pdf.setFillColor(...palePink);
@@ -1810,15 +1838,39 @@ async function generateCompactOrderPdfAttachment(order, items) {
       pdf.roundedRect(blockX, blockY, 9, 11, 1.5, 1.5, "F");
       pdf.setFillColor(...capRgb);
       pdf.roundedRect(blockX + 1, blockY + 1, 7, 7, 1, 1, "F");
-      pdf.setTextColor(...letterRgb);
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(7);
-      const printableCharacter = /^[A-Za-z0-9]$/.test(character)
-        ? character
-        : "*";
-      pdf.text(printableCharacter, blockX + 4.5, blockY + 5.7, {
-        align: "center"
-      });
+      if (/^[A-Za-z0-9]$/.test(character)) {
+        pdf.setTextColor(...letterRgb);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(7);
+        pdf.text(character, blockX + 4.5, blockY + 5.7, {
+          align: "center"
+        });
+      } else {
+        const iconImage = getPdfIconImage(character);
+
+        if (iconImage) {
+          const iconAlias =
+            `icon-${character.codePointAt(0).toString(16)}`;
+
+          pdf.addImage(
+            iconImage,
+            "PNG",
+            blockX + 1.35,
+            blockY + 1.15,
+            6.3,
+            6.3,
+            iconAlias,
+            "FAST"
+          );
+        } else {
+          pdf.setTextColor(...letterRgb);
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(7);
+          pdf.text("*", blockX + 4.5, blockY + 5.7, {
+            align: "center"
+          });
+        }
+      }
       blockX += 10.5;
     });
 
