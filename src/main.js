@@ -28,12 +28,59 @@ const DEFAULT_SHOP_SETTINGS = {
   extra_letter_colour_price: 0.2,
   delivery_fee: 2.5,
   free_delivery_threshold: 50,
+  large_order_quantity: 5,
+  standard_min_working_days: 2,
+  standard_max_working_days: 3,
+  large_min_working_days: 3,
+  large_max_working_days: 4,
   promo_code: "CHILDRENSDAY",
   promo_percent_off: 10,
   promo_enabled: true
 };
 
 let shopSettings = { ...DEFAULT_SHOP_SETTINGS };
+
+const DEFAULT_DESIGN_PRESETS = [
+  {
+    preset_key: "strawberry",
+    name: "Strawberry Milk",
+    emoji: "🍓",
+    base_colour: "#F55A74",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#9D2235",
+    icon_suggestion: "♡"
+  },
+  {
+    preset_key: "matcha",
+    name: "Matcha Cream",
+    emoji: "🍵",
+    base_colour: "#3F8E43",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#68724D",
+    icon_suggestion: "☘"
+  },
+  {
+    preset_key: "ocean",
+    name: "Ocean Pop",
+    emoji: "🫧",
+    base_colour: "#00B1B7",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#0086D6",
+    icon_suggestion: "☁"
+  },
+  {
+    preset_key: "grape",
+    name: "Grape Soda",
+    emoji: "🍇",
+    base_colour: "#5E43B7",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#482960",
+    icon_suggestion: "★"
+  }
+];
+
+let designPresets = [...DEFAULT_DESIGN_PRESETS];
+let promoCodeRows = [];
 
 try {
   const { data, error } = await supabase
@@ -46,6 +93,74 @@ try {
   if (data) shopSettings = { ...shopSettings, ...data };
 } catch (error) {
   console.warn("Using default shop pricing settings:", error);
+}
+
+try {
+  const { data, error } = await supabase
+    .from("design_presets")
+    .select(
+      "preset_key,name,emoji,base_colour,cap_colour,letter_colour,icon_suggestion,sort_order"
+    )
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+
+  if (error) throw error;
+  if (data?.length) designPresets = data;
+} catch (error) {
+  console.warn("Using default design inspiration:", error);
+}
+
+try {
+  const { data, error } = await supabase
+    .from("promo_codes")
+    .select(
+      "code,label,discount_type,discount_value,minimum_spend,starts_at,ends_at,active"
+    )
+    .eq("active", true);
+
+  if (error) throw error;
+  promoCodeRows = data || [];
+} catch (error) {
+  console.warn("Using the fallback promo code setting:", error);
+}
+
+function escapePresetText(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '\"': "&quot;",
+    "'": "&#039;"
+  })[character]);
+}
+
+function safePresetColour(value, fallback = "#FFFFFF") {
+  const colour = String(value ?? "").trim();
+  return /^#[0-9a-f]{6}$/i.test(colour) ? colour : fallback;
+}
+
+function renderDesignPresetCards() {
+  return designPresets.map(preset => {
+    const key = escapePresetText(preset.preset_key);
+    const name = escapePresetText(preset.name);
+    const emoji = escapePresetText(preset.emoji);
+    const icon = escapePresetText(preset.icon_suggestion);
+    const base = safePresetColour(preset.base_colour, "#F55A74");
+    const cap = safePresetColour(preset.cap_colour, "#FFFFFF");
+    const letter = safePresetColour(preset.letter_colour, "#9D2235");
+
+    return `
+      <button class="inspiration-option" type="button" data-design-preset="${key}">
+        <strong>${emoji} ${name}</strong>
+        <span class="inspiration-swatches" aria-label="Base, cap and letter colours">
+          <i style="--preset-colour:${base};"></i>
+          <i style="--preset-colour:${cap};"></i>
+          <i style="--preset-colour:${letter};"></i>
+        </span>
+        ${icon ? `<small>Icon idea: ${icon}</small>` : ""}
+      </button>
+    `;
+  }).join("");
 }
 
 function getSettingNumber(key, fallback) {
@@ -61,6 +176,26 @@ const displayedBasePrice = launchPriceEnabled
   : usualBasePrice;
 const deliveryFeeSetting = getSettingNumber("delivery_fee", 2.5);
 const freeDeliveryThreshold = getSettingNumber("free_delivery_threshold", 50);
+const largeOrderQuantity = Math.max(
+  2,
+  Math.round(getSettingNumber("large_order_quantity", 5))
+);
+const standardMinWorkingDays = Math.max(
+  1,
+  Math.round(getSettingNumber("standard_min_working_days", 2))
+);
+const standardMaxWorkingDays = Math.max(
+  standardMinWorkingDays,
+  Math.round(getSettingNumber("standard_max_working_days", 3))
+);
+const largeMinWorkingDays = Math.max(
+  standardMinWorkingDays,
+  Math.round(getSettingNumber("large_min_working_days", 3))
+);
+const largeMaxWorkingDays = Math.max(
+  largeMinWorkingDays,
+  Math.round(getSettingNumber("large_max_working_days", 4))
+);
 
 function displaySettingMoney(value) {
   return `$${Number(value || 0).toFixed(2)}`;
@@ -69,414 +204,6 @@ function displaySettingMoney(value) {
 document.querySelector("#app").innerHTML = `
 <main class="page">
 
-<style>
-  .customer-progress {
-    max-width: 920px;
-    margin: 24px auto 30px;
-    padding: 14px;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-    border: 1px solid #f0dce5;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 10px 30px rgba(76, 45, 58, 0.07);
-  }
-
-  .customer-progress-step {
-    min-width: 0;
-    padding: 9px 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    border-radius: 12px;
-    color: #9a8b92;
-    font-size: 13px;
-    font-weight: 700;
-    text-align: center;
-  }
-
-  .customer-progress-step span {
-    width: 25px;
-    height: 25px;
-    flex: 0 0 25px;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    background: #f5edf1;
-    font-size: 12px;
-  }
-
-  .customer-progress-step.is-complete {
-    color: #8f5870;
-  }
-
-  .customer-progress-step.is-complete span {
-    color: white;
-    background: #e99ab8;
-  }
-
-  .customer-progress-step.is-active {
-    color: #7b3454;
-    background: #fff0f6;
-  }
-
-  .customer-progress-step.is-active span {
-    color: white;
-    background: #ff619c;
-  }
-
-  .preview-canvas-wrap {
-    position: relative;
-  }
-
-  .preview-loading {
-    position: absolute;
-    inset: 0;
-    z-index: 4;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 10px;
-    border-radius: 16px;
-    color: #7b435b;
-    background: rgba(255, 250, 252, 0.9);
-    backdrop-filter: blur(4px);
-    transition: opacity 0.2s ease;
-  }
-
-  .preview-loading.hidden {
-    display: none;
-  }
-
-  .preview-loading-spinner {
-    width: 30px;
-    height: 30px;
-    border: 3px solid #f2cfdd;
-    border-top-color: #ff619c;
-    border-radius: 50%;
-    animation: littleKeepsSpin 0.75s linear infinite;
-  }
-
-  .dimension-estimate {
-    margin: 12px 0 0;
-    padding: 12px 14px;
-    border: 1px solid #efd6e1;
-    border-radius: 14px;
-    color: #694653;
-    background: #fff7fa;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-
-  .dimension-estimate strong {
-    color: #442f37;
-  }
-
-  .item-dimension-note {
-    margin: 7px 0 0;
-    color: #7c6c73;
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  @keyframes littleKeepsSpin {
-    to { transform: rotate(360deg); }
-  }
-
-  .payment-status-banner {
-    margin: 16px 0 22px;
-    padding: 15px 17px;
-    border: 1px solid #f2cddd;
-    border-radius: 15px;
-    color: #75445a;
-    background: #fff3f8;
-    line-height: 1.55;
-  }
-
-  .checkout-submit-bar {
-    margin-top: 20px;
-  }
-
-  .checkout-sticky-figures {
-    display: none;
-  }
-
-  .promo-box {
-    margin-top: 18px;
-    padding: 22px;
-    border: 1px dashed #efa9c4;
-    border-radius: 22px;
-    background: #fff8fb;
-  }
-
-  .promo-box h3,
-  .promo-box p {
-    margin-top: 0;
-  }
-
-  .promo-code-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-  }
-
-  .promo-code-row input {
-    min-width: 0;
-    margin: 0;
-    text-transform: uppercase;
-  }
-
-  .promo-code-row button {
-    min-width: 105px;
-    border: 0;
-    border-radius: 14px;
-    padding: 0 18px;
-    color: white;
-    background: #ff619c;
-    font-weight: 800;
-    cursor: pointer;
-  }
-
-  .promo-code-status {
-    min-height: 22px;
-    margin: 10px 0 0;
-    color: #76636c;
-    font-size: 13px;
-  }
-
-  .promo-code-status.success {
-    color: #278154;
-    font-weight: 700;
-  }
-
-  .promo-code-status.error {
-    color: #ba3f64;
-  }
-
-  .hero-price-badge {
-    min-width: 132px;
-  }
-
-  .hero-price-badge .usual-price {
-    margin-top: 5px;
-    color: rgba(255, 255, 255, 0.75);
-    font-size: 15px;
-    font-weight: 700;
-    text-decoration: line-through;
-    text-decoration-thickness: 2px;
-  }
-
-  .hero-price-badge .promo-price {
-    margin-top: 0;
-    font-size: 29px;
-    line-height: 1.05;
-  }
-
-  .hero-price-badge .promo-saving {
-    margin-top: 5px;
-    color: white;
-    font-size: 9px;
-    font-weight: 900;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .hero-size-guide {
-    margin-bottom: 12px;
-    background: #ffffff;
-  }
-
-  .hero-size-guide .hero-price-row strong {
-    text-align: right;
-  }
-
-  .hero-size-hint {
-    margin: 8px 0 0;
-    color: #796a70;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  .hero-compact-size {
-    margin: 3px 0 12px;
-    padding: 13px 15px;
-    border: 1px solid #efd3de;
-    border-radius: 15px;
-    color: #684953;
-    background: #fff8fb;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-
-  .hero-more-details {
-    border: 1px solid rgba(255, 124, 168, 0.3);
-    border-radius: 17px;
-    background: #fff;
-    overflow: hidden;
-  }
-
-  .hero-more-details summary {
-    padding: 14px 16px;
-    color: #a43e65;
-    font-size: 13px;
-    font-weight: 900;
-    cursor: pointer;
-    list-style-position: inside;
-  }
-
-  .hero-more-details[open] summary {
-    border-bottom: 1px solid #f1dce4;
-  }
-
-  .hero-more-details .hero-pricing-guide {
-    border: 0;
-    border-radius: 0;
-  }
-
-  .hero-included-list .character-inclusion {
-    grid-column: 1 / -1;
-  }
-
-  .character-inclusion small {
-    display: block;
-    margin: 4px 0 0 20px;
-    color: #7b6c72;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.45;
-  }
-
-  @media (max-width: 650px) {
-    .add-cart-area {
-      box-sizing: border-box;
-      width: calc(100% - 20px);
-      max-width: calc(100vw - 20px);
-      display: grid;
-      grid-template-columns: minmax(92px, 1fr) minmax(150px, auto);
-      align-items: center;
-      gap: 10px;
-      overflow: visible;
-    }
-
-    .cart-price-summary {
-      min-width: 0;
-      overflow: visible;
-    }
-
-    .cart-price-summary span,
-    .cart-price-summary strong {
-      max-width: none;
-      overflow: visible;
-      white-space: nowrap;
-    }
-
-    .cart-price-summary strong {
-      font-variant-numeric: tabular-nums;
-    }
-
-    .add-cart-btn {
-      box-sizing: border-box;
-      width: 100%;
-      min-width: 0;
-      max-width: 220px;
-      padding-inline: 14px;
-      gap: 7px;
-      white-space: nowrap;
-    }
-
-    .add-cart-btn span:first-child {
-      min-width: 0;
-      white-space: nowrap;
-    }
-
-    .add-cart-btn span:last-child {
-      flex: 0 0 auto;
-      margin-left: 2px;
-    }
-
-    .customer-progress {
-      margin: 15px 12px 22px;
-      padding: 7px;
-      gap: 3px;
-    }
-
-    .customer-progress-step {
-      padding: 7px 2px;
-      gap: 4px;
-      flex-direction: column;
-      font-size: 10px;
-    }
-
-    .customer-progress-step span {
-      width: 23px;
-      height: 23px;
-      flex-basis: 23px;
-    }
-
-    .checkout-submit-bar {
-      position: sticky;
-      bottom: 10px;
-      z-index: 150;
-      margin: 22px -2px 8px;
-      padding: 11px;
-      display: grid;
-      grid-template-columns: auto minmax(190px, 1fr);
-      align-items: center;
-      gap: 12px;
-      border: 1px solid #edd6e0;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.95);
-      box-shadow: 0 16px 45px rgba(71, 43, 55, 0.17);
-      backdrop-filter: blur(16px);
-    }
-
-    .checkout-sticky-figures {
-      display: block;
-      min-width: 82px;
-    }
-
-    .checkout-sticky-figures span,
-    .checkout-sticky-figures strong {
-      display: block;
-    }
-
-    .checkout-sticky-figures span {
-      color: #8d7c84;
-      font-size: 11px;
-    }
-
-    .checkout-sticky-figures strong {
-      margin-top: 2px;
-      color: #432e37;
-      font-size: 18px;
-    }
-
-    .checkout-submit-bar .submit-btn {
-      margin: 0;
-      min-height: 52px;
-      padding: 10px 13px;
-      font-size: 14px;
-    }
-  }
-
-  @media (max-width: 370px) {
-    .add-cart-area {
-      grid-template-columns: minmax(78px, 1fr) minmax(136px, auto);
-    }
-
-    .add-cart-btn {
-      padding-inline: 10px;
-      font-size: 13px;
-    }
-
-    .cart-price-summary strong {
-      font-size: 18px;
-    }
-  }
-</style>
 
 <div class="announcement-bar">
   <div class="announcement-item">
@@ -519,6 +246,18 @@ document.querySelector("#app").innerHTML = `
     <span class="logo-flower">✿</span>
     Little Keeps
   </a>
+
+  <nav class="top-nav" aria-label="Main navigation">
+    <button type="button" class="is-active" data-scroll-target="homeSection">
+      Shop
+    </button>
+    <button type="button" data-scroll-target="designArea">
+      Design
+    </button>
+    <button type="button" data-scroll-target="orderStatusSection">
+      Check Order
+    </button>
+  </nav>
 
   <button
     id="headerCartBtn"
@@ -569,6 +308,15 @@ document.querySelector("#app").innerHTML = `
     >
       <span>✿</span>
       Design Your Keychain
+    </button>
+
+    <button
+      type="button"
+      class="side-nav-link"
+      data-scroll-target="orderStatusSection"
+    >
+      <span>◎</span>
+      Check Order Status
     </button>
 
     <button
@@ -759,10 +507,6 @@ document.querySelector("#app").innerHTML = `
             <strong>+${displaySettingMoney(getSettingNumber("extra_letter_colour_price", 0.2))}</strong>
           </div>
 
-          <p class="hero-size-hint">
-            Every letter, number or icon uses one character slot.
-            A live size estimate appears while you design.
-          </p>
         </div>
       </details>
     </div>
@@ -906,6 +650,15 @@ Chloe</textarea>
               <p class="section-eyebrow">Live preview</p>
               <h2>Your Keychain</h2>
             </div>
+
+            <button
+              id="mobilePreviewToggle"
+              type="button"
+              class="mobile-preview-toggle"
+              aria-expanded="true"
+            >
+              Hide Preview
+            </button>
           </div>
 
           <div class="preview-canvas-wrap">
@@ -932,6 +685,17 @@ Chloe</textarea>
         <p>
           Drag the preview to rotate your keychain.
         </p>
+      </div>
+
+      <div class="design-inspiration">
+        <h3>Need inspiration? ✨</h3>
+        <p>Tap a colour idea to try it on your current keychain.</p>
+
+        <div class="inspiration-scroll">
+          ${renderDesignPresetCards()}
+        </div>
+
+        <p id="inspirationStatus" class="inspiration-status" aria-live="polite"></p>
       </div>
       </div>
     </section>
@@ -975,55 +739,64 @@ Chloe</textarea>
           </div>
         </div>
 
-        <div class="customisation-section">
-          <div class="customisation-title">
+        <div class="customisation-section colour-accordion is-open" data-colour-accordion="base">
+          <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="true">
             <div>
               <h3>Base Colours</h3>
               <p>Select one or more base colours.</p>
             </div>
+            <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
+          </button>
+
+          <div class="colour-accordion-content">
+            <div id="baseSlots" class="slot-row"></div>
+
+            <p id="baseColourHint" class="colour-hint">
+              Hover or tap a colour
+            </p>
+
+            <div id="baseColours" class="swatches"></div>
           </div>
-
-          <div id="baseSlots" class="slot-row"></div>
-
-          <p id="baseColourHint" class="colour-hint">
-            Hover or tap a colour
-          </p>
-
-          <div id="baseColours" class="swatches"></div>
         </div>
 
-        <div class="customisation-section">
-          <div class="customisation-title">
+        <div class="customisation-section colour-accordion" data-colour-accordion="cap">
+          <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="false">
             <div>
               <h3>Cap Colours</h3>
               <p>Select one or more top cap colours.</p>
             </div>
+            <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
+          </button>
+
+          <div class="colour-accordion-content">
+            <div id="capSlots" class="slot-row"></div>
+
+            <p id="capColourHint" class="colour-hint">
+              Hover or tap a colour
+            </p>
+
+            <div id="capColours" class="swatches"></div>
           </div>
-
-          <div id="capSlots" class="slot-row"></div>
-
-          <p id="capColourHint" class="colour-hint">
-            Hover or tap a colour
-          </p>
-
-          <div id="capColours" class="swatches"></div>
         </div>
 
-        <div class="customisation-section">
-          <div class="customisation-title">
+        <div class="customisation-section colour-accordion" data-colour-accordion="letter">
+          <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="false">
             <div>
               <h3>Letter Colours</h3>
               <p>Select one or more raised letter colours.</p>
             </div>
+            <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
+          </button>
+
+          <div class="colour-accordion-content">
+            <div id="letterSlots" class="slot-row"></div>
+
+            <p id="letterColourHint" class="colour-hint">
+              Hover or tap a colour
+            </p>
+
+            <div id="letterColours" class="swatches"></div>
           </div>
-
-          <div id="letterSlots" class="slot-row"></div>
-
-          <p id="letterColourHint" class="colour-hint">
-            Hover or tap a colour
-          </p>
-
-          <div id="letterColours" class="swatches"></div>
         </div>
 
         <div class="special-colour-note">
@@ -1064,6 +837,10 @@ Chloe</textarea>
     </section>
   </div>
 
+  <p id="turnaroundSummary" class="design-turnaround-note">
+    🕒 Ready for pickup/dispatch in approximately 2–3 working days.
+  </p>
+
   <div class="add-cart-area">
     <div class="cart-price-summary">
       <span id="mobileOrderSummary">1 keychain</span>
@@ -1101,7 +878,7 @@ Chloe</textarea>
 <div class="checkout-heading">
   <p class="section-eyebrow">Checkout</p>
   <h2>Your Details</h2>
-  <p>Tell us where and when you need your order.</p>
+  <p>Tell us how you would like to receive your order.</p>
 </div>
 
         <input id="customerName" placeholder="Name">
@@ -1117,17 +894,19 @@ Chloe</textarea>
           placeholder="Contact Number"
         >
 
-        <label for="neededBy">Needed By</label>
+        <label id="neededByLabel" for="neededBy">
+          Preferred pickup date
+        </label>
 
-        <p class="hint">
-          Please allow at least 2–3 days for production
-          and 2 days for delivery.
+        <p id="turnaroundCheckoutHint" class="turnaround-checkout-hint">
+          Your order is estimated to be ready in 2–3 working days.
+          Choose a preferred date and we’ll confirm it after payment.
         </p>
 
         <input
           id="neededBy"
           type="text"
-          placeholder="Select date"
+          placeholder="Choose a preferred date"
         >
 
         <p id="dateAvailability" class="hint hidden"></p>
@@ -1415,6 +1194,42 @@ Chloe</textarea>
       </div>
     </div>
 
+<section id="orderStatusSection" class="order-status-section">
+  <div class="order-status-copy">
+    <p class="section-eyebrow">Already ordered?</p>
+    <h2>Check your order status</h2>
+    <p>
+      Enter the order reference from your payment page and the same
+      email address used at checkout.
+    </p>
+  </div>
+
+  <form id="orderStatusForm" class="order-status-form">
+    <label for="statusOrderRef">Order reference</label>
+    <input
+      id="statusOrderRef"
+      type="text"
+      autocomplete="off"
+      placeholder="Example: LK-260716-1234"
+    >
+
+    <label for="statusCustomerEmail">Email address</label>
+    <input
+      id="statusCustomerEmail"
+      type="email"
+      autocomplete="email"
+      placeholder="Email used for your order"
+    >
+
+    <button id="checkOrderStatusBtn" type="submit" class="submit-btn">
+      Check Status
+    </button>
+
+    <p id="orderStatusMessage" class="order-status-message" aria-live="polite"></p>
+    <div id="orderStatusResult" class="order-status-result hidden"></div>
+  </form>
+</section>
+
 <section id="contactSection" class="contact-section">
   <div class="contact-copy">
     <p class="section-eyebrow">Say hello</p>
@@ -1495,17 +1310,37 @@ const configuredPromoCode = String(shopSettings.promo_code || "")
   .toUpperCase()
   .replace(/\s+/g, "");
 
-const PROMO_CODES =
+const fallbackPromoCodes =
   shopSettings.promo_enabled !== false && configuredPromoCode
     ? {
         [configuredPromoCode]: {
           label: configuredPromoCode === "CHILDRENSDAY"
             ? "Children's Day"
             : configuredPromoCode,
-          percentOff: getSettingNumber("promo_percent_off", 10)
+          discountType: "percent",
+          discountValue: getSettingNumber("promo_percent_off", 10),
+          minimumSpend: 0,
+          startsAt: null,
+          endsAt: null
         }
       }
     : {};
+
+const PROMO_CODES = promoCodeRows.length
+  ? Object.fromEntries(
+      promoCodeRows.map(row => [
+        String(row.code || "").trim().toUpperCase(),
+        {
+          label: String(row.label || row.code || "Promo"),
+          discountType: row.discount_type === "fixed" ? "fixed" : "percent",
+          discountValue: Number(row.discount_value || 0),
+          minimumSpend: Number(row.minimum_spend || 0),
+          startsAt: row.starts_at || null,
+          endsAt: row.ends_at || null
+        }
+      ])
+    )
+  : fallbackPromoCodes;
 
 let appliedPromoCode = "";
 
@@ -1522,6 +1357,7 @@ const nameCardsSection = document.getElementById("nameCardsSection");
 const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
 const dimensionEstimate = document.getElementById("dimensionEstimate");
+const inspirationStatus = document.getElementById("inspirationStatus");
 
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
@@ -1535,6 +1371,11 @@ const customerName = document.getElementById("customerName");
 const customerEmail = document.getElementById("customerEmail");
 const customerPhone = document.getElementById("customerPhone");
 const neededBy = document.getElementById("neededBy");
+const neededByLabel = document.getElementById("neededByLabel");
+const turnaroundCheckoutHint =
+  document.getElementById("turnaroundCheckoutHint");
+const turnaroundSummary =
+  document.getElementById("turnaroundSummary");
 const collectionMethod = document.getElementById("collectionMethod");
 const deliveryNote = document.getElementById("deliveryNote");
 const orderNotes = document.getElementById("orderNotes");
@@ -1588,6 +1429,12 @@ const checkoutStickyTotal =
 const previewLoading =
   document.getElementById("previewLoading");
 
+const previewCard =
+  document.querySelector(".preview-card");
+
+const mobilePreviewToggle =
+  document.getElementById("mobilePreviewToggle");
+
   const cartDrawer =
   document.getElementById("cartDrawer");
 
@@ -1608,6 +1455,19 @@ const continueShoppingBtn =
 
 const checkoutFromCartBtn =
   document.getElementById("checkoutFromCartBtn");
+
+const orderStatusForm =
+  document.getElementById("orderStatusForm");
+const statusOrderRef =
+  document.getElementById("statusOrderRef");
+const statusCustomerEmail =
+  document.getElementById("statusCustomerEmail");
+const checkOrderStatusBtn =
+  document.getElementById("checkOrderStatusBtn");
+const orderStatusMessage =
+  document.getElementById("orderStatusMessage");
+const orderStatusResult =
+  document.getElementById("orderStatusResult");
 
 const designScreen = document.getElementById("designScreen");
 const checkoutScreen = document.getElementById("checkoutScreen");
@@ -1747,6 +1607,18 @@ const baseColours = colours;
 const capColours = colours;
 const letterColours = colours;
 
+const DESIGN_PRESETS = Object.fromEntries(
+  designPresets.map(preset => [
+    String(preset.preset_key),
+    {
+      label: String(preset.name || "Colour idea"),
+      base: safePresetColour(preset.base_colour, "#F55A74"),
+      cap: safePresetColour(preset.cap_colour, "#FFFFFF"),
+      letter: safePresetColour(preset.letter_colour, "#9D2235")
+    }
+  ])
+);
+
 const specialKeycaps = {
   // Original
   "♡": "heart",
@@ -1780,10 +1652,128 @@ const specialKeycaps = {
 
 const iconChoices = Object.keys(specialKeycaps);
 
+const ICON_CATEGORIES = [
+  {
+    key: "all",
+    label: "All",
+    icons: iconChoices
+  },
+  {
+    key: "popular",
+    label: "Popular",
+    icons: ["♡", "★", "✿", "🎀", "🐾", "☘", "⚡", "⚽"]
+  },
+  {
+    key: "cute",
+    label: "Cute",
+    icons: ["♡", "✿", "🎀", "🐾", "☁", "🌙", "🦆", "🐱"]
+  },
+  {
+    key: "nature",
+    label: "Nature",
+    icons: ["✿", "☘", "☁", "🌙", "⚡", "🔥"]
+  },
+  {
+    key: "fun",
+    label: "Food & Fun",
+    icons: ["♪", "🔥", "☕", "🦆", "♟"]
+  },
+  {
+    key: "travel",
+    label: "Travel",
+    icons: ["✈", "🚲", "⛷"]
+  },
+  {
+    key: "sports",
+    label: "Sports",
+    icons: ["⚽", "🏐", "🏉", "⛷", "🚲", "⛳", "🥒", "🎳", "⚾", "♟"]
+  }
+];
+
 const dateAvailability = document.getElementById("dateAvailability");
 
 let neededByAllowed = false;
 let neededByMessage = "";
+let neededByCalendar = null;
+
+function getTurnaroundInfo(quantity = names.length || 1) {
+  const isLargeOrder = quantity >= largeOrderQuantity;
+
+  return {
+    quantity,
+    isLargeOrder,
+    minDays: isLargeOrder
+      ? largeMinWorkingDays
+      : standardMinWorkingDays,
+    maxDays: isLargeOrder
+      ? largeMaxWorkingDays
+      : standardMaxWorkingDays
+  };
+}
+
+function addWorkingDays(startDate, workingDays) {
+  const date = new Date(startDate);
+  let daysAdded = 0;
+
+  while (daysAdded < workingDays) {
+    date.setDate(date.getDate() + 1);
+
+    const day = date.getDay();
+    if (day !== 0 && day !== 6) daysAdded += 1;
+  }
+
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getMinimumPreferredDate() {
+  const turnaround = getTurnaroundInfo();
+  return addWorkingDays(new Date(), turnaround.maxDays);
+}
+
+function updateTurnaroundMessaging() {
+  const turnaround = getTurnaroundInfo();
+  const itemWord = turnaround.quantity === 1 ? "keychain" : "keychains";
+  const methodIsDelivery = collectionMethod.value === "delivery";
+  const action = methodIsDelivery
+    ? "ready for dispatch"
+    : "ready for pickup";
+  const range = `${turnaround.minDays}–${turnaround.maxDays} working days`;
+
+  if (turnaroundSummary) {
+    turnaroundSummary.innerHTML = `
+      🕒 <strong>${turnaround.quantity} ${itemWord}</strong>
+      ready for pickup/dispatch in approximately <strong>${range}</strong>.
+    `;
+  }
+
+  if (neededByLabel) {
+    neededByLabel.textContent = methodIsDelivery
+      ? "Preferred dispatch date"
+      : "Preferred pickup date";
+  }
+
+  if (turnaroundCheckoutHint) {
+    turnaroundCheckoutHint.innerHTML = `
+      Your ${turnaround.quantity} ${itemWord}
+      ${turnaround.quantity === 1 ? "is" : "are"} estimated to be
+      ${action} in <strong>${range}</strong>.
+      Choose a preferred date and we’ll confirm it after payment.
+    `;
+  }
+
+  if (!neededByCalendar) return;
+
+  const minimumDate = getMinimumPreferredDate();
+  neededByCalendar.set("minDate", minimumDate);
+
+  const selectedDate = neededByCalendar.selectedDates?.[0];
+  if (selectedDate && selectedDate < minimumDate) {
+    neededByCalendar.clear();
+    neededByAllowed = false;
+    neededByMessage = "";
+  }
+}
 
 function updateAddCartVisibility() {
   if (!addCartArea) return;
@@ -2071,6 +2061,39 @@ function getActiveDesign() {
   return item.custom;
 }
 
+function applyDesignPreset(presetKey) {
+  const preset = DESIGN_PRESETS[presetKey];
+
+  if (!preset) return;
+
+  const design = getActiveDesign();
+  design.bases = [preset.base];
+  design.caps = [preset.cap];
+  design.letters = [preset.letter];
+
+  if (applyAllToggle.checked) {
+    globalDesign.bases = [preset.base];
+    globalDesign.caps = [preset.cap];
+    globalDesign.letters = [preset.letter];
+
+    names.forEach(item => {
+      item.custom = null;
+    });
+  }
+
+  draftHasMeaningfulChanges = true;
+
+  if (inspirationStatus) {
+    const selectedName = names[selectedIndex]?.name || "your keychain";
+    inspirationStatus.textContent =
+      `${preset.label} applied to ${selectedName} ♡`;
+  }
+
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+}
+
 function makeSwatches(containerId, colourOptions, type) {
   const container = document.getElementById(containerId);
   const hint = document.getElementById(`${type}ColourHint`);
@@ -2166,10 +2189,52 @@ function getPromoDiscount(subtotal) {
   const promo = getAppliedPromo();
 
   if (!promo) return 0;
+  if (!getPromoEligibility(promo, subtotal).allowed) return 0;
+
+  if (promo.discountType === "fixed") {
+    return roundMoney(
+      Math.min(Number(subtotal || 0), Number(promo.discountValue || 0))
+    );
+  }
 
   return roundMoney(
-    subtotal * (Number(promo.percentOff || 0) / 100)
+    subtotal * (Number(promo.discountValue || 0) / 100)
   );
+}
+
+function getPromoOfferLabel(promo) {
+  if (!promo) return "Promo";
+
+  return promo.discountType === "fixed"
+    ? `${displaySettingMoney(promo.discountValue)} off`
+    : `${Number(promo.discountValue || 0)}% off`;
+}
+
+function getPromoEligibility(promo, subtotal = getOrderSubtotal()) {
+  const now = new Date();
+
+  if (promo.startsAt && now < new Date(promo.startsAt)) {
+    return {
+      allowed: false,
+      message: "This promo code is not active yet."
+    };
+  }
+
+  if (promo.endsAt && now > new Date(promo.endsAt)) {
+    return {
+      allowed: false,
+      message: "This promo code has expired."
+    };
+  }
+
+  if (subtotal < Number(promo.minimumSpend || 0)) {
+    return {
+      allowed: false,
+      message: `A minimum spend of ${displaySettingMoney(promo.minimumSpend)} is required.`
+    };
+  }
+
+  return { allowed: true, message: "" };
 }
 
 function showPromoStatus(message, type = "") {
@@ -2202,12 +2267,21 @@ function applyPromoCode() {
     return;
   }
 
+  const eligibility = getPromoEligibility(promo);
+
+  if (!eligibility.allowed) {
+    appliedPromoCode = "";
+    showPromoStatus(eligibility.message, "error");
+    renderReviewOrder();
+    return;
+  }
+
   appliedPromoCode = enteredCode;
   promoCodeInput.value = enteredCode;
   draftHasMeaningfulChanges = true;
 
   showPromoStatus(
-    `Applied! ${promo.label} gives you ${promo.percentOff}% off ♡`,
+    `Applied! ${promo.label} gives you ${getPromoOfferLabel(promo)} ♡`,
     "success"
   );
 
@@ -2262,8 +2336,7 @@ function addColourToDesign(type, colour) {
 }
 
 async function setupNeededByCalendar() {
-  const minDate = new Date();
-  minDate.setDate(minDate.getDate() + 3);
+  const minDate = getMinimumPreferredDate();
 
   const maxDate = new Date(minDate);
   maxDate.setFullYear(maxDate.getFullYear() + 1);
@@ -2314,7 +2387,7 @@ async function setupNeededByCalendar() {
     ...fullOrderDates
   ];
 
-  flatpickr(neededBy, {
+  neededByCalendar = flatpickr(neededBy, {
     dateFormat: "Y-m-d",
     minDate,
     maxDate,
@@ -2325,6 +2398,8 @@ async function setupNeededByCalendar() {
       validateForm();
     }
   });
+
+  updateTurnaroundMessaging();
 }
 
 async function loadShopNotices() {
@@ -2986,7 +3061,7 @@ function renderReviewOrder() {
     ${
       promo && discountAmount > 0
         ? `
-          <span>Promo ${appliedPromoCode} (${promo.percentOff}% off)</span>
+          <span>Promo ${appliedPromoCode} (${getPromoOfferLabel(promo)})</span>
           <strong style="color:#278154;">−$${discountAmount.toFixed(2)}</strong>
 
           <span>Discounted subtotal</span>
@@ -3221,6 +3296,7 @@ function refreshUI() {
   updateEditModeText();
   updateBaseShapeButtons();
   updateCartDisplay();
+  updateTurnaroundMessaging();
   renderReviewOrder();
 }
 
@@ -3239,6 +3315,8 @@ function buildSelectedPreview() {
 function resize() {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
+
+  if (!w || !h) return;
 
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
@@ -3322,10 +3400,14 @@ function renderCartDrawer() {
     `;
 
     checkoutFromCartBtn.disabled = true;
+    checkoutFromCartBtn.textContent = "Add a keychain first";
+    continueShoppingBtn.textContent = "Start Designing";
     return;
   }
 
   checkoutFromCartBtn.disabled = false;
+  checkoutFromCartBtn.textContent = "Checkout";
+  continueShoppingBtn.textContent = "Continue Designing";
 
   cartDrawerItems.innerHTML = names
     .map((item, index) => {
@@ -3495,6 +3577,15 @@ document
 
       closeSideMenu();
 
+      document
+        .querySelectorAll(".top-nav [data-scroll-target]")
+        .forEach(tab => {
+          tab.classList.toggle(
+            "is-active",
+            tab.dataset.scrollTarget === targetId
+          );
+        });
+
       target?.scrollIntoView({
         behavior: "smooth",
         block: "start"
@@ -3545,6 +3636,7 @@ collectionMethod.addEventListener("change", () => {
   }
 
   updateCollectionNote();
+  updateTurnaroundMessaging();
   refreshUI();
   validateForm();
 });
@@ -3798,12 +3890,18 @@ continueDraftBtn.onclick = () => {
 
   promoCodeInput.value = appliedPromoCode;
 
-  if (appliedPromoCode) {
+  if (
+    appliedPromoCode &&
+    getPromoEligibility(PROMO_CODES[appliedPromoCode]).allowed
+  ) {
     const promo = PROMO_CODES[appliedPromoCode];
     showPromoStatus(
-      `Applied! ${promo.label} gives you ${promo.percentOff}% off ♡`,
+      `Applied! ${promo.label} gives you ${getPromoOfferLabel(promo)} ♡`,
       "success"
     );
+  } else {
+    appliedPromoCode = "";
+    promoCodeInput.value = "";
   }
 
   customerName.value =
@@ -3922,38 +4020,265 @@ function renderIconPicker() {
 
     container.innerHTML = "";
 
-    iconChoices.forEach(icon => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "icon-btn";
-      btn.innerHTML = displayIcon(icon);
+    const tabs = document.createElement("div");
+    tabs.className = "icon-category-tabs";
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "Icon categories");
 
-      btn.onclick = () => {
-        const start = targetInput.selectionStart ?? targetInput.value.length;
-        const end = targetInput.selectionEnd ?? targetInput.value.length;
+    const grid = document.createElement("div");
+    grid.className = "icon-category-grid";
 
-        targetInput.value =
-          targetInput.value.slice(0, start) +
-          icon +
-          targetInput.value.slice(end);
+    const insertIcon = icon => {
+      const start = targetInput.selectionStart ?? targetInput.value.length;
+      const end = targetInput.selectionEnd ?? targetInput.value.length;
 
-        targetInput.focus();
-        targetInput.selectionStart = start + icon.length;
-        targetInput.selectionEnd = start + icon.length;
+      targetInput.value =
+        targetInput.value.slice(0, start) +
+        icon +
+        targetInput.value.slice(end);
 
-        updateNames();
-      };
+      targetInput.focus();
+      targetInput.selectionStart = start + icon.length;
+      targetInput.selectionEnd = start + icon.length;
+      updateNames();
+    };
 
-      container.appendChild(btn);
+    const showCategory = categoryKey => {
+      const category =
+        ICON_CATEGORIES.find(item => item.key === categoryKey) ||
+        ICON_CATEGORIES[0];
+
+      tabs.querySelectorAll(".icon-category-tab").forEach(tab => {
+        const isActive = tab.dataset.iconCategory === category.key;
+        tab.classList.toggle("is-active", isActive);
+        tab.setAttribute("aria-selected", String(isActive));
+      });
+
+      grid.innerHTML = "";
+
+      category.icons
+        .filter(icon => specialKeycaps[icon])
+        .forEach(icon => {
+          const button = document.createElement("button");
+          const iconName = specialKeycaps[icon];
+
+          button.type = "button";
+          button.className = "icon-btn";
+          button.innerHTML = displayIcon(icon);
+          button.title = iconName;
+          button.setAttribute("aria-label", `Add ${iconName} icon`);
+          button.addEventListener("click", () => insertIcon(icon));
+          grid.appendChild(button);
+        });
+
+      if (!grid.children.length) {
+        grid.innerHTML = '<p class="icon-category-empty">No icons in this category yet.</p>';
+      }
+    };
+
+    ICON_CATEGORIES.forEach(category => {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "icon-category-tab";
+      tab.dataset.iconCategory = category.key;
+      tab.setAttribute("role", "tab");
+      tab.textContent = category.label;
+      tab.addEventListener("click", () => showCategory(category.key));
+      tabs.appendChild(tab);
     });
+
+    container.append(tabs, grid);
+    showCategory("popular");
   }
 
   buildPicker(singlePicker, singleName);
   buildPicker(groupPicker, nameList);
 }
 
+function setupColourAccordions() {
+  const accordions = Array.from(
+    document.querySelectorAll("[data-colour-accordion]")
+  );
+
+  accordions.forEach(accordion => {
+    const toggle = accordion.querySelector(".colour-accordion-toggle");
+    if (!toggle) return;
+
+    toggle.addEventListener("click", () => {
+      const willOpen = !accordion.classList.contains("is-open");
+
+      accordions.forEach(item => {
+        item.classList.remove("is-open");
+        item
+          .querySelector(".colour-accordion-toggle")
+          ?.setAttribute("aria-expanded", "false");
+      });
+
+      if (willOpen) {
+        accordion.classList.add("is-open");
+        toggle.setAttribute("aria-expanded", "true");
+      }
+    });
+  });
+}
+
+const CUSTOMER_STATUS_STEPS = [
+  "Order Received",
+  "Payment Verified",
+  "Printing",
+  "Ready",
+  "Completed"
+];
+
+function getCustomerStatusStep(status) {
+  if (status === "Completed") return 4;
+  if (status === "Ready for Pickup/Delivery") return 3;
+  if (status === "Printing") return 2;
+  if (status === "Payment Verified") return 1;
+  return 0;
+}
+
+function formatCustomerStatus(status) {
+  const labels = {
+    "Pending Payment": "Waiting for payment",
+    "Payment Verification": "Payment being checked",
+    "Payment Verified": "Payment verified",
+    "Printing": "In production",
+    "Ready for Pickup/Delivery": "Ready for pickup or delivery",
+    "Completed": "Completed"
+  };
+
+  return labels[status] || status || "Order received";
+}
+
+function formatPreferredDate(value) {
+  if (!value) return "To be confirmed";
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-SG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function renderCustomerOrderStatus(order) {
+  const activeStep = getCustomerStatusStep(order.status);
+  const methodIsDelivery = order.collection_method === "delivery";
+
+  orderStatusResult.innerHTML = `
+    <div class="order-status-result-heading">
+      <div>
+        <small>Order reference</small>
+        <strong>${escapePresetText(order.order_ref)}</strong>
+      </div>
+      <span>${escapePresetText(formatCustomerStatus(order.status))}</span>
+    </div>
+
+    <div class="order-status-timeline">
+      ${CUSTOMER_STATUS_STEPS.map((step, index) => `
+        <div class="order-status-step ${index <= activeStep ? "is-complete" : ""} ${index === activeStep ? "is-current" : ""}">
+          <i>${index < activeStep ? "✓" : index + 1}</i>
+          <span>${step}</span>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="order-status-details">
+      <p>
+        <span>Method</span>
+        <strong>${methodIsDelivery ? "Islandwide delivery" : "Pickup at Woodlands MRT"}</strong>
+      </p>
+      <p>
+        <span>${methodIsDelivery ? "Preferred dispatch date" : "Preferred pickup date"}</span>
+        <strong>${escapePresetText(formatPreferredDate(order.needed_by))}</strong>
+      </p>
+    </div>
+
+    <p class="order-status-disclaimer">
+      Preferred dates are requests. We’ll confirm your pickup or dispatch
+      date by email. For last-minute arrangements, we may contact you on WhatsApp.
+    </p>
+  `;
+
+  orderStatusResult.classList.remove("hidden");
+}
+
+orderStatusForm?.addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const orderRef = statusOrderRef.value.trim().toUpperCase();
+  const email = statusCustomerEmail.value.trim().toLowerCase();
+
+  orderStatusResult.classList.add("hidden");
+  orderStatusMessage.classList.remove("error");
+
+  if (!orderRef || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    orderStatusMessage.textContent =
+      "Please enter your order reference and the email used at checkout.";
+    orderStatusMessage.classList.add("error");
+    return;
+  }
+
+  checkOrderStatusBtn.disabled = true;
+  checkOrderStatusBtn.textContent = "Checking…";
+  orderStatusMessage.textContent = "Checking your order…";
+
+  try {
+    const { data, error } = await supabase.rpc("lookup_order_status", {
+      p_order_ref: orderRef,
+      p_email: email
+    });
+
+    if (error) throw error;
+
+    const order = Array.isArray(data) ? data[0] : data;
+
+    if (!order) {
+      orderStatusMessage.textContent =
+        "We couldn’t find a matching order. Check the reference and email, then try again.";
+      orderStatusMessage.classList.add("error");
+      return;
+    }
+
+    orderStatusMessage.textContent = "";
+    renderCustomerOrderStatus(order);
+  } catch (error) {
+    console.error("Unable to check order status:", error);
+    orderStatusMessage.textContent =
+      "Order status is temporarily unavailable. Please try again shortly.";
+    orderStatusMessage.classList.add("error");
+  } finally {
+    checkOrderStatusBtn.disabled = false;
+    checkOrderStatusBtn.textContent = "Check Status";
+  }
+});
+
 loadShopNotices();
 renderIconPicker();
+setupColourAccordions();
+
+document
+  .querySelectorAll("[data-design-preset]")
+  .forEach(button => {
+    button.addEventListener("click", () => {
+      applyDesignPreset(button.dataset.designPreset);
+    });
+  });
+
+mobilePreviewToggle?.addEventListener("click", () => {
+  const collapsed = previewCard.classList.toggle("mobile-collapsed");
+
+  mobilePreviewToggle.textContent = collapsed
+    ? "Show Preview"
+    : "Hide Preview";
+  mobilePreviewToggle.setAttribute(
+    "aria-expanded",
+    String(!collapsed)
+  );
+});
 
 setOrderType("single");
 cartHasItems = false;
