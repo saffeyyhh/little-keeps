@@ -284,6 +284,71 @@ document.querySelector("#app").innerHTML = `
     text-transform: uppercase;
   }
 
+  .hero-size-guide {
+    margin-bottom: 12px;
+    background: #ffffff;
+  }
+
+  .hero-size-guide .hero-price-row strong {
+    text-align: right;
+  }
+
+  .hero-size-hint {
+    margin: 8px 0 0;
+    color: #796a70;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .hero-compact-size {
+    margin: 3px 0 12px;
+    padding: 13px 15px;
+    border: 1px solid #efd3de;
+    border-radius: 15px;
+    color: #684953;
+    background: #fff8fb;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .hero-more-details {
+    border: 1px solid rgba(255, 124, 168, 0.3);
+    border-radius: 17px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .hero-more-details summary {
+    padding: 14px 16px;
+    color: #a43e65;
+    font-size: 13px;
+    font-weight: 900;
+    cursor: pointer;
+    list-style-position: inside;
+  }
+
+  .hero-more-details[open] summary {
+    border-bottom: 1px solid #f1dce4;
+  }
+
+  .hero-more-details .hero-pricing-guide {
+    border: 0;
+    border-radius: 0;
+  }
+
+  .hero-included-list .character-inclusion {
+    grid-column: 1 / -1;
+  }
+
+  .character-inclusion small {
+    display: block;
+    margin: 4px 0 0 20px;
+    color: #7b6c72;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
   @media (max-width: 650px) {
     .add-cart-area {
       box-sizing: border-box;
@@ -644,39 +709,62 @@ document.querySelector("#app").innerHTML = `
       </div>
 
       <div class="hero-included-list">
-        <p class="hero-card-label">What's included</p>
+        <p class="hero-card-label">Included in the price</p>
 
-        <span>✓ Up to ${getSettingNumber("included_characters", 6)} letters or icons included</span>
-        <span>✓ 1 base colour included</span>
-        <span>✓ 1 cap colour included</span>
-        <span>✓ 1 letter colour included</span>
-        <span>✓ Icons included</span>
-        <span>✓ Each block is approximately 3.5 × 2.7 cm</span>
+        <span class="character-inclusion">
+          ✓ Up to ${getSettingNumber("included_characters", 6)} characters
+          <small>
+            Letters, numbers and icons each count as one character.
+          </small>
+        </span>
+        <span>✓ 1 base, 1 cap and 1 letter/icon colour</span>
+        <span>✓ Clicky switches and keyring</span>
       </div>
 
-      <div class="hero-pricing-guide">
-        <p>Optional additions</p>
-
-        <div class="hero-price-row">
-          <span>Each character after ${getSettingNumber("included_characters", 6)}</span>
-          <strong>+${displaySettingMoney(getSettingNumber("extra_character_price", 0.2))}</strong>
-        </div>
-
-        <div class="hero-price-row">
-          <span>Extra base colour</span>
-          <strong>+${displaySettingMoney(getSettingNumber("extra_base_colour_price", 0.5))}</strong>
-        </div>
-
-        <div class="hero-price-row">
-          <span>Extra cap colour</span>
-          <strong>+${displaySettingMoney(getSettingNumber("extra_cap_colour_price", 0.3))}</strong>
-        </div>
-
-        <div class="hero-price-row">
-          <span>Extra letter colour</span>
-          <strong>+${displaySettingMoney(getSettingNumber("extra_letter_colour_price", 0.2))}</strong>
-        </div>
+      <div class="hero-compact-size">
+        <strong>📏 Size note:</strong>
+        A 6-character keychain is approximately 17.5 cm long.
       </div>
+
+      <details class="hero-more-details">
+        <summary>View size &amp; extra charges</summary>
+
+        <div class="hero-pricing-guide">
+          <p>Approximate size</p>
+
+          <div class="hero-price-row">
+            <span>Each character block</span>
+            <strong>3.5 × 2.7 cm</strong>
+          </div>
+
+          <p style="margin-top:14px;">Optional additions</p>
+
+          <div class="hero-price-row">
+            <span>Each character after ${getSettingNumber("included_characters", 6)}</span>
+            <strong>+${displaySettingMoney(getSettingNumber("extra_character_price", 0.2))}</strong>
+          </div>
+
+          <div class="hero-price-row">
+            <span>Extra base colour</span>
+            <strong>+${displaySettingMoney(getSettingNumber("extra_base_colour_price", 0.5))}</strong>
+          </div>
+
+          <div class="hero-price-row">
+            <span>Extra cap colour</span>
+            <strong>+${displaySettingMoney(getSettingNumber("extra_cap_colour_price", 0.3))}</strong>
+          </div>
+
+          <div class="hero-price-row">
+            <span>Extra letter/icon colour</span>
+            <strong>+${displaySettingMoney(getSettingNumber("extra_letter_colour_price", 0.2))}</strong>
+          </div>
+
+          <p class="hero-size-hint">
+            Every letter, number or icon uses one character slot.
+            A live size estimate appears while you design.
+          </p>
+        </div>
+      </details>
     </div>
   </div>
 
