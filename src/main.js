@@ -17,8 +17,401 @@ const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const DEFAULT_SHOP_SETTINGS = {
+  usual_base_price: 3.9,
+  launch_base_price: 3.2,
+  launch_price_enabled: true,
+  included_characters: 6,
+  extra_character_price: 0.2,
+  extra_base_colour_price: 0.5,
+  extra_cap_colour_price: 0.3,
+  extra_letter_colour_price: 0.2,
+  delivery_fee: 2.5,
+  free_delivery_threshold: 50,
+  promo_code: "CHILDRENSDAY",
+  promo_percent_off: 10,
+  promo_enabled: true
+};
+
+let shopSettings = { ...DEFAULT_SHOP_SETTINGS };
+
+try {
+  const { data, error } = await supabase
+    .from("shop_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data) shopSettings = { ...shopSettings, ...data };
+} catch (error) {
+  console.warn("Using default shop pricing settings:", error);
+}
+
+function getSettingNumber(key, fallback) {
+  const value = Number(shopSettings[key]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+const usualBasePrice = getSettingNumber("usual_base_price", 3.9);
+const launchBasePrice = getSettingNumber("launch_base_price", 3.2);
+const launchPriceEnabled = shopSettings.launch_price_enabled !== false;
+const displayedBasePrice = launchPriceEnabled
+  ? launchBasePrice
+  : usualBasePrice;
+const deliveryFeeSetting = getSettingNumber("delivery_fee", 2.5);
+const freeDeliveryThreshold = getSettingNumber("free_delivery_threshold", 50);
+
+function displaySettingMoney(value) {
+  return `$${Number(value || 0).toFixed(2)}`;
+}
+
 document.querySelector("#app").innerHTML = `
 <main class="page">
+
+<style>
+  .customer-progress {
+    max-width: 920px;
+    margin: 24px auto 30px;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    border: 1px solid #f0dce5;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 30px rgba(76, 45, 58, 0.07);
+  }
+
+  .customer-progress-step {
+    min-width: 0;
+    padding: 9px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border-radius: 12px;
+    color: #9a8b92;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .customer-progress-step span {
+    width: 25px;
+    height: 25px;
+    flex: 0 0 25px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: #f5edf1;
+    font-size: 12px;
+  }
+
+  .customer-progress-step.is-complete {
+    color: #8f5870;
+  }
+
+  .customer-progress-step.is-complete span {
+    color: white;
+    background: #e99ab8;
+  }
+
+  .customer-progress-step.is-active {
+    color: #7b3454;
+    background: #fff0f6;
+  }
+
+  .customer-progress-step.is-active span {
+    color: white;
+    background: #ff619c;
+  }
+
+  .preview-canvas-wrap {
+    position: relative;
+  }
+
+  .preview-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+    border-radius: 16px;
+    color: #7b435b;
+    background: rgba(255, 250, 252, 0.9);
+    backdrop-filter: blur(4px);
+    transition: opacity 0.2s ease;
+  }
+
+  .preview-loading.hidden {
+    display: none;
+  }
+
+  .preview-loading-spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid #f2cfdd;
+    border-top-color: #ff619c;
+    border-radius: 50%;
+    animation: littleKeepsSpin 0.75s linear infinite;
+  }
+
+  .dimension-estimate {
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    border: 1px solid #efd6e1;
+    border-radius: 14px;
+    color: #694653;
+    background: #fff7fa;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .dimension-estimate strong {
+    color: #442f37;
+  }
+
+  .item-dimension-note {
+    margin: 7px 0 0;
+    color: #7c6c73;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  @keyframes littleKeepsSpin {
+    to { transform: rotate(360deg); }
+  }
+
+  .payment-status-banner {
+    margin: 16px 0 22px;
+    padding: 15px 17px;
+    border: 1px solid #f2cddd;
+    border-radius: 15px;
+    color: #75445a;
+    background: #fff3f8;
+    line-height: 1.55;
+  }
+
+  .checkout-submit-bar {
+    margin-top: 20px;
+  }
+
+  .checkout-sticky-figures {
+    display: none;
+  }
+
+  .promo-box {
+    margin-top: 18px;
+    padding: 22px;
+    border: 1px dashed #efa9c4;
+    border-radius: 22px;
+    background: #fff8fb;
+  }
+
+  .promo-box h3,
+  .promo-box p {
+    margin-top: 0;
+  }
+
+  .promo-code-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .promo-code-row input {
+    min-width: 0;
+    margin: 0;
+    text-transform: uppercase;
+  }
+
+  .promo-code-row button {
+    min-width: 105px;
+    border: 0;
+    border-radius: 14px;
+    padding: 0 18px;
+    color: white;
+    background: #ff619c;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .promo-code-status {
+    min-height: 22px;
+    margin: 10px 0 0;
+    color: #76636c;
+    font-size: 13px;
+  }
+
+  .promo-code-status.success {
+    color: #278154;
+    font-weight: 700;
+  }
+
+  .promo-code-status.error {
+    color: #ba3f64;
+  }
+
+  .hero-price-badge {
+    min-width: 132px;
+  }
+
+  .hero-price-badge .usual-price {
+    margin-top: 5px;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+  }
+
+  .hero-price-badge .promo-price {
+    margin-top: 0;
+    font-size: 29px;
+    line-height: 1.05;
+  }
+
+  .hero-price-badge .promo-saving {
+    margin-top: 5px;
+    color: white;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 650px) {
+    .add-cart-area {
+      box-sizing: border-box;
+      width: calc(100% - 20px);
+      max-width: calc(100vw - 20px);
+      display: grid;
+      grid-template-columns: minmax(92px, 1fr) minmax(150px, auto);
+      align-items: center;
+      gap: 10px;
+      overflow: visible;
+    }
+
+    .cart-price-summary {
+      min-width: 0;
+      overflow: visible;
+    }
+
+    .cart-price-summary span,
+    .cart-price-summary strong {
+      max-width: none;
+      overflow: visible;
+      white-space: nowrap;
+    }
+
+    .cart-price-summary strong {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .add-cart-btn {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      max-width: 220px;
+      padding-inline: 14px;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .add-cart-btn span:first-child {
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .add-cart-btn span:last-child {
+      flex: 0 0 auto;
+      margin-left: 2px;
+    }
+
+    .customer-progress {
+      margin: 15px 12px 22px;
+      padding: 7px;
+      gap: 3px;
+    }
+
+    .customer-progress-step {
+      padding: 7px 2px;
+      gap: 4px;
+      flex-direction: column;
+      font-size: 10px;
+    }
+
+    .customer-progress-step span {
+      width: 23px;
+      height: 23px;
+      flex-basis: 23px;
+    }
+
+    .checkout-submit-bar {
+      position: sticky;
+      bottom: 10px;
+      z-index: 150;
+      margin: 22px -2px 8px;
+      padding: 11px;
+      display: grid;
+      grid-template-columns: auto minmax(190px, 1fr);
+      align-items: center;
+      gap: 12px;
+      border: 1px solid #edd6e0;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 16px 45px rgba(71, 43, 55, 0.17);
+      backdrop-filter: blur(16px);
+    }
+
+    .checkout-sticky-figures {
+      display: block;
+      min-width: 82px;
+    }
+
+    .checkout-sticky-figures span,
+    .checkout-sticky-figures strong {
+      display: block;
+    }
+
+    .checkout-sticky-figures span {
+      color: #8d7c84;
+      font-size: 11px;
+    }
+
+    .checkout-sticky-figures strong {
+      margin-top: 2px;
+      color: #432e37;
+      font-size: 18px;
+    }
+
+    .checkout-submit-bar .submit-btn {
+      margin: 0;
+      min-height: 52px;
+      padding: 10px 13px;
+      font-size: 14px;
+    }
+  }
+
+  @media (max-width: 370px) {
+    .add-cart-area {
+      grid-template-columns: minmax(78px, 1fr) minmax(136px, auto);
+    }
+
+    .add-cart-btn {
+      padding-inline: 10px;
+      font-size: 13px;
+    }
+
+    .cart-price-summary strong {
+      font-size: 18px;
+    }
+  }
+</style>
 
 <div class="announcement-bar">
   <div class="announcement-item">
@@ -30,7 +423,7 @@ document.querySelector("#app").innerHTML = `
 
   <div class="announcement-item">
     <span class="announcement-icon">▣</span>
-    <span>Free islandwide delivery above $50</span>
+    <span>Free islandwide delivery above ${displaySettingMoney(freeDeliveryThreshold)}</span>
   </div>
 
   <span class="announcement-divider"></span>
@@ -236,37 +629,52 @@ document.querySelector("#app").innerHTML = `
         </div>
 
         <div class="hero-price-badge">
-          <small>From</small>
-          <span>$3.20</span>
+          ${launchPriceEnabled ? `
+            <small>Launch price</small>
+            <span class="usual-price">${displaySettingMoney(usualBasePrice)}</span>
+            <span class="promo-price">${displaySettingMoney(launchBasePrice)}</span>
+            <span class="promo-saving">
+              Save ${displaySettingMoney(Math.max(0, usualBasePrice - launchBasePrice))}
+            </span>
+          ` : `
+            <small>From</small>
+            <span class="promo-price">${displaySettingMoney(usualBasePrice)}</span>
+          `}
         </div>
       </div>
 
       <div class="hero-included-list">
         <p class="hero-card-label">What's included</p>
 
-        <span>✓ No maximum letters</span>
+        <span>✓ Up to ${getSettingNumber("included_characters", 6)} letters or icons included</span>
         <span>✓ 1 base colour included</span>
         <span>✓ 1 cap colour included</span>
         <span>✓ 1 letter colour included</span>
         <span>✓ Icons included</span>
+        <span>✓ Each block is approximately 3.5 × 2.7 cm</span>
       </div>
 
       <div class="hero-pricing-guide">
-        <p>Additional colours</p>
+        <p>Optional additions</p>
+
+        <div class="hero-price-row">
+          <span>Each character after ${getSettingNumber("included_characters", 6)}</span>
+          <strong>+${displaySettingMoney(getSettingNumber("extra_character_price", 0.2))}</strong>
+        </div>
 
         <div class="hero-price-row">
           <span>Extra base colour</span>
-          <strong>+$0.50</strong>
+          <strong>+${displaySettingMoney(getSettingNumber("extra_base_colour_price", 0.5))}</strong>
         </div>
 
         <div class="hero-price-row">
           <span>Extra cap colour</span>
-          <strong>+$0.30</strong>
+          <strong>+${displaySettingMoney(getSettingNumber("extra_cap_colour_price", 0.3))}</strong>
         </div>
 
         <div class="hero-price-row">
           <span>Extra letter colour</span>
-          <strong>+$0.20</strong>
+          <strong>+${displaySettingMoney(getSettingNumber("extra_letter_colour_price", 0.2))}</strong>
         </div>
       </div>
     </div>
@@ -277,6 +685,13 @@ document.querySelector("#app").innerHTML = `
 </section>
 
 <section id="designArea" class="shop-section">
+  <div class="customer-progress" aria-label="Order progress">
+    <div class="customer-progress-step is-active"><span>1</span>Design</div>
+    <div class="customer-progress-step"><span>2</span>Details</div>
+    <div class="customer-progress-step"><span>3</span>Review</div>
+    <div class="customer-progress-step"><span>4</span>Payment</div>
+  </div>
+
   <div class="section-heading">
     <p class="section-eyebrow">Create yours</p>
 
@@ -405,10 +820,23 @@ Chloe</textarea>
             </div>
           </div>
 
-          <canvas id="previewCanvas"></canvas>
+          <div class="preview-canvas-wrap">
+            <canvas id="previewCanvas"></canvas>
+
+            <div id="previewLoading" class="preview-loading">
+              <div class="preview-loading-spinner"></div>
+              <strong>Loading your 3D preview…</strong>
+            </div>
+          </div>
 
           <p id="editModeText" class="preview-editing-text">
             Currently editing: Alicia only
+          </p>
+
+          <p id="dimensionEstimate" class="dimension-estimate">
+            📏 <strong>ALICIA:</strong>
+            Approx. 17.5 cm long × 2.7 cm tall × 2.2 cm thick
+            <br><small>Approximate measurement; slight variation may occur after assembly.</small>
           </p>
         </div>
 
@@ -550,8 +978,8 @@ Chloe</textarea>
 
   <div class="add-cart-area">
     <div class="cart-price-summary">
-      <span>Your current design</span>
-      <strong id="designTotalDisplay">$3.20</strong>
+      <span id="mobileOrderSummary">1 keychain</span>
+      <strong id="designTotalDisplay">${displaySettingMoney(displayedBasePrice)}</strong>
     </div>
 
     <button
@@ -559,7 +987,7 @@ Chloe</textarea>
       type="button"
       class="submit-btn add-cart-btn"
     >
-      <span>Add to Cart</span>
+      <span id="addCartButtonLabel">Add to Cart</span>
       <span>♡</span>
     </button>
   </div>
@@ -570,6 +998,13 @@ Chloe</textarea>
   id="checkoutScreen"
   class="checkout-screen hidden"
 >
+      <div class="customer-progress" aria-label="Order progress">
+        <div class="customer-progress-step is-complete"><span>✓</span>Design</div>
+        <div class="customer-progress-step is-active"><span>2</span>Details</div>
+        <div class="customer-progress-step is-active"><span>3</span>Review</div>
+        <div class="customer-progress-step"><span>4</span>Payment</div>
+      </div>
+
       <button id="backBtn" class="secondary-btn">
         ← Back to Design
       </button>
@@ -619,7 +1054,7 @@ Chloe</textarea>
           </option>
 
           <option value="delivery">
-            🚚 Islandwide Delivery (+$2.50)
+            🚚 Islandwide Delivery (+${displaySettingMoney(deliveryFeeSetting)})
           </option>
         </select>
 
@@ -678,6 +1113,31 @@ Chloe</textarea>
         <div id="reviewList"></div>
       </div>
 
+      <div class="promo-box">
+        <h3>Have a promo code? ♡</h3>
+        <p>Enter it here before submitting your order.</p>
+
+        <div class="promo-code-row">
+          <input
+            id="promoCodeInput"
+            type="text"
+            maxlength="30"
+            autocomplete="off"
+            placeholder="Promo code"
+          >
+
+          <button id="applyPromoBtn" type="button">
+            Apply
+          </button>
+        </div>
+
+        <p
+          id="promoCodeStatus"
+          class="promo-code-status"
+          aria-live="polite"
+        ></p>
+      </div>
+
       <div class="payment-box">
 <h3>Ready to Order?</h3>
 
@@ -691,13 +1151,20 @@ Chloe</textarea>
         </p>
       </div>
 
-<button
-  id="submitOrderBtn"
-  class="submit-btn"
-  disabled
->
-  Submit Order & Continue to Payment
-</button>
+<div class="checkout-submit-bar">
+  <div class="checkout-sticky-figures">
+    <span id="checkoutStickyCount">1 keychain</span>
+    <strong id="checkoutStickyTotal">$0.00</strong>
+  </div>
+
+  <button
+    id="submitOrderBtn"
+    class="submit-btn"
+    disabled
+  >
+    Submit Order & Continue to Payment
+  </button>
+</div>
 
       <p id="formStatus" class="hint"></p>
       <p id="submitStatus" class="hint"></p>
@@ -707,6 +1174,13 @@ Chloe</textarea>
       id="paymentScreen"
       class="checkout-screen hidden"
     >
+      <div class="customer-progress" aria-label="Order progress">
+        <div class="customer-progress-step is-complete"><span>✓</span>Design</div>
+        <div class="customer-progress-step is-complete"><span>✓</span>Details</div>
+        <div class="customer-progress-step is-complete"><span>✓</span>Review</div>
+        <div class="customer-progress-step is-active"><span>4</span>Payment</div>
+      </div>
+
       <button
         id="paymentBackBtn"
         class="secondary-btn"
@@ -720,6 +1194,13 @@ Chloe</textarea>
         <p>
           Please complete payment to begin production.
         </p>
+
+        <div class="payment-status-banner">
+          <strong>✓ Your order has been saved.</strong><br>
+          Its status will remain <strong>Pending Payment</strong> until
+          Little Keeps checks your PayNow transfer. After verification,
+          we’ll email your confirmation and order PDF.
+        </div>
 
         <h3>Order Reference</h3>
         <strong id="paymentOrderRef"></strong>
@@ -909,15 +1390,36 @@ Chloe</textarea>
   </main>
 `;
 
-const BASE_PRICE = 3.2;
+const BASE_PRICE = displayedBasePrice;
+const INCLUDED_CHARACTERS = getSettingNumber("included_characters", 6);
+const EXTRA_CHARACTER_PRICE = getSettingNumber("extra_character_price", 0.2);
 
 const INCLUDED_BASE_COLOURS = 1;
 const INCLUDED_CAP_COLOURS = 1;
 const INCLUDED_LETTER_COLOURS = 1;
 
-const EXTRA_BASE_COLOUR_PRICE = 0.5;
-const EXTRA_CAP_COLOUR_PRICE = 0.3;
-const EXTRA_LETTER_COLOUR_PRICE = 0.2;
+const EXTRA_BASE_COLOUR_PRICE = getSettingNumber("extra_base_colour_price", 0.5);
+const EXTRA_CAP_COLOUR_PRICE = getSettingNumber("extra_cap_colour_price", 0.3);
+const EXTRA_LETTER_COLOUR_PRICE = getSettingNumber("extra_letter_colour_price", 0.2);
+
+const configuredPromoCode = String(shopSettings.promo_code || "")
+  .trim()
+  .toUpperCase()
+  .replace(/\s+/g, "");
+
+const PROMO_CODES =
+  shopSettings.promo_enabled !== false && configuredPromoCode
+    ? {
+        [configuredPromoCode]: {
+          label: configuredPromoCode === "CHILDRENSDAY"
+            ? "Children's Day"
+            : configuredPromoCode,
+          percentOff: getSettingNumber("promo_percent_off", 10)
+        }
+      }
+    : {};
+
+let appliedPromoCode = "";
 
 const canvas = document.getElementById("previewCanvas");
 const singleBtn = document.getElementById("singleBtn");
@@ -931,12 +1433,16 @@ const nameCards = document.getElementById("nameCards");
 const nameCardsSection = document.getElementById("nameCardsSection");
 const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
+const dimensionEstimate = document.getElementById("dimensionEstimate");
 
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
 const reviewCount = document.getElementById("reviewCount");
 const reviewPrice = document.getElementById("reviewPrice");
 const reviewList = document.getElementById("reviewList");
+const promoCodeInput = document.getElementById("promoCodeInput");
+const applyPromoBtn = document.getElementById("applyPromoBtn");
+const promoCodeStatus = document.getElementById("promoCodeStatus");
 const customerName = document.getElementById("customerName");
 const customerEmail = document.getElementById("customerEmail");
 const customerPhone = document.getElementById("customerPhone");
@@ -978,6 +1484,21 @@ const startDesignBtn =
 
 const designTotalDisplay =
   document.getElementById("designTotalDisplay");
+
+const mobileOrderSummary =
+  document.getElementById("mobileOrderSummary");
+
+const addCartButtonLabel =
+  document.getElementById("addCartButtonLabel");
+
+const checkoutStickyCount =
+  document.getElementById("checkoutStickyCount");
+
+const checkoutStickyTotal =
+  document.getElementById("checkoutStickyTotal");
+
+const previewLoading =
+  document.getElementById("previewLoading");
 
   const cartDrawer =
   document.getElementById("cartDrawer");
@@ -1248,6 +1769,40 @@ function sanitizeName(name) {
     .join("");
 }
 
+function getApproximateKeychainSize(name) {
+  const characterCount = Array.from(sanitizeName(name)).length;
+
+  if (!characterCount) {
+    return {
+      characterCount: 0,
+      lengthCm: 0,
+      heightCm: 2.7,
+      thicknessCm: 2.2
+    };
+  }
+
+  // Measurements come from the displayed STL models. Each additional
+  // linked block adds approximately 28 mm to the overall length.
+  const lengthMm = 34.8 + (characterCount - 1) * 28;
+
+  return {
+    characterCount,
+    lengthCm: lengthMm / 10,
+    heightCm: 2.7,
+    thicknessCm: 2.2
+  };
+}
+
+function getApproximateSizeText(name) {
+  const size = getApproximateKeychainSize(name);
+
+  if (!size.characterCount) {
+    return "Enter a name to see its approximate finished size.";
+  }
+
+  return `Approx. ${size.lengthCm.toFixed(1)} cm long × ${size.heightCm.toFixed(1)} cm tall × ${size.thicknessCm.toFixed(1)} cm thick`;
+}
+
 function displayIcon(char) {
   const map = {
     "♡": "🩷",
@@ -1375,7 +1930,7 @@ function getUniqueColourCount(colours) {
   ).size;
 }
 
-function calculatePrice(design) {
+function calculatePrice(design, name = "") {
   const extraBaseColours = Math.max(
     0,
     getUniqueColourCount(design.bases) -
@@ -1394,8 +1949,15 @@ function calculatePrice(design) {
       INCLUDED_LETTER_COLOURS
   );
 
+  const characterCount = Array.from(sanitizeName(name)).length;
+  const extraCharacters = Math.max(
+    0,
+    characterCount - INCLUDED_CHARACTERS
+  );
+
   return (
     BASE_PRICE +
+    extraCharacters * EXTRA_CHARACTER_PRICE +
     extraBaseColours * EXTRA_BASE_COLOUR_PRICE +
     extraCapColours * EXTRA_CAP_COLOUR_PRICE +
     extraLetterColours * EXTRA_LETTER_COLOUR_PRICE
@@ -1497,9 +2059,72 @@ backBtn.onclick = () => {
 function getOrderSubtotal() {
   return names.reduce(
     (sum, item) =>
-      sum + calculatePrice(getDesign(item)),
+      sum + calculatePrice(getDesign(item), item.name),
     0
   );
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function getAppliedPromo() {
+  return appliedPromoCode
+    ? PROMO_CODES[appliedPromoCode] || null
+    : null;
+}
+
+function getPromoDiscount(subtotal) {
+  const promo = getAppliedPromo();
+
+  if (!promo) return 0;
+
+  return roundMoney(
+    subtotal * (Number(promo.percentOff || 0) / 100)
+  );
+}
+
+function showPromoStatus(message, type = "") {
+  promoCodeStatus.textContent = message;
+  promoCodeStatus.classList.remove("success", "error");
+
+  if (type) promoCodeStatus.classList.add(type);
+}
+
+function applyPromoCode() {
+  const enteredCode = promoCodeInput.value
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+
+  if (!enteredCode) {
+    appliedPromoCode = "";
+    showPromoStatus("Promo code removed.");
+    renderReviewOrder();
+    saveDraft();
+    return;
+  }
+
+  const promo = PROMO_CODES[enteredCode];
+
+  if (!promo) {
+    appliedPromoCode = "";
+    showPromoStatus("Sorry, that promo code is not valid.", "error");
+    renderReviewOrder();
+    return;
+  }
+
+  appliedPromoCode = enteredCode;
+  promoCodeInput.value = enteredCode;
+  draftHasMeaningfulChanges = true;
+
+  showPromoStatus(
+    `Applied! ${promo.label} gives you ${promo.percentOff}% off ♡`,
+    "success"
+  );
+
+  renderReviewOrder();
+  saveDraft();
 }
 
 function updateCartDisplay() {
@@ -1514,6 +2139,16 @@ function updateCartDisplay() {
   if (designTotalDisplay) {
     designTotalDisplay.textContent =
       `$${currentDesignTotal.toFixed(2)}`;
+  }
+
+  if (mobileOrderSummary) {
+    mobileOrderSummary.textContent =
+      `${names.length} keychain${names.length === 1 ? "" : "s"}`;
+  }
+
+  if (addCartButtonLabel) {
+    addCartButtonLabel.textContent =
+      cartHasItems ? "Update Cart" : "Add to Cart";
   }
 
   headerCartBtn.setAttribute(
@@ -1825,27 +2460,42 @@ async function createKeycap(letter, index, design) {
   return group;
 }
 
+let previewBuildNumber = 0;
+
 async function buildKeychain(name, design) {
+  const thisBuildNumber = ++previewBuildNumber;
+
+  previewLoading?.classList.remove("hidden");
   keychain.clear();
 
   const cleanName = sanitizeName(name || "A");
   const letters = Array.from(cleanName);
 
-  for (let i = 0; i < letters.length; i++) {
-    try {
-      const item = await createKeycap(letters[i], i, design);
-      keychain.add(item);
-    } catch (err) {
-      console.warn(`Missing STL for ${letters[i]}`, err);
+  try {
+    for (let i = 0; i < letters.length; i++) {
+      try {
+        const item = await createKeycap(letters[i], i, design);
+
+        if (thisBuildNumber !== previewBuildNumber) return;
+        keychain.add(item);
+      } catch (err) {
+        console.warn(`Missing STL for ${letters[i]}`, err);
+      }
+    }
+
+    if (thisBuildNumber !== previewBuildNumber) return;
+
+    keychain.position.x = -((letters.length - 1) * 28) / 2;
+    keychain.rotation.x = -0.8;
+    keychain.rotation.y = 0.2;
+
+    controls.target.set(0, 0, 0);
+    controls.update();
+  } finally {
+    if (thisBuildNumber === previewBuildNumber) {
+      previewLoading?.classList.add("hidden");
     }
   }
-
-  keychain.position.x = -((letters.length - 1) * 28) / 2;
-  keychain.rotation.x = -0.8;
-  keychain.rotation.y = 0.2;
-
-  controls.target.set(0, 0, 0);
-  controls.update();
 }
 
 function updateNames() {
@@ -1933,6 +2583,7 @@ function updateNames() {
 
   draftHasMeaningfulChanges = true;
 
+  updateDimensionEstimate(names[selectedIndex]?.name || "");
   refreshUI();
   buildSelectedPreview();
 }
@@ -2021,7 +2672,7 @@ function renderNameCards() {
     if (index === selectedIndex) card.classList.add("active");
 
     const design = getDesign(item);
-    const price = calculatePrice(design);
+    const price = calculatePrice(design, item.name);
 
     card.innerHTML = `
       <div class="name-card-top">
@@ -2048,7 +2699,22 @@ function renderNameCards() {
   });
 }
 
+function updateDimensionEstimate(name) {
+  if (dimensionEstimate) {
+    const selectedName = name || "";
+    dimensionEstimate.innerHTML = `
+      📏 <strong>${selectedName || "Finished size"}:</strong>
+      ${getApproximateSizeText(selectedName)}
+      <br><small>Approximate measurement; slight variation may occur after assembly.</small>
+    `;
+  }
+}
+
 function updateEditModeText() {
+  const selectedItem = names[selectedIndex];
+
+  updateDimensionEstimate(selectedItem?.name || "");
+
   if (
     orderType === "group" &&
     applyAllToggle.checked
@@ -2059,8 +2725,6 @@ function updateEditModeText() {
     resetSelected.style.display = "none";
     return;
   }
-
-  const selectedItem = names[selectedIndex];
 
   editModeText.textContent = selectedItem
     ? `Currently editing: ${selectedItem.name}`
@@ -2088,7 +2752,7 @@ function renderReviewOrder() {
 
   names.forEach((item, index) => {
     const design = getDesign(item);
-    const price = calculatePrice(design);
+    const price = calculatePrice(design, item.name);
 
     total += price;
 
@@ -2106,6 +2770,10 @@ function renderReviewOrder() {
                 ? "Bubbly Base"
                 : "Ribbed Base"
             }
+          </p>
+
+          <p class="item-dimension-note">
+            📏 ${getApproximateSizeText(item.name)}
           </p>
         </div>
 
@@ -2205,15 +2873,39 @@ function renderReviewOrder() {
 
   const deliveryFee =
     collectionMethod.value === "delivery" &&
-    total < 50
-      ? 2.5
+    total < freeDeliveryThreshold
+      ? deliveryFeeSetting
       : 0;
 
-  const grandTotal = total + deliveryFee;
+  const promo = getAppliedPromo();
+  const discountAmount = getPromoDiscount(total);
+  const discountedSubtotal = roundMoney(total - discountAmount);
+  const grandTotal = roundMoney(discountedSubtotal + deliveryFee);
+
+  if (checkoutStickyCount) {
+    checkoutStickyCount.textContent =
+      `${names.length} keychain${names.length === 1 ? "" : "s"}`;
+  }
+
+  if (checkoutStickyTotal) {
+    checkoutStickyTotal.textContent = `$${grandTotal.toFixed(2)}`;
+  }
 
   reviewPrice.innerHTML = `
     <span>Subtotal</span>
     <strong>$${total.toFixed(2)}</strong>
+
+    ${
+      promo && discountAmount > 0
+        ? `
+          <span>Promo ${appliedPromoCode} (${promo.percentOff}% off)</span>
+          <strong style="color:#278154;">−$${discountAmount.toFixed(2)}</strong>
+
+          <span>Discounted subtotal</span>
+          <strong>$${discountedSubtotal.toFixed(2)}</strong>
+        `
+        : ""
+    }
 
     <span>Delivery</span>
     <strong>
@@ -2236,12 +2928,12 @@ function renderReviewOrder() {
       'option[value="delivery"]'
     );
 
-  if (total >= 50) {
+  if (total >= freeDeliveryThreshold) {
     deliveryOption.text =
       "🚚 Islandwide Delivery (FREE)";
   } else {
     deliveryOption.text =
-      "🚚 Islandwide Delivery (+$2.50)";
+      `🚚 Islandwide Delivery (+${displaySettingMoney(deliveryFeeSetting)})`;
   }
 
   updateCollectionNote();
@@ -2277,19 +2969,22 @@ async function submitOrder() {
 
   const orderRef = generateOrderRef();
 
-  const subtotal = names.reduce(
+  const originalSubtotal = names.reduce(
     (sum, item) =>
-      sum + calculatePrice(getDesign(item)),
+      sum + calculatePrice(getDesign(item), item.name),
     0
   );
 
+  const discountAmount = getPromoDiscount(originalSubtotal);
+  const subtotal = roundMoney(originalSubtotal - discountAmount);
+
   const delivery =
     collectionMethod.value === "delivery" &&
-    subtotal < 50
-      ? 2.5
+    originalSubtotal < freeDeliveryThreshold
+      ? deliveryFeeSetting
       : 0;
 
-  const total = subtotal + delivery;
+  const total = roundMoney(subtotal + delivery);
 
   const order = {
     order_ref: orderRef,
@@ -2309,6 +3004,9 @@ async function submitOrder() {
     needed_by: neededBy.value,
     notes: orderNotes.value,
 
+    original_subtotal: roundMoney(originalSubtotal),
+    promo_code: appliedPromoCode || null,
+    discount_amount: discountAmount,
     subtotal,
     delivery_fee: delivery,
     total,
@@ -2329,7 +3027,7 @@ async function submitOrder() {
       return {
         name: item.name,
         clean_name: sanitizeName(item.name),
-        price: calculatePrice(design),
+        price: calculatePrice(design, item.name),
 
         design: {
           base_shape: {
@@ -2400,7 +3098,7 @@ async function submitOrder() {
 function updateCollectionNote() {
 
     const subtotal = names.reduce(
-        (sum, item) => sum + calculatePrice(getDesign(item)),
+        (sum, item) => sum + calculatePrice(getDesign(item), item.name),
         0
     );
 
@@ -2417,7 +3115,9 @@ function updateCollectionNote() {
 
     } else {
 
-        const fee = subtotal >= 50 ? "FREE 🎉" : "$2.50";
+        const fee = subtotal >= freeDeliveryThreshold
+          ? "FREE 🎉"
+          : displaySettingMoney(deliveryFeeSetting);
 
         deliveryNote.innerHTML = `
             Please enter any delivery instructions below.
@@ -2438,7 +3138,9 @@ function refreshUI() {
 
 function buildSelectedPreview() {
   if (!names.length) {
+    previewBuildNumber += 1;
     keychain.clear();
+    previewLoading?.classList.add("hidden");
     return;
   }
 
@@ -2540,7 +3242,7 @@ function renderCartDrawer() {
   cartDrawerItems.innerHTML = names
     .map((item, index) => {
       const design = getDesign(item);
-      const price = calculatePrice(design);
+      const price = calculatePrice(design, item.name);
       const baseShape =
         design.baseShape === "bubbly"
           ? "Bubbly Base"
@@ -2552,6 +3254,9 @@ function renderCartDrawer() {
             <div>
               <strong>${item.name}</strong>
               <p>${baseShape}</p>
+              <p class="item-dimension-note">
+                📏 ${getApproximateSizeText(item.name)}
+              </p>
             </div>
 
             <strong class="cart-item-price">
@@ -2788,6 +3493,15 @@ resetSelected.onclick = () => {
 
 submitOrderBtn.onclick = submitOrder;
 
+applyPromoBtn.onclick = applyPromoCode;
+
+promoCodeInput.addEventListener("keydown", event => {
+  if (event.key !== "Enter") return;
+
+  event.preventDefault();
+  applyPromoCode();
+});
+
 paymentBackBtn.onclick = () => {
 
     paymentScreen.classList.add("hidden");
@@ -2914,6 +3628,7 @@ function saveDraft() {
     selectedIndex,
     globalDesign,
     cartHasItems,
+    appliedPromoCode,
 
     customerName: customerName.value,
     customerEmail: customerEmail.value,
@@ -2988,6 +3703,21 @@ continueDraftBtn.onclick = () => {
   cartHasItems =
     Boolean(draftData.cartHasItems);
 
+  appliedPromoCode =
+    PROMO_CODES[draftData.appliedPromoCode]
+      ? draftData.appliedPromoCode
+      : "";
+
+  promoCodeInput.value = appliedPromoCode;
+
+  if (appliedPromoCode) {
+    const promo = PROMO_CODES[appliedPromoCode];
+    showPromoStatus(
+      `Applied! ${promo.label} gives you ${promo.percentOff}% off ♡`,
+      "success"
+    );
+  }
+
   customerName.value =
     draftData.customerName || "";
 
@@ -3042,6 +3772,9 @@ discardDraftBtn.onclick = () => {
 
   draftData = null;
   cartHasItems = false;
+  appliedPromoCode = "";
+  promoCodeInput.value = "";
+  showPromoStatus("");
   draftHasMeaningfulChanges = false;
 
   draftModal.classList.add("hidden");

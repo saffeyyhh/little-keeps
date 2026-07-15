@@ -3,6 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import emailjs from "@emailjs/browser";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
@@ -533,7 +537,14 @@ function renderOrders(orders) {
           ${order.notes || order.preferred_time || "-"}
         </p>
 
-        <p><strong>Subtotal:</strong><br>${formatMoney(order.subtotal)}</p>
+        ${Number(order.discount_amount || 0) > 0 ? `
+          <p><strong>Original Subtotal:</strong><br>${formatMoney(order.original_subtotal)}</p>
+          <p><strong>Promo Code:</strong><br>${order.promo_code || "-"}</p>
+          <p><strong>Promo Discount:</strong><br>−${formatMoney(order.discount_amount)}</p>
+          <p><strong>Discounted Subtotal:</strong><br>${formatMoney(order.subtotal)}</p>
+        ` : `
+          <p><strong>Subtotal:</strong><br>${formatMoney(order.subtotal)}</p>
+        `}
         <p><strong>Delivery Fee:</strong><br>${formatMoney(order.delivery_fee)}</p>
         <p><strong>Total:</strong><br>${formatMoney(order.total)}</p>
         <p><strong>Order Source:</strong><br>${order.order_source || "-"}</p>
@@ -900,6 +911,158 @@ function displayIcon(char) {
   return map[char] || char;
 }
 
+const productionStlJobs = new Map();
+const productionStlGeometryCache = new Map();
+const productionStlLoader = new STLLoader();
+const productionStlExporter = new STLExporter();
+
+function getProductionKeycapPath(character) {
+  const specialName = specialKeycaps[character];
+
+  return specialName
+    ? `/models/keycap - ${specialName}.stl`
+    : `/models/keycap-char-${character}.stl`;
+}
+
+function safeProductionFileName(value, fallback = "keycaps") {
+  const cleaned = String(value || fallback)
+    .normalize("NFKD")
+    .replace(/[^a-z0-9-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70);
+
+  return cleaned || fallback;
+}
+
+async function loadProductionStlGeometry(path) {
+  if (!productionStlGeometryCache.has(path)) {
+    productionStlGeometryCache.set(path, (async () => {
+      const response = await fetch(path);
+
+      if (!response.ok) {
+        throw new Error(`Could not load ${path}`);
+      }
+
+      const geometry = productionStlLoader.parse(await response.arrayBuffer());
+      geometry.computeBoundingBox();
+      return geometry;
+    })());
+  }
+
+  return (await productionStlGeometryCache.get(path)).clone();
+}
+
+async function generateKeycapCombinationStl(jobId, button) {
+  const job = productionStlJobs.get(jobId);
+
+  if (!job) {
+    alert("This colour combination is no longer available. Please refresh Production.");
+    return;
+  }
+
+  const requestedCharacters = [];
+
+  job.rows.forEach(row => {
+    const input = document.getElementById(row.inputId);
+    const quantity = Math.max(0, Math.floor(Number(input?.value || row.toPrint || 0)));
+
+    for (let index = 0; index < quantity; index += 1) {
+      requestedCharacters.push(row.letter);
+    }
+  });
+
+  if (!requestedCharacters.length) {
+    alert("Set at least one letter quantity before generating the STL.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Generate STL";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Building print plate…";
+  }
+
+  try {
+    const sourceGeometries = await Promise.all(
+      requestedCharacters.map(character =>
+        loadProductionStlGeometry(getProductionKeycapPath(character))
+      )
+    );
+
+    let widest = 0;
+    let deepest = 0;
+
+    sourceGeometries.forEach(geometry => {
+      geometry.computeBoundingBox();
+      const size = new THREE.Vector3();
+      geometry.boundingBox.getSize(size);
+      widest = Math.max(widest, size.x);
+      deepest = Math.max(deepest, size.y);
+    });
+
+    const columns = Math.min(8, Math.ceil(Math.sqrt(sourceGeometries.length)));
+    const spacing = 4;
+    const cellWidth = widest + spacing;
+    const cellDepth = deepest + spacing;
+
+    const arrangedGeometries = sourceGeometries.map((geometry, index) => {
+      geometry.computeBoundingBox();
+      const box = geometry.boundingBox;
+      const centreX = (box.min.x + box.max.x) / 2;
+      const centreY = (box.min.y + box.max.y) / 2;
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+
+      geometry.translate(
+        column * cellWidth - centreX,
+        row * cellDepth - centreY,
+        -box.min.z
+      );
+
+      return geometry;
+    });
+
+    const mergedGeometry = mergeGeometries(arrangedGeometries, false);
+
+    if (!mergedGeometry) {
+      throw new Error("The selected keycaps could not be combined.");
+    }
+
+    mergedGeometry.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(mergedGeometry);
+    const binaryStl = productionStlExporter.parse(mesh, { binary: true });
+    const blob = new Blob([binaryStl], { type: "model/stl" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const capName = safeProductionFileName(job.capName, "cap");
+    const letterName = safeProductionFileName(job.letterName, "letter");
+
+    link.href = downloadUrl;
+    link.download = `${capName}-cap_${letterName}-letter_${requestedCharacters.length}-pieces.stl`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+
+    arrangedGeometries.forEach(geometry => geometry.dispose());
+    mergedGeometry.dispose();
+
+    if (button) button.textContent = `Downloaded ${requestedCharacters.length} pieces ✓`;
+    setTimeout(() => {
+      if (button) button.textContent = previousLabel;
+    }, 2500);
+  } catch (error) {
+    console.error("Unable to generate keycap STL:", error);
+    alert(`Unable to generate the STL file.\n\n${error.message || error}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+window.generateKeycapCombinationStl = generateKeycapCombinationStl;
+
 function createAssemblyMiniPreview(name, design) {
   return Array.from(sanitizeName(name))
     .map((letter, i) => {
@@ -1046,8 +1209,10 @@ async function renderProductionPlanner(orders) {
     })
     .filter(item => item.toPrint > 0);
 
-  const keycapGroupHtml = Object.entries(keycapGroups).map(([groupKey, group]) => {
-    const rows = Object.entries(group.letters)
+  productionStlJobs.clear();
+
+  const keycapGroupHtml = Object.entries(keycapGroups).map(([groupKey, group], groupIndex) => {
+    const allRows = Object.entries(group.letters)
       .sort((a, b) => b[1] - a[1])
       .map(([letter, qty]) => {
     const itemName = getKeycapInventoryName(
@@ -1060,10 +1225,32 @@ async function renderProductionPlanner(orders) {
         const toPrint = Math.max(0, need - stock);
 
         return { letter, itemName, need, stock, toPrint };
-      })
-      .filter(row => row.toPrint > 0);
+      });
+
+    const rows = allRows.filter(row => row.toPrint > 0);
+    const totalNeeded = allRows.reduce((sum, row) => sum + row.need, 0);
+    const totalReady = allRows.reduce(
+      (sum, row) => sum + Math.min(row.stock, row.need),
+      0
+    );
+    const totalLeft = Math.max(0, totalNeeded - totalReady);
+    const progressPercent = totalNeeded
+      ? Math.round((totalReady / totalNeeded) * 100)
+      : 100;
 
     if (!rows.length) return "";
+
+    const stlJobId = `keycap-combination-${groupIndex}`;
+
+    productionStlJobs.set(stlJobId, {
+      capName: group.capName,
+      letterName: group.letterName,
+      rows: rows.map(row => ({
+        letter: row.letter,
+        toPrint: row.toPrint,
+        inputId: `printQty-${encodeURIComponent(row.itemName)}`
+      }))
+    });
 
     return `
       <details class="print-group" open>
@@ -1078,7 +1265,32 @@ async function renderProductionPlanner(orders) {
 
             <div>
               <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
-              <p>Only showing letters that still need printing</p>
+              <p style="margin-bottom:7px;">
+                <strong>${totalReady} / ${totalNeeded} ready</strong>
+                · ${totalLeft} left
+              </p>
+
+              <div
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="${totalNeeded}"
+                aria-valuenow="${totalReady}"
+                style="
+                  width:min(260px, 100%);
+                  height:9px;
+                  overflow:hidden;
+                  border-radius:999px;
+                  background:#f3e3ea;
+                "
+              >
+                <div style="
+                  width:${progressPercent}%;
+                  height:100%;
+                  border-radius:inherit;
+                  background:linear-gradient(90deg, #ff78a8, #ff4f91);
+                  transition:width 0.25s ease;
+                "></div>
+              </div>
             </div>
           </div>
         </summary>
@@ -1115,6 +1327,20 @@ async function renderProductionPlanner(orders) {
             </div>
           </div>
         `).join("")}
+
+        <div style="padding:14px 0 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <button
+            type="button"
+            class="ready-btn"
+            onclick="window.generateKeycapCombinationStl('${stlJobId}', this)"
+          >
+            Generate STL
+          </button>
+
+          <span class="hint">
+            Uses the quantities above and arranges all pieces on one print plate.
+          </span>
+        </div>
       </details>
     `;
   }).join("");
@@ -1481,8 +1707,18 @@ async function generateOrderPdfAttachment(order, items) {
           font-size:16px;
           line-height:2;
         ">
+          ${Number(order.discount_amount || 0) > 0 ? `
+            <div style="display:flex;justify-content:space-between;">
+              <span>Original subtotal</span>
+              <strong>${escapeEmailHtml(formatMoney(order.original_subtotal))}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;color:#278154;">
+              <span>Promo ${escapeEmailHtml(order.promo_code || "")}</span>
+              <strong>−${escapeEmailHtml(formatMoney(order.discount_amount))}</strong>
+            </div>
+          ` : ""}
           <div style="display:flex;justify-content:space-between;">
-            <span>Subtotal</span>
+            <span>${Number(order.discount_amount || 0) > 0 ? "Discounted subtotal" : "Subtotal"}</span>
             <strong>${escapeEmailHtml(formatMoney(order.subtotal))}</strong>
           </div>
           <div style="display:flex;justify-content:space-between;">
@@ -1885,36 +2121,64 @@ async function generateCompactOrderPdfAttachment(order, items) {
     drawWrappedDetail("Order items", "No item details were saved");
   }
 
-  addPageIfNeeded(37);
+  const promoDiscount = Number(order.discount_amount || 0);
+  const hasPromoDiscount = promoDiscount > 0;
+  const summaryHeight = hasPromoDiscount ? 45 : 33;
+  const totalLineY = hasPromoDiscount ? 39 : 27;
+
+  addPageIfNeeded(summaryHeight + 4);
   pdf.setFillColor(...softPink);
-  pdf.roundedRect(margin, y, contentWidth, 33, 4, 4, "F");
+  pdf.roundedRect(margin, y, contentWidth, summaryHeight, 4, 4, "F");
   pdf.setTextColor(...dark);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
-  pdf.text("Subtotal", margin + 6, y + 8);
+
+  if (hasPromoDiscount) {
+    pdf.text("Original subtotal", margin + 6, y + 7);
+    pdf.text(
+      getCompactPdfText(formatMoney(order.original_subtotal)),
+      pageWidth - margin - 6,
+      y + 7,
+      { align: "right" }
+    );
+    pdf.setTextColor(39, 129, 84);
+    pdf.text(`Promo ${getCompactPdfText(order.promo_code || "")}`, margin + 6, y + 14);
+    pdf.text(
+      `-${getCompactPdfText(formatMoney(promoDiscount))}`,
+      pageWidth - margin - 6,
+      y + 14,
+      { align: "right" }
+    );
+    pdf.setTextColor(...dark);
+  }
+
+  const subtotalLineY = hasPromoDiscount ? 21 : 8;
+  const deliveryLineY = hasPromoDiscount ? 28 : 16;
+
+  pdf.text(hasPromoDiscount ? "Discounted subtotal" : "Subtotal", margin + 6, y + subtotalLineY);
   pdf.text(
     getCompactPdfText(formatMoney(order.subtotal)),
     pageWidth - margin - 6,
-    y + 8,
+    y + subtotalLineY,
     { align: "right" }
   );
-  pdf.text("Delivery", margin + 6, y + 16);
+  pdf.text("Delivery", margin + 6, y + deliveryLineY);
   pdf.text(
     Number(order.delivery_fee || 0) === 0
       ? "Free"
       : getCompactPdfText(formatMoney(order.delivery_fee)),
     pageWidth - margin - 6,
-    y + 16,
+    y + deliveryLineY,
     { align: "right" }
   );
   pdf.setTextColor(...pink);
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(13);
-  pdf.text("Total Paid", margin + 6, y + 27);
+  pdf.text("Total Paid", margin + 6, y + totalLineY);
   pdf.text(
     getCompactPdfText(formatMoney(order.total)),
     pageWidth - margin - 6,
-    y + 27,
+    y + totalLineY,
     { align: "right" }
   );
 
@@ -1967,6 +2231,13 @@ async function sendPaymentVerifiedEmail(order) {
       order_list: orderList,
       order_pdf: orderPdf,
 
+      original_subtotal_amount: formatMoney(
+        order.original_subtotal ?? order.subtotal
+      ),
+      promo_code: order.promo_code || "",
+      discount_amount: Number(order.discount_amount || 0) > 0
+        ? `−${formatMoney(order.discount_amount)}`
+        : "",
       subtotal_amount: formatMoney(order.subtotal),
 
       delivery_amount:
