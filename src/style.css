@@ -3381,3 +3381,23 @@ position:static;
     font-size: 9px;
   }
 }
+
+/* Final mobile sticky-preview override.
+   Using a normal block container lets sticky follow the full customiser height. */
+@media (max-width: 650px) {
+  .product-customiser {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .product-customiser .preview-column,
+  .product-customiser .preview-sticky {
+    display: contents !important;
+  }
+
+  .product-customiser .preview-card {
+    position: sticky !important;
+    top: 74px !important;
+    z-index: 420 !important;
+  }
+}
