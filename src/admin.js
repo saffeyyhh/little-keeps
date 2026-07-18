@@ -586,6 +586,7 @@ function renderOrders(orders) {
       item.design?.base_shape?.key ||
       item.design?.baseShape ||
       "ribbed";
+    const letterOrientation = getLetterOrientation(item.design);
 
     return `
       <div class="order-preview-item">
@@ -594,6 +595,10 @@ function renderOrders(orders) {
 
           <span class="assembly-tag">
             ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+          </span>
+
+          <span class="assembly-tag">
+            ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
           </span>
         </div>
 
@@ -615,8 +620,16 @@ function getBaseInventoryName(baseName, baseShape = "ribbed") {
   return `${baseName} ${shapeLabel} Base`;
 }
 
-function getKeycapInventoryName(capName, letterName, character) {
-  return `${capName} Cap + ${letterName} Letter - ${character}`;
+function getKeycapInventoryName(
+  capName,
+  letterName,
+  character,
+  orientation = "vertical"
+) {
+  const orientationSuffix =
+    orientation === "horizontal" ? " - Sideways" : "";
+
+  return `${capName} Cap + ${letterName} Letter - ${character}${orientationSuffix}`;
 }
 
 async function loadInventoryItems() {
@@ -727,6 +740,8 @@ function getProductionSummary(orders) {
 
       if (!design) return;
 
+      const letterOrientation = getLetterOrientation(design);
+
       letters.forEach((letter, index) => {
         const base = design.bases[index % design.bases.length];
         const cap = design.caps[index % design.caps.length];
@@ -759,7 +774,8 @@ function getProductionSummary(orders) {
 
         baseTotals[baseKey].qty += 1;
 
-        const groupKey = `${capName} Cap + ${letterName} Letter`;
+        const groupKey =
+          `${capName} Cap + ${letterName} Letter|${letterOrientation}`;
 
         if (!keycapGroups[groupKey]) {
           keycapGroups[groupKey] = {
@@ -767,6 +783,7 @@ function getProductionSummary(orders) {
             capHex,
             letterName,
             letterHex,
+            letterOrientation,
             letters: {}
           };
         }
@@ -792,6 +809,8 @@ function getOrderInventoryNeeds(order) {
     const design = item.design;
 
     if (!design) return;
+
+    const letterOrientation = getLetterOrientation(design);
 
     letters.forEach((letter, index) => {
       const base = design.bases[index % design.bases.length];
@@ -826,7 +845,9 @@ function getOrderInventoryNeeds(order) {
 
           letterName,
 
-          letter
+          letter,
+
+          letterOrientation
 
         ),
 
@@ -892,6 +913,19 @@ function sanitizeName(name) {
     .join("");
 }
 
+function getLetterOrientation(design) {
+  return design?.letter_orientation === "horizontal" ||
+    design?.letterOrientation === "horizontal"
+    ? "horizontal"
+    : "vertical";
+}
+
+function getLetterOrientationLabel(design) {
+  return getLetterOrientation(design) === "horizontal"
+    ? "Horizontal / Sideways"
+    : "Vertical / Upright";
+}
+
 function displayIcon(char) {
   const map = {
     "♡": "🩷",
@@ -952,6 +986,118 @@ async function loadProductionStlGeometry(path) {
   return (await productionStlGeometryCache.get(path)).clone();
 }
 
+function splitProductionKeycapGeometry(geometry) {
+  const position = geometry.attributes.position;
+  const triangleCount = position.count / 3;
+  const visited = new Array(triangleCount).fill(false);
+  const components = [];
+  const vertexMap = new Map();
+
+  const getVertexKey = index => [
+    position.getX(index).toFixed(3),
+    position.getY(index).toFixed(3),
+    position.getZ(index).toFixed(3)
+  ].join(",");
+
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    for (let vertex = 0; vertex < 3; vertex += 1) {
+      const key = getVertexKey(triangle * 3 + vertex);
+      if (!vertexMap.has(key)) vertexMap.set(key, []);
+      vertexMap.get(key).push(triangle);
+    }
+  }
+
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    if (visited[triangle]) continue;
+
+    const stack = [triangle];
+    const component = [];
+    visited[triangle] = true;
+
+    while (stack.length) {
+      const current = stack.pop();
+      component.push(current);
+
+      for (let vertex = 0; vertex < 3; vertex += 1) {
+        const key = getVertexKey(current * 3 + vertex);
+
+        (vertexMap.get(key) || []).forEach(neighbour => {
+          if (!visited[neighbour]) {
+            visited[neighbour] = true;
+            stack.push(neighbour);
+          }
+        });
+      }
+    }
+
+    components.push(component);
+  }
+
+  components.sort((a, b) => b.length - a.length);
+
+  const makeGeometry = triangles => {
+    const vertices = [];
+
+    triangles.forEach(triangle => {
+      for (let vertex = 0; vertex < 3; vertex += 1) {
+        const index = triangle * 3 + vertex;
+        vertices.push(
+          position.getX(index),
+          position.getY(index),
+          position.getZ(index)
+        );
+      }
+    });
+
+    const result = new THREE.BufferGeometry();
+    result.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(vertices, 3)
+    );
+    result.computeVertexNormals();
+    return result;
+  };
+
+  return {
+    tile: makeGeometry(components[0] || []),
+    letter: makeGeometry(components.slice(1).flat())
+  };
+}
+
+function prepareProductionKeycapGeometry(
+  geometry,
+  orientation = "vertical"
+) {
+  if (orientation !== "horizontal") return geometry;
+
+  const parts = splitProductionKeycapGeometry(geometry);
+  parts.letter.computeBoundingBox();
+
+  if (parts.letter.boundingBox) {
+    const centre = new THREE.Vector3();
+    parts.letter.boundingBox.getCenter(centre);
+    parts.letter.translate(-centre.x, -centre.y, 0);
+    parts.letter.rotateZ(Math.PI / 2);
+    parts.letter.translate(centre.x, centre.y, 0);
+  }
+
+  const combined = mergeGeometries(
+    [parts.tile, parts.letter],
+    false
+  );
+
+  geometry.dispose();
+  parts.tile.dispose();
+  parts.letter.dispose();
+
+  if (!combined) {
+    throw new Error("Unable to rotate the selected keycap letter.");
+  }
+
+  combined.computeVertexNormals();
+  return combined;
+}
+
 async function generateKeycapCombinationStl(jobId, button) {
   const job = productionStlJobs.get(jobId);
 
@@ -960,18 +1106,22 @@ async function generateKeycapCombinationStl(jobId, button) {
     return;
   }
 
-  const requestedCharacters = [];
+  const requestedKeycaps = [];
 
   job.rows.forEach(row => {
     const input = document.getElementById(row.inputId);
     const quantity = Math.max(0, Math.floor(Number(input?.value || row.toPrint || 0)));
 
     for (let index = 0; index < quantity; index += 1) {
-      requestedCharacters.push(row.letter);
+      requestedKeycaps.push({
+        character: row.letter,
+        letterOrientation:
+          row.letterOrientation || job.letterOrientation || "vertical"
+      });
     }
   });
 
-  if (!requestedCharacters.length) {
+  if (!requestedKeycaps.length) {
     alert("Set at least one letter quantity before generating the STL.");
     return;
   }
@@ -985,9 +1135,16 @@ async function generateKeycapCombinationStl(jobId, button) {
 
   try {
     const sourceGeometries = await Promise.all(
-      requestedCharacters.map(character =>
-        loadProductionStlGeometry(getProductionKeycapPath(character))
-      )
+      requestedKeycaps.map(async item => {
+        const geometry = await loadProductionStlGeometry(
+          getProductionKeycapPath(item.character)
+        );
+
+        return prepareProductionKeycapGeometry(
+          geometry,
+          item.letterOrientation
+        );
+      })
     );
 
     let widest = 0;
@@ -1040,7 +1197,10 @@ async function generateKeycapCombinationStl(jobId, button) {
     const letterName = safeProductionFileName(job.letterName, "letter");
 
     link.href = downloadUrl;
-    link.download = `${capName}-cap_${letterName}-letter_${requestedCharacters.length}-pieces.stl`;
+    const orientationName =
+      job.letterOrientation === "horizontal" ? "sideways" : "upright";
+
+    link.download = `${capName}-cap_${letterName}-letter_${orientationName}_${requestedKeycaps.length}-pieces.stl`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1049,7 +1209,7 @@ async function generateKeycapCombinationStl(jobId, button) {
     arrangedGeometries.forEach(geometry => geometry.dispose());
     mergedGeometry.dispose();
 
-    if (button) button.textContent = `Downloaded ${requestedCharacters.length} pieces ✓`;
+    if (button) button.textContent = `Downloaded ${requestedKeycaps.length} pieces ✓`;
     setTimeout(() => {
       if (button) button.textContent = previousLabel;
     }, 2500);
@@ -1080,7 +1240,9 @@ function createAssemblyMiniPreview(name, design) {
             class="mini-cap"
             style="background:${capHex}; color:${letterHex};"
           >
-            ${displayIcon(letter)}
+            <span style="display:inline-block;transform:${getLetterOrientation(design) === "horizontal" ? "rotate(90deg)" : "none"};">
+              ${displayIcon(letter)}
+            </span>
           </div>
         </div>
       `;
@@ -1150,6 +1312,7 @@ async function renderAssemblyQueue() {
                     item.design?.base_shape?.key ||
                     item.design?.baseShape ||
                     "ribbed";
+                  const letterOrientation = getLetterOrientation(item.design);
 
                   return `
                     <div class="assembly-item">
@@ -1163,6 +1326,10 @@ async function renderAssemblyQueue() {
 
                           <span class="assembly-tag">
                             ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+                          </span>
+
+                          <span class="assembly-tag">
+                            ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
                           </span>
                         </div>
                       </div>
@@ -1218,7 +1385,8 @@ async function renderProductionPlanner(orders) {
     const itemName = getKeycapInventoryName(
       group.capName,
       group.letterName,
-      letter
+      letter,
+      group.letterOrientation
     );
         const need = qty;
         const stock = getInventoryQty(itemName);
@@ -1245,8 +1413,10 @@ async function renderProductionPlanner(orders) {
     productionStlJobs.set(stlJobId, {
       capName: group.capName,
       letterName: group.letterName,
+      letterOrientation: group.letterOrientation,
       rows: rows.map(row => ({
         letter: row.letter,
+        letterOrientation: group.letterOrientation,
         toPrint: row.toPrint,
         inputId: `printQty-${encodeURIComponent(row.itemName)}`
       }))
@@ -1265,6 +1435,9 @@ async function renderProductionPlanner(orders) {
 
             <div>
               <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
+              <p class="hint">
+                ${group.letterOrientation === "horizontal" ? "Horizontal / Sideways" : "Vertical / Upright"}
+              </p>
               <p style="margin-bottom:7px;">
                 <strong>${totalReady} / ${totalNeeded} ready</strong>
                 · ${totalLeft} left
@@ -1512,6 +1685,7 @@ function createPdfMiniPreview(item) {
   const characters = Array.from(
     item.clean_name || sanitizeName(item.name || "")
   );
+  const letterOrientation = getLetterOrientation(design);
 
   return characters.map((character, index) => {
     const base = getSafePdfColour(
@@ -1555,7 +1729,7 @@ function createPdfMiniPreview(item) {
           font-size:17px;
           font-weight:700;
           line-height:1;
-        ">${escapeEmailHtml(displayIcon(character))}</span>
+        "><span style="display:inline-block;transform:${letterOrientation === "horizontal" ? "rotate(90deg)" : "none"};">${escapeEmailHtml(displayIcon(character))}</span></span>
       </span>
     `;
   }).join("");
@@ -1586,6 +1760,7 @@ async function generateOrderPdfAttachment(order, items) {
         const baseColours = getPdfColourNames(design.bases);
         const capColours = getPdfColourNames(design.caps);
         const letterColours = getPdfColourNames(design.letters);
+        const letterOrientation = getLetterOrientationLabel(design);
 
         return `
           <div style="
@@ -1602,7 +1777,7 @@ async function generateOrderPdfAttachment(order, items) {
                   ${index + 1}. ${escapeEmailHtml(item.name || "Personalised keychain")}
                 </div>
                 <div style="margin-top:4px;color:#756b70;font-size:13px;">
-                  ${escapeEmailHtml(baseShape)}
+                  ${escapeEmailHtml(baseShape)} · ${escapeEmailHtml(letterOrientation)}
                 </div>
               </div>
               <div style="color:#ff6799;font-size:18px;font-weight:700;">
@@ -1623,7 +1798,9 @@ async function generateOrderPdfAttachment(order, items) {
               <strong style="color:#332d30;">Cap colours:</strong>
               ${escapeEmailHtml(capColours)}<br>
               <strong style="color:#332d30;">Letter colours:</strong>
-              ${escapeEmailHtml(letterColours)}
+              ${escapeEmailHtml(letterColours)}<br>
+              <strong style="color:#332d30;">Letter orientation:</strong>
+              ${escapeEmailHtml(letterOrientation)}
             </div>
           </div>
         `;
@@ -2005,6 +2182,8 @@ async function generateCompactOrderPdfAttachment(order, items) {
       (design.base_shape?.key === "bubbly"
         ? "Bubbly Base"
         : "Ribbed Base");
+    const letterOrientation = getLetterOrientation(design);
+    const letterOrientationLabel = getLetterOrientationLabel(design);
     const baseNames = getPdfColourNames(bases);
     const capNames = getPdfColourNames(caps);
     const letterNames = getPdfColourNames(letters);
@@ -2019,6 +2198,10 @@ async function generateCompactOrderPdfAttachment(order, items) {
       ),
       ...pdf.splitTextToSize(
         `Letter colours: ${getCompactPdfText(letterNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Letter orientation: ${getCompactPdfText(letterOrientationLabel)}`,
         contentWidth - 12
       )
     ];
@@ -2048,7 +2231,11 @@ async function generateCompactOrderPdfAttachment(order, items) {
     pdf.setTextColor(...muted);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);
-    pdf.text(getCompactPdfText(baseShape), margin + 5, y + 12);
+    pdf.text(
+      getCompactPdfText(`${baseShape} · ${letterOrientationLabel}`),
+      margin + 5,
+      y + 12
+    );
 
     const characters = Array.from(
       item.clean_name || sanitizeName(item.name || "")
@@ -2079,7 +2266,8 @@ async function generateCompactOrderPdfAttachment(order, items) {
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(7);
         pdf.text(character, blockX + 4.5, blockY + 5.7, {
-          align: "center"
+          align: "center",
+          angle: letterOrientation === "horizontal" ? -90 : 0
         });
       } else {
         const iconImage = getPdfIconImage(character);
@@ -2096,14 +2284,16 @@ async function generateCompactOrderPdfAttachment(order, items) {
             6.3,
             6.3,
             iconAlias,
-            "FAST"
+            "FAST",
+            letterOrientation === "horizontal" ? -90 : 0
           );
         } else {
           pdf.setTextColor(...letterRgb);
           pdf.setFont("helvetica", "bold");
           pdf.setFontSize(7);
           pdf.text("*", blockX + 4.5, blockY + 5.7, {
-            align: "center"
+            align: "center",
+            angle: letterOrientation === "horizontal" ? -90 : 0
           });
         }
       }

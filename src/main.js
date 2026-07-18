@@ -516,6 +516,32 @@ document.querySelector("#app").innerHTML = `
   <div class="hero-decoration hero-decoration-two"></div>
 </section>
 
+<section class="value-props" aria-label="Why shop with Little Keeps">
+  <article>
+    <span>✦</span>
+    <div>
+      <strong>Design it live</strong>
+      <small>See every colour in the 3D preview</small>
+    </div>
+  </article>
+
+  <article>
+    <span>♡</span>
+    <div>
+      <strong>Made in Singapore</strong>
+      <small>Printed, assembled and checked by hand</small>
+    </div>
+  </article>
+
+  <article>
+    <span>◷</span>
+    <div>
+      <strong>Ready in 2–3 working days</strong>
+      <small>Large orders are ready in 3–4 working days</small>
+    </div>
+  </article>
+</section>
+
 <section id="designArea" class="shop-section">
   <div class="customer-progress" aria-label="Order progress">
     <div class="customer-progress-step is-active"><span>1</span>Design</div>
@@ -739,6 +765,35 @@ Chloe</textarea>
           </div>
         </div>
 
+        <div class="customisation-section">
+          <div class="customisation-title">
+            <div>
+              <h3>Letter Orientation</h3>
+              <p>Choose how the letters and icons should face.</p>
+            </div>
+          </div>
+
+          <div class="toggle-row letter-orientation-row">
+            <button
+              id="verticalLetterBtn"
+              type="button"
+              class="toggle active"
+            >
+              <span class="orientation-example">A</span>
+              Vertical / Upright
+            </button>
+
+            <button
+              id="horizontalLetterBtn"
+              type="button"
+              class="toggle"
+            >
+              <span class="orientation-example is-sideways">A</span>
+              Horizontal / Sideways
+            </button>
+          </div>
+        </div>
+
         <div class="customisation-section colour-accordion is-open" data-colour-accordion="base">
           <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="true">
             <div>
@@ -881,16 +936,27 @@ Chloe</textarea>
   <p>Tell us how you would like to receive your order.</p>
 </div>
 
-        <input id="customerName" placeholder="Name">
+        <label for="customerName">Full name</label>
+        <input
+          id="customerName"
+          autocomplete="name"
+          placeholder="Your full name"
+        >
 
+        <label for="customerEmail">Email address</label>
         <input
           id="customerEmail"
           type="email"
+          autocomplete="email"
           placeholder="Email"
         >
 
+        <label for="customerPhone">Contact number</label>
         <input
           id="customerPhone"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="tel"
           placeholder="Contact Number"
         >
 
@@ -1435,6 +1501,11 @@ const previewCard =
 const mobilePreviewToggle =
   document.getElementById("mobilePreviewToggle");
 
+const verticalLetterBtn =
+  document.getElementById("verticalLetterBtn");
+const horizontalLetterBtn =
+  document.getElementById("horizontalLetterBtn");
+
   const cartDrawer =
   document.getElementById("cartDrawer");
 
@@ -1918,6 +1989,7 @@ const available = getAvailableColours();
 
 let globalDesign = {
   baseShape: "ribbed",
+  letterOrientation: "vertical",
 
   bases: [
     available[0]
@@ -2052,6 +2124,7 @@ function getActiveDesign() {
   if (!item.custom) {
     item.custom = {
       baseShape: globalDesign.baseShape || "ribbed",
+      letterOrientation: globalDesign.letterOrientation || "vertical",
       bases: [...globalDesign.bases],
       caps: [...globalDesign.caps],
       letters: [...globalDesign.letters]
@@ -2567,6 +2640,11 @@ function getDesign(item) {
       globalDesign.baseShape ||
       "ribbed",
 
+    letterOrientation:
+      item.custom.letterOrientation ||
+      globalDesign.letterOrientation ||
+      "vertical",
+
     bases:
       item.custom.bases ||
       globalDesign.bases,
@@ -2611,6 +2689,28 @@ async function createKeycap(letter, index, design) {
 
   const tile = new THREE.Mesh(parts.tile, createMat(capColour));
   const raisedLetter = new THREE.Mesh(parts.letter, createMat(letterColour));
+
+  if ((design.letterOrientation || "vertical") === "horizontal") {
+    parts.letter.computeBoundingBox();
+
+    if (parts.letter.boundingBox) {
+      const letterCentre = new THREE.Vector3();
+      parts.letter.boundingBox.getCenter(letterCentre);
+
+      parts.letter.translate(
+        -letterCentre.x,
+        -letterCentre.y,
+        0
+      );
+
+      raisedLetter.position.set(
+        letterCentre.x,
+        letterCentre.y,
+        0
+      );
+      raisedLetter.rotation.z = Math.PI / 2;
+    }
+  }
 
   const capGroup = new THREE.Group();
   capGroup.add(tile);
@@ -2682,6 +2782,11 @@ function updateNames() {
                 globalDesign.baseShape ||
                 "ribbed",
 
+              letterOrientation:
+                previousItem.custom.letterOrientation ||
+                globalDesign.letterOrientation ||
+                "vertical",
+
               bases: [...previousItem.custom.bases],
               caps: [...previousItem.custom.caps],
               letters: [...previousItem.custom.letters]
@@ -2715,6 +2820,11 @@ function updateNames() {
                 previousItem.custom.baseShape ||
                 globalDesign.baseShape ||
                 "ribbed",
+
+              letterOrientation:
+                previousItem.custom.letterOrientation ||
+                globalDesign.letterOrientation ||
+                "vertical",
 
               bases: [...previousItem.custom.bases],
               caps: [...previousItem.custom.caps],
@@ -2766,6 +2876,41 @@ function updateBaseShapeButtons() {
   );
 }
 
+function updateLetterOrientationButtons() {
+  const orientation =
+    getActiveDesign().letterOrientation || "vertical";
+
+  verticalLetterBtn?.classList.toggle(
+    "active",
+    orientation === "vertical"
+  );
+
+  horizontalLetterBtn?.classList.toggle(
+    "active",
+    orientation === "horizontal"
+  );
+}
+
+function setLetterOrientation(orientation) {
+  if (!["vertical", "horizontal"].includes(orientation)) return;
+
+  if (applyAllToggle.checked) {
+    globalDesign.letterOrientation = orientation;
+
+    names.forEach(item => {
+      item.custom = null;
+    });
+  } else {
+    const design = getActiveDesign();
+    design.letterOrientation = orientation;
+  }
+
+  draftHasMeaningfulChanges = true;
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+}
+
 function setBaseShape(shape) {
   if (!BASE_SHAPES[shape]) {
     console.error("Unknown base shape:", shape);
@@ -2786,6 +2931,7 @@ function setBaseShape(shape) {
     if (!item.custom) {
       item.custom = {
         baseShape: globalDesign.baseShape || "ribbed",
+        letterOrientation: globalDesign.letterOrientation || "vertical",
         bases: [...globalDesign.bases],
         caps: [...globalDesign.caps],
         letters: [...globalDesign.letters]
@@ -2807,6 +2953,14 @@ bubblyBaseBtn.onclick = () => {
   setBaseShape("bubbly");
 };
 
+verticalLetterBtn.onclick = () => {
+  setLetterOrientation("vertical");
+};
+
+horizontalLetterBtn.onclick = () => {
+  setLetterOrientation("horizontal");
+};
+
 function createMiniPreview(name, design) {
   return Array.from(sanitizeName(name))
     .map((letter, i) => {
@@ -2817,7 +2971,9 @@ function createMiniPreview(name, design) {
       return `
         <div class="mini-block" style="background:${base}">
           <div class="mini-cap" style="background:${cap}; color:${letterColour}">
-            ${displayIcon(letter)}
+            <span class="mini-character ${design.letterOrientation === "horizontal" ? "is-sideways" : ""}">
+              ${displayIcon(letter)}
+            </span>
           </div>
         </div>
       `;
@@ -2845,6 +3001,7 @@ function renderNameCards() {
 
       <p class="hint">
         ${design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+        · ${design.letterOrientation === "horizontal" ? "Sideways letters" : "Upright letters"}
       </p>
 
       <div class="mini-chain">
@@ -2933,6 +3090,7 @@ function renderReviewOrder() {
                 ? "Bubbly Base"
                 : "Ribbed Base"
             }
+            · ${design.letterOrientation === "horizontal" ? "Sideways letters" : "Upright letters"}
           </p>
 
           <p class="item-dimension-note">
@@ -3193,6 +3351,9 @@ async function submitOrder() {
         price: calculatePrice(design, item.name),
 
         design: {
+          letter_orientation:
+            design.letterOrientation || "vertical",
+
           base_shape: {
             key: design.baseShape || "ribbed",
 
@@ -3295,6 +3456,7 @@ function refreshUI() {
   renderColourSlots();
   updateEditModeText();
   updateBaseShapeButtons();
+  updateLetterOrientationButtons();
   updateCartDisplay();
   updateTurnaroundMessaging();
   renderReviewOrder();
@@ -3872,11 +4034,18 @@ continueDraftBtn.onclick = () => {
   globalDesign.baseShape =
     globalDesign.baseShape || "ribbed";
 
+  globalDesign.letterOrientation =
+    globalDesign.letterOrientation || "vertical";
+
   names.forEach(item => {
     if (item.custom) {
       item.custom.baseShape =
         item.custom.baseShape ||
         globalDesign.baseShape;
+
+      item.custom.letterOrientation =
+        item.custom.letterOrientation ||
+        globalDesign.letterOrientation;
     }
   });
 
