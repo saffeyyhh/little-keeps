@@ -2695,6 +2695,45 @@ label {
   box-shadow: var(--shadow-lg) !important;
 }
 
+/* Keep the site's general input styles from squashing Flatpickr's header. */
+.flatpickr-calendar .flatpickr-months {
+  min-height: 44px;
+}
+
+.flatpickr-calendar .flatpickr-month {
+  height: 44px;
+}
+
+.flatpickr-calendar .flatpickr-current-month {
+  height: 44px;
+  padding-top: 10px;
+  line-height: 1.2;
+}
+
+.flatpickr-calendar .flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-calendar .flatpickr-current-month input.cur-year {
+  width: auto;
+  min-height: 0;
+  height: 24px;
+  margin: 0;
+  padding: 0 0 0 0.5ch;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  line-height: 24px;
+}
+
+.flatpickr-calendar .flatpickr-prev-month,
+.flatpickr-calendar .flatpickr-next-month {
+  height: 44px;
+  padding: 14px;
+}
+
+.special-date-section {
+  position: relative;
+  overflow: visible;
+}
+
 .flatpickr-day.selected,
 .flatpickr-day.startRange,
 .flatpickr-day.endRange {

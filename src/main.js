@@ -1808,6 +1808,7 @@ const ICON_CATEGORIES = [
 ];
 
 let specialDateCalendar = null;
+let specialDateCalendarMode = "";
 let shopClosureRanges = [];
 let rushAssessment = null;
 let rushAssessmentRequest = 0;
@@ -2052,7 +2053,7 @@ function updateTurnaroundMessaging() {
     orderNotes.placeholder = "Customer notes for your bulk order...";
   } else if (isRush) {
     specialDateLabel.textContent = "When do you need it?";
-    specialOrderMessage.textContent = "Choose a date and we’ll check availability instantly.";
+    specialOrderMessage.textContent = "Only dates earlier than the standard estimate are shown. Choose a date and we’ll check availability instantly.";
     orderNotes.placeholder = "Tell us about your deadline or event...";
 
     if (requestedCompletionDate.value && rushAssessmentFingerprint !== getRushFingerprint()) {
@@ -2071,16 +2072,31 @@ function updateTurnaroundMessaging() {
 
   if (specialDateCalendar) {
     const tomorrow = addWorkingDays(new Date(), 1);
-    specialDateCalendar.set("minDate", tomorrow);
+    const calendarMode = isRush ? "rush" : isBulk ? "bulk" : "standard";
+    let calendarMaxDate;
 
     if (isRush) {
-      const lastRushDate = getAutomaticReadyDate();
-      lastRushDate.setDate(lastRushDate.getDate() - 1);
-      specialDateCalendar.set("maxDate", lastRushDate);
+      calendarMaxDate = getAutomaticReadyDate();
+      calendarMaxDate.setDate(calendarMaxDate.getDate() - 1);
     } else {
-      const bulkMaxDate = new Date(tomorrow);
-      bulkMaxDate.setFullYear(bulkMaxDate.getFullYear() + 1);
-      specialDateCalendar.set("maxDate", bulkMaxDate);
+      calendarMaxDate = new Date(tomorrow);
+      calendarMaxDate.setFullYear(calendarMaxDate.getFullYear() + 1);
+    }
+
+    specialDateCalendar.set({
+      minDate: tomorrow,
+      maxDate: calendarMaxDate
+    });
+
+    // Flatpickr can remain parked on the old maximum month after its range
+    // changes. Reset only when the order mode changes so month navigation
+    // remains natural while the customer is choosing a date.
+    if (calendarMode !== specialDateCalendarMode) {
+      const selectedDate = specialDateCalendar.selectedDates[0];
+      const dateToShow = selectedDate || tomorrow;
+
+      specialDateCalendar.jumpToDate(dateToShow, false);
+      specialDateCalendarMode = calendarMode;
     }
   }
 
@@ -2714,6 +2730,14 @@ async function setupNeededByCalendar() {
     minDate,
     maxDate,
     disable: disabledDates,
+
+    onOpen: (_selectedDates, _dateString, instance) => {
+      const firstAvailableDate = addWorkingDays(new Date(), 1);
+      instance.jumpToDate(
+        instance.selectedDates[0] || firstAvailableDate,
+        false
+      );
+    },
 
     onChange: async () => {
       neededBy.value = requestedCompletionDate.value;
