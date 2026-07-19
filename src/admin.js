@@ -63,71 +63,105 @@ if (!sessionData.session) {
 document.querySelector("#app").innerHTML = `
   <main class="admin-page">
     <header class="admin-header">
-      <p class="eyebrow">Little Keeps</p>
-      <h1>Workshop ♡</h1>
-      <p>Manage orders, printing and pickups in one place.</p>
-          <button id="logoutBtn">Logout</button>
+      <div class="admin-header-copy">
+        <p class="eyebrow">Little Keeps</p>
+        <h1>Workshop <span aria-hidden="true">♡</span></h1>
+        <p>Your orders, production and fulfilment control centre.</p>
+      </div>
+
+      <div class="admin-header-actions">
+        <a class="header-store-link" href="./index.html" target="_blank" rel="noopener">
+          View Store
+        </a>
+        <button id="logoutBtn" type="button">Logout</button>
+      </div>
     </header>
 
     <section id="stats" class="stats-grid"></section>
 
-        <div class="workshop-tabs">
-        <button id="ordersViewBtn" class="workshop-tab active">Orders</button>
-        <button id="productionViewBtn" class="workshop-tab">Production</button>
-        <button id="assemblyViewBtn" class="workshop-tab">Assembly</button>
-        </div>
+    <section id="operationsSummary" class="operations-summary" aria-live="polite"></section>
 
-        <div class="section-title">
-        <h2 id="sectionTitle">Orders</h2>
+    <nav class="workshop-tabs" aria-label="Workshop sections">
+      <button id="ordersViewBtn" class="workshop-tab active" type="button">
+        <span aria-hidden="true">📋</span> Orders
+      </button>
+      <button id="productionViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">🖨️</span> Production
+      </button>
+      <button id="assemblyViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">🧩</span> Assembly
+      </button>
+    </nav>
+
+    <section class="workspace-panel">
+      <div class="section-title">
+        <div>
+          <p class="section-kicker">Daily workspace</p>
+          <h2 id="sectionTitle">Orders</h2>
+        </div>
 
         <div class="admin-actions" id="ordersActions">
-            <a class="new-order-btn" href="./index.html?manual=true">
-            + New Manual Order
-            </a>
+          <a class="new-order-btn" href="./index.html?manual=true">
+            + Manual Order
+          </a>
 
-            <button id="refreshBtn" title="Refresh Orders">
-                ↻
-            </button>
+          <button id="refreshBtn" type="button" title="Refresh orders" aria-label="Refresh orders">
+            ↻
+          </button>
         </div>
-        </div>
+      </div>
 
       <div id="orderFilters" class="order-filters">
-        <input id="orderSearch" placeholder="Search order ref or customer...">
+        <label class="filter-search">
+          <span>Search</span>
+          <input id="orderSearch" placeholder="Order reference, customer or email...">
+        </label>
 
-        <select id="orderViewFilter">
-          <option value="active">Active Orders</option>
-          <option value="all">All Orders</option>
-          <option value="completed">Completed Only</option>
-        </select>
+        <label>
+          <span>Orders</span>
+          <select id="orderViewFilter">
+            <option value="active">Active Orders</option>
+            <option value="all">All Orders</option>
+            <option value="completed">Completed Only</option>
+          </select>
+        </label>
 
-        <select id="statusFilter">
-          <option value="all">All Status</option>
-          <option value="Pending Payment">Pending Payment</option>
-          <option value="Payment Verification">Pending Verification</option>
-          <option value="Payment Verified">Payment Verified</option>
-          <option value="Printing">Printing</option>
-          <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
-          <option value="Completed">Completed</option>
-        </select>
+        <label>
+          <span>Status</span>
+          <select id="statusFilter">
+            <option value="all">All Status</option>
+            <option value="Pending Payment">Pending Payment</option>
+            <option value="Payment Verification">Pending Verification</option>
+            <option value="Payment Verified">Payment Verified</option>
+            <option value="Printing">Printing</option>
+            <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
+            <option value="Completed">Completed</option>
+          </select>
+        </label>
 
-        <select id="paymentFilter">
-          <option value="all">All Payment</option>
-          <option value="Pending">Pending</option>
-          <option value="Paid">Paid</option>
-          <option value="Free">Free</option>
-          <option value="Giveaway">Giveaway</option>
-          <option value="Replacement">Replacement</option>
-        </select>
+        <label>
+          <span>Payment</span>
+          <select id="paymentFilter">
+            <option value="all">All Payment</option>
+            <option value="Pending">Pending</option>
+            <option value="Paid">Paid</option>
+            <option value="Free">Free</option>
+            <option value="Giveaway">Giveaway</option>
+            <option value="Replacement">Replacement</option>
+          </select>
+        </label>
       </div>
-        <div id="orders">
-          <p class="empty">Loading orders...</p>
-        </div>
+
+      <div id="orders">
+        <p class="empty">Loading orders...</p>
+      </div>
     </section>
   </main>
 `;
 
 const ordersContainer = document.getElementById("orders");
 const statsContainer = document.getElementById("stats");
+const operationsSummary = document.getElementById("operationsSummary");
 const refreshBtn = document.getElementById("refreshBtn");
 const ordersViewBtn = document.getElementById("ordersViewBtn");
 const productionViewBtn = document.getElementById("productionViewBtn");
@@ -157,6 +191,19 @@ let currentView = "orders";
 let latestOrders = [];
 
 let inventoryItems = {};
+
+const ACTIVE_ORDER_STATUSES = [
+  "Pending Payment",
+  "Payment Verification",
+  "Payment Verified",
+  "Printing",
+  "Ready for Pickup/Delivery"
+];
+
+const PRODUCTION_ORDER_STATUSES = [
+  "Payment Verified",
+  "Printing"
+];
 
 const hardwareItems = [
   {
@@ -290,7 +337,7 @@ function createEmailMiniPreview(name, design) {
 
 function renderCurrentView() {
 
-  orderFilters.style.display = currentView === "orders" ? "flex" : "none";
+  orderFilters.style.display = currentView === "orders" ? "" : "none";
   if (currentView === "orders") {
     sectionTitle.innerText = "Orders";
     ordersActions.style.display = "flex";
@@ -402,48 +449,196 @@ function getMethodLabel(method) {
   return method === "delivery" ? "Delivery" : "Pickup";
 }
 
+function escapeAdminHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function getOrderCharacterCount(order) {
+  return (order.order_data || []).reduce((sum, item) => {
+    return sum + Array.from(item.clean_name || sanitizeName(item.name || "")).length;
+  }, 0);
+}
+
+function getOrderKeychainCount(order) {
+  return (order.order_data || []).length;
+}
+
+function getWhatsAppHref(phoneValue) {
+  let digits = String(phoneValue || "").replace(/\D/g, "");
+
+  if (!digits) return "";
+
+  if (digits.startsWith("0")) {
+    digits = digits.slice(1);
+  }
+
+  if (digits.length === 8) {
+    digits = `65${digits}`;
+  }
+
+  return `https://wa.me/${digits}`;
+}
+
+function getDaysUntil(dateValue) {
+  if (!dateValue) return null;
+
+  const dueDate = new Date(`${String(dateValue).slice(0, 10)}T23:59:59`);
+
+  if (Number.isNaN(dueDate.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.ceil((dueDate - today) / 86400000);
+}
+
+function getDuePresentation(order) {
+  if (order.status === "Completed") {
+    return { className: "is-complete", label: "Completed" };
+  }
+
+  const days = getDaysUntil(order.needed_by);
+
+  if (days === null) {
+    return { className: "", label: "No date" };
+  }
+
+  if (days < 0) {
+    return {
+      className: "is-overdue",
+      label: `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} overdue`
+    };
+  }
+
+  if (days === 0) {
+    return { className: "is-urgent", label: "Due today" };
+  }
+
+  if (days === 1) {
+    return { className: "is-urgent", label: "Due tomorrow" };
+  }
+
+  if (days <= 3) {
+    return { className: "is-soon", label: `Due in ${days} days` };
+  }
+
+  return { className: "", label: formatDate(order.needed_by) };
+}
+
 function renderStats(orders) {
-  const totalOrders = orders.length;
+  const activeOrders = orders.filter(order =>
+    ACTIVE_ORDER_STATUSES.includes(order.status)
+  );
 
-  const pending = orders.filter(order =>
-    (order.status || "").toLowerCase().includes("pending")
-  ).length;
-
-  const revenue = orders.reduce((sum, order) => {
-    if (
-      order.payment_type === "Free" ||
-      order.payment_type === "Giveaway" ||
-      order.payment_type === "Replacement"
-    ) {
-      return sum;
-    }
-
-    return sum + Number(order.total || 0);
+  const paidRevenue = orders.reduce((sum, order) => {
+    return order.payment_type === "Paid"
+      ? sum + Number(order.total || 0)
+      : sum;
   }, 0);
 
-  const deliveryOrders = orders.filter(
-    order => order.collection_method === "delivery"
+  const dueSoon = activeOrders.filter(order => {
+    const days = getDaysUntil(order.needed_by);
+    return days !== null && days <= 3;
+  }).length;
+
+  const productionOrders = orders.filter(order =>
+    PRODUCTION_ORDER_STATUSES.includes(order.status)
+  );
+
+  const switchesNeeded = productionOrders.reduce(
+    (sum, order) => sum + getOrderCharacterCount(order),
+    0
+  );
+
+  const readyOrders = activeOrders.filter(
+    order => order.status === "Ready for Pickup/Delivery"
   ).length;
 
   statsContainer.innerHTML = `
-    <div class="stat-card">
-      <span>Total Orders</span>
-      <strong>${totalOrders}</strong>
+    <div class="stat-card stat-card-primary">
+      <span>Open Orders</span>
+      <strong>${activeOrders.length}</strong>
+      <small>${orders.length} total recorded</small>
     </div>
 
     <div class="stat-card">
-      <span>Pending</span>
-      <strong>${pending}</strong>
+      <span>Paid Revenue</span>
+      <strong>${formatMoney(paidRevenue)}</strong>
+      <small>Excludes pending and giveaways</small>
+    </div>
+
+    <div class="stat-card ${dueSoon ? "stat-card-warning" : ""}">
+      <span>Due Soon</span>
+      <strong>${dueSoon}</strong>
+      <small>Due within 3 days or overdue</small>
     </div>
 
     <div class="stat-card">
-      <span>Revenue</span>
-      <strong>${formatMoney(revenue)}</strong>
+      <span>Switches Required</span>
+      <strong>${switchesNeeded}</strong>
+      <small>${getInventoryQty("Mechanical Switch")} currently in stock</small>
     </div>
 
-    <div class="stat-card">
-      <span>Delivery</span>
-      <strong>${deliveryOrders}</strong>
+    <div class="stat-card ${readyOrders ? "stat-card-success" : ""}">
+      <span>Ready to Fulfil</span>
+      <strong>${readyOrders}</strong>
+      <small>Pickup or delivery</small>
+    </div>
+  `;
+
+  renderOperationsSummary(orders);
+}
+
+function renderOperationsSummary(orders) {
+  const productionOrders = orders.filter(order =>
+    PRODUCTION_ORDER_STATUSES.includes(order.status)
+  );
+
+  const switchesNeeded = productionOrders.reduce(
+    (sum, order) => sum + getOrderCharacterCount(order),
+    0
+  );
+
+  const switchStock = getInventoryQty("Mechanical Switch");
+  const switchShortage = Math.max(0, switchesNeeded - switchStock);
+  const awaitingPayment = orders.filter(order =>
+    ["Pending Payment", "Payment Verification"].includes(order.status)
+  ).length;
+  const ready = orders.filter(
+    order => order.status === "Ready for Pickup/Delivery"
+  ).length;
+  const delivery = orders.filter(order =>
+    ACTIVE_ORDER_STATUSES.includes(order.status) &&
+    order.collection_method === "delivery"
+  ).length;
+
+  operationsSummary.innerHTML = `
+    <div class="operations-copy">
+      <span class="operations-icon" aria-hidden="true">✨</span>
+      <div>
+        <strong>${productionOrders.length ? "Today’s workshop focus" : "You’re caught up"}</strong>
+        <p>
+          ${productionOrders.length
+            ? `${productionOrders.length} paid order${productionOrders.length === 1 ? "" : "s"} need production.`
+            : "No paid orders are waiting for production."}
+        </p>
+      </div>
+    </div>
+
+    <div class="operations-chips">
+      <span>${awaitingPayment} awaiting payment</span>
+      <span>${ready} ready</span>
+      <span>${delivery} delivery</span>
+      <span class="${switchShortage ? "chip-danger" : "chip-success"}">
+        ${switchShortage
+          ? `${switchShortage} switches short`
+          : "Switch stock covered"}
+      </span>
     </div>
   `;
 }
@@ -454,14 +649,6 @@ function renderOrders(orders) {
   const statusValue = statusFilter.value;
   const paymentValue = paymentFilter.value;
 
-  const activeStatuses = [
-    "Pending Payment",
-    "Payment Verification",
-    "Payment Verified",
-    "Printing",
-    "Ready for Pickup/Delivery"
-  ];
-
   const filteredOrders = orders.filter(order => {
     const matchesSearch =
       (order.order_ref || "").toLowerCase().includes(searchText) ||
@@ -470,7 +657,7 @@ function renderOrders(orders) {
 
     const matchesOrderView =
       orderViewValue === "all" ||
-      (orderViewValue === "active" && activeStatuses.includes(order.status)) ||
+      (orderViewValue === "active" && ACTIVE_ORDER_STATUSES.includes(order.status)) ||
       (orderViewValue === "completed" && order.status === "Completed");
 
     const matchesStatus =
@@ -492,62 +679,107 @@ function renderOrders(orders) {
     return;
   }
 
-  ordersContainer.innerHTML = filteredOrders.map(order => `
-    <details class="order-card">
+  ordersContainer.innerHTML = filteredOrders.map(order => {
+    const due = getDuePresentation(order);
+    const orderId = String(order.id);
+    const orderRef = escapeAdminHtml(order.order_ref || "-");
+    const customerName = escapeAdminHtml(order.customer_name || "-");
+    const customerEmail = escapeAdminHtml(order.customer_email || "-");
+    const customerPhone = escapeAdminHtml(order.customer_phone || "-");
+    const keychainCount = getOrderKeychainCount(order);
+    const characterCount = getOrderCharacterCount(order);
+    const whatsappHref = getWhatsAppHref(order.customer_phone);
+
+    return `
+    <details class="order-card ${due.className}" data-status="${escapeAdminHtml(order.status || "")}">
       <summary class="order-summary">
-        <div>
-          <h3>${order.order_ref}</h3>
-          <p>${order.customer_name || "-"}</p>
+        <div class="order-summary-customer">
+          <p class="order-ref-label">${orderRef}</p>
+          <h3>${customerName}</h3>
+          <div class="order-summary-badges">
+            <span class="order-status-badge">${escapeAdminHtml(order.status || "-")}</span>
+            <span class="due-badge ${due.className}">${escapeAdminHtml(due.label)}</span>
+          </div>
         </div>
 
         <div class="order-summary-meta">
           <strong>${formatMoney(order.total)}</strong>
-          <span>${order.status || "-"}</span>
-          <span>${getMethodLabel(order.collection_method)}</span>
+          <span>${keychainCount} keychain${keychainCount === 1 ? "" : "s"}</span>
+          <span>${characterCount} character${characterCount === 1 ? "" : "s"} · ${getMethodLabel(order.collection_method)}</span>
         </div>
       </summary>
 
       <div class="order-detail-grid">
-        <p><strong>Customer Name:</strong><br>${order.customer_name || "-"}</p>
-        <p><strong>Email:</strong><br>${order.customer_email || "-"}</p>
-        <p><strong>Phone:</strong><br>${order.customer_phone || "-"}</p>
-        <p><strong>Order Ref:</strong><br>${order.order_ref || "-"}</p>
+        <p><strong>Customer Name</strong><br>${customerName}</p>
+        <p><strong>Email</strong><br>${customerEmail}</p>
+        <p><strong>Phone</strong><br>${customerPhone}</p>
+        <p><strong>Order Reference</strong><br>${orderRef}</p>
 
-        <p><strong>Collection Method:</strong><br>${getMethodLabel(order.collection_method)}</p>
-        <p><strong>Needed By:</strong><br>${formatDate(order.needed_by)}</p>
+        <p><strong>Collection Method</strong><br>${getMethodLabel(order.collection_method)}</p>
+        <p><strong>Needed By</strong><br>${formatDate(order.needed_by)}</p>
 
         ${
           order.collection_method === "delivery"
             ? `
               <p class="full-row">
-                <strong>Delivery Address:</strong><br>
-                ${order.delivery_address || "-"}
+                <strong>Delivery Address</strong><br>
+                ${escapeAdminHtml(order.delivery_address || "-")}
               </p>
             `
             : `
               <p class="full-row">
-                <strong>Pickup Location:</strong><br>
+                <strong>Pickup Location</strong><br>
                 Woodlands MRT
               </p>
             `
         }
 
         <p class="full-row">
-          <strong>Customer Notes / Preferred Timing:</strong><br>
-          ${order.notes || order.preferred_time || "-"}
+          <strong>Customer Notes / Preferred Timing</strong><br>
+          ${escapeAdminHtml(order.notes || order.preferred_time || "-")}
         </p>
 
         ${Number(order.discount_amount || 0) > 0 ? `
-          <p><strong>Original Subtotal:</strong><br>${formatMoney(order.original_subtotal)}</p>
-          <p><strong>Promo Code:</strong><br>${order.promo_code || "-"}</p>
-          <p><strong>Promo Discount:</strong><br>−${formatMoney(order.discount_amount)}</p>
-          <p><strong>Discounted Subtotal:</strong><br>${formatMoney(order.subtotal)}</p>
+          <p><strong>Original Subtotal</strong><br>${formatMoney(order.original_subtotal)}</p>
+          <p><strong>Promo Code</strong><br>${escapeAdminHtml(order.promo_code || "-")}</p>
+          <p><strong>Promo Discount</strong><br>−${formatMoney(order.discount_amount)}</p>
+          <p><strong>Discounted Subtotal</strong><br>${formatMoney(order.subtotal)}</p>
         ` : `
-          <p><strong>Subtotal:</strong><br>${formatMoney(order.subtotal)}</p>
+          <p><strong>Subtotal</strong><br>${formatMoney(order.subtotal)}</p>
         `}
-        <p><strong>Delivery Fee:</strong><br>${formatMoney(order.delivery_fee)}</p>
-        <p><strong>Total:</strong><br>${formatMoney(order.total)}</p>
-        <p><strong>Order Source:</strong><br>${order.order_source || "-"}</p>
+        <p><strong>Delivery Fee</strong><br>${formatMoney(order.delivery_fee)}</p>
+        <p><strong>Total</strong><br>${formatMoney(order.total)}</p>
+        <p><strong>Order Source</strong><br>${escapeAdminHtml(order.order_source || "-")}</p>
+      </div>
+
+      <div class="order-quick-actions">
+        <button type="button" onclick='window.copyOrderReference(${JSON.stringify(orderId)})'>
+          Copy Reference
+        </button>
+
+        ${order.customer_email ? `
+          <a href="mailto:${encodeURIComponent(order.customer_email)}?subject=${encodeURIComponent(`Little Keeps order ${order.order_ref || ""}`)}">
+            Email Customer
+          </a>
+        ` : ""}
+
+        ${whatsappHref ? `
+          <a href="${whatsappHref}" target="_blank" rel="noopener">
+            WhatsApp
+          </a>
+        ` : ""}
+
+        <button type="button" onclick='window.downloadOrderPdf(${JSON.stringify(orderId)}, this)'>
+          Download PDF
+        </button>
+
+        <button
+          type="button"
+          class="danger-action"
+          onclick='window.deleteTestOrder(${JSON.stringify(orderId)})'
+        >
+          Delete Test Order
+        </button>
       </div>
 
       <div class="order-info">
@@ -591,7 +823,7 @@ function renderOrders(orders) {
     return `
       <div class="order-preview-item">
         <div class="assembly-item-top">
-          <strong>${item.name}</strong>
+          <strong>${escapeAdminHtml(item.name || "Personalised keychain")}</strong>
 
           <span class="assembly-tag">
             ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
@@ -610,7 +842,8 @@ function renderOrders(orders) {
   }).join("")}
 </div>
     </details>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function getBaseInventoryName(baseName, baseShape = "ribbed") {
@@ -2452,6 +2685,134 @@ async function sendPaymentVerifiedEmail(order) {
   );
 }
 
+async function copyOrderReference(id) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!order?.order_ref) {
+    alert("Order reference could not be found.");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(order.order_ref);
+    alert(`${order.order_ref} copied.`);
+  } catch {
+    const input = document.createElement("input");
+    input.value = order.order_ref;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+    alert(`${order.order_ref} copied.`);
+  }
+}
+
+async function downloadOrderPdf(id, button) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!order) {
+    alert("Order could not be found.");
+    return;
+  }
+
+  const originalLabel = button?.textContent || "Download PDF";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Preparing PDF…";
+  }
+
+  try {
+    const items = getEmailOrderItems(order);
+    const pdfBase64 = await generateCompactOrderPdfAttachment(order, items);
+    const link = document.createElement("a");
+    const safeReference = String(order.order_ref || "order")
+      .replace(/[^a-z0-9_-]+/gi, "-");
+
+    link.href = `data:application/pdf;base64,${pdfBase64}`;
+    link.download = `Little-Keeps-${safeReference}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch (error) {
+    console.error("Unable to download order PDF:", error);
+    alert("Unable to prepare the PDF. Please try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+}
+
+async function deleteTestOrder(id) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!order) {
+    alert("Order could not be found.");
+    return;
+  }
+
+  const enteredReference = prompt(
+    `Delete test order ${order.order_ref}?\n\n` +
+    `Type the full order reference to continue.\n` +
+    `This permanently removes the order from Supabase.`
+  );
+
+  if (enteredReference === null) return;
+
+  if (enteredReference.trim().toUpperCase() !== String(order.order_ref).trim().toUpperCase()) {
+    alert("The order reference did not match. Nothing was deleted.");
+    return;
+  }
+
+  const confirmed = confirm(
+    `Permanently delete ${order.order_ref}?\n\n` +
+    `Only use this for your own test orders. This cannot be undone.\n` +
+    `Deleting an assembled order will not restore inventory automatically.`
+  );
+
+  if (!confirmed) return;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .delete()
+    .eq("id", id)
+    .select("id");
+
+  if (error) {
+    console.error("Unable to delete order:", error);
+    alert(
+      "Supabase blocked the deletion. Run the supplied admin-delete SQL once, then try again."
+    );
+    return;
+  }
+
+  if (!data?.length) {
+    alert(
+      "The order was not deleted. Supabase does not currently allow delete access for the signed-in admin."
+    );
+    return;
+  }
+
+  latestOrders = latestOrders.filter(
+    item => String(item.id) !== String(id)
+  );
+
+  renderCurrentView();
+  alert(`${order.order_ref} was deleted.`);
+}
+
+window.copyOrderReference = copyOrderReference;
+window.downloadOrderPdf = downloadOrderPdf;
+window.deleteTestOrder = deleteTestOrder;
+
 async function updateOrderStatus(id, status) {
   const scrollY = window.scrollY;
 
@@ -2597,6 +2958,8 @@ async function loadOrders() {
   }
 
 latestOrders = data || [];
+
+await loadInventoryItems();
 
 renderCurrentView();
 }
