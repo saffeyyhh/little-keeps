@@ -82,7 +82,10 @@ document.querySelector("#app").innerHTML = `
     <section id="operationsSummary" class="operations-summary" aria-live="polite"></section>
 
     <nav class="workshop-tabs" aria-label="Workshop sections">
-      <button id="ordersViewBtn" class="workshop-tab active" type="button">
+      <button id="todayViewBtn" class="workshop-tab active" type="button">
+        <span aria-hidden="true">✨</span> Today
+      </button>
+      <button id="ordersViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">📋</span> Orders
       </button>
       <button id="productionViewBtn" class="workshop-tab" type="button">
@@ -90,6 +93,9 @@ document.querySelector("#app").innerHTML = `
       </button>
       <button id="assemblyViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">🧩</span> Assembly
+      </button>
+      <button id="settingsViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">⚙️</span> Settings
       </button>
     </nav>
 
@@ -123,6 +129,7 @@ document.querySelector("#app").innerHTML = `
             <option value="active">Active Orders</option>
             <option value="all">All Orders</option>
             <option value="completed">Completed Only</option>
+            <option value="archived">Archived</option>
           </select>
         </label>
 
@@ -130,11 +137,14 @@ document.querySelector("#app").innerHTML = `
           <span>Status</span>
           <select id="statusFilter">
             <option value="all">All Status</option>
+            <option value="Rush Review">Rush Review</option>
+            <option value="Bulk Review">Bulk Review</option>
             <option value="Pending Payment">Pending Payment</option>
             <option value="Payment Verification">Pending Verification</option>
             <option value="Payment Verified">Payment Verified</option>
             <option value="Printing">Printing</option>
             <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
+            <option value="Out for Delivery">Out for Delivery</option>
             <option value="Completed">Completed</option>
           </select>
         </label>
@@ -163,11 +173,13 @@ const ordersContainer = document.getElementById("orders");
 const statsContainer = document.getElementById("stats");
 const operationsSummary = document.getElementById("operationsSummary");
 const refreshBtn = document.getElementById("refreshBtn");
+const todayViewBtn = document.getElementById("todayViewBtn");
 const ordersViewBtn = document.getElementById("ordersViewBtn");
 const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
 const ordersActions = document.getElementById("ordersActions");
 const assemblyViewBtn = document.getElementById("assemblyViewBtn");
+const settingsViewBtn = document.getElementById("settingsViewBtn");
 
 const orderFilters = document.getElementById("orderFilters");
 const orderSearch = document.getElementById("orderSearch");
@@ -187,17 +199,22 @@ logoutBtn.onclick = async () => {
   location.reload();
 };
 
-let currentView = "orders";
+let currentView = "today";
 let latestOrders = [];
 
 let inventoryItems = {};
+let adminShopSettings = {};
+let adminPromoCodes = [];
 
 const ACTIVE_ORDER_STATUSES = [
+  "Rush Review",
+  "Bulk Review",
   "Pending Payment",
   "Payment Verification",
   "Payment Verified",
   "Printing",
-  "Ready for Pickup/Delivery"
+  "Ready for Pickup/Delivery",
+  "Out for Delivery"
 ];
 
 const PRODUCTION_ORDER_STATUSES = [
@@ -338,6 +355,13 @@ function createEmailMiniPreview(name, design) {
 function renderCurrentView() {
 
   orderFilters.style.display = currentView === "orders" ? "" : "none";
+  if (currentView === "today") {
+    sectionTitle.innerText = "Today’s Work";
+    ordersActions.style.display = "flex";
+    renderStats(latestOrders);
+    renderTodayWorkspace(latestOrders);
+  }
+
   if (currentView === "orders") {
     sectionTitle.innerText = "Orders";
     ordersActions.style.display = "flex";
@@ -356,7 +380,339 @@ function renderCurrentView() {
     ordersActions.style.display = "none";
     renderAssemblyQueue();
   }
+
+  if (currentView === "settings") {
+    sectionTitle.innerText = "Shop Settings";
+    ordersActions.style.display = "none";
+    renderSettingsWorkspace();
+  }
 }
+
+const ORDER_PROGRESS = {
+  "Rush Review": { percent: 5, label: "Rush request awaiting review" },
+  "Bulk Review": { percent: 5, label: "Bulk request awaiting review" },
+  "Pending Payment": { percent: 5, label: "Waiting for payment" },
+  "Payment Verification": { percent: 15, label: "Checking payment" },
+  "Payment Verified": { percent: 30, label: "Ready for production" },
+  "Printing": { percent: 58, label: "Printing parts" },
+  "Ready for Pickup/Delivery": { percent: 84, label: "Ready to fulfil" },
+  "Out for Delivery": { percent: 94, label: "Out for delivery" },
+  "Completed": { percent: 100, label: "Completed" }
+};
+
+function getOrderProgress(order) {
+  return ORDER_PROGRESS[order.status] || { percent: 0, label: order.status || "Order received" };
+}
+
+function renderProgressBar(order, compact = false) {
+  const progress = getOrderProgress(order);
+
+  return `
+    <div class="order-progress ${compact ? "is-compact" : ""}">
+      <div class="order-progress-copy">
+        <span>${escapeAdminHtml(progress.label)}</span>
+        <strong>${progress.percent}%</strong>
+      </div>
+      <div class="order-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}">
+        <span style="width:${progress.percent}%"></span>
+      </div>
+    </div>
+  `;
+}
+
+function getPriorityOrders(orders) {
+  return orders
+    .filter(order => !order.archived_at && ACTIVE_ORDER_STATUSES.includes(order.status))
+    .sort((a, b) => {
+      const aDate = new Date(`${String(a.needed_by || "9999-12-31").slice(0, 10)}T00:00:00`);
+      const bDate = new Date(`${String(b.needed_by || "9999-12-31").slice(0, 10)}T00:00:00`);
+      return aDate - bDate;
+    });
+}
+
+function renderTodayOrder(order) {
+  const due = getDuePresentation(order);
+
+  return `
+    <button class="today-order ${due.className}" type="button" onclick='window.focusOrder(${JSON.stringify(String(order.id))})'>
+      <span>
+        <strong>${escapeAdminHtml(order.order_ref || "-")}</strong>
+        <small>${escapeAdminHtml(order.customer_name || "Customer")} · ${getMethodLabel(order.collection_method)}</small>
+      </span>
+      <span class="today-order-right">
+        <b>${escapeAdminHtml(due.label)}</b>
+        <small>${escapeAdminHtml(order.status || "-")}</small>
+      </span>
+    </button>
+  `;
+}
+
+function renderTodayWorkspace(orders) {
+  const priority = getPriorityOrders(orders);
+  const dueNow = priority.filter(order => {
+    const days = getDaysUntil(order.needed_by);
+    return days !== null && days <= 1 && !["Rush Review", "Bulk Review"].includes(order.status);
+  });
+  const specialRequests = priority.filter(order =>
+    ["Rush Review", "Bulk Review"].includes(order.status)
+  );
+  const awaitingPayment = priority.filter(order =>
+    ["Pending Payment", "Payment Verification"].includes(order.status)
+  );
+  const production = priority.filter(order =>
+    ["Payment Verified", "Printing"].includes(order.status)
+  );
+  const fulfilment = priority.filter(order =>
+    ["Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
+  );
+  const lowStock = hardwareItems
+    .map(item => ({
+      ...item,
+      qty: getInventoryQty(item.itemName),
+      threshold: Number(adminShopSettings[`${item.itemName.toLowerCase().replaceAll(" ", "_")}_low_stock`] || 20)
+    }))
+    .filter(item => item.qty <= item.threshold);
+
+  const section = (title, icon, rows, emptyText) => `
+    <section class="today-panel">
+      <header><span aria-hidden="true">${icon}</span><h3>${title}</h3><b>${rows.length}</b></header>
+      <div class="today-list">
+        ${rows.map(renderTodayOrder).join("") || `<p class="today-empty">${emptyText}</p>`}
+      </div>
+    </section>
+  `;
+
+  ordersContainer.innerHTML = `
+    <div class="today-heading">
+      <div>
+        <h2>Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"} ♡</h2>
+        <p class="hint">Start with urgent orders, then move through payment, production and fulfilment.</p>
+      </div>
+      <button class="ready-btn" type="button" onclick="window.openProductionView()">Open Production</button>
+    </div>
+
+    ${lowStock.length ? `
+      <div class="stock-alert">
+        <strong>Low-stock reminder</strong>
+        <span>${lowStock.map(item => `${escapeAdminHtml(item.label)}: ${item.qty}`).join(" · ")}</span>
+      </div>
+    ` : ""}
+
+    <div class="today-grid">
+      ${section("Rush & bulk requests", "⚡", specialRequests, "No special requests need review.")}
+      ${section("Due today or tomorrow", "⏰", dueNow, "Nothing urgent—lovely!")}
+      ${section("Payment attention", "💳", awaitingPayment, "No payments need attention.")}
+      ${section("Print & assemble", "🖨️", production, "Production is caught up.")}
+      ${section("Pickup & delivery", "📦", fulfilment, "Nothing is waiting for fulfilment.")}
+    </div>
+  `;
+}
+
+window.focusOrder = function(id) {
+  currentView = "orders";
+  setActiveTab(ordersViewBtn);
+  orderViewFilter.value = "all";
+  statusFilter.value = "all";
+  paymentFilter.value = "all";
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  orderSearch.value = order?.order_ref || "";
+  renderCurrentView();
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`[data-order-id="${CSS.escape(String(id))}"]`);
+    if (card) {
+      card.open = true;
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+};
+
+window.openProductionView = function() {
+  currentView = "production";
+  setActiveTab(productionViewBtn);
+  renderCurrentView();
+};
+
+function settingNumber(name, label, step = "1", min = "0") {
+  return `
+    <label class="settings-field">
+      <span>${label}</span>
+      <input name="${name}" type="number" min="${min}" step="${step}" value="${escapeAdminHtml(adminShopSettings[name] ?? 0)}">
+    </label>
+  `;
+}
+
+function renderSettingsWorkspace() {
+  const checked = value => value ? "checked" : "";
+
+  ordersContainer.innerHTML = `
+    <form id="shopSettingsForm" class="settings-workspace">
+      <div class="settings-intro">
+        <div>
+          <h2>Run the shop without editing code</h2>
+          <p class="hint">Pricing, capacity, turnaround, email updates and stock reminders are controlled here.</p>
+        </div>
+        <button class="ready-btn" type="submit">Save Settings</button>
+      </div>
+
+      <div class="settings-grid">
+        <section class="settings-card">
+          <h3>Pricing</h3>
+          <div class="settings-fields two-columns">
+            ${settingNumber("usual_base_price", "Usual price ($)", "0.10")}
+            ${settingNumber("launch_base_price", "Launch price ($)", "0.10")}
+            ${settingNumber("included_characters", "Characters included")}
+            ${settingNumber("extra_character_price", "Extra character ($)", "0.10")}
+            ${settingNumber("delivery_fee", "Delivery fee ($)", "0.10")}
+            ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
+          </div>
+          <label class="settings-toggle"><input name="launch_price_enabled" type="checkbox" ${checked(adminShopSettings.launch_price_enabled)}> Show launch price and crossed-out usual price</label>
+        </section>
+
+        <section class="settings-card">
+          <h3>Capacity & turnaround</h3>
+          <div class="settings-fields two-columns">
+            ${settingNumber("max_orders_per_date", "Orders allowed per date")}
+            ${settingNumber("large_order_quantity", "Large order starts at")}
+            ${settingNumber("bulk_order_quantity", "Bulk request starts at")}
+            ${settingNumber("standard_min_working_days", "Normal minimum days")}
+            ${settingNumber("standard_max_working_days", "Normal maximum days")}
+            ${settingNumber("large_min_working_days", "Large minimum days")}
+            ${settingNumber("large_max_working_days", "Large maximum days")}
+            ${settingNumber("rush_fee_small", "Rush fee: 1–4 items ($)", "0.50")}
+            ${settingNumber("rush_fee_large", "Rush fee: 5–9 items ($)", "0.50")}
+            ${settingNumber("rush_max_missing_parts", "Auto-approve up to missing parts")}
+            ${settingNumber("rush_max_active_orders", "Auto-approve up to active orders")}
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <h3>Stock reminders</h3>
+          <div class="settings-fields">
+            ${settingNumber("mechanical_switch_low_stock", "Warn when switches reach")}
+            ${settingNumber("key_ring_low_stock", "Warn when key rings reach")}
+            ${settingNumber("jump_ring_low_stock", "Warn when jump rings reach")}
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <h3>Customer updates</h3>
+          <label class="settings-toggle"><input name="status_emails_enabled" type="checkbox" ${checked(adminShopSettings.status_emails_enabled)}> Automatically email important status changes</label>
+          <label class="settings-field">
+            <span>EmailJS status-template ID</span>
+            <input name="status_email_template_id" value="${escapeAdminHtml(adminShopSettings.status_email_template_id || "")}" placeholder="template_xxxxxxx">
+          </label>
+          <p class="hint">Use the supplied status email HTML in EmailJS, then paste that template ID here.</p>
+        </section>
+
+        <section class="settings-card settings-card-wide">
+          <h3>Online payment</h3>
+          <div class="payment-readiness">
+            <div>
+              <strong>${adminShopSettings.hitpay_enabled ? "HitPay enabled" : "Manual PayNow remains active"}</strong>
+              <p class="hint">Live HitPay requires its API key and salt inside Supabase Edge Function secrets—never inside this website.</p>
+            </div>
+            <label class="settings-toggle"><input name="hitpay_enabled" type="checkbox" ${checked(adminShopSettings.hitpay_enabled)}> Enable HitPay after Edge Functions are configured</label>
+          </div>
+        </section>
+      </div>
+
+      <section class="settings-card promo-manager">
+        <div class="settings-card-heading">
+          <div><h3>Promo codes</h3><p class="hint">Add several codes and switch them on or off anytime.</p></div>
+        </div>
+        <div class="promo-create-row">
+          <input id="promoCodeInput" placeholder="CODE" maxlength="30">
+          <input id="promoLabelInput" placeholder="Label, e.g. Teacher's Day">
+          <select id="promoTypeInput"><option value="percent">Percent off</option><option value="fixed">Fixed amount</option></select>
+          <input id="promoValueInput" type="number" min="0.01" step="0.01" placeholder="Value">
+          <input id="promoMinimumInput" type="number" min="0" step="0.01" value="0" placeholder="Minimum spend">
+          <button class="ready-btn" type="button" onclick="window.addPromoCode()">Add Code</button>
+        </div>
+        <div class="promo-admin-list">
+          ${adminPromoCodes.map(promo => `
+            <div class="promo-admin-row">
+              <div><strong>${escapeAdminHtml(promo.code)}</strong><span>${escapeAdminHtml(promo.label || "Promo")}</span></div>
+              <span>${promo.discount_type === "fixed" ? formatMoney(promo.discount_value) : `${Number(promo.discount_value)}%`} off</span>
+              <span>Min. ${formatMoney(promo.minimum_spend)}</span>
+              <button type="button" class="${promo.active ? "archive-action" : ""}" onclick='window.togglePromoCode(${JSON.stringify(promo.code)}, ${!promo.active})'>${promo.active ? "Pause" : "Enable"}</button>
+            </div>
+          `).join("") || `<p class="today-empty">No promo codes yet.</p>`}
+        </div>
+      </section>
+    </form>
+  `;
+
+  document.getElementById("shopSettingsForm").addEventListener("submit", saveShopSettings);
+}
+
+async function saveShopSettings(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const numberFields = [
+    "usual_base_price", "launch_base_price", "included_characters", "extra_character_price",
+    "delivery_fee", "free_delivery_threshold", "max_orders_per_date", "large_order_quantity",
+    "bulk_order_quantity",
+    "standard_min_working_days", "standard_max_working_days", "large_min_working_days",
+    "large_max_working_days", "rush_fee_small", "rush_fee_large", "rush_max_missing_parts",
+    "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock", "jump_ring_low_stock"
+  ];
+  const updates = { id: 1 };
+  numberFields.forEach(name => { updates[name] = Number(form.get(name)); });
+  updates.launch_price_enabled = form.has("launch_price_enabled");
+  updates.status_emails_enabled = form.has("status_emails_enabled");
+  updates.hitpay_enabled = form.has("hitpay_enabled");
+  updates.status_email_template_id = String(form.get("status_email_template_id") || "").trim();
+  updates.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase.from("shop_settings").upsert(updates).select().single();
+  if (error) {
+    console.error("Unable to save settings:", error);
+    alert("Unable to save settings. Run the supplied operations SQL once, then try again.");
+    return;
+  }
+
+  adminShopSettings = data;
+  alert("Shop settings saved ✓");
+  renderSettingsWorkspace();
+}
+
+async function addPromoCode() {
+  const code = document.getElementById("promoCodeInput").value.trim().toUpperCase();
+  const label = document.getElementById("promoLabelInput").value.trim() || code;
+  const discountType = document.getElementById("promoTypeInput").value;
+  const discountValue = Number(document.getElementById("promoValueInput").value);
+  const minimumSpend = Number(document.getElementById("promoMinimumInput").value || 0);
+
+  if (!/^[A-Z0-9_-]+$/.test(code) || discountValue <= 0) {
+    alert("Enter a valid code and discount value.");
+    return;
+  }
+
+  const { error } = await supabase.from("promo_codes").upsert({
+    code, label, discount_type: discountType, discount_value: discountValue,
+    minimum_spend: minimumSpend, active: true, updated_at: new Date().toISOString()
+  });
+  if (error) {
+    console.error("Unable to add promo:", error);
+    alert("Unable to save the promo code. Check the supplied SQL has been run.");
+    return;
+  }
+
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+}
+
+async function togglePromoCode(code, active) {
+  const { error } = await supabase.from("promo_codes").update({
+    active, updated_at: new Date().toISOString()
+  }).eq("code", code);
+  if (error) return alert("Unable to update that promo code.");
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+}
+
+window.addPromoCode = addPromoCode;
+window.togglePromoCode = togglePromoCode;
 
 window.markReady = async function(id) {
   const order = latestOrders.find(
@@ -404,28 +760,28 @@ window.markReady = async function(id) {
 
   if (!ok) return;
 
-  for (const [itemName, qty] of Object.entries(needs)) {
-    const deducted = await deductInventory(itemName, qty);
-
-    if (!deducted) {
-      alert(
-        `Stopped because ${itemName} could not be deducted.`
-      );
-      return;
-    }
-  }
-
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      status: "Ready for Pickup/Delivery"
-    })
-    .eq("id", id);
+  const { error } = await supabase.rpc("complete_order_inventory", {
+    p_order_id: String(id),
+    p_needs: needs
+  });
 
   if (error) {
-    console.error(error);
-    alert("Unable to update order status.");
+    console.error("Unable to complete assembly safely:", error);
+    alert(
+      "Nothing was deducted because the safe stock update could not finish.\n\n" +
+      "Run the supplied operations SQL once, then try again."
+    );
     return;
+  }
+
+  try {
+    await sendOrderStatusEmail(
+      { ...order, status: "Ready for Pickup/Delivery" },
+      "Ready for Pickup/Delivery"
+    );
+  } catch (error) {
+    console.error("Ready email failed:", error);
+    alert("Order is ready and stock was deducted, but the customer email failed to send.");
   }
 
   await loadOrders();
@@ -531,11 +887,12 @@ function getDuePresentation(order) {
 }
 
 function renderStats(orders) {
-  const activeOrders = orders.filter(order =>
+  const visibleOrders = orders.filter(order => !order.archived_at);
+  const activeOrders = visibleOrders.filter(order =>
     ACTIVE_ORDER_STATUSES.includes(order.status)
   );
 
-  const paidRevenue = orders.reduce((sum, order) => {
+  const paidRevenue = visibleOrders.reduce((sum, order) => {
     return order.payment_type === "Paid"
       ? sum + Number(order.total || 0)
       : sum;
@@ -546,7 +903,7 @@ function renderStats(orders) {
     return days !== null && days <= 3;
   }).length;
 
-  const productionOrders = orders.filter(order =>
+  const productionOrders = visibleOrders.filter(order =>
     PRODUCTION_ORDER_STATUSES.includes(order.status)
   );
 
@@ -563,7 +920,7 @@ function renderStats(orders) {
     <div class="stat-card stat-card-primary">
       <span>Open Orders</span>
       <strong>${activeOrders.length}</strong>
-      <small>${orders.length} total recorded</small>
+      <small>${visibleOrders.length} total recorded</small>
     </div>
 
     <div class="stat-card">
@@ -595,7 +952,8 @@ function renderStats(orders) {
 }
 
 function renderOperationsSummary(orders) {
-  const productionOrders = orders.filter(order =>
+  const visibleOrders = orders.filter(order => !order.archived_at);
+  const productionOrders = visibleOrders.filter(order =>
     PRODUCTION_ORDER_STATUSES.includes(order.status)
   );
 
@@ -606,13 +964,16 @@ function renderOperationsSummary(orders) {
 
   const switchStock = getInventoryQty("Mechanical Switch");
   const switchShortage = Math.max(0, switchesNeeded - switchStock);
-  const awaitingPayment = orders.filter(order =>
+  const awaitingPayment = visibleOrders.filter(order =>
     ["Pending Payment", "Payment Verification"].includes(order.status)
   ).length;
-  const ready = orders.filter(
+  const awaitingReview = visibleOrders.filter(order =>
+    ["Rush Review", "Bulk Review"].includes(order.status)
+  ).length;
+  const ready = visibleOrders.filter(
     order => order.status === "Ready for Pickup/Delivery"
   ).length;
-  const delivery = orders.filter(order =>
+  const delivery = visibleOrders.filter(order =>
     ACTIVE_ORDER_STATUSES.includes(order.status) &&
     order.collection_method === "delivery"
   ).length;
@@ -631,6 +992,7 @@ function renderOperationsSummary(orders) {
     </div>
 
     <div class="operations-chips">
+      <span class="${awaitingReview ? "chip-danger" : ""}">${awaitingReview} special review</span>
       <span>${awaitingPayment} awaiting payment</span>
       <span>${ready} ready</span>
       <span>${delivery} delivery</span>
@@ -656,9 +1018,10 @@ function renderOrders(orders) {
       (order.customer_email || "").toLowerCase().includes(searchText);
 
     const matchesOrderView =
-      orderViewValue === "all" ||
-      (orderViewValue === "active" && ACTIVE_ORDER_STATUSES.includes(order.status)) ||
-      (orderViewValue === "completed" && order.status === "Completed");
+      (orderViewValue === "all" && !order.archived_at) ||
+      (orderViewValue === "active" && !order.archived_at && ACTIVE_ORDER_STATUSES.includes(order.status)) ||
+      (orderViewValue === "completed" && !order.archived_at && order.status === "Completed") ||
+      (orderViewValue === "archived" && Boolean(order.archived_at));
 
     const matchesStatus =
       statusValue === "all" || order.status === statusValue;
@@ -691,7 +1054,7 @@ function renderOrders(orders) {
     const whatsappHref = getWhatsAppHref(order.customer_phone);
 
     return `
-    <details class="order-card ${due.className}" data-status="${escapeAdminHtml(order.status || "")}">
+    <details class="order-card ${due.className} ${order.archived_at ? "is-archived" : ""}" data-order-id="${escapeAdminHtml(orderId)}" data-status="${escapeAdminHtml(order.status || "")}">
       <summary class="order-summary">
         <div class="order-summary-customer">
           <p class="order-ref-label">${orderRef}</p>
@@ -699,7 +1062,9 @@ function renderOrders(orders) {
           <div class="order-summary-badges">
             <span class="order-status-badge">${escapeAdminHtml(order.status || "-")}</span>
             <span class="due-badge ${due.className}">${escapeAdminHtml(due.label)}</span>
+            ${order.archived_at ? `<span class="archive-badge">Archived</span>` : ""}
           </div>
+          ${renderProgressBar(order, true)}
         </div>
 
         <div class="order-summary-meta">
@@ -716,7 +1081,9 @@ function renderOrders(orders) {
         <p><strong>Order Reference</strong><br>${orderRef}</p>
 
         <p><strong>Collection Method</strong><br>${getMethodLabel(order.collection_method)}</p>
-        <p><strong>Needed By</strong><br>${formatDate(order.needed_by)}</p>
+        <p><strong>${order.order_type === "bulk" || order.order_type === "rush" ? "Preferred Completion" : "Estimated Ready By"}</strong><br>${formatDate(order.requested_completion_date || order.needed_by)}</p>
+        <p><strong>Order Type</strong><br>${order.order_type === "rush" ? "⚡ Rush Request" : order.order_type === "bulk" ? "📦 Bulk Request" : "Standard Order"}</p>
+        ${order.review_status ? `<p><strong>Review</strong><br>${escapeAdminHtml(order.review_status)}</p>` : ""}
 
         ${
           order.collection_method === "delivery"
@@ -748,11 +1115,18 @@ function renderOrders(orders) {
           <p><strong>Subtotal</strong><br>${formatMoney(order.subtotal)}</p>
         `}
         <p><strong>Delivery Fee</strong><br>${formatMoney(order.delivery_fee)}</p>
+        ${Number(order.rush_fee || 0) > 0 ? `<p><strong>Rush Fee</strong><br>${formatMoney(order.rush_fee)}</p>` : ""}
         <p><strong>Total</strong><br>${formatMoney(order.total)}</p>
         <p><strong>Order Source</strong><br>${escapeAdminHtml(order.order_source || "-")}</p>
       </div>
 
       <div class="order-quick-actions">
+        ${["Rush Review", "Bulk Review"].includes(order.status) ? `
+          <button type="button" class="approve-request-action" onclick='window.approveSpecialOrder(${JSON.stringify(orderId)})'>
+            Approve Request
+          </button>
+        ` : ""}
+
         <button type="button" onclick='window.copyOrderReference(${JSON.stringify(orderId)})'>
           Copy Reference
         </button>
@@ -773,13 +1147,16 @@ function renderOrders(orders) {
           Download PDF
         </button>
 
-        <button
-          type="button"
-          class="danger-action"
-          onclick='window.deleteTestOrder(${JSON.stringify(orderId)})'
-        >
-          Delete Test Order
+        <button type="button" class="rush-stl-action" onclick='window.generateOrderStls(${JSON.stringify(orderId)}, this)'>
+          Generate Order STLs
         </button>
+
+        ${order.archived_at ? `
+          <button type="button" onclick='window.restoreOrder(${JSON.stringify(orderId)})'>Restore Order</button>
+          <button type="button" class="danger-action" onclick='window.deleteTestOrder(${JSON.stringify(orderId)})'>Delete Permanently</button>
+        ` : `
+          <button type="button" class="archive-action" onclick='window.archiveOrder(${JSON.stringify(orderId)})'>Archive Order</button>
+        `}
       </div>
 
       <div class="order-info">
@@ -789,11 +1166,14 @@ function renderOrders(orders) {
       class="status-select"
       onchange="window.updateOrderStatus('${order.id}', this.value)"
     >
+      <option value="Rush Review" ${order.status === "Rush Review" ? "selected" : ""}>Rush Review</option>
+      <option value="Bulk Review" ${order.status === "Bulk Review" ? "selected" : ""}>Bulk Review</option>
       <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Pending Payment</option>
       <option value="Payment Verification" ${order.status === "Payment Verification" ? "selected" : ""}>Payment Verification</option>
       <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Payment Verified</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
       <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for Pickup/Delivery</option>
+      ${order.collection_method === "delivery" ? `<option value="Out for Delivery" ${order.status === "Out for Delivery" ? "selected" : ""}>Out for Delivery</option>` : ""}
       <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
     </select>
   </div>
@@ -960,7 +1340,7 @@ function getProductionSummary(orders) {
   const keycapGroups = {};
 
   const activeOrders = orders.filter(order =>
-    ["Payment Verified", "Printing"].includes(order.status)
+    !order.archived_at && ["Payment Verified", "Printing"].includes(order.status)
   );
 
   activeOrders.forEach(order => {
@@ -1456,6 +1836,196 @@ async function generateKeycapCombinationStl(jobId, button) {
 
 window.generateKeycapCombinationStl = generateKeycapCombinationStl;
 
+function getRushOrderPrintGroups(order) {
+  const baseGroups = {};
+  const keycapGroups = {};
+
+  getEmailOrderItems(order).forEach(item => {
+    const design = item.design || {};
+    const characters = Array.from(item.clean_name || sanitizeName(item.name || ""));
+    const bases = Array.isArray(design.bases) ? design.bases : [];
+    const caps = Array.isArray(design.caps) ? design.caps : [];
+    const letters = Array.isArray(design.letters) ? design.letters : [];
+
+    if (!characters.length || !bases.length || !caps.length || !letters.length) return;
+
+    const baseShape = design.base_shape?.key || design.baseShape || "ribbed";
+    const letterOrientation = getLetterOrientation(design);
+
+    characters.forEach((character, index) => {
+      const base = bases[index % bases.length];
+      const cap = caps[index % caps.length];
+      const letterColour = letters[index % letters.length];
+      const baseName = base?.name || base?.hex || base || "Base";
+      const capName = cap?.name || cap?.hex || cap || "Cap";
+      const letterName = letterColour?.name || letterColour?.hex || letterColour || "Letter";
+      const baseKey = `${baseShape}|${baseName}`;
+      const keycapKey = `${capName}|${letterName}|${letterOrientation}`;
+
+      if (!baseGroups[baseKey]) {
+        baseGroups[baseKey] = { baseShape, baseName, quantity: 0 };
+      }
+      baseGroups[baseKey].quantity += 1;
+
+      if (!keycapGroups[keycapKey]) {
+        keycapGroups[keycapKey] = {
+          capName,
+          letterName,
+          letterOrientation,
+          characters: []
+        };
+      }
+      keycapGroups[keycapKey].characters.push(character);
+    });
+  });
+
+  return {
+    bases: Object.values(baseGroups),
+    keycaps: Object.values(keycapGroups)
+  };
+}
+
+async function buildRushStlPlate(requests) {
+  const sourceGeometries = await Promise.all(
+    requests.map(async request => {
+      const geometry = await loadProductionStlGeometry(request.path);
+      return request.kind === "keycap"
+        ? prepareProductionKeycapGeometry(geometry, request.orientation)
+        : geometry;
+    })
+  );
+
+  let widest = 0;
+  let deepest = 0;
+  sourceGeometries.forEach(geometry => {
+    geometry.computeBoundingBox();
+    const size = new THREE.Vector3();
+    geometry.boundingBox.getSize(size);
+    widest = Math.max(widest, size.x);
+    deepest = Math.max(deepest, size.y);
+  });
+
+  const columns = Math.min(7, Math.ceil(Math.sqrt(sourceGeometries.length)));
+  const spacing = 5;
+  const arranged = sourceGeometries.map((geometry, index) => {
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    const centreX = (box.min.x + box.max.x) / 2;
+    const centreY = (box.min.y + box.max.y) / 2;
+    geometry.translate(
+      (index % columns) * (widest + spacing) - centreX,
+      Math.floor(index / columns) * (deepest + spacing) - centreY,
+      -box.min.z
+    );
+    return geometry;
+  });
+
+  const merged = mergeGeometries(arranged, false);
+  if (!merged) throw new Error("The rush-order pieces could not be combined.");
+  merged.computeVertexNormals();
+
+  const binaryStl = productionStlExporter.parse(new THREE.Mesh(merged), { binary: true });
+  const blob = new Blob([binaryStl], { type: "model/stl" });
+
+  arranged.forEach(geometry => geometry.dispose());
+  merged.dispose();
+  return blob;
+}
+
+function downloadRushStl(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function generateOrderStls(id, button) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return alert("Order could not be found.");
+
+  const groups = getRushOrderPrintGroups(order);
+  const totalFiles = groups.bases.length + groups.keycaps.length;
+  const totalPieces =
+    groups.bases.reduce((sum, group) => sum + group.quantity, 0) +
+    groups.keycaps.reduce((sum, group) => sum + group.characters.length, 0);
+
+  if (!totalFiles || !totalPieces) {
+    alert("This order does not contain enough saved design information to generate STL files.");
+    return;
+  }
+
+  const summary = [
+    ...groups.bases.map(group =>
+      `${group.baseName} ${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} Bases × ${group.quantity}`
+    ),
+    ...groups.keycaps.map(group =>
+      `${group.capName} Cap + ${group.letterName} Letter (${group.letterOrientation === "horizontal" ? "Sideways" : "Upright"}) × ${group.characters.length}`
+    )
+  ];
+
+  if (!confirm(
+    `Generate rush-order STLs for ${order.order_ref}?\n\n` +
+    summary.join("\n") +
+    `\n\n${totalFiles} separate colour/shape file${totalFiles === 1 ? "" : "s"} will download.`
+  )) return;
+
+  const previousLabel = button?.textContent || "Generate Order STLs";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Building rush STLs…";
+  }
+
+  try {
+    const reference = safeProductionFileName(order.order_ref, "rush-order");
+    const files = [];
+
+    for (const group of groups.bases) {
+      const requests = Array.from({ length: group.quantity }, () => ({
+        kind: "base",
+        path: `/models/base_${group.baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`
+      }));
+      const blob = await buildRushStlPlate(requests);
+      files.push({
+        blob,
+        filename: `${reference}_BASE_${safeProductionFileName(group.baseName, "colour")}_${group.baseShape}_${group.quantity}pcs.stl`
+      });
+    }
+
+    for (const group of groups.keycaps) {
+      const requests = group.characters.map(character => ({
+        kind: "keycap",
+        path: getProductionKeycapPath(character),
+        orientation: group.letterOrientation
+      }));
+      const blob = await buildRushStlPlate(requests);
+      files.push({
+        blob,
+        filename: `${reference}_KEYCAP_${safeProductionFileName(group.capName, "cap")}_${safeProductionFileName(group.letterName, "letter")}_${group.letterOrientation}_${group.characters.length}pcs.stl`
+      });
+    }
+
+    files.forEach((file, index) => {
+      setTimeout(() => downloadRushStl(file.blob, file.filename), index * 350);
+    });
+
+    if (button) button.textContent = `Downloaded ${files.length} STL${files.length === 1 ? "" : "s"} ✓`;
+    setTimeout(() => {
+      if (button) button.textContent = previousLabel;
+    }, 3000);
+  } catch (error) {
+    console.error("Unable to generate rush-order STLs:", error);
+    alert(`Unable to generate this order's STL files.\n\n${error.message || error}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+window.generateOrderStls = generateOrderStls;
+
 function createAssemblyMiniPreview(name, design) {
   return Array.from(sanitizeName(name))
     .map((letter, i) => {
@@ -1488,7 +2058,7 @@ async function renderAssemblyQueue() {
 
   const candidateOrders = latestOrders
     .filter(order =>
-      ["Payment Verified", "Printing"].includes(order.status)
+      !order.archived_at && ["Payment Verified", "Printing"].includes(order.status)
     )
     .sort((a, b) =>
       new Date(a.needed_by || "9999-12-31") -
@@ -1608,6 +2178,16 @@ async function renderProductionPlanner(orders) {
       return { ...item, itemName, need, stock, toPrint };
     })
     .filter(item => item.toPrint > 0);
+
+  const baseShapeGroups = [
+    { key: "bubbly", label: "Bubbly Bases" },
+    { key: "ribbed", label: "Ribbed Bases" }
+  ].map(group => ({
+    ...group,
+    rows: baseRows
+      .filter(item => (item.baseShape || "ribbed").toLowerCase() === group.key)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+  }));
 
   productionStlJobs.clear();
 
@@ -1764,39 +2344,54 @@ async function renderProductionPlanner(orders) {
 
       <h3>Base Printing</h3>
 
-      <div class="print-group">
-        ${baseRows.map(item => `
-          <div class="print-check-row">
-            <span class="colour-dot" style="background:${item.hex}"></span>
+      <div class="base-shape-grid">
+        ${baseShapeGroups.map(group => {
+          const piecesLeft = group.rows.reduce((sum, item) => sum + item.toPrint, 0);
 
-            <div style="flex:1;">
-              <strong>${item.itemName}</strong>
-              <p class="hint">
-                Need: ${item.need} · Stock: ${item.stock} · To Print: ${item.toPrint}
-              </p>
-            </div>
+          return `
+            <section class="print-group base-shape-group base-shape-${group.key}">
+              <div class="base-shape-heading">
+                <div>
+                  <h4>${group.label}</h4>
+                  <p class="hint">${piecesLeft} piece${piecesLeft === 1 ? "" : "s"} left to print</p>
+                </div>
+              </div>
 
-            <div class="print-qty-control">
-              <input
-                type="number"
-                min="1"
-                value="${item.toPrint}"
-                id="printQty-${encodeURIComponent(item.itemName)}"
-              >
+              ${group.rows.map(item => `
+                <div class="print-check-row">
+                  <span class="colour-dot" style="background:${item.hex}"></span>
 
-              <button
-                class="ready-btn"
-                onclick='window.addCustomInventory(
-                  ${JSON.stringify(item.itemName)},
-                  document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(item.itemName)}`)}).value,
-                  "Base"
-                )'
-              >
-                Add Printed
-              </button>
-            </div>
-          </div>
-        `).join("") || "<p>No bases need printing.</p>"}
+                  <div style="flex:1;">
+                    <strong>${item.itemName}</strong>
+                    <p class="hint">
+                      Need: ${item.need} · Stock: ${item.stock} · To Print: ${item.toPrint}
+                    </p>
+                  </div>
+
+                  <div class="print-qty-control">
+                    <input
+                      type="number"
+                      min="1"
+                      value="${item.toPrint}"
+                      id="printQty-${encodeURIComponent(item.itemName)}"
+                    >
+
+                    <button
+                      class="ready-btn"
+                      onclick='window.addCustomInventory(
+                        ${JSON.stringify(item.itemName)},
+                        document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(item.itemName)}`)}).value,
+                        "Base"
+                      )'
+                    >
+                      Add Printed
+                    </button>
+                  </div>
+                </div>
+              `).join("") || `<p class="base-shape-complete">✓ No ${group.label.toLowerCase()} need printing.</p>`}
+            </section>
+          `;
+        }).join("")}
       </div>
 
       <h3>Hardware Stock</h3>
@@ -2098,7 +2693,7 @@ async function generateOrderPdfAttachment(order, items) {
           <strong>Collection method:</strong>
           ${escapeEmailHtml(getMethodLabel(order.collection_method))}<br>
           ${fulfilmentDetails}
-          <strong>Needed by:</strong>
+          <strong>${order.order_type === "rush" || order.order_type === "bulk" ? "Preferred completion:" : order.collection_method === "delivery" ? "Estimated dispatch by:" : "Estimated ready by:"}</strong>
           ${escapeEmailHtml(formatDate(order.needed_by))}<br>
           <strong>Notes / preferred timing:</strong>
           ${escapeEmailHtml(customerNotes)}
@@ -2385,7 +2980,14 @@ async function generateCompactOrderPdfAttachment(order, items) {
     drawWrappedDetail("Pickup location", "Woodlands MRT");
   }
 
-  drawWrappedDetail("Needed by", formatDate(order.needed_by));
+  drawWrappedDetail(
+    order.order_type === "rush" || order.order_type === "bulk"
+      ? "Preferred completion"
+      : order.collection_method === "delivery"
+        ? "Estimated dispatch by"
+        : "Estimated ready by",
+    formatDate(order.needed_by)
+  );
   drawWrappedDetail(
     "Notes / preferred timing",
     order.notes || order.preferred_time || "No additional notes"
@@ -2760,7 +3362,7 @@ async function deleteTestOrder(id) {
   }
 
   const enteredReference = prompt(
-    `Delete test order ${order.order_ref}?\n\n` +
+    `Permanently delete ${order.order_ref}?\n\n` +
     `Type the full order reference to continue.\n` +
     `This permanently removes the order from Supabase.`
   );
@@ -2809,9 +3411,181 @@ async function deleteTestOrder(id) {
   alert(`${order.order_ref} was deleted.`);
 }
 
+async function archiveOrder(id) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return alert("Order could not be found.");
+
+  if (!confirm(`Archive ${order.order_ref}?\n\nIt will leave your active workflow but can be restored later.`)) return;
+
+  const { error } = await supabase
+    .from("orders")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Unable to archive order:", error);
+    alert("Unable to archive this order. Run the supplied operations SQL once, then try again.");
+    return;
+  }
+
+  await loadOrders();
+}
+
+async function restoreOrder(id) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return alert("Order could not be found.");
+
+  const { error } = await supabase
+    .from("orders")
+    .update({ archived_at: null })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Unable to restore order:", error);
+    alert("Unable to restore this order.");
+    return;
+  }
+
+  await loadOrders();
+}
+
+async function approveSpecialOrder(id) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return alert("Order could not be found.");
+
+  const confirmedDate = prompt(
+    "Confirm the completion date (YYYY-MM-DD):",
+    String(order.requested_completion_date || order.needed_by || "").slice(0, 10)
+  );
+  if (confirmedDate === null) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(confirmedDate.trim())) {
+    alert("Please enter the date as YYYY-MM-DD.");
+    return;
+  }
+
+  let rushFee = Number(order.rush_fee || 0);
+  if (order.order_type === "rush") {
+    const enteredFee = prompt("Rush fee to add ($):", rushFee.toFixed(2));
+    if (enteredFee === null) return;
+    rushFee = Number(enteredFee);
+    if (!Number.isFinite(rushFee) || rushFee < 0) {
+      alert("Please enter a valid rush fee.");
+      return;
+    }
+  }
+
+  const originalTotalWithoutRush = Number(order.total || 0) - Number(order.rush_fee || 0);
+  const updatedTotal = originalTotalWithoutRush + rushFee;
+  const { error } = await supabase.from("orders").update({
+    needed_by: confirmedDate.trim(),
+    rush_fee: rushFee,
+    total: updatedTotal,
+    review_status: "Approved",
+    status: "Pending Payment",
+    status_updated_at: new Date().toISOString()
+  }).eq("id", id);
+
+  if (error) {
+    console.error("Unable to approve request:", error);
+    alert("Unable to approve this request. Run the latest operations SQL, then try again.");
+    return;
+  }
+
+  const requestLabel = order.order_type === "rush" ? "rush order" : "bulk order";
+  const message =
+    `Hi ${order.customer_name || "there"}! Your Little Keeps ${requestLabel} ${order.order_ref} is approved for ${formatDate(confirmedDate)}. ` +
+    `The confirmed total is ${formatMoney(updatedTotal)}. Open https://little-keeps.vercel.app, choose “Check your order status”, and enter your order reference and email to make payment.`;
+
+  try {
+    await navigator.clipboard.writeText(message);
+  } catch {
+    // The request is still approved even when clipboard access is unavailable.
+  }
+
+  await loadOrders();
+
+  const whatsappHref = getWhatsAppHref(order.customer_phone);
+  if (whatsappHref && confirm("Request approved ✓\n\nThe payment message was copied. Open the customer's WhatsApp now?")) {
+    window.open(`${whatsappHref}?text=${encodeURIComponent(message)}`, "_blank", "noopener");
+  } else {
+    alert("Request approved. The payment message has been copied.");
+  }
+}
+
 window.copyOrderReference = copyOrderReference;
 window.downloadOrderPdf = downloadOrderPdf;
 window.deleteTestOrder = deleteTestOrder;
+window.archiveOrder = archiveOrder;
+window.restoreOrder = restoreOrder;
+window.approveSpecialOrder = approveSpecialOrder;
+
+function getStatusEmailContent(order, status) {
+  const isDelivery = order.collection_method === "delivery";
+
+  if (status === "Ready for Pickup/Delivery") {
+    return isDelivery
+      ? {
+          title: "Your order is ready for delivery!",
+          message: "Your Little Keeps order has finished production and is packed safely. We’ll arrange its delivery shortly.",
+          actionTitle: "What happens next",
+          actionDetails: "Watch for another update when your order is handed to the courier or begins delivery."
+        }
+      : {
+          title: "Your order is ready for pickup!",
+          message: "Your Little Keeps order has finished production and is ready for collection.",
+          actionTitle: "Pickup",
+          actionDetails: "Pickup is at Woodlands MRT. Please reply to arrange a suitable collection time."
+        };
+  }
+
+  if (status === "Out for Delivery") {
+    return {
+      title: "Your order is out for delivery!",
+      message: "Your Little Keeps order is on its way to you.",
+      actionTitle: order.courier_name ? `Delivery by ${order.courier_name}` : "Delivery update",
+      actionDetails: order.tracking_number
+        ? `Tracking number: ${order.tracking_number}`
+        : "This order is being delivered personally, so a courier tracking number may not be available."
+    };
+  }
+
+  if (status === "Completed") {
+    return {
+      title: "Your Little Keeps order is complete!",
+      message: "Your order has been collected or delivered. Thank you so much for supporting Little Keeps!",
+      actionTitle: "Thank you ♡",
+      actionDetails: "If anything is not quite right, please reply to this email and we’ll help."
+    };
+  }
+
+  return null;
+}
+
+async function sendOrderStatusEmail(order, status) {
+  if (!adminShopSettings.status_emails_enabled) return { skipped: true };
+
+  const templateId = String(adminShopSettings.status_email_template_id || "").trim();
+  const content = getStatusEmailContent(order, status);
+  if (!templateId || !content || !order.customer_email) return { skipped: true };
+
+  await emailjs.send(EMAILJS_SERVICE, templateId, {
+    to_email: order.customer_email,
+    customer_name: order.customer_name || "Customer",
+    order_ref: order.order_ref || "-",
+    update_title: content.title,
+    update_message: content.message,
+    action_title: content.actionTitle,
+    action_details: content.actionDetails,
+    has_tracking: Boolean(order.tracking_number),
+    tracking_number: order.tracking_number || "",
+    tracking_url: order.tracking_url || "",
+    courier_name: order.courier_name || "",
+    collection_method: getMethodLabel(order.collection_method),
+    needed_by: formatDate(order.needed_by)
+  });
+
+  return { sent: true };
+}
 
 async function updateOrderStatus(id, status) {
   const scrollY = window.scrollY;
@@ -2826,7 +3600,34 @@ async function updateOrderStatus(id, status) {
   }
 
   const previousStatus = order.status;
-  const updateData = { status };
+  const updateData = {
+    status,
+    status_updated_at: new Date().toISOString()
+  };
+
+  if (status === "Out for Delivery" && order.collection_method === "delivery") {
+    const courierName = prompt(
+      "Courier name (leave blank if you are delivering it yourself):",
+      order.courier_name || ""
+    );
+    if (courierName === null) return;
+
+    const trackingNumber = prompt(
+      "Tracking number (optional):",
+      order.tracking_number || ""
+    );
+    if (trackingNumber === null) return;
+
+    const trackingUrl = prompt(
+      "Tracking link (optional):",
+      order.tracking_url || ""
+    );
+    if (trackingUrl === null) return;
+
+    updateData.courier_name = courierName.trim();
+    updateData.tracking_number = trackingNumber.trim();
+    updateData.tracking_url = trackingUrl.trim();
+  }
 
   if (status === "Payment Verified") {
     updateData.payment_type = "Paid";
@@ -2861,6 +3662,20 @@ async function updateOrderStatus(id, status) {
         "Payment was verified, but the customer email failed to send.\n\n" +
         (error?.text || error?.message || "Unknown email error")
       );
+    }
+  }
+
+  const shouldSendStatusUpdate =
+    previousStatus !== status &&
+    ["Ready for Pickup/Delivery", "Out for Delivery", "Completed"].includes(status);
+
+  if (shouldSendStatusUpdate) {
+    try {
+      const result = await sendOrderStatusEmail({ ...order, ...updateData }, status);
+      if (result.sent) alert(`Status updated and email sent to ${order.customer_email}.`);
+    } catch (error) {
+      console.error("Status email failed:", error);
+      alert("Status was updated, but the customer email failed to send. You can retry after checking the EmailJS template setting.");
     }
   }
 
@@ -2936,6 +3751,47 @@ const newQty = currentQty - qtyToDeduct;
   return true;
 }
 
+async function loadAdminSettings() {
+  const defaults = {
+    id: 1,
+    usual_base_price: 3.90,
+    launch_base_price: 3.20,
+    launch_price_enabled: true,
+    included_characters: 6,
+    extra_character_price: 0.20,
+    delivery_fee: 2.50,
+    free_delivery_threshold: 50,
+    max_orders_per_date: 5,
+    large_order_quantity: 5,
+    bulk_order_quantity: 10,
+    standard_min_working_days: 2,
+    standard_max_working_days: 3,
+    large_min_working_days: 3,
+    large_max_working_days: 4,
+    rush_fee_small: 5,
+    rush_fee_large: 8,
+    rush_max_missing_parts: 60,
+    rush_max_active_orders: 5,
+    mechanical_switch_low_stock: 100,
+    key_ring_low_stock: 20,
+    jump_ring_low_stock: 20,
+    status_emails_enabled: false,
+    status_email_template_id: "",
+    hitpay_enabled: false
+  };
+
+  const [{ data: settings, error: settingsError }, { data: promos, error: promosError }] = await Promise.all([
+    supabase.from("shop_settings").select("*").eq("id", 1).maybeSingle(),
+    supabase.from("promo_codes").select("*").order("created_at", { ascending: false })
+  ]);
+
+  if (settingsError) console.warn("Using fallback admin settings:", settingsError);
+  if (promosError) console.warn("Promo management is not ready yet:", promosError);
+
+  adminShopSettings = { ...defaults, ...(settings || {}) };
+  adminPromoCodes = promos || [];
+}
+
 async function loadOrders() {
   ordersContainer.innerHTML = `<p class="empty">Loading orders...</p>`;
 
@@ -2959,7 +3815,10 @@ async function loadOrders() {
 
 latestOrders = data || [];
 
-await loadInventoryItems();
+await Promise.all([
+  loadInventoryItems(),
+  loadAdminSettings()
+]);
 
 renderCurrentView();
 }
@@ -2969,13 +3828,21 @@ window.updatePaymentType = updatePaymentType;
 
 function setActiveTab(activeTab) {
 
+    todayViewBtn.classList.remove("active");
     ordersViewBtn.classList.remove("active");
     productionViewBtn.classList.remove("active");
     assemblyViewBtn.classList.remove("active");
+    settingsViewBtn.classList.remove("active");
 
     activeTab.classList.add("active");
 
 }
+
+todayViewBtn.onclick = () => {
+  currentView = "today";
+  setActiveTab(todayViewBtn);
+  renderCurrentView();
+};
 
 ordersViewBtn.onclick = () => {
   currentView = "orders";
@@ -2992,6 +3859,12 @@ productionViewBtn.onclick = () => {
 assemblyViewBtn.onclick = () => {
   currentView = "assembly";
   setActiveTab(assemblyViewBtn);
+  renderCurrentView();
+};
+
+settingsViewBtn.onclick = () => {
+  currentView = "settings";
+  setActiveTab(settingsViewBtn);
   renderCurrentView();
 };
 

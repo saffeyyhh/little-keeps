@@ -33,6 +33,9 @@ const DEFAULT_SHOP_SETTINGS = {
   standard_max_working_days: 3,
   large_min_working_days: 3,
   large_max_working_days: 4,
+  bulk_order_quantity: 10,
+  rush_fee_small: 5,
+  rush_fee_large: 8,
   promo_code: "CHILDRENSDAY",
   promo_percent_off: 10,
   promo_enabled: true
@@ -196,6 +199,12 @@ const largeMaxWorkingDays = Math.max(
   largeMinWorkingDays,
   Math.round(getSettingNumber("large_max_working_days", 4))
 );
+const bulkOrderQuantity = Math.max(
+  largeOrderQuantity + 1,
+  Math.round(getSettingNumber("bulk_order_quantity", 10))
+);
+const rushFeeSmall = Math.max(0, getSettingNumber("rush_fee_small", 5));
+const rushFeeLarge = Math.max(rushFeeSmall, getSettingNumber("rush_fee_large", 8));
 
 function displaySettingMoney(value) {
   return `$${Number(value || 0).toFixed(2)}`;
@@ -960,22 +969,35 @@ Chloe</textarea>
           placeholder="Contact Number"
         >
 
-        <label id="neededByLabel" for="neededBy">
-          Preferred pickup date
-        </label>
+        <div id="automaticDateCard" class="automatic-date-card">
+          <span id="automaticDateLabel">Estimated ready for collection</span>
+          <strong id="automaticDateRange">Calculating…</strong>
+          <small id="automaticDateNote">Based on our current production schedule.</small>
+        </div>
 
-        <p id="turnaroundCheckoutHint" class="turnaround-checkout-hint">
-          Your order is estimated to be ready in 2–3 working days.
-          Choose a preferred date and we’ll confirm it after payment.
-        </p>
+        <input id="neededBy" type="hidden">
 
-        <input
-          id="neededBy"
-          type="text"
-          placeholder="Choose a preferred date"
-        >
+        <div id="rushOrderOption" class="special-order-option">
+          <label class="special-order-toggle" for="rushOrderToggle">
+            <input id="rushOrderToggle" type="checkbox">
+            <span>
+              <strong>Need it sooner?</strong>
+              <small>Rush fee: +${displaySettingMoney(rushFeeSmall)} for 1–4 keychains or +${displaySettingMoney(rushFeeLarge)} for 5–9. Availability is checked before payment.</small>
+            </span>
+          </label>
+        </div>
 
-        <p id="dateAvailability" class="hint hidden"></p>
+        <div id="specialDateSection" class="special-date-section hidden">
+          <label id="specialDateLabel" for="requestedCompletionDate">Preferred completion date</label>
+          <input id="requestedCompletionDate" type="text" placeholder="Choose a date">
+          <p id="specialOrderMessage" class="hint"></p>
+          <div id="rushAvailabilityResult" class="rush-availability hidden" aria-live="polite"></div>
+        </div>
+
+        <div id="bulkOrderNotice" class="bulk-order-notice hidden">
+          <strong>Bulk order request</strong>
+          <p>For 10 or more keychains, tell us your preferred completion date. We’ll confirm availability before requesting payment.</p>
+        </div>
 
         <label for="collectionMethod">
           Collection Method
@@ -1150,6 +1172,17 @@ Chloe</textarea>
 
         <h3>Total Amount</h3>
         <strong id="paymentTotal"></strong>
+
+        ${shopSettings.hitpay_enabled ? `
+          <div class="online-payment-panel">
+            <span class="online-payment-badge">Recommended</span>
+            <h3>Pay securely online</h3>
+            <p>Use PayNow or card through HitPay. Your payment will be verified automatically.</p>
+            <button id="hitpayCheckoutBtn" type="button" class="submit-btn">Pay Online with HitPay</button>
+            <p id="hitpayCheckoutStatus" class="hint"></p>
+          </div>
+          <div class="payment-divider"><span>or use manual PayNow</span></div>
+        ` : ""}
 
         <img
           src="/models/paynow.png"
@@ -1437,9 +1470,18 @@ const customerName = document.getElementById("customerName");
 const customerEmail = document.getElementById("customerEmail");
 const customerPhone = document.getElementById("customerPhone");
 const neededBy = document.getElementById("neededBy");
-const neededByLabel = document.getElementById("neededByLabel");
-const turnaroundCheckoutHint =
-  document.getElementById("turnaroundCheckoutHint");
+const automaticDateCard = document.getElementById("automaticDateCard");
+const automaticDateLabel = document.getElementById("automaticDateLabel");
+const automaticDateRange = document.getElementById("automaticDateRange");
+const automaticDateNote = document.getElementById("automaticDateNote");
+const rushOrderOption = document.getElementById("rushOrderOption");
+const rushOrderToggle = document.getElementById("rushOrderToggle");
+const specialDateSection = document.getElementById("specialDateSection");
+const specialDateLabel = document.getElementById("specialDateLabel");
+const requestedCompletionDate = document.getElementById("requestedCompletionDate");
+const specialOrderMessage = document.getElementById("specialOrderMessage");
+const rushAvailabilityResult = document.getElementById("rushAvailabilityResult");
+const bulkOrderNotice = document.getElementById("bulkOrderNotice");
 const turnaroundSummary =
   document.getElementById("turnaroundSummary");
 const collectionMethod = document.getElementById("collectionMethod");
@@ -1554,6 +1596,10 @@ const paymentTotal =
 document.getElementById("paymentTotal");
 const paymentDoneBtn =
 document.getElementById("paymentDoneBtn");
+const hitpayCheckoutBtn =
+document.getElementById("hitpayCheckoutBtn");
+const hitpayCheckoutStatus =
+document.getElementById("hitpayCheckoutStatus");
 const paymentBackBtn =
 document.getElementById("paymentBackBtn");
 
@@ -1761,11 +1807,11 @@ const ICON_CATEGORIES = [
   }
 ];
 
-const dateAvailability = document.getElementById("dateAvailability");
-
-let neededByAllowed = false;
-let neededByMessage = "";
-let neededByCalendar = null;
+let specialDateCalendar = null;
+let shopClosureRanges = [];
+let rushAssessment = null;
+let rushAssessmentRequest = 0;
+let rushAssessmentFingerprint = "";
 
 function getTurnaroundInfo(quantity = names.length || 1) {
   const isLargeOrder = quantity >= largeOrderQuantity;
@@ -1782,7 +1828,14 @@ function getTurnaroundInfo(quantity = names.length || 1) {
   };
 }
 
-function addWorkingDays(startDate, workingDays) {
+function isShopClosedDate(date) {
+  const value = toLocalDateString(date);
+  return shopClosureRanges.some(range =>
+    value >= range.start_date && value <= range.end_date
+  );
+}
+
+function addWeekdaysOnly(startDate, workingDays) {
   const date = new Date(startDate);
   let daysAdded = 0;
 
@@ -1797,19 +1850,181 @@ function addWorkingDays(startDate, workingDays) {
   return date;
 }
 
-function getMinimumPreferredDate() {
+function addWorkingDays(startDate, workingDays) {
+  const date = new Date(startDate);
+  let daysAdded = 0;
+
+  while (daysAdded < workingDays) {
+    date.setDate(date.getDate() + 1);
+    const day = date.getDay();
+    const isWeekday = day !== 0 && day !== 6;
+    if (isWeekday && !isShopClosedDate(date)) daysAdded += 1;
+  }
+
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getAutomaticReadyDate() {
   const turnaround = getTurnaroundInfo();
   return addWorkingDays(new Date(), turnaround.maxDays);
+}
+
+function toLocalDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatEstimateDate(date) {
+  return date.toLocaleDateString("en-SG", {
+    day: "numeric",
+    month: "short"
+  });
+}
+
+function getCheckoutOrderType() {
+  if (names.length >= bulkOrderQuantity) return "bulk";
+  if (rushOrderToggle?.checked) return "rush";
+  return "standard";
+}
+
+function getRushFee() {
+  if (getCheckoutOrderType() !== "rush") return 0;
+  return names.length <= 4 ? rushFeeSmall : rushFeeLarge;
+}
+
+function getRushInventoryNeeds() {
+  const needs = {};
+  const add = (itemName, quantity = 1) => {
+    needs[itemName] = (needs[itemName] || 0) + quantity;
+  };
+
+  names.forEach(item => {
+    const design = getDesign(item);
+    const characters = Array.from(sanitizeName(item.name));
+    const orientation = design.letterOrientation === "horizontal" ? "horizontal" : "vertical";
+    const shapeLabel = design.baseShape === "bubbly" ? "Bubbly" : "Ribbed";
+
+    characters.forEach((character, index) => {
+      const baseName = getColourName(design.bases[index % design.bases.length]);
+      const capName = getColourName(design.caps[index % design.caps.length]);
+      const letterName = getColourName(design.letters[index % design.letters.length]);
+      add(`${baseName} ${shapeLabel} Base`);
+      add(
+        `${capName} Cap + ${letterName} Letter - ${character}` +
+        (orientation === "horizontal" ? " - Sideways" : "")
+      );
+    });
+  });
+
+  const characterCount = names.reduce(
+    (sum, item) => sum + Array.from(sanitizeName(item.name)).length,
+    0
+  );
+  add("Mechanical Switch", characterCount);
+  add("Key Ring", names.length);
+  add("Jump Ring", names.length);
+  return needs;
+}
+
+function getRushFingerprint() {
+  return JSON.stringify({
+    date: requestedCompletionDate.value,
+    quantity: names.length,
+    needs: getRushInventoryNeeds()
+  });
+}
+
+function showRushAssessment(assessment) {
+  rushAvailabilityResult.classList.remove("hidden", "is-available", "is-review", "is-unavailable", "is-checking");
+  rushAvailabilityResult.classList.add(`is-${assessment.status}`);
+
+  const heading = assessment.status === "available"
+    ? `Rush available - +${displaySettingMoney(assessment.fee)}`
+    : assessment.status === "review"
+      ? "Manual review needed"
+      : assessment.status === "checking"
+        ? "Checking rush availability…"
+        : "Rush unavailable for this date";
+
+  const customerMessage = assessment.status === "review"
+    ? "We’ll check this request and contact you before payment."
+    : assessment.status === "unavailable"
+      ? "Please choose another date."
+      : assessment.status === "checking"
+        ? "One moment please."
+        : "";
+
+  rushAvailabilityResult.innerHTML = `
+    <strong>${heading}</strong>
+    ${customerMessage ? `<span>${customerMessage}</span>` : ""}
+  `;
+}
+
+async function checkRushAvailability() {
+  if (getCheckoutOrderType() !== "rush" || !requestedCompletionDate.value) {
+    rushAssessment = null;
+    rushAvailabilityResult.classList.add("hidden");
+    return null;
+  }
+
+  const requestNumber = ++rushAssessmentRequest;
+  const fingerprint = getRushFingerprint();
+  rushAssessment = null;
+  rushAssessmentFingerprint = "";
+  showRushAssessment({ status: "checking", reason: "Checking current orders and printed inventory." });
+  validateForm();
+
+  const characterCount = names.reduce(
+    (sum, item) => sum + Array.from(sanitizeName(item.name)).length,
+    0
+  );
+  const { data, error } = await supabase.rpc("assess_rush_order", {
+    p_requested_date: requestedCompletionDate.value,
+    p_keychain_count: names.length,
+    p_character_count: characterCount,
+    p_needs: getRushInventoryNeeds()
+  });
+
+  if (requestNumber !== rushAssessmentRequest) return rushAssessment;
+
+  rushAssessment = error
+    ? {
+        status: "review",
+        fee: getRushFee(),
+        reason: "Automatic availability could not be confirmed, so we’ll review this request manually."
+      }
+    : {
+        status: data?.status || "review",
+        fee: Number(data?.fee ?? getRushFee()),
+        reason: data?.reason || "We’ll review this request manually."
+      };
+  rushAssessmentFingerprint = fingerprint;
+
+  if (error) console.warn("Rush assessment fallback:", error);
+  showRushAssessment(rushAssessment);
+  renderReviewOrder();
+  validateForm();
+  return rushAssessment;
 }
 
 function updateTurnaroundMessaging() {
   const turnaround = getTurnaroundInfo();
   const itemWord = turnaround.quantity === 1 ? "keychain" : "keychains";
   const methodIsDelivery = collectionMethod.value === "delivery";
-  const action = methodIsDelivery
-    ? "ready for dispatch"
-    : "ready for pickup";
   const range = `${turnaround.minDays}–${turnaround.maxDays} working days`;
+  const estimateStart = addWorkingDays(new Date(), turnaround.minDays);
+  const estimateEnd = addWorkingDays(new Date(), turnaround.maxDays);
+  const weekdayOnlyEnd = addWeekdaysOnly(new Date(), turnaround.maxDays);
+  const includesHolidayClosure = estimateEnd.getTime() > weekdayOnlyEnd.getTime();
+  const isBulk = turnaround.quantity >= bulkOrderQuantity;
+  const isRush = !isBulk && Boolean(rushOrderToggle?.checked);
+
+  neededBy.value = isBulk || isRush
+    ? requestedCompletionDate.value
+    : toLocalDateString(estimateEnd);
 
   if (turnaroundSummary) {
     turnaroundSummary.innerHTML = `
@@ -1818,31 +2033,63 @@ function updateTurnaroundMessaging() {
     `;
   }
 
-  if (neededByLabel) {
-    neededByLabel.textContent = methodIsDelivery
-      ? "Preferred dispatch date"
-      : "Preferred pickup date";
+  automaticDateLabel.textContent = methodIsDelivery
+    ? "Estimated dispatch"
+    : "Estimated ready for collection";
+  automaticDateRange.textContent = `${formatEstimateDate(estimateStart)}–${formatEstimateDate(estimateEnd)}`;
+  automaticDateNote.textContent = includesHolidayClosure
+    ? "Our holiday closure is already included in this estimate."
+    : "Based on our current production schedule.";
+
+  automaticDateCard.classList.toggle("hidden", isBulk || isRush);
+  rushOrderOption.classList.toggle("hidden", isBulk);
+  bulkOrderNotice.classList.toggle("hidden", !isBulk);
+  specialDateSection.classList.toggle("hidden", !isBulk && !isRush);
+
+  if (isBulk) {
+    specialDateLabel.textContent = "Preferred completion date";
+    specialOrderMessage.textContent = "We’ll review your bulk request and contact you before payment.";
+    orderNotes.placeholder = "Customer notes for your bulk order...";
+  } else if (isRush) {
+    specialDateLabel.textContent = "When do you need it?";
+    specialOrderMessage.textContent = "Choose a date and we’ll check availability instantly.";
+    orderNotes.placeholder = "Tell us about your deadline or event...";
+
+    if (requestedCompletionDate.value && rushAssessmentFingerprint !== getRushFingerprint()) {
+      rushAssessment = null;
+      rushAssessmentFingerprint = "";
+      queueMicrotask(() => checkRushAvailability());
+    }
+  } else {
+    orderNotes.placeholder = methodIsDelivery
+      ? "Delivery instructions or additional notes..."
+      : "Preferred pickup timing or additional notes...";
+    rushAssessment = null;
+    rushAssessmentFingerprint = "";
+    rushAvailabilityResult.classList.add("hidden");
   }
 
-  if (turnaroundCheckoutHint) {
-    turnaroundCheckoutHint.innerHTML = `
-      Your ${turnaround.quantity} ${itemWord}
-      ${turnaround.quantity === 1 ? "is" : "are"} estimated to be
-      ${action} in <strong>${range}</strong>.
-      Choose a preferred date and we’ll confirm it after payment.
-    `;
+  if (specialDateCalendar) {
+    const tomorrow = addWorkingDays(new Date(), 1);
+    specialDateCalendar.set("minDate", tomorrow);
+
+    if (isRush) {
+      const lastRushDate = getAutomaticReadyDate();
+      lastRushDate.setDate(lastRushDate.getDate() - 1);
+      specialDateCalendar.set("maxDate", lastRushDate);
+    } else {
+      const bulkMaxDate = new Date(tomorrow);
+      bulkMaxDate.setFullYear(bulkMaxDate.getFullYear() + 1);
+      specialDateCalendar.set("maxDate", bulkMaxDate);
+    }
   }
 
-  if (!neededByCalendar) return;
-
-  const minimumDate = getMinimumPreferredDate();
-  neededByCalendar.set("minDate", minimumDate);
-
-  const selectedDate = neededByCalendar.selectedDates?.[0];
-  if (selectedDate && selectedDate < minimumDate) {
-    neededByCalendar.clear();
-    neededByAllowed = false;
-    neededByMessage = "";
+  if (submitOrderBtn) {
+    submitOrderBtn.textContent = isBulk
+      ? "Submit Bulk Request"
+      : isRush
+        ? "Submit Rush Request"
+        : "Submit Order & Continue to Payment";
   }
 }
 
@@ -1886,29 +2133,31 @@ window.addEventListener(
 
 updateAddCartVisibility();
 
-async function checkNeededByDate() {
-  if (!neededBy.value) {
-    neededByAllowed = false;
-    neededByMessage = "";
-    dateAvailability.innerText = "";
-    return false;
+async function findAutomaticAvailableDate() {
+  let candidate = getAutomaticReadyDate();
+
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    const day = candidate.getDay();
+    if (day === 0 || day === 6) {
+      candidate = addWorkingDays(candidate, 1);
+      continue;
+    }
+
+    const candidateValue = toLocalDateString(candidate);
+    const { data, error } = await supabase.rpc("check_needed_by_date", {
+      p_date: candidateValue
+    });
+
+    if (error) {
+      console.warn("Using calculated fulfilment date:", error);
+      return candidateValue;
+    }
+
+    if (data?.allowed) return candidateValue;
+    candidate = addWorkingDays(candidate, 1);
   }
 
-  const { data, error } = await supabase.rpc("check_needed_by_date", {
-    p_date: neededBy.value
-  });
-
-  if (error) {
-    console.error(error);
-    neededByAllowed = false;
-    neededByMessage = "Unable to check date availability.";
-    return false;
-  }
-
-  neededByAllowed = data.allowed;
-  neededByMessage = data.reason;
-
-  return data.allowed;
+  return toLocalDateString(candidate);
 }
 
 function sanitizeName(name) {
@@ -2409,20 +2658,12 @@ function addColourToDesign(type, colour) {
 }
 
 async function setupNeededByCalendar() {
-  const minDate = getMinimumPreferredDate();
+  const minDate = addWorkingDays(new Date(), 1);
 
   const maxDate = new Date(minDate);
   maxDate.setFullYear(maxDate.getFullYear() + 1);
 
-  const toLocalDateString = date => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
-  };
-
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateString(new Date());
 
   const [closureResult, unavailableDateResult] = await Promise.all([
     supabase
@@ -2451,6 +2692,14 @@ async function setupNeededByCalendar() {
     to: item.end_date
   }));
 
+  if (!closureResult.error) {
+    shopClosureRanges = (closureResult.data || []).map(item => ({
+      start_date: item.start_date,
+      end_date: item.end_date,
+      reason: item.reason || "Holiday closure"
+    }));
+  }
+
   const fullOrderDates = (unavailableDateResult.data || [])
     .map(item => item.unavailable_date)
     .filter(Boolean);
@@ -2460,14 +2709,19 @@ async function setupNeededByCalendar() {
     ...fullOrderDates
   ];
 
-  neededByCalendar = flatpickr(neededBy, {
+  specialDateCalendar = flatpickr(requestedCompletionDate, {
     dateFormat: "Y-m-d",
     minDate,
     maxDate,
     disable: disabledDates,
 
     onChange: async () => {
-      await checkNeededByDate();
+      neededBy.value = requestedCompletionDate.value;
+      rushAssessment = null;
+      rushAssessmentFingerprint = "";
+      if (getCheckoutOrderType() === "rush") {
+        await checkRushAvailability();
+      }
       validateForm();
     }
   });
@@ -2476,7 +2730,7 @@ async function setupNeededByCalendar() {
 }
 
 async function loadShopNotices() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateString(new Date());
 
   const { data, error } = await supabase
     .from("shop_closures")
@@ -2488,6 +2742,14 @@ async function loadShopNotices() {
     console.error(error);
     return;
   }
+
+  shopClosureRanges = (data || []).map(item => ({
+    start_date: item.start_date,
+    end_date: item.end_date,
+    reason: item.reason || "Holiday closure"
+  }));
+
+  updateTurnaroundMessaging();
 
   if (!data.length) return;
 
@@ -3201,7 +3463,8 @@ function renderReviewOrder() {
   const promo = getAppliedPromo();
   const discountAmount = getPromoDiscount(total);
   const discountedSubtotal = roundMoney(total - discountAmount);
-  const grandTotal = roundMoney(discountedSubtotal + deliveryFee);
+  const rushFee = getRushFee();
+  const grandTotal = roundMoney(discountedSubtotal + deliveryFee + rushFee);
 
   if (checkoutStickyCount) {
     checkoutStickyCount.textContent =
@@ -3237,6 +3500,11 @@ function renderReviewOrder() {
           : `$${deliveryFee.toFixed(2)}`
       }
     </strong>
+
+    ${rushFee > 0 ? `
+      <span>Rush fee</span>
+      <strong>+$${rushFee.toFixed(2)}</strong>
+    ` : ""}
 
     <span class="review-total-label">Total</span>
     <strong class="review-grand-total">
@@ -3289,6 +3557,40 @@ async function submitOrder() {
   submitStatus.innerText = "Submitting order...";
 
   const orderRef = generateOrderRef();
+  const checkoutOrderType = getCheckoutOrderType();
+  const turnaround = getTurnaroundInfo();
+  const estimatedReadyFrom = addWorkingDays(new Date(), turnaround.minDays);
+  const estimatedReadyTo = addWorkingDays(new Date(), turnaround.maxDays);
+
+  if (["rush", "bulk"].includes(checkoutOrderType) && !requestedCompletionDate.value) {
+    submitStatus.innerText = "Please choose your preferred completion date.";
+    return;
+  }
+
+  let confirmedRushAssessment = null;
+  if (checkoutOrderType === "rush" && !isManualOrder) {
+    submitStatus.innerText = "Rechecking rush availability…";
+    confirmedRushAssessment = await checkRushAvailability();
+
+    if (!confirmedRushAssessment || confirmedRushAssessment.status === "unavailable") {
+      submitStatus.innerText = "Rush service is unavailable for this date. Please choose another date.";
+      return;
+    }
+  }
+
+  const rushAutoApproved =
+    checkoutOrderType === "rush" &&
+    confirmedRushAssessment?.status === "available";
+  const isReviewRequest =
+    !isManualOrder &&
+    (checkoutOrderType === "bulk" ||
+      (checkoutOrderType === "rush" && !rushAutoApproved));
+
+  const assignedNeededBy = ["rush", "bulk"].includes(checkoutOrderType)
+    ? requestedCompletionDate.value
+    : await findAutomaticAvailableDate();
+
+  neededBy.value = assignedNeededBy;
 
   const originalSubtotal = names.reduce(
     (sum, item) =>
@@ -3305,7 +3607,10 @@ async function submitOrder() {
       ? deliveryFeeSetting
       : 0;
 
-  const total = roundMoney(subtotal + delivery);
+  const rushFee = checkoutOrderType === "rush"
+    ? Number(confirmedRushAssessment?.fee ?? getRushFee())
+    : 0;
+  const total = roundMoney(subtotal + delivery + rushFee);
 
   const order = {
     order_ref: orderRef,
@@ -3322,14 +3627,28 @@ async function submitOrder() {
         : "",
 
     preferred_time: orderNotes.value,
-    needed_by: neededBy.value,
+    needed_by: assignedNeededBy,
     notes: orderNotes.value,
+    order_type: checkoutOrderType,
+    requested_completion_date: ["rush", "bulk"].includes(checkoutOrderType)
+      ? requestedCompletionDate.value
+      : null,
+    estimated_ready_from: toLocalDateString(estimatedReadyFrom),
+    estimated_ready_to: isReviewRequest
+      ? toLocalDateString(estimatedReadyTo)
+      : assignedNeededBy,
+    review_status: isReviewRequest
+      ? "Pending Review"
+      : rushAutoApproved
+        ? "Auto Approved"
+        : null,
 
     original_subtotal: roundMoney(originalSubtotal),
     promo_code: appliedPromoCode || null,
     discount_amount: discountAmount,
     subtotal,
     delivery_fee: delivery,
+    rush_fee: rushFee,
     total,
 
     payment_type: "Pending",
@@ -3340,7 +3659,11 @@ async function submitOrder() {
 
     status: isManualOrder
       ? "Payment Verified"
-      : "Pending Payment",
+      : checkoutOrderType === "rush"
+        ? rushAutoApproved ? "Pending Payment" : "Rush Review"
+        : checkoutOrderType === "bulk"
+          ? "Bulk Review"
+          : "Pending Payment",
 
     order_data: names.map(item => {
       const design = getDesign(item);
@@ -3382,13 +3705,6 @@ async function submitOrder() {
     })
   };
 
-  const dateAvailable = await checkNeededByDate();
-
-  if (!dateAvailable) {
-    submitStatus.innerText = neededByMessage;
-    return;
-  }
-
   // First save the order.
   try {
     await saveOrderToDatabase(order);
@@ -3404,6 +3720,29 @@ async function submitOrder() {
   // The order is now safely saved.
   orderSubmitted = true;
   localStorage.removeItem("littleKeepsDraft");
+
+  if (isReviewRequest) {
+    orderRefText.innerHTML = `<strong>${orderRef}</strong>`;
+    successModal.querySelector("h2").textContent =
+      checkoutOrderType === "rush" ? "Rush Request Received ♡" : "Bulk Request Received ♡";
+    const modalParagraphs = successModal.querySelectorAll(".modal-card > p");
+    if (modalParagraphs[0]) {
+      modalParagraphs[0].textContent =
+        "We’ll review your preferred completion date and contact you before payment.";
+    }
+    if (modalParagraphs[2]) {
+      modalParagraphs[2].textContent =
+        "Please do not make payment yet. Your timing and final amount must be confirmed first.";
+    }
+    if (modalParagraphs[3]) {
+      modalParagraphs[3].textContent =
+        "We’ll contact you by email or WhatsApp after reviewing your request.";
+    }
+    checkoutScreen.classList.add("hidden");
+    successModal.classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
 
   // Supabase sends the Telegram alert through a database webhook.
   // The customer-facing website does not contain the Telegram bot token.
@@ -3803,6 +4142,17 @@ collectionMethod.addEventListener("change", () => {
   validateForm();
 });
 
+rushOrderToggle.addEventListener("change", () => {
+  if (!rushOrderToggle.checked && names.length < bulkOrderQuantity) {
+    requestedCompletionDate.value = "";
+    specialDateCalendar?.clear();
+  }
+  rushAssessment = null;
+  rushAssessmentFingerprint = "";
+  updateTurnaroundMessaging();
+  validateForm();
+});
+
 deliveryAddressLine1.addEventListener(
   "input",
   validateForm
@@ -3854,6 +4204,37 @@ paymentBackBtn.onclick = () => {
 paymentDoneBtn.onclick = () => {
   window.location.href = "/";
 };
+
+hitpayCheckoutBtn?.addEventListener("click", async () => {
+  const orderRef = paymentOrderRef.innerText.trim();
+  const email = customerEmail.value.trim();
+  if (!orderRef || !email) return;
+
+  hitpayCheckoutBtn.disabled = true;
+  hitpayCheckoutBtn.textContent = "Opening secure payment…";
+  hitpayCheckoutStatus.textContent = "Creating your HitPay checkout…";
+
+  try {
+    const { data, error } = await supabase.functions.invoke("hitpay-create-payment", {
+      body: { order_ref: orderRef, email }
+    });
+    if (error) throw error;
+
+    if (data?.paid) {
+      hitpayCheckoutStatus.textContent = "This order has already been paid ✓";
+      return;
+    }
+
+    if (!data?.url) throw new Error(data?.error || "Payment link was not returned.");
+    window.location.assign(data.url);
+  } catch (error) {
+    console.error("Unable to open HitPay:", error);
+    hitpayCheckoutStatus.textContent =
+      "Online payment is temporarily unavailable. You can still use manual PayNow below.";
+    hitpayCheckoutBtn.disabled = false;
+    hitpayCheckoutBtn.textContent = "Try HitPay Again";
+  }
+});
 
 copyOrderRefBtn.onclick = async () => {
   const orderRef = paymentOrderRef.innerText.trim();
@@ -3911,14 +4292,28 @@ function validateForm() {
         message = "Contact number must be 8 digits.";
     }
 
-    else if (!neededBy.value) {
-        valid = false;
-        message = "Please select a required date.";
+    else if (
+      ["rush", "bulk"].includes(getCheckoutOrderType()) &&
+      !requestedCompletionDate.value
+    ) {
+      valid = false;
+      message = "Please choose your preferred completion date.";
     }
 
-    else if (!neededByAllowed) {
+    else if (
+      getCheckoutOrderType() === "rush" &&
+      (!rushAssessment || rushAssessmentFingerprint !== getRushFingerprint())
+    ) {
       valid = false;
-      message = neededByMessage || "Please choose another date.";
+      message = "Please wait while we check rush availability.";
+    }
+
+    else if (
+      getCheckoutOrderType() === "rush" &&
+      rushAssessment.status === "unavailable"
+    ) {
+      valid = false;
+      message = "Rush service is unavailable for this date. Please choose another date or use the normal estimate.";
     }
 
 else if (
@@ -3977,6 +4372,8 @@ function saveDraft() {
     customerPhone: customerPhone.value,
 
     neededBy: neededBy.value,
+    rushOrderRequested: rushOrderToggle.checked,
+    requestedCompletionDate: requestedCompletionDate.value,
     collectionMethod: collectionMethod.value,
     deliveryAddressLine1:
       deliveryAddressLine1.value,
@@ -4084,6 +4481,12 @@ continueDraftBtn.onclick = () => {
 
   neededBy.value =
     draftData.neededBy || "";
+
+  rushOrderToggle.checked =
+    Boolean(draftData.rushOrderRequested);
+
+  requestedCompletionDate.value =
+    draftData.requestedCompletionDate || "";
 
   collectionMethod.value =
     draftData.collectionMethod || "pickup";
@@ -4296,11 +4699,13 @@ const CUSTOMER_STATUS_STEPS = [
   "Payment Verified",
   "Printing",
   "Ready",
+  "Fulfilment",
   "Completed"
 ];
 
 function getCustomerStatusStep(status) {
-  if (status === "Completed") return 4;
+  if (status === "Completed") return 5;
+  if (status === "Out for Delivery") return 4;
   if (status === "Ready for Pickup/Delivery") return 3;
   if (status === "Printing") return 2;
   if (status === "Payment Verified") return 1;
@@ -4309,11 +4714,14 @@ function getCustomerStatusStep(status) {
 
 function formatCustomerStatus(status) {
   const labels = {
+    "Rush Review": "Rush request being reviewed",
+    "Bulk Review": "Bulk request being reviewed",
     "Pending Payment": "Waiting for payment",
     "Payment Verification": "Payment being checked",
     "Payment Verified": "Payment verified",
     "Printing": "In production",
     "Ready for Pickup/Delivery": "Ready for pickup or delivery",
+    "Out for Delivery": "Out for delivery",
     "Completed": "Completed"
   };
 
@@ -4336,6 +4744,25 @@ function formatPreferredDate(value) {
 function renderCustomerOrderStatus(order) {
   const activeStep = getCustomerStatusStep(order.status);
   const methodIsDelivery = order.collection_method === "delivery";
+  const isSpecialRequest = ["rush", "bulk"].includes(order.order_type);
+  const timingLabel = isSpecialRequest
+    ? "Preferred completion date"
+    : methodIsDelivery
+      ? "Estimated dispatch"
+      : "Estimated ready for collection";
+  const timingValue = isSpecialRequest
+    ? formatPreferredDate(order.requested_completion_date || order.needed_by)
+    : order.estimated_ready_from && order.estimated_ready_to
+      ? `${formatPreferredDate(order.estimated_ready_from)}–${formatPreferredDate(order.estimated_ready_to)}`
+      : formatPreferredDate(order.needed_by);
+  const trackingUrl = (() => {
+    try {
+      const url = new URL(order.tracking_url || "");
+      return ["https:", "http:"].includes(url.protocol) ? url.href : "";
+    } catch {
+      return "";
+    }
+  })();
 
   orderStatusResult.innerHTML = `
     <div class="order-status-result-heading">
@@ -4361,19 +4788,73 @@ function renderCustomerOrderStatus(order) {
         <strong>${methodIsDelivery ? "Islandwide delivery" : "Pickup at Woodlands MRT"}</strong>
       </p>
       <p>
-        <span>${methodIsDelivery ? "Preferred dispatch date" : "Preferred pickup date"}</span>
-        <strong>${escapePresetText(formatPreferredDate(order.needed_by))}</strong>
+        <span>${timingLabel}</span>
+        <strong>${escapePresetText(timingValue)}</strong>
       </p>
+      ${methodIsDelivery && order.courier_name ? `
+        <p><span>Courier</span><strong>${escapePresetText(order.courier_name)}</strong></p>
+      ` : ""}
+      ${methodIsDelivery && order.tracking_number ? `
+        <p><span>Tracking number</span><strong>${escapePresetText(order.tracking_number)}</strong></p>
+      ` : ""}
     </div>
 
+    ${methodIsDelivery && trackingUrl ? `
+      <a class="order-tracking-link" href="${escapePresetText(trackingUrl)}" target="_blank" rel="noopener">Track Delivery</a>
+    ` : ""}
+
+    ${isSpecialRequest && order.review_status === "Approved" && order.status === "Pending Payment" ? `
+      <div class="approved-request-payment">
+        <span>Request approved ✓</span>
+        <h3>Total: ${displaySettingMoney(order.total)}</h3>
+        <p>Use <strong>${escapePresetText(order.order_ref)}</strong> as your payment reference.</p>
+        ${shopSettings.hitpay_enabled ? `
+          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>Pay Online with HitPay</button>
+        ` : `
+          <img src="/models/paynow.png" class="paynowQR" alt="Little Keeps PayNow QR">
+          <button class="save-qr-btn" type="button" onclick='window.copyTrackedOrderRef(${JSON.stringify(order.order_ref)}, this)'>Copy Order Reference</button>
+        `}
+      </div>
+    ` : ""}
+
     <p class="order-status-disclaimer">
-      Preferred dates are requests. We’ll confirm your pickup or dispatch
-      date by email. For last-minute arrangements, we may contact you on WhatsApp.
+      ${isSpecialRequest && order.review_status !== "Approved"
+        ? "Your preferred completion date is being reviewed. Please wait for confirmation before making payment."
+        : "This estimate is based on our current production schedule. Pickup or delivery updates will appear here as your order progresses."}
     </p>
   `;
 
   orderStatusResult.classList.remove("hidden");
 }
+
+window.copyTrackedOrderRef = async function(orderRef, button) {
+  await navigator.clipboard.writeText(orderRef);
+  if (button) button.textContent = "Copied ✓";
+};
+
+window.payTrackedOrder = async function(orderRef, email, button) {
+  const previousLabel = button?.textContent || "Pay Online with HitPay";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Opening secure payment…";
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke("hitpay-create-payment", {
+      body: { order_ref: orderRef, email }
+    });
+    if (error) throw error;
+    if (!data?.url) throw new Error(data?.error || "Payment link unavailable");
+    window.location.assign(data.url);
+  } catch (error) {
+    console.error("Unable to open approved payment:", error);
+    alert("Online payment is temporarily unavailable. Please contact Little Keeps for help.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+  }
+};
 
 orderStatusForm?.addEventListener("submit", async event => {
   event.preventDefault();

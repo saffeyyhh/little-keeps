@@ -2702,3 +2702,226 @@ label {
   background: var(--pink) !important;
 }
 
+.online-payment-panel {
+  position: relative;
+  margin: 24px 0;
+  padding: 22px;
+  border: 2px solid #ffc4d9;
+  border-radius: 20px;
+  text-align: left;
+  background: linear-gradient(145deg, #fff, #fff4f8);
+  box-shadow: 0 12px 30px rgba(255, 103, 153, .12);
+}
+
+.online-payment-panel h3 {
+  margin: 8px 0;
+}
+
+.online-payment-panel p {
+  margin: 0 0 16px;
+}
+
+.online-payment-panel .submit-btn {
+  width: 100%;
+  margin: 0;
+}
+
+.online-payment-badge {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: #a63763;
+  background: #ffe1ec;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+.payment-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0;
+  color: #8b8085;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.payment-divider::before,
+.payment-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #ecdde3;
+}
+
+.order-tracking-link {
+  display: inline-flex;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  color: white;
+  background: var(--pink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.automatic-date-card,
+.bulk-order-notice,
+.special-order-option,
+.special-date-section {
+  margin: 18px 0;
+  padding: 17px;
+  border: 1px solid #efd8e2;
+  border-radius: 17px;
+  background: #fff8fb;
+}
+
+.automatic-date-card span,
+.automatic-date-card strong,
+.automatic-date-card small {
+  display: block;
+}
+
+.automatic-date-card span {
+  color: #7e7076;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.automatic-date-card strong {
+  margin: 6px 0;
+  color: #d94d82;
+  font-size: 22px;
+}
+
+.automatic-date-card small,
+.special-order-toggle small {
+  color: #83777c;
+  line-height: 1.5;
+}
+
+.special-order-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 !important;
+  cursor: pointer;
+}
+
+.special-order-toggle input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--pink);
+}
+
+.special-order-toggle span,
+.special-order-toggle strong,
+.special-order-toggle small {
+  display: block;
+}
+
+.special-order-toggle strong {
+  margin-bottom: 4px;
+}
+
+.special-date-section label {
+  display: block;
+  margin: 0 0 8px;
+}
+
+.special-date-section input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.bulk-order-notice {
+  border-color: #d9c7ee;
+  background: #faf6ff;
+}
+
+.bulk-order-notice strong {
+  color: #71479b;
+}
+
+.bulk-order-notice p {
+  margin: 7px 0 0;
+  color: #6f6475;
+  line-height: 1.6;
+}
+
+.approved-request-payment {
+  margin-top: 18px;
+  padding: 20px;
+  border: 2px solid #bde1cc;
+  border-radius: 18px;
+  text-align: center;
+  background: #f2fbf6;
+}
+
+.approved-request-payment > span {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: #246849;
+  background: #daf2e4;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.approved-request-payment h3 {
+  margin: 12px 0 7px;
+}
+
+.approved-request-payment .paynowQR {
+  display: block;
+  width: min(230px, 100%);
+  margin: 16px auto;
+}
+
+.rush-availability {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 1px solid;
+  border-radius: 13px;
+}
+
+.rush-availability strong,
+.rush-availability span {
+  display: block;
+}
+
+.rush-availability span {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rush-availability.is-checking {
+  color: #635a76;
+  border-color: #d9cbea;
+  background: #faf7ff;
+}
+
+.rush-availability.is-available {
+  color: #246849;
+  border-color: #b9dfc9;
+  background: #f1fbf5;
+}
+
+.rush-availability.is-review {
+  color: #805718;
+  border-color: #efce94;
+  background: #fff9ec;
+}
+
+.rush-availability.is-unavailable {
+  color: #a34051;
+  border-color: #edbac3;
+  background: #fff4f6;
+}
