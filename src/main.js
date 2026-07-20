@@ -1160,7 +1160,7 @@ Chloe</textarea>
             <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to PayNow</button>
             <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
-          <p class="hint">Payment is confirmed automatically—no screenshot needed. Your confirmation and order PDF will be emailed after payment. Please check Spam or Junk if it’s not in your inbox.</p>
+          <p class="hint">Payment is confirmed automatically - no screenshot needed. Your confirmation and order PDF will be emailed after payment. Please check Spam or Junk if it’s not in your inbox.</p>
         ` : `
           <div class="online-payment-panel">
             <h3>Online payment is temporarily unavailable</h3>
@@ -1172,7 +1172,7 @@ Chloe</textarea>
   id="paymentDoneBtn"
   class="secondary-btn"
 >
-  Pay later — Return to Shop
+  Pay later - Return to Shop
 </button>
       </div>
     </section>
@@ -5039,7 +5039,7 @@ if (
       text-align:center;
     `;
     previewNotice.innerText =
-      "Preview mode only — no order has been submitted.";
+      "Preview mode only - no order has been submitted.";
     paymentBox.prepend(previewNotice);
   }
 

@@ -389,7 +389,7 @@ const ORDER_PROGRESS = {
   "Rush Review": { percent: 5, label: "Rush request awaiting review" },
   "Bulk Review": { percent: 5, label: "Bulk request awaiting review" },
   "Pending Payment": { percent: 5, label: "Waiting for payment" },
-  "Payment Expired": { percent: 0, label: "Checkout expired — slot released" },
+  "Payment Expired": { percent: 0, label: "Checkout expired - slot released" },
   "Payment Verification": { percent: 15, label: "Checking payment" },
   "Payment Verified": { percent: 30, label: "Ready for production" },
   "Printing": { percent: 58, label: "Printing parts" },
@@ -415,7 +415,7 @@ function hasExpiredPaymentHold(order) {
 }
 
 function formatPaymentHold(order) {
-  if (hasExpiredPaymentHold(order)) return "Expired — production slot released";
+  if (hasExpiredPaymentHold(order)) return "Expired - production slot released";
   if (!order.payment_expires_at || order.status !== "Pending Payment") return "Not active";
 
   const expiry = new Date(order.payment_expires_at);
@@ -527,7 +527,7 @@ function renderTodayWorkspace(orders) {
 
     <div class="today-grid">
       ${section("Rush & bulk requests", "⚡", specialRequests, "No special requests need review.")}
-      ${section("Due today or tomorrow", "⏰", dueNow, "Nothing urgent—lovely!")}
+      ${section("Due today or tomorrow", "⏰", dueNow, "Nothing urgent - lovely!")}
       ${section("Payment attention", "💳", awaitingPayment, "No payments need attention.")}
       ${section("Print & assemble", "🖨️", production, "Production is caught up.")}
       ${section("Pickup & delivery", "📦", fulfilment, "Nothing is waiting for fulfilment.")}
@@ -1212,12 +1212,12 @@ function renderOrders(orders) {
       class="status-select"
       onchange="window.updateOrderStatus('${order.id}', this.value)"
     >
-      ${order.status === "Rush Review" ? `<option value="Rush Review" selected>Rush request — review</option>` : ""}
-      ${order.status === "Bulk Review" ? `<option value="Bulk Review" selected>Bulk request — review</option>` : ""}
-      ${order.status === "Payment Verification" ? `<option value="Payment Verification" selected>Manual payment — check</option>` : ""}
+      ${order.status === "Rush Review" ? `<option value="Rush Review" selected>Rush request - review</option>` : ""}
+      ${order.status === "Bulk Review" ? `<option value="Bulk Review" selected>Bulk request - review</option>` : ""}
+      ${order.status === "Payment Verification" ? `<option value="Payment Verification" selected>Manual payment - check</option>` : ""}
       <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Awaiting payment</option>
-      <option value="Payment Expired" ${order.status === "Payment Expired" ? "selected" : ""}>Checkout expired — slot released</option>
-      <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid — ready to print</option>
+      <option value="Payment Expired" ${order.status === "Payment Expired" ? "selected" : ""}>Checkout expired - slot released</option>
+      <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid - ready to print</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
       <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>${order.collection_method === "delivery" ? "Ready for delivery" : "Ready for pickup"}</option>
       ${order.collection_method === "delivery" ? `<option value="Out for Delivery" ${order.status === "Out for Delivery" ? "selected" : ""}>Out for Delivery</option>` : ""}
@@ -3281,7 +3281,7 @@ async function sendPaymentVerifiedEmail(order) {
 
           const price = formatMoney(item.price);
 
-          return `${index + 1}. ${name} — ${price}`;
+          return `${index + 1}. ${name} - ${price}`;
         })
         .join("\n")
     : "No item details available.";
