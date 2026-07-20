@@ -4982,6 +4982,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
         spread: 72,
         startVelocity: 34,
         origin: { y: 0.68 },
+        zIndex: 1300,
         colors: ["#ff6799", "#ffb6cf", "#ffd966", "#ffffff"],
       });
     }, 250);
