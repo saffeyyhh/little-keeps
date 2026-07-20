@@ -148,6 +148,87 @@ body.cart-open {
   -webkit-backdrop-filter: blur(18px);
 }
 
+.pending-order-banner {
+  width: min(var(--content), calc(100% - 32px));
+  margin: 14px auto 0;
+  padding: 13px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #f1bfd0;
+  border-radius: 16px;
+  color: #604650;
+  background: linear-gradient(135deg, #fff7fa, #fff);
+  box-shadow: 0 10px 28px rgba(104, 60, 77, 0.08);
+}
+
+.pending-order-banner > div:first-child {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 2px 9px;
+}
+
+.pending-order-banner small {
+  color: var(--pink-dark);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pending-order-banner strong {
+  font-size: 13px;
+}
+
+.pending-order-banner span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pending-order-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.pending-order-banner-actions button {
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid var(--pink);
+  border-radius: 999px;
+  color: #fff;
+  background: var(--pink);
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.pending-order-banner-actions .pending-order-dismiss {
+  width: 38px;
+  padding: 0;
+  border-color: var(--border);
+  color: var(--muted);
+  background: #fff;
+  font-size: 18px;
+}
+
+@media (max-width: 640px) {
+  .pending-order-banner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pending-order-banner-actions button:first-child {
+    flex: 1;
+  }
+}
+
 .menu-icon-btn,
 .menu-close-btn {
   border: 0;
