@@ -3701,7 +3701,7 @@ async function submitOrder() {
     return;
   }
 
-  // Supabase sends the Telegram alert through a database webhook.
+  // Supabase sends the Telegram alert only after payment is verified.
   // The customer-facing website does not contain the Telegram bot token.
   paymentOrderRef.innerText = orderRef;
   paymentTotal.innerText = `$${total.toFixed(2)}`;
@@ -4874,6 +4874,57 @@ buildSelectedPreview();
 animate();
 
 loadDraft();
+
+const paymentReturnParams = new URLSearchParams(window.location.search);
+const paymentReturnState = paymentReturnParams.get("payment");
+
+if (["success", "cancelled"].includes(paymentReturnState)) {
+  const returnedOrderRef = paymentReturnParams.get("order_ref") || "";
+  const modalHeading = successModal.querySelector("h2");
+  const modalParagraphs = successModal.querySelectorAll(".modal-card > p");
+
+  draftModal.classList.add("hidden");
+
+  if (paymentReturnState === "success") {
+    modalHeading.textContent = "Payment successful ✓";
+    if (modalParagraphs[0]) {
+      modalParagraphs[0].textContent =
+        "Thank you! Stripe has received your PayNow payment.";
+    }
+    orderRefText.textContent = returnedOrderRef
+      ? `Order ${returnedOrderRef}`
+      : "Your Little Keeps order";
+    if (modalParagraphs[2]) {
+      modalParagraphs[2].textContent =
+        "Your order is confirmed and will move into production.";
+    }
+    if (modalParagraphs[3]) {
+      modalParagraphs[3].innerHTML =
+        "📧 Your confirmation and order PDF will be emailed shortly.<br>If it isn’t in your inbox, please check Spam or Junk.";
+    }
+  } else {
+    modalHeading.textContent = "Payment not completed";
+    if (modalParagraphs[0]) {
+      modalParagraphs[0].textContent =
+        "No payment was taken. Your order is still saved.";
+    }
+    orderRefText.textContent = returnedOrderRef
+      ? `Order ${returnedOrderRef}`
+      : "Your Little Keeps order";
+    if (modalParagraphs[2]) {
+      modalParagraphs[2].textContent =
+        "You can use Check Order with your reference and email to pay later.";
+    }
+    if (modalParagraphs[3]) {
+      modalParagraphs[3].textContent =
+        "Need help? Contact Little Keeps and quote your order reference.";
+    }
+  }
+
+  closeModalBtn.textContent = "Return to Shop";
+  successModal.classList.remove("hidden");
+  window.history.replaceState({}, "", window.location.pathname);
+}
 
 // Payment-page preview for layout testing only.
 // This does not create, save or update an order.
