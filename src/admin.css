@@ -1409,6 +1409,11 @@ a {
   background: #eaf8f0;
 }
 
+.order-card[data-status="Payment Expired"] .order-status-badge {
+  color: #9b3858;
+  background: #fff0f4;
+}
+
 .order-card[data-status="Completed"] .order-status-badge {
   color: #66757c;
   background: #edf1f2;

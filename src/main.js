@@ -1156,7 +1156,7 @@ Chloe</textarea>
 
         ${shopSettings.stripe_enabled ? `
           <div class="online-payment-panel">
-            <p>We’ll open a secure Stripe page with your exact PayNow amount.</p>
+            <p>We’ll open a secure Stripe page with your exact PayNow amount. Your production slot is held for about 30 minutes once it opens.</p>
             <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to PayNow</button>
             <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
@@ -4162,6 +4162,22 @@ paymentDoneBtn.onclick = () => {
   window.location.href = "/";
 };
 
+async function getCheckoutErrorMessage(error, fallback) {
+  try {
+    const response = error?.context;
+    if (response?.clone) {
+      const body = await response.clone().json();
+      if (body?.error) return body.error;
+    }
+  } catch {
+    // Use the friendly fallback below when the Edge Function response is unavailable.
+  }
+
+  return error?.message && !String(error.message).includes("non-2xx")
+    ? error.message
+    : fallback;
+}
+
 stripeCheckoutBtn?.addEventListener("click", async () => {
   const orderRef = paymentOrderRef.innerText.trim();
   const email = customerEmail.value.trim();
@@ -4176,6 +4192,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
       body: { order_ref: orderRef, email }
     });
     if (error) throw error;
+    if (data?.error) throw new Error(data.error);
 
     if (data?.paid) {
       stripeCheckoutStatus.textContent = "This order has already been paid ✓";
@@ -4186,8 +4203,10 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
     window.location.assign(data.url);
   } catch (error) {
     console.error("Unable to open Stripe Checkout:", error);
-    stripeCheckoutStatus.textContent =
-      "Online payment is temporarily unavailable. Please contact Little Keeps and quote your order reference.";
+    stripeCheckoutStatus.textContent = await getCheckoutErrorMessage(
+      error,
+      "Online payment is temporarily unavailable. Please contact Little Keeps and quote your order reference."
+    );
     stripeCheckoutBtn.disabled = false;
     stripeCheckoutBtn.textContent = "Try PayNow Again";
   }
@@ -4648,6 +4667,7 @@ function formatCustomerStatus(status) {
     "Rush Review": "Rush request being reviewed",
     "Bulk Review": "Bulk request being reviewed",
     "Pending Payment": "Waiting for payment",
+    "Payment Expired": "Payment time expired",
     "Payment Verification": "Payment being checked",
     "Payment Verified": "Payment verified",
     "Printing": "In production",
@@ -4657,6 +4677,34 @@ function formatCustomerStatus(status) {
   };
 
   return labels[status] || status || "Order received";
+}
+
+let paymentHoldCountdownTimer = null;
+
+function startPaymentHoldCountdown() {
+  clearInterval(paymentHoldCountdownTimer);
+
+  const update = () => {
+    const countdown = orderStatusResult.querySelector("[data-payment-expiry]");
+    if (!countdown) return;
+
+    const expiresAt = new Date(countdown.dataset.paymentExpiry).getTime();
+    const remaining = expiresAt - Date.now();
+
+    if (!Number.isFinite(expiresAt) || remaining <= 0) {
+      countdown.textContent = "The previous payment hold has expired. Open PayNow again to request a fresh slot.";
+      countdown.classList.add("is-expired");
+      clearInterval(paymentHoldCountdownTimer);
+      return;
+    }
+
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    countdown.textContent = `Production slot held for ${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
+
+  update();
+  paymentHoldCountdownTimer = setInterval(update, 1000);
 }
 
 function formatPreferredDate(value) {
@@ -4673,9 +4721,21 @@ function formatPreferredDate(value) {
 }
 
 function renderCustomerOrderStatus(order) {
-  const activeStep = getCustomerStatusStep(order.status);
+  const paymentExpired =
+    order.payment_type !== "Paid" &&
+    (order.status === "Payment Expired" ||
+      (order.status === "Pending Payment" &&
+        order.payment_expires_at &&
+        new Date(order.payment_expires_at).getTime() <= Date.now()));
+  const effectiveStatus = paymentExpired ? "Payment Expired" : order.status;
+  const activeStep = getCustomerStatusStep(effectiveStatus);
   const methodIsDelivery = order.collection_method === "delivery";
   const isSpecialRequest = ["rush", "bulk"].includes(order.order_type);
+  const requestApproved = ["Approved", "Auto Approved"].includes(order.review_status);
+  const canPay =
+    order.payment_type !== "Paid" &&
+    ["Pending Payment", "Payment Expired"].includes(effectiveStatus) &&
+    (!isSpecialRequest || requestApproved);
   const timingLabel = isSpecialRequest
     ? "Preferred completion date"
     : methodIsDelivery
@@ -4701,7 +4761,7 @@ function renderCustomerOrderStatus(order) {
         <small>Order reference</small>
         <strong>${escapePresetText(order.order_ref)}</strong>
       </div>
-      <span>${escapePresetText(formatCustomerStatus(order.status))}</span>
+      <span>${escapePresetText(formatCustomerStatus(effectiveStatus))}</span>
     </div>
 
     <div class="order-status-timeline">
@@ -4734,25 +4794,34 @@ function renderCustomerOrderStatus(order) {
       <a class="order-tracking-link" href="${escapePresetText(trackingUrl)}" target="_blank" rel="noopener">Track Delivery</a>
     ` : ""}
 
-    ${isSpecialRequest && order.review_status === "Approved" && order.status === "Pending Payment" ? `
+    ${canPay ? `
       <div class="approved-request-payment">
-        <span>Request approved ✓</span>
+        <span>${isSpecialRequest ? "Request approved ✓" : paymentExpired ? "Fresh payment slot needed" : "Secure PayNow checkout"}</span>
         <h3>Total: ${displaySettingMoney(order.total)}</h3>
-        <p>Use <strong>${escapePresetText(order.order_ref)}</strong> as your payment reference.</p>
+        ${order.payment_expires_at && !paymentExpired ? `
+          <p class="payment-hold-countdown" data-payment-expiry="${escapePresetText(order.payment_expires_at)}"></p>
+        ` : `
+          <p>${paymentExpired
+            ? "Your previous checkout expired and no slot is being held. Open PayNow again to reserve a fresh slot."
+            : "A production slot will be held for about 30 minutes when the secure payment page opens."}</p>
+        `}
         ${shopSettings.stripe_enabled ? `
-          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>Pay Securely with PayNow</button>
+          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Open a Fresh PayNow Checkout" : "Pay Securely with PayNow"}</button>
         ` : `<p>Online payment is temporarily unavailable. Please contact Little Keeps.</p>`}
       </div>
     ` : ""}
 
     <p class="order-status-disclaimer">
-      ${isSpecialRequest && order.review_status !== "Approved"
+      ${isSpecialRequest && !requestApproved
         ? "Your preferred completion date is being reviewed. Please wait for confirmation before making payment."
+        : paymentExpired
+          ? "No production slot is currently reserved for this unpaid order. Availability is checked again when you open PayNow."
         : "This estimate is based on our current production schedule. Pickup or delivery updates will appear here as your order progresses."}
     </p>
   `;
 
   orderStatusResult.classList.remove("hidden");
+  startPaymentHoldCountdown();
 }
 
 window.copyTrackedOrderRef = async function(orderRef, button) {
@@ -4772,6 +4841,7 @@ window.payTrackedOrder = async function(orderRef, email, button) {
       body: { order_ref: orderRef, email }
     });
     if (error) throw error;
+    if (data?.error) throw new Error(data.error);
     if (data?.paid) {
       alert("This order has already been paid ✓");
       return;
@@ -4780,7 +4850,10 @@ window.payTrackedOrder = async function(orderRef, email, button) {
     window.location.assign(data.url);
   } catch (error) {
     console.error("Unable to open approved payment:", error);
-    alert("Online payment is temporarily unavailable. Please contact Little Keeps for help.");
+    alert(await getCheckoutErrorMessage(
+      error,
+      "Online payment is temporarily unavailable. Please contact Little Keeps for help."
+    ));
     if (button) {
       button.disabled = false;
       button.textContent = previousLabel;
@@ -4923,7 +4996,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
       : "Your Little Keeps order";
     if (modalParagraphs[2]) {
       modalParagraphs[2].textContent =
-        "You can use Check Order with your reference and email to pay later.";
+        "Your payment slot is held only briefly. Use Check Order with your reference and email whenever you’re ready to reopen PayNow.";
     }
     if (modalParagraphs[3]) {
       modalParagraphs[3].textContent =

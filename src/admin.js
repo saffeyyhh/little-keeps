@@ -139,6 +139,7 @@ document.querySelector("#app").innerHTML = `
             <option value="all">All stages</option>
             <option value="review">Needs review</option>
             <option value="Pending Payment">Awaiting payment</option>
+            <option value="Payment Expired">Expired checkouts</option>
             <option value="Payment Verified">Ready to print</option>
             <option value="Printing">Printing</option>
             <option value="Ready for Pickup/Delivery">Ready</option>
@@ -388,6 +389,7 @@ const ORDER_PROGRESS = {
   "Rush Review": { percent: 5, label: "Rush request awaiting review" },
   "Bulk Review": { percent: 5, label: "Bulk request awaiting review" },
   "Pending Payment": { percent: 5, label: "Waiting for payment" },
+  "Payment Expired": { percent: 0, label: "Checkout expired — slot released" },
   "Payment Verification": { percent: 15, label: "Checking payment" },
   "Payment Verified": { percent: 30, label: "Ready for production" },
   "Printing": { percent: 58, label: "Printing parts" },
@@ -395,6 +397,35 @@ const ORDER_PROGRESS = {
   "Out for Delivery": { percent: 94, label: "Out for delivery" },
   "Completed": { percent: 100, label: "Completed" }
 };
+
+function hasExpiredPaymentHold(order) {
+  if (
+    order.payment_type === "Paid" ||
+    order.online_payment_status === "completed" ||
+    order.status === "Payment Expired"
+  ) {
+    return order.status === "Payment Expired";
+  }
+
+  return Boolean(
+    order.status === "Pending Payment" &&
+    order.payment_expires_at &&
+    new Date(order.payment_expires_at).getTime() <= Date.now()
+  );
+}
+
+function formatPaymentHold(order) {
+  if (hasExpiredPaymentHold(order)) return "Expired — production slot released";
+  if (!order.payment_expires_at || order.status !== "Pending Payment") return "Not active";
+
+  const expiry = new Date(order.payment_expires_at);
+  if (Number.isNaN(expiry.getTime())) return "Not active";
+
+  return `Held until ${expiry.toLocaleTimeString("en-SG", {
+    hour: "numeric",
+    minute: "2-digit"
+  })}`;
+}
 
 function getOrderProgress(order) {
   return ORDER_PROGRESS[order.status] || { percent: 0, label: order.status || "Order received" };
@@ -850,6 +881,10 @@ function getDaysUntil(dateValue) {
 }
 
 function getDuePresentation(order) {
+  if (hasExpiredPaymentHold(order)) {
+    return { className: "is-overdue", label: "Payment expired" };
+  }
+
   if (order.status === "Completed") {
     return { className: "is-complete", label: "Completed" };
   }
@@ -1120,6 +1155,9 @@ function renderOrders(orders) {
         ${Number(order.rush_fee || 0) > 0 ? `<p><strong>Rush Fee</strong><br>${formatMoney(order.rush_fee)}</p>` : ""}
         <p><strong>Total</strong><br>${formatMoney(order.total)}</p>
         <p><strong>Order Source</strong><br>${escapeAdminHtml(order.order_source || "-")}</p>
+        ${["Pending Payment", "Payment Expired"].includes(order.status) ? `
+          <p><strong>Payment Slot</strong><br>${escapeAdminHtml(formatPaymentHold(order))}</p>
+        ` : ""}
       </div>
 
       <div class="order-quick-actions">
@@ -1178,6 +1216,7 @@ function renderOrders(orders) {
       ${order.status === "Bulk Review" ? `<option value="Bulk Review" selected>Bulk request — review</option>` : ""}
       ${order.status === "Payment Verification" ? `<option value="Payment Verification" selected>Manual payment — check</option>` : ""}
       <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Awaiting payment</option>
+      <option value="Payment Expired" ${order.status === "Payment Expired" ? "selected" : ""}>Checkout expired — slot released</option>
       <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid — ready to print</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
       <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>${order.collection_method === "delivery" ? "Ready for delivery" : "Ready for pickup"}</option>
@@ -3853,7 +3892,11 @@ async function loadOrders() {
     return;
   }
 
-latestOrders = data || [];
+latestOrders = (data || []).map(order =>
+  hasExpiredPaymentHold(order)
+    ? { ...order, status: "Payment Expired", online_payment_status: "expired" }
+    : order
+);
 
 await Promise.all([
   loadInventoryItems(),

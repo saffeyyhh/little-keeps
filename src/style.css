@@ -2946,6 +2946,17 @@ label {
   margin: 12px 0 7px;
 }
 
+.payment-hold-countdown {
+  margin: 10px auto 14px;
+  color: #246849;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-hold-countdown.is-expired {
+  color: #b33d61;
+}
+
 .approved-request-payment .paynowQR {
   display: block;
   width: min(230px, 100%);
