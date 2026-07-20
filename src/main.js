@@ -1145,43 +1145,22 @@ Chloe</textarea>
       </button>
 
       <div class="payment-box">
-<h2>Complete Your Payment</h2>
-
-        <p>
-          Please complete payment to begin production.
-        </p>
-
         <div class="payment-status-banner">
-          <strong>✓ Your order has been saved.</strong><br>
-          Stripe will verify your PayNow payment automatically. Once paid,
-          we’ll email your confirmation and order PDF.
+          <strong>Order saved ✓</strong>
+          <span>Reference <span id="paymentOrderRef"></span></span>
         </div>
 
-        <h3>Order Reference</h3>
-        <strong id="paymentOrderRef"></strong>
-
-        <button
-          id="copyOrderRefBtn"
-          type="button"
-          class="save-qr-btn"
-        >
-          Copy Order Reference
-        </button>
-
-        <p id="copyOrderRefStatus" class="hint"></p>
-
-        <h3>Total Amount</h3>
-        <strong id="paymentTotal"></strong>
+        <h2>Pay with PayNow</h2>
+        <p class="payment-total-label">Total due</p>
+        <strong id="paymentTotal" class="payment-total-value"></strong>
 
         ${shopSettings.stripe_enabled ? `
           <div class="online-payment-panel">
-            <span class="online-payment-badge">Recommended</span>
-            <h3>Pay securely with PayNow</h3>
-            <p>Stripe will show a secure PayNow QR code and verify your payment automatically.</p>
-            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Pay Securely with PayNow</button>
+            <p>We’ll open a secure Stripe page with your exact PayNow amount.</p>
+            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to PayNow</button>
             <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
-          <p class="hint">No screenshot or WhatsApp message is required. After payment, check your Spam or Junk folder if the confirmation email is not in your inbox.</p>
+          <p class="hint">Payment is confirmed automatically—no screenshot needed. Your confirmation and order PDF will be emailed after payment. Please check Spam or Junk if it’s not in your inbox.</p>
         ` : `
           <div class="online-payment-panel">
             <h3>Online payment is temporarily unavailable</h3>
@@ -1191,9 +1170,9 @@ Chloe</textarea>
 
 <button
   id="paymentDoneBtn"
-  class="submit-btn"
+  class="secondary-btn"
 >
-  Done — Return to Shop
+  Pay later — Return to Shop
 </button>
       </div>
     </section>
@@ -1546,10 +1525,6 @@ const paymentScreen =
 document.getElementById("paymentScreen");
 const paymentOrderRef =
 document.getElementById("paymentOrderRef");
-const copyOrderRefBtn =
-document.getElementById("copyOrderRefBtn");
-const copyOrderRefStatus =
-document.getElementById("copyOrderRefStatus");
 const paymentTotal =
 document.getElementById("paymentTotal");
 const paymentDoneBtn =
@@ -4217,32 +4192,6 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
     stripeCheckoutBtn.textContent = "Try PayNow Again";
   }
 });
-
-copyOrderRefBtn.onclick = async () => {
-  const orderRef = paymentOrderRef.innerText.trim();
-
-  if (!orderRef) return;
-
-  try {
-    await navigator.clipboard.writeText(orderRef);
-  } catch (error) {
-    const temporaryInput = document.createElement("textarea");
-    temporaryInput.value = orderRef;
-    temporaryInput.style.position = "fixed";
-    temporaryInput.style.opacity = "0";
-    document.body.appendChild(temporaryInput);
-    temporaryInput.select();
-    document.execCommand("copy");
-    temporaryInput.remove();
-  }
-
-  copyOrderRefStatus.innerText =
-    "Copied! Paste this into your PayNow reference or remarks.";
-
-  setTimeout(() => {
-    copyOrderRefStatus.innerText = "";
-  }, 4000);
-};
 
 makeSwatches("baseColours", baseColours, "base");
 makeSwatches("capColours", capColours, "cap");

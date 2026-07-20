@@ -2049,7 +2049,7 @@ function createAssemblyMiniPreview(name, design) {
             class="mini-cap"
             style="background:${capHex}; color:${letterHex};"
           >
-            <span style="display:inline-block;transform:${getLetterOrientation(design) === "horizontal" ? "rotate(90deg)" : "none"};">
+            <span style="display:inline-block;transform:${getLetterOrientation(design) === "horizontal" ? "rotate(-90deg)" : "none"};">
               ${displayIcon(letter)}
             </span>
           </div>
@@ -2563,7 +2563,7 @@ function createPdfMiniPreview(item) {
           font-size:17px;
           font-weight:700;
           line-height:1;
-        "><span style="display:inline-block;transform:${letterOrientation === "horizontal" ? "rotate(90deg)" : "none"};">${escapeEmailHtml(displayIcon(character))}</span></span>
+        "><span style="display:inline-block;transform:${letterOrientation === "horizontal" ? "rotate(-90deg)" : "none"};">${escapeEmailHtml(displayIcon(character))}</span></span>
       </span>
     `;
   }).join("");
@@ -3108,7 +3108,7 @@ async function generateCompactOrderPdfAttachment(order, items) {
         pdf.setFontSize(7);
         pdf.text(character, blockX + 4.5, blockY + 5.7, {
           align: "center",
-          angle: letterOrientation === "horizontal" ? -90 : 0
+          angle: letterOrientation === "horizontal" ? 90 : 0
         });
       } else {
         const iconImage = getPdfIconImage(character);
@@ -3126,7 +3126,7 @@ async function generateCompactOrderPdfAttachment(order, items) {
             6.3,
             iconAlias,
             "FAST",
-            letterOrientation === "horizontal" ? -90 : 0
+            letterOrientation === "horizontal" ? 90 : 0
           );
         } else {
           pdf.setTextColor(...letterRgb);
@@ -3134,7 +3134,7 @@ async function generateCompactOrderPdfAttachment(order, items) {
           pdf.setFontSize(7);
           pdf.text("*", blockX + 4.5, blockY + 5.7, {
             align: "center",
-            angle: letterOrientation === "horizontal" ? -90 : 0
+            angle: letterOrientation === "horizontal" ? 90 : 0
           });
         }
       }
