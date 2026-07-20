@@ -4902,6 +4902,16 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
       modalParagraphs[3].innerHTML =
         "📧 Your confirmation and order PDF will be emailed shortly.<br>If it isn’t in your inbox, please check Spam or Junk.";
     }
+
+    setTimeout(() => {
+      confetti({
+        particleCount: 90,
+        spread: 72,
+        startVelocity: 34,
+        origin: { y: 0.68 },
+        colors: ["#ff6799", "#ffb6cf", "#ffd966", "#ffffff"],
+      });
+    }, 250);
   } else {
     modalHeading.textContent = "Payment not completed";
     if (modalParagraphs[0]) {
