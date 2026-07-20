@@ -36,6 +36,7 @@ const DEFAULT_SHOP_SETTINGS = {
   bulk_order_quantity: 10,
   rush_fee_small: 5,
   rush_fee_large: 8,
+  stripe_enabled: false,
   promo_code: "CHILDRENSDAY",
   promo_percent_off: 10,
   promo_enabled: true
@@ -1152,8 +1153,7 @@ Chloe</textarea>
 
         <div class="payment-status-banner">
           <strong>✓ Your order has been saved.</strong><br>
-          Its status will remain <strong>Pending Payment</strong> until
-          Little Keeps checks your PayNow transfer. After verification,
+          Stripe will verify your PayNow payment automatically. Once paid,
           we’ll email your confirmation and order PDF.
         </div>
 
@@ -1173,63 +1173,21 @@ Chloe</textarea>
         <h3>Total Amount</h3>
         <strong id="paymentTotal"></strong>
 
-        ${shopSettings.hitpay_enabled ? `
+        ${shopSettings.stripe_enabled ? `
           <div class="online-payment-panel">
             <span class="online-payment-badge">Recommended</span>
-            <h3>Pay securely online</h3>
-            <p>Use PayNow or card through HitPay. Your payment will be verified automatically.</p>
-            <button id="hitpayCheckoutBtn" type="button" class="submit-btn">Pay Online with HitPay</button>
-            <p id="hitpayCheckoutStatus" class="hint"></p>
+            <h3>Pay securely with PayNow</h3>
+            <p>Stripe will show a secure PayNow QR code and verify your payment automatically.</p>
+            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Pay Securely with PayNow</button>
+            <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
-          <div class="payment-divider"><span>or use manual PayNow</span></div>
-        ` : ""}
-
-        <img
-          src="/models/paynow.png"
-          class="paynowQR"
-          alt="PayNow QR"
-        >
-
-        <a
-          href="/models/paynow.png"
-          download="LittleKeeps-PayNow.png"
-          class="save-qr-btn"
-        >
-          ↑ Save QR Code
-        </a>
-
-        <div class="payment-steps">
-          <div class="payment-step">
-            <span>1</span>
-            <p>Scan or save the QR code</p>
+          <p class="hint">No screenshot or WhatsApp message is required. After payment, check your Spam or Junk folder if the confirmation email is not in your inbox.</p>
+        ` : `
+          <div class="online-payment-panel">
+            <h3>Online payment is temporarily unavailable</h3>
+            <p>Please contact Little Keeps and quote your order reference.</p>
           </div>
-
-          <div class="payment-step">
-            <span>2</span>
-            <p>
-              Pay <strong>the exact amount</strong> and include
-              your order reference in the payment reference or remarks
-            </p>
-          </div>
-
-          <div class="payment-step">
-            <span>3</span>
-            <p>
-              No screenshot or WhatsApp message is required
-            </p>
-          </div>
-
-          <div class="payment-step">
-            <span>4</span>
-            <p>
-              We'll verify your payment and send
-              a confirmation email with your order PDF 💌<br>
-              <small>
-                If you can’t find it, please check your Spam or Junk folder.
-              </small>
-            </p>
-          </div>
-        </div>
+        `}
 
 <button
   id="paymentDoneBtn"
@@ -1596,10 +1554,10 @@ const paymentTotal =
 document.getElementById("paymentTotal");
 const paymentDoneBtn =
 document.getElementById("paymentDoneBtn");
-const hitpayCheckoutBtn =
-document.getElementById("hitpayCheckoutBtn");
-const hitpayCheckoutStatus =
-document.getElementById("hitpayCheckoutStatus");
+const stripeCheckoutBtn =
+document.getElementById("stripeCheckoutBtn");
+const stripeCheckoutStatus =
+document.getElementById("stripeCheckoutStatus");
 const paymentBackBtn =
 document.getElementById("paymentBackBtn");
 
@@ -4229,34 +4187,34 @@ paymentDoneBtn.onclick = () => {
   window.location.href = "/";
 };
 
-hitpayCheckoutBtn?.addEventListener("click", async () => {
+stripeCheckoutBtn?.addEventListener("click", async () => {
   const orderRef = paymentOrderRef.innerText.trim();
   const email = customerEmail.value.trim();
   if (!orderRef || !email) return;
 
-  hitpayCheckoutBtn.disabled = true;
-  hitpayCheckoutBtn.textContent = "Opening secure payment…";
-  hitpayCheckoutStatus.textContent = "Creating your HitPay checkout…";
+  stripeCheckoutBtn.disabled = true;
+  stripeCheckoutBtn.textContent = "Opening secure payment…";
+  stripeCheckoutStatus.textContent = "Creating your secure PayNow checkout…";
 
   try {
-    const { data, error } = await supabase.functions.invoke("hitpay-create-payment", {
+    const { data, error } = await supabase.functions.invoke("stripe-create-checkout", {
       body: { order_ref: orderRef, email }
     });
     if (error) throw error;
 
     if (data?.paid) {
-      hitpayCheckoutStatus.textContent = "This order has already been paid ✓";
+      stripeCheckoutStatus.textContent = "This order has already been paid ✓";
       return;
     }
 
     if (!data?.url) throw new Error(data?.error || "Payment link was not returned.");
     window.location.assign(data.url);
   } catch (error) {
-    console.error("Unable to open HitPay:", error);
-    hitpayCheckoutStatus.textContent =
-      "Online payment is temporarily unavailable. You can still use manual PayNow below.";
-    hitpayCheckoutBtn.disabled = false;
-    hitpayCheckoutBtn.textContent = "Try HitPay Again";
+    console.error("Unable to open Stripe Checkout:", error);
+    stripeCheckoutStatus.textContent =
+      "Online payment is temporarily unavailable. Please contact Little Keeps and quote your order reference.";
+    stripeCheckoutBtn.disabled = false;
+    stripeCheckoutBtn.textContent = "Try PayNow Again";
   }
 });
 
@@ -4832,12 +4790,9 @@ function renderCustomerOrderStatus(order) {
         <span>Request approved ✓</span>
         <h3>Total: ${displaySettingMoney(order.total)}</h3>
         <p>Use <strong>${escapePresetText(order.order_ref)}</strong> as your payment reference.</p>
-        ${shopSettings.hitpay_enabled ? `
-          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>Pay Online with HitPay</button>
-        ` : `
-          <img src="/models/paynow.png" class="paynowQR" alt="Little Keeps PayNow QR">
-          <button class="save-qr-btn" type="button" onclick='window.copyTrackedOrderRef(${JSON.stringify(order.order_ref)}, this)'>Copy Order Reference</button>
-        `}
+        ${shopSettings.stripe_enabled ? `
+          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>Pay Securely with PayNow</button>
+        ` : `<p>Online payment is temporarily unavailable. Please contact Little Keeps.</p>`}
       </div>
     ` : ""}
 
@@ -4857,17 +4812,21 @@ window.copyTrackedOrderRef = async function(orderRef, button) {
 };
 
 window.payTrackedOrder = async function(orderRef, email, button) {
-  const previousLabel = button?.textContent || "Pay Online with HitPay";
+  const previousLabel = button?.textContent || "Pay Securely with PayNow";
   if (button) {
     button.disabled = true;
     button.textContent = "Opening secure payment…";
   }
 
   try {
-    const { data, error } = await supabase.functions.invoke("hitpay-create-payment", {
+    const { data, error } = await supabase.functions.invoke("stripe-create-checkout", {
       body: { order_ref: orderRef, email }
     });
     if (error) throw error;
+    if (data?.paid) {
+      alert("This order has already been paid ✓");
+      return;
+    }
     if (!data?.url) throw new Error(data?.error || "Payment link unavailable");
     window.location.assign(data.url);
   } catch (error) {

@@ -136,14 +136,12 @@ document.querySelector("#app").innerHTML = `
         <label>
           <span>Status</span>
           <select id="statusFilter">
-            <option value="all">All Status</option>
-            <option value="Rush Review">Rush Review</option>
-            <option value="Bulk Review">Bulk Review</option>
-            <option value="Pending Payment">Pending Payment</option>
-            <option value="Payment Verification">Pending Verification</option>
-            <option value="Payment Verified">Payment Verified</option>
+            <option value="all">All stages</option>
+            <option value="review">Needs review</option>
+            <option value="Pending Payment">Awaiting payment</option>
+            <option value="Payment Verified">Ready to print</option>
             <option value="Printing">Printing</option>
-            <option value="Ready for Pickup/Delivery">Ready for Pickup/Delivery</option>
+            <option value="Ready for Pickup/Delivery">Ready</option>
             <option value="Out for Delivery">Out for Delivery</option>
             <option value="Completed">Completed</option>
           </select>
@@ -152,12 +150,10 @@ document.querySelector("#app").innerHTML = `
         <label>
           <span>Payment</span>
           <select id="paymentFilter">
-            <option value="all">All Payment</option>
-            <option value="Pending">Pending</option>
+            <option value="all">All payments</option>
+            <option value="Pending">Awaiting payment</option>
             <option value="Paid">Paid</option>
-            <option value="Free">Free</option>
-            <option value="Giveaway">Giveaway</option>
-            <option value="Replacement">Replacement</option>
+            <option value="no-charge">No payment needed</option>
           </select>
         </label>
       </div>
@@ -608,10 +604,10 @@ function renderSettingsWorkspace() {
           <h3>Online payment</h3>
           <div class="payment-readiness">
             <div>
-              <strong>${adminShopSettings.hitpay_enabled ? "HitPay enabled" : "Manual PayNow remains active"}</strong>
-              <p class="hint">Live HitPay requires its API key and salt inside Supabase Edge Function secrets—never inside this website.</p>
+              <strong>${adminShopSettings.stripe_enabled ? "Stripe PayNow enabled" : "Manual PayNow remains active"}</strong>
+              <p class="hint">Stripe securely creates the exact PayNow amount and verifies successful payments automatically.</p>
             </div>
-            <label class="settings-toggle"><input name="hitpay_enabled" type="checkbox" ${checked(adminShopSettings.hitpay_enabled)}> Enable HitPay after Edge Functions are configured</label>
+            <label class="settings-toggle"><input name="stripe_enabled" type="checkbox" ${checked(adminShopSettings.stripe_enabled)}> Enable Stripe PayNow checkout</label>
           </div>
         </section>
       </div>
@@ -660,7 +656,7 @@ async function saveShopSettings(event) {
   numberFields.forEach(name => { updates[name] = Number(form.get(name)); });
   updates.launch_price_enabled = form.has("launch_price_enabled");
   updates.status_emails_enabled = form.has("status_emails_enabled");
-  updates.hitpay_enabled = form.has("hitpay_enabled");
+  updates.stripe_enabled = form.has("stripe_enabled");
   updates.status_email_template_id = String(form.get("status_email_template_id") || "").trim();
   updates.updated_at = new Date().toISOString();
 
@@ -1024,10 +1020,16 @@ function renderOrders(orders) {
       (orderViewValue === "archived" && Boolean(order.archived_at));
 
     const matchesStatus =
-      statusValue === "all" || order.status === statusValue;
+      statusValue === "all" ||
+      (statusValue === "review"
+        ? ["Rush Review", "Bulk Review", "Payment Verification"].includes(order.status)
+        : order.status === statusValue);
 
     const matchesPayment =
-      paymentValue === "all" || order.payment_type === paymentValue;
+      paymentValue === "all" ||
+      (paymentValue === "no-charge"
+        ? ["Free", "Giveaway", "Replacement"].includes(order.payment_type)
+        : order.payment_type === paymentValue);
 
     return matchesSearch && matchesOrderView && matchesStatus && matchesPayment;
   });
@@ -1137,6 +1139,12 @@ function renderOrders(orders) {
           </a>
         ` : ""}
 
+        ${order.customer_email && (order.payment_type === "Paid" || order.status === "Payment Verified") ? `
+          <button type="button" class="approve-request-action" onclick='window.sendPaymentConfirmationEmail(${JSON.stringify(orderId)}, this)'>
+            Send Confirmation + PDF
+          </button>
+        ` : ""}
+
         ${whatsappHref ? `
           <a href="${whatsappHref}" target="_blank" rel="noopener">
             WhatsApp
@@ -1166,13 +1174,13 @@ function renderOrders(orders) {
       class="status-select"
       onchange="window.updateOrderStatus('${order.id}', this.value)"
     >
-      <option value="Rush Review" ${order.status === "Rush Review" ? "selected" : ""}>Rush Review</option>
-      <option value="Bulk Review" ${order.status === "Bulk Review" ? "selected" : ""}>Bulk Review</option>
-      <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Pending Payment</option>
-      <option value="Payment Verification" ${order.status === "Payment Verification" ? "selected" : ""}>Payment Verification</option>
-      <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Payment Verified</option>
+      ${order.status === "Rush Review" ? `<option value="Rush Review" selected>Rush request — review</option>` : ""}
+      ${order.status === "Bulk Review" ? `<option value="Bulk Review" selected>Bulk request — review</option>` : ""}
+      ${order.status === "Payment Verification" ? `<option value="Payment Verification" selected>Manual payment — check</option>` : ""}
+      <option value="Pending Payment" ${order.status === "Pending Payment" ? "selected" : ""}>Awaiting payment</option>
+      <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid — ready to print</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
-      <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for Pickup/Delivery</option>
+      <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>${order.collection_method === "delivery" ? "Ready for delivery" : "Ready for pickup"}</option>
       ${order.collection_method === "delivery" ? `<option value="Out for Delivery" ${order.status === "Out for Delivery" ? "selected" : ""}>Out for Delivery</option>` : ""}
       <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
     </select>
@@ -1184,11 +1192,9 @@ function renderOrders(orders) {
       class="status-select"
       onchange="window.updatePaymentType('${order.id}', this.value)"
     >
-      <option value="Pending" ${order.payment_type === "Pending" ? "selected" : ""}>Pending</option>
+      <option value="Pending" ${order.payment_type === "Pending" ? "selected" : ""}>Awaiting payment</option>
       <option value="Paid" ${order.payment_type === "Paid" ? "selected" : ""}>Paid</option>
-      <option value="Free" ${order.payment_type === "Free" ? "selected" : ""}>Free</option>
-      <option value="Giveaway" ${order.payment_type === "Giveaway" ? "selected" : ""}>Giveaway</option>
-      <option value="Replacement" ${order.payment_type === "Replacement" ? "selected" : ""}>Replacement</option>
+      <option value="Free" ${["Free", "Giveaway", "Replacement"].includes(order.payment_type) ? "selected" : ""}>No payment needed</option>
     </select>
   </div>
 </div>
@@ -3351,6 +3357,39 @@ async function downloadOrderPdf(id, button) {
   }
 }
 
+async function sendPaymentConfirmationEmail(id, button) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!order) {
+    alert("Order could not be found.");
+    return;
+  }
+
+  const originalLabel = button?.textContent || "Send Confirmation + PDF";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Preparing email + PDF…";
+  }
+
+  try {
+    await sendPaymentVerifiedEmail(order);
+    alert(`Confirmation and PDF sent to ${order.customer_email}.`);
+  } catch (error) {
+    console.error("Unable to send payment confirmation:", error);
+    alert(
+      "The confirmation email failed to send.\n\n" +
+      (error?.text || error?.message || "Unknown email error")
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+}
+
 async function deleteTestOrder(id) {
   const order = latestOrders.find(
     item => String(item.id) === String(id)
@@ -3514,6 +3553,7 @@ async function approveSpecialOrder(id) {
 
 window.copyOrderReference = copyOrderReference;
 window.downloadOrderPdf = downloadOrderPdf;
+window.sendPaymentConfirmationEmail = sendPaymentConfirmationEmail;
 window.deleteTestOrder = deleteTestOrder;
 window.archiveOrder = archiveOrder;
 window.restoreOrder = restoreOrder;
@@ -3777,7 +3817,7 @@ async function loadAdminSettings() {
     jump_ring_low_stock: 20,
     status_emails_enabled: false,
     status_email_template_id: "",
-    hitpay_enabled: false
+    stripe_enabled: false
   };
 
   const [{ data: settings, error: settingsError }, { data: promos, error: promosError }] = await Promise.all([
