@@ -265,7 +265,7 @@ document.querySelector("#app").innerHTML = `
       Design
     </button>
     <button type="button" data-scroll-target="orderStatusSection">
-      Check Order
+      Track / Pay Order
     </button>
   </nav>
 
@@ -281,6 +281,18 @@ document.querySelector("#app").innerHTML = `
     </span>
   </button>
 </header>
+
+<section id="pendingOrderBanner" class="pending-order-banner hidden" aria-live="polite">
+  <div>
+    <small>Unfinished order</small>
+    <strong id="pendingOrderBannerRef"></strong>
+    <span id="pendingOrderBannerText">Your order is saved, but payment is not complete.</span>
+  </div>
+  <div class="pending-order-banner-actions">
+    <button id="resumePendingOrderBtn" type="button">Continue Payment</button>
+    <button id="dismissPendingOrderBtn" type="button" class="pending-order-dismiss" aria-label="Dismiss unfinished order reminder">×</button>
+  </div>
+</section>
 
 <div id="menuOverlay" class="menu-overlay hidden"></div>
 
@@ -326,7 +338,7 @@ document.querySelector("#app").innerHTML = `
       data-scroll-target="orderStatusSection"
     >
       <span>◎</span>
-      Check Order Status
+      Track / Pay Order
     </button>
 
     <button
@@ -1147,7 +1159,7 @@ Chloe</textarea>
       <div class="payment-box">
         <div class="payment-status-banner">
           <strong>Order saved ✓</strong>
-          <span>Reference <span id="paymentOrderRef"></span></span>
+          <span>Keep this reference: <span id="paymentOrderRef"></span></span>
         </div>
 
         <h2>Pay with PayNow</h2>
@@ -1191,7 +1203,7 @@ Chloe</textarea>
         </p>
 
         <p class="hint">
-          📧 Please check your email for payment instructions.<br>
+          📧 Please check your email for your order reference and return link.<br>
           If you don’t see it, kindly check your Junk or Spam folder too.
         </p>
 
@@ -1233,10 +1245,10 @@ Chloe</textarea>
 <section id="orderStatusSection" class="order-status-section">
   <div class="order-status-copy">
     <p class="section-eyebrow">Already ordered?</p>
-    <h2>Check your order status</h2>
+    <h2>Track or pay for your order</h2>
     <p>
-      Enter the order reference from your payment page and the same
-      email address used at checkout.
+      Enter your order reference and the same email address used at checkout.
+      Unpaid orders can continue to PayNow here.
     </p>
   </div>
 
@@ -1258,7 +1270,7 @@ Chloe</textarea>
     >
 
     <button id="checkOrderStatusBtn" type="submit" class="submit-btn">
-      Check Status
+      View Order
     </button>
 
     <p id="orderStatusMessage" class="order-status-message" aria-live="polite"></p>
@@ -1518,6 +1530,16 @@ const orderStatusMessage =
   document.getElementById("orderStatusMessage");
 const orderStatusResult =
   document.getElementById("orderStatusResult");
+const pendingOrderBanner =
+  document.getElementById("pendingOrderBanner");
+const pendingOrderBannerRef =
+  document.getElementById("pendingOrderBannerRef");
+const pendingOrderBannerText =
+  document.getElementById("pendingOrderBannerText");
+const resumePendingOrderBtn =
+  document.getElementById("resumePendingOrderBtn");
+const dismissPendingOrderBtn =
+  document.getElementById("dismissPendingOrderBtn");
 
 const designScreen = document.getElementById("designScreen");
 const checkoutScreen = document.getElementById("checkoutScreen");
@@ -3678,6 +3700,17 @@ async function submitOrder() {
   orderSubmitted = true;
   localStorage.removeItem("littleKeepsDraft");
 
+  if (!isManualOrder) {
+    rememberPendingOrder({
+      orderRef,
+      email: order.customer_email.toLowerCase(),
+      total,
+      orderType: checkoutOrderType,
+      approved: !isReviewRequest
+    });
+    void requestOrderSavedEmail(orderRef, order.customer_email);
+  }
+
   if (isReviewRequest) {
     orderRefText.innerHTML = `<strong>${orderRef}</strong>`;
     successModal.querySelector("h2").textContent =
@@ -4051,6 +4084,92 @@ document
     });
   });
 
+const PENDING_ORDER_STORAGE_KEY = "littleKeepsPendingOrder";
+
+function getRememberedPendingOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PENDING_ORDER_STORAGE_KEY) || "null");
+    if (!saved?.orderRef || !saved?.email) return null;
+
+    const savedAt = new Date(saved.savedAt || 0).getTime();
+    if (!Number.isFinite(savedAt) || Date.now() - savedAt > 30 * 86400000) {
+      localStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+      return null;
+    }
+
+    return saved;
+  } catch {
+    localStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+    return null;
+  }
+}
+
+function rememberPendingOrder(details) {
+  localStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify({
+    ...details,
+    savedAt: new Date().toISOString()
+  }));
+  sessionStorage.removeItem("littleKeepsPendingOrderDismissed");
+  renderPendingOrderBanner();
+}
+
+function clearRememberedPendingOrder(orderRef = "") {
+  const saved = getRememberedPendingOrder();
+  if (!saved || (orderRef && saved.orderRef !== orderRef)) return;
+  localStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+  sessionStorage.removeItem("littleKeepsPendingOrderDismissed");
+  pendingOrderBanner?.classList.add("hidden");
+}
+
+function renderPendingOrderBanner() {
+  const saved = getRememberedPendingOrder();
+  const dismissed = sessionStorage.getItem("littleKeepsPendingOrderDismissed") === "true";
+
+  if (!saved || dismissed || isManualOrder) {
+    pendingOrderBanner?.classList.add("hidden");
+    return;
+  }
+
+  const needsReview = ["rush", "bulk"].includes(saved.orderType) && !saved.approved;
+  pendingOrderBannerRef.textContent = saved.orderRef;
+  pendingOrderBannerText.textContent = needsReview
+    ? "Your request is saved. View it here for approval and payment updates."
+    : "Your order is saved, but payment is not complete.";
+  resumePendingOrderBtn.textContent = needsReview ? "View Request" : "Continue Payment";
+  pendingOrderBanner.classList.remove("hidden");
+}
+
+function openRememberedOrder() {
+  const saved = getRememberedPendingOrder();
+  if (!saved) return;
+
+  statusOrderRef.value = saved.orderRef;
+  statusCustomerEmail.value = saved.email;
+  document.getElementById("orderStatusSection")?.scrollIntoView({
+    behavior: "smooth",
+    block: "start"
+  });
+
+  setTimeout(() => orderStatusForm?.requestSubmit(), 450);
+}
+
+resumePendingOrderBtn?.addEventListener("click", openRememberedOrder);
+dismissPendingOrderBtn?.addEventListener("click", () => {
+  sessionStorage.setItem("littleKeepsPendingOrderDismissed", "true");
+  pendingOrderBanner.classList.add("hidden");
+});
+
+async function requestOrderSavedEmail(orderRef, email) {
+  try {
+    const { error } = await supabase.functions.invoke("send-order-saved-email", {
+      body: { order_ref: orderRef, email }
+    });
+    if (error) console.warn("Order reference email was not sent:", error);
+  } catch (error) {
+    console.warn("Order reference email was not sent:", error);
+  }
+}
+
 startDesignBtn.onclick = () => {
   document
     .getElementById("designArea")
@@ -4195,6 +4314,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
     if (data?.error) throw new Error(data.error);
 
     if (data?.paid) {
+      clearRememberedPendingOrder(orderRef);
       stripeCheckoutStatus.textContent = "This order has already been paid ✓";
       return;
     }
@@ -4843,6 +4963,7 @@ window.payTrackedOrder = async function(orderRef, email, button) {
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
     if (data?.paid) {
+      clearRememberedPendingOrder(orderRef);
       alert("This order has already been paid ✓");
       return;
     }
@@ -4898,6 +5019,10 @@ orderStatusForm?.addEventListener("submit", async event => {
       return;
     }
 
+    if (order.payment_type === "Paid" || order.online_payment_status === "completed") {
+      clearRememberedPendingOrder(order.order_ref);
+    }
+
     orderStatusMessage.textContent = "";
     renderCustomerOrderStatus(order);
   } catch (error) {
@@ -4907,7 +5032,7 @@ orderStatusForm?.addEventListener("submit", async event => {
     orderStatusMessage.classList.add("error");
   } finally {
     checkOrderStatusBtn.disabled = false;
-    checkOrderStatusBtn.textContent = "Check Status";
+    checkOrderStatusBtn.textContent = "View Order";
   }
 });
 
@@ -4959,6 +5084,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
   draftModal.classList.add("hidden");
 
   if (paymentReturnState === "success") {
+    clearRememberedPendingOrder(returnedOrderRef);
     modalHeading.textContent = "Payment successful ✓";
     if (modalParagraphs[0]) {
       modalParagraphs[0].textContent =
@@ -4997,7 +5123,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
       : "Your Little Keeps order";
     if (modalParagraphs[2]) {
       modalParagraphs[2].textContent =
-        "Your payment slot is held only briefly. Use Check Order with your reference and email whenever you’re ready to reopen PayNow.";
+        "Your payment slot is held only briefly. Use Track / Pay Order with your reference and email whenever you’re ready to reopen PayNow.";
     }
     if (modalParagraphs[3]) {
       modalParagraphs[3].textContent =
@@ -5009,6 +5135,20 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
   successModal.classList.remove("hidden");
   window.history.replaceState({}, "", window.location.pathname);
 }
+
+const resumeOrderRef = paymentReturnParams.get("resume_order");
+if (resumeOrderRef && !paymentReturnState) {
+  statusOrderRef.value = resumeOrderRef.trim().toUpperCase();
+  setTimeout(() => {
+    document.getElementById("orderStatusSection")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+    statusCustomerEmail.focus();
+  }, 300);
+}
+
+renderPendingOrderBanner();
 
 // Payment-page preview for layout testing only.
 // This does not create, save or update an order.
