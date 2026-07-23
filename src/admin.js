@@ -1747,7 +1747,7 @@ function displayIcon(char) {
   const map = {
     "♡": "🩷",
     "★": "⭐",
-    "✿": "🌸",
+    "✿": "✿",
     "🎀": "🎀",
     "🐾": "🐾",
     "☘": "☘️",
@@ -1760,6 +1760,72 @@ function displayIcon(char) {
   };
 
   return map[char] || char;
+}
+
+const PDF_ICON_CODES = {
+  "♡": "HT",
+  "★": "ST",
+  "✿": "FL",
+  "🎀": "RB",
+  "🐾": "PW",
+  "☘": "CL",
+  "☁": "CD",
+  "🌙": "MN",
+  "♪": "MU",
+  "⚡": "LT",
+  "🔥": "FI",
+  "☕": "CF",
+  "🦆": "DK",
+  "🐱": "CT",
+  "✈": "PL",
+  "⚽": "SC",
+  "🏐": "VB",
+  "🏉": "RG",
+  "⛷": "SK",
+  "🚲": "BI",
+  "⛳": "GF",
+  "🥒": "PB",
+  "🎳": "BW",
+  "⚾": "BB",
+  "♟": "CH"
+};
+
+function getPdfIconCode(character) {
+  return PDF_ICON_CODES[character] || "IC";
+}
+
+function getPdfIconName(character) {
+  const name = specialKeycaps[character] || "icon";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function getPdfIconLegend(item) {
+  const characters = Array.from(
+    item.clean_name || sanitizeName(item.name || "")
+  );
+  const seen = new Set();
+
+  return characters
+    .filter(character => specialKeycaps[character])
+    .filter(character => {
+      if (seen.has(character)) return false;
+      seen.add(character);
+      return true;
+    })
+    .map(character =>
+      `${getPdfIconCode(character)} = ${getPdfIconName(character)}`
+    )
+    .join(", ");
+}
+
+function getPdfReadableItemName(item) {
+  return Array.from(item.name || "Personalised keychain")
+    .map(character =>
+      specialKeycaps[character]
+        ? `[${getPdfIconName(character)}]`
+        : character
+    )
+    .join("");
 }
 
 const productionStlJobs = new Map();
@@ -2872,6 +2938,10 @@ function createPdfMiniPreview(item) {
   const letterOrientation = getLetterOrientation(design);
 
   return characters.map((character, index) => {
+    const isIcon = Boolean(specialKeycaps[character]);
+    const previewText = isIcon
+      ? getPdfIconCode(character)
+      : character;
     const base = getSafePdfColour(
       bases[index % bases.length],
       "#f6a9c2"
@@ -2910,10 +2980,10 @@ function createPdfMiniPreview(item) {
           border-radius:7px;
           background:${cap};
           color:${letter};
-          font-size:17px;
+          font-size:${isIcon ? "10px" : "17px"};
           font-weight:700;
           line-height:1;
-        "><span style="display:inline-block;transform:${letterOrientation === "horizontal" ? "rotate(-90deg)" : "none"};">${escapeEmailHtml(displayIcon(character))}</span></span>
+        "><span style="display:inline-block;transform:${letterOrientation === "horizontal" ? "rotate(-90deg)" : "none"};">${escapeEmailHtml(previewText)}</span></span>
       </span>
     `;
   }).join("");
@@ -2945,6 +3015,7 @@ async function generateOrderPdfAttachment(order, items) {
         const capColours = getPdfColourNames(design.caps);
         const letterColours = getPdfColourNames(design.letters);
         const letterOrientation = getLetterOrientationLabel(design);
+        const iconLegend = getPdfIconLegend(item);
 
         return `
           <div style="
@@ -2958,7 +3029,7 @@ async function generateOrderPdfAttachment(order, items) {
             <div style="display:flex;justify-content:space-between;gap:20px;">
               <div>
                 <div style="font-size:18px;font-weight:700;">
-                  ${index + 1}. ${escapeEmailHtml(item.name || "Personalised keychain")}
+                  ${index + 1}. ${escapeEmailHtml(getPdfReadableItemName(item))}
                 </div>
                 <div style="margin-top:4px;color:#756b70;font-size:13px;">
                   ${escapeEmailHtml(baseShape)} · ${escapeEmailHtml(letterOrientation)}
@@ -2985,6 +3056,11 @@ async function generateOrderPdfAttachment(order, items) {
               ${escapeEmailHtml(letterColours)}<br>
               <strong style="color:#332d30;">Letter orientation:</strong>
               ${escapeEmailHtml(letterOrientation)}
+              ${
+                iconLegend
+                  ? `<br><strong style="color:#332d30;">Icon key:</strong> ${escapeEmailHtml(iconLegend)}`
+                  : ""
+              }
             </div>
           </div>
         `;
@@ -3228,34 +3304,6 @@ async function generateCompactOrderPdfAttachment(order, items) {
   const softPink = [255, 248, 251];
   const dark = [51, 45, 48];
   const muted = [117, 107, 112];
-  const pdfIconCache = new Map();
-
-  function getPdfIconImage(character) {
-    if (pdfIconCache.has(character)) {
-      return pdfIconCache.get(character);
-    }
-
-    const iconCanvas = document.createElement("canvas");
-    iconCanvas.width = 48;
-    iconCanvas.height = 48;
-
-    const context = iconCanvas.getContext("2d");
-
-    if (!context) {
-      return null;
-    }
-
-    context.clearRect(0, 0, 48, 48);
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.font =
-      '32px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-    context.fillText(displayIcon(character), 24, 25);
-
-    const image = iconCanvas.toDataURL("image/png");
-    pdfIconCache.set(character, image);
-    return image;
-  }
 
   function drawPageHeader(showTitle = true) {
     pdf.setFillColor(...palePink);
@@ -3378,6 +3426,10 @@ async function generateCompactOrderPdfAttachment(order, items) {
     const baseNames = getPdfColourNames(bases);
     const capNames = getPdfColourNames(caps);
     const letterNames = getPdfColourNames(letters);
+    const characters = Array.from(
+      item.clean_name || sanitizeName(item.name || "")
+    );
+    const iconLegend = getPdfIconLegend(item);
     const colourLines = [
       ...pdf.splitTextToSize(
         `Base colours: ${getCompactPdfText(baseNames)}`,
@@ -3394,7 +3446,13 @@ async function generateCompactOrderPdfAttachment(order, items) {
       ...pdf.splitTextToSize(
         `Letter orientation: ${getCompactPdfText(letterOrientationLabel)}`,
         contentWidth - 12
-      )
+      ),
+      ...(iconLegend
+        ? pdf.splitTextToSize(
+            `Icon key: ${getCompactPdfText(iconLegend)}`,
+            contentWidth - 12
+          )
+        : [])
     ];
     const cardHeight = 34 + colourLines.length * 3.8;
 
@@ -3407,7 +3465,7 @@ async function generateCompactOrderPdfAttachment(order, items) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(11);
     pdf.text(
-      `${index + 1}. ${getCompactPdfText(item.name || "Personalised keychain")}`,
+      `${index + 1}. ${getCompactPdfText(getPdfReadableItemName(item))}`,
       margin + 5,
       y + 7
     );
@@ -3428,9 +3486,6 @@ async function generateCompactOrderPdfAttachment(order, items) {
       y + 12
     );
 
-    const characters = Array.from(
-      item.clean_name || sanitizeName(item.name || "")
-    );
     let blockX = margin + 5;
     const blockY = y + 16;
 
@@ -3461,32 +3516,18 @@ async function generateCompactOrderPdfAttachment(order, items) {
           angle: letterOrientation === "horizontal" ? 90 : 0
         });
       } else {
-        const iconImage = getPdfIconImage(character);
-
-        if (iconImage) {
-          const iconAlias =
-            `icon-${character.codePointAt(0).toString(16)}`;
-
-          pdf.addImage(
-            iconImage,
-            "PNG",
-            blockX + 1.35,
-            blockY + 1.15,
-            6.3,
-            6.3,
-            iconAlias,
-            "FAST",
-            letterOrientation === "horizontal" ? 90 : 0
-          );
-        } else {
-          pdf.setTextColor(...letterRgb);
-          pdf.setFont("helvetica", "bold");
-          pdf.setFontSize(7);
-          pdf.text("*", blockX + 4.5, blockY + 5.7, {
+        pdf.setTextColor(...letterRgb);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(4.2);
+        pdf.text(
+          getPdfIconCode(character),
+          blockX + 4.5,
+          blockY + 5.4,
+          {
             align: "center",
             angle: letterOrientation === "horizontal" ? 90 : 0
-          });
-        }
+          }
+        );
       }
       blockX += 10.5;
     });
