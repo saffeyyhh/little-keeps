@@ -1376,6 +1376,16 @@ label {
   transform: translateY(-1px);
 }
 
+.inspiration-option.is-oos {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.inspiration-option.is-oos:hover {
+  border-color: var(--border);
+  transform: none;
+}
+
 .inspiration-option strong,
 .inspiration-option small {
   display: block;

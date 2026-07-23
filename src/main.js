@@ -37,6 +37,7 @@ const DEFAULT_SHOP_SETTINGS = {
   rush_fee_small: 5,
   rush_fee_large: 8,
   stripe_enabled: false,
+  unavailable_colours: [],
   promo_code: "CHILDRENSDAY",
   promo_percent_off: 10,
   promo_enabled: true
@@ -99,6 +100,33 @@ try {
   console.warn("Using default shop pricing settings:", error);
 }
 
+const unavailableColourNames = new Set(
+  (Array.isArray(shopSettings.unavailable_colours)
+    ? shopSettings.unavailable_colours
+    : []
+  ).map(name => String(name).trim().toLowerCase())
+);
+
+const shopColourNameByHex = {
+  "#ffffff": "Jade White",
+  "#fec600": "Sunflower Yellow",
+  "#e4bd68": "Gold",
+  "#f55a74": "Pink",
+  "#9d2235": "Maroon Red",
+  "#00b1b7": "Turquoise",
+  "#0086d6": "Cyan",
+  "#3f8e43": "Mistletoe Green",
+  "#68724d": "Dark Green",
+  "#5e43b7": "Purple",
+  "#482960": "Indigo Purple",
+  "#000000": "Black"
+};
+
+function isShopColourAvailable(colour) {
+  const name = shopColourNameByHex[String(colour || "").toLowerCase()];
+  return !name || !unavailableColourNames.has(name.toLowerCase());
+}
+
 try {
   const { data, error } = await supabase
     .from("design_presets")
@@ -152,16 +180,31 @@ function renderDesignPresetCards() {
     const base = safePresetColour(preset.base_colour, "#F55A74");
     const cap = safePresetColour(preset.cap_colour, "#FFFFFF");
     const letter = safePresetColour(preset.letter_colour, "#9D2235");
+    const unavailable =
+      !isShopColourAvailable(base) ||
+      !isShopColourAvailable(cap) ||
+      !isShopColourAvailable(letter);
 
     return `
-      <button class="inspiration-option" type="button" data-design-preset="${key}">
+      <button
+        class="inspiration-option ${unavailable ? "is-oos" : ""}"
+        type="button"
+        data-design-preset="${key}"
+        ${unavailable ? "disabled aria-disabled=\"true\"" : ""}
+      >
         <strong>${emoji} ${name}</strong>
         <span class="inspiration-swatches" aria-label="Base, cap and letter colours">
           <i style="--preset-colour:${base};"></i>
           <i style="--preset-colour:${cap};"></i>
           <i style="--preset-colour:${letter};"></i>
         </span>
-        ${icon ? `<small>Icon idea: ${icon}</small>` : ""}
+        ${
+          unavailable
+            ? `<small>Temporarily unavailable</small>`
+            : icon
+              ? `<small>Icon idea: ${icon}</small>`
+              : ""
+        }
       </button>
     `;
   }).join("");
@@ -1604,74 +1647,74 @@ const colours = [
   {
     name: "Jade White",
     colour: "#FFFFFF",
-    available: true,
+    available: !unavailableColourNames.has("jade white"),
     note: ""
   },
   {
     name: "Sunflower Yellow",
     colour: "#FEC600",
-    available: true,
+    available: !unavailableColourNames.has("sunflower yellow"),
     note: ""
   },
   {
     name: "Gold",
     colour: "#E4BD68",
-    available: true,
+    available: !unavailableColourNames.has("gold"),
     note: ""
   },
   {
     name: "Pink",
     colour: "#F55A74",
-    available: true,
+    available: !unavailableColourNames.has("pink"),
     note: ""
   },
   {
     name: "Maroon Red",
     colour: "#9D2235",
-    available: true,
+    available: !unavailableColourNames.has("maroon red"),
     note: ""
   },
   {
     name: "Turquoise",
     colour: "#00B1B7",
-    available: true,
+    available: !unavailableColourNames.has("turquoise"),
     note: ""
   },
   {
     name: "Cyan",
     colour: "#0086D6",
-    available: true,
+    available: !unavailableColourNames.has("cyan"),
     note: ""
   },
   {
     name: "Mistletoe Green",
     colour: "#3F8E43",
-    available: true,
+    available: !unavailableColourNames.has("mistletoe green"),
     note: ""
   },
   {
     name: "Dark Green",
     colour: "#68724D",
-    available: true,
+    available: !unavailableColourNames.has("dark green"),
     note: ""
   },
 
   {
     name: "Purple",
     colour: "#5E43B7",
-    available: true,
+    available: !unavailableColourNames.has("purple"),
     note: ""
   },
   {
     name: "Indigo Purple",
     colour: "#482960",
-    available: true,
+    available: !unavailableColourNames.has("indigo purple"),
     note: ""
   },
   {
     name: "Black",
     colour: "#000000",
-    available: true,
+    available: !unavailableColourNames.has("black"),
     note: ""
   }
 ];
@@ -2206,6 +2249,7 @@ function getAvailableColours() {
 }
 
 const available = getAvailableColours();
+if (!available.length) available.push("#FFFFFF");
 
 let globalDesign = {
   baseShape: "ribbed",
@@ -2354,10 +2398,36 @@ function getActiveDesign() {
   return item.custom;
 }
 
+function getUnavailableDesignColours(design) {
+  return [
+    ...(design?.bases || []),
+    ...(design?.caps || []),
+    ...(design?.letters || [])
+  ]
+    .filter(colour => !isShopColourAvailable(colour))
+    .map(colour => shopColourNameByHex[String(colour).toLowerCase()] || colour)
+    .filter((name, index, list) => list.indexOf(name) === index);
+}
+
 function applyDesignPreset(presetKey) {
   const preset = DESIGN_PRESETS[presetKey];
 
   if (!preset) return;
+
+  const unavailable = getUnavailableDesignColours({
+    bases: [preset.base],
+    caps: [preset.cap],
+    letters: [preset.letter]
+  });
+
+  if (unavailable.length) {
+    alert(
+      `${unavailable.join(", ")} ${
+        unavailable.length === 1 ? "is" : "are"
+      } currently out of stock. Please choose another colour idea.`
+    );
+    return;
+  }
 
   const design = getActiveDesign();
   design.bases = [preset.base];
@@ -3534,6 +3604,21 @@ async function saveOrderToDatabase(order) {
 
 async function submitOrder() {
   submitStatus.innerText = "Submitting order...";
+
+  const unavailableSelections = names.reduce((allNames, item) => {
+    getUnavailableDesignColours(getDesign(item)).forEach(name => {
+      if (!allNames.includes(name)) allNames.push(name);
+    });
+    return allNames;
+  }, []);
+
+  if (unavailableSelections.length) {
+    submitStatus.innerText =
+      `${unavailableSelections.join(", ")} ${
+        unavailableSelections.length === 1 ? "is" : "are"
+      } currently out of stock. Please update the affected keychain colours before ordering.`;
+    return;
+  }
 
   const orderRef = generateOrderRef();
   const checkoutOrderType = getCheckoutOrderType();
