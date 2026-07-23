@@ -1102,7 +1102,7 @@ Chloe</textarea>
 
         <textarea
           id="orderNotes"
-          placeholder="Preferred pickup timing, delivery instructions, or additional notes..."
+          placeholder="Additional order notes (optional)..."
         ></textarea>
       </div>
 
@@ -2062,7 +2062,7 @@ function updateTurnaroundMessaging() {
   } else {
     orderNotes.placeholder = methodIsDelivery
       ? "Delivery instructions or additional notes..."
-      : "Preferred pickup timing or additional notes...";
+      : "Additional order notes (optional)...";
     rushAssessment = null;
     rushAssessmentFingerprint = "";
     rushAvailabilityResult.classList.add("hidden");
@@ -3846,9 +3846,11 @@ function updateCollectionNote() {
             📍 <strong>Pickup Location:</strong> Woodlands MRT.<br><br>
 
             Weekdays: <strong>After 7:00 PM</strong><br>
-            Weekends: We'll arrange a mutually convenient time.<br><br>
+            Weekends: Selected time ranges will be available.<br><br>
 
-            Please indicate your <strong>preferred pickup timing</strong> in the notes below.
+            Once production is ready, we’ll email you. Return to
+            <strong>Check Order</strong> to choose an available pickup
+            date and time range. You can also reschedule there.
         `;
 
     } else {
@@ -4877,7 +4879,7 @@ function formatCustomerStatus(status) {
     "Payment Verified": "Payment verified",
     "Printing": "In production",
     "Ready for Pickup/Delivery": "Ready for pickup or delivery",
-    "Out for Delivery": "Out for delivery",
+    "Out for Delivery": "Ready and out for delivery",
     "Completed": "Completed"
   };
 
@@ -4925,6 +4927,115 @@ function formatPreferredDate(value) {
   });
 }
 
+function getPickupTimeRanges(dateValue) {
+  if (!dateValue) return [];
+
+  const date = new Date(`${dateValue}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return [];
+
+  const day = date.getDay();
+
+  return day === 0 || day === 6
+    ? [
+        "10:00 AM - 12:00 PM",
+        "2:00 PM - 4:00 PM",
+        "7:00 PM - 8:00 PM"
+      ]
+    : [
+        "7:00 PM - 7:30 PM",
+        "7:30 PM - 8:00 PM",
+        "8:00 PM - 8:30 PM"
+      ];
+}
+
+function getPickupDateBounds() {
+  const minimum = new Date();
+  const maximum = new Date();
+  maximum.setDate(maximum.getDate() + 30);
+
+  return {
+    minimum: toLocalDateString(minimum),
+    maximum: toLocalDateString(maximum)
+  };
+}
+
+window.updatePickupTimeOptions = function(selectedValue = "") {
+  const dateInput = document.getElementById("pickupScheduleDate");
+  const timeSelect = document.getElementById("pickupScheduleTime");
+  if (!dateInput || !timeSelect) return;
+
+  const ranges = getPickupTimeRanges(dateInput.value);
+
+  timeSelect.innerHTML = ranges.length
+    ? `
+      <option value="">Choose a time range</option>
+      ${ranges.map(range => `
+        <option
+          value="${escapePresetText(range)}"
+          ${range === selectedValue ? "selected" : ""}
+        >
+          ${escapePresetText(range)}
+        </option>
+      `).join("")}
+    `
+    : `<option value="">Choose a date first</option>`;
+};
+
+window.scheduleTrackedPickup = async function(
+  orderRef,
+  email,
+  button
+) {
+  const dateInput = document.getElementById("pickupScheduleDate");
+  const timeSelect = document.getElementById("pickupScheduleTime");
+  const pickupDate = dateInput?.value || "";
+  const pickupTimeRange = timeSelect?.value || "";
+
+  if (!pickupDate || !pickupTimeRange) {
+    alert("Please choose both a pickup date and time range.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Confirm Pickup Time";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving…";
+  }
+
+  try {
+    const { data, error } = await supabase.rpc(
+      "schedule_order_pickup",
+      {
+        p_order_ref: orderRef,
+        p_email: email,
+        p_pickup_date: pickupDate,
+        p_pickup_time_range: pickupTimeRange
+      }
+    );
+
+    if (error) throw error;
+    if (!data?.ok) throw new Error("Pickup timing could not be saved.");
+
+    alert(
+      `Pickup confirmed for ${formatPreferredDate(pickupDate)}, ${pickupTimeRange}.`
+    );
+
+    orderStatusForm?.requestSubmit();
+  } catch (error) {
+    console.error("Unable to schedule pickup:", error);
+    alert(
+      error?.message ||
+      "Unable to save this pickup time. Please choose another range."
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+  }
+};
+
 function renderCustomerOrderStatus(order) {
   const paymentExpired =
     order.payment_type !== "Paid" &&
@@ -4959,6 +5070,14 @@ function renderCustomerOrderStatus(order) {
       return "";
     }
   })();
+  const pickupDateBounds = getPickupDateBounds();
+  const pickupDate =
+    order.pickup_scheduled_date || pickupDateBounds.minimum;
+  const pickupTimeRange = order.pickup_time_range || "";
+  const pickupRanges = getPickupTimeRanges(pickupDate);
+  const canSchedulePickup =
+    !methodIsDelivery &&
+    effectiveStatus === "Ready for Pickup/Delivery";
 
   orderStatusResult.innerHTML = `
     <div class="order-status-result-heading">
@@ -4993,10 +5112,83 @@ function renderCustomerOrderStatus(order) {
       ${methodIsDelivery && order.tracking_number ? `
         <p><span>Tracking number</span><strong>${escapePresetText(order.tracking_number)}</strong></p>
       ` : ""}
+      ${!methodIsDelivery && order.pickup_scheduled_date ? `
+        <p>
+          <span>Pickup appointment</span>
+          <strong>
+            ${escapePresetText(formatPreferredDate(order.pickup_scheduled_date))}
+            · ${escapePresetText(order.pickup_time_range || "Time to be selected")}
+          </strong>
+        </p>
+      ` : ""}
     </div>
 
     ${methodIsDelivery && trackingUrl ? `
       <a class="order-tracking-link" href="${escapePresetText(trackingUrl)}" target="_blank" rel="noopener">Track Delivery</a>
+    ` : ""}
+
+    ${canSchedulePickup ? `
+      <div class="pickup-scheduler">
+        <span class="pickup-scheduler-kicker">
+          ${order.pickup_scheduled_date ? "Manage pickup appointment" : "Choose your pickup appointment"}
+        </span>
+        <h3>
+          ${order.pickup_scheduled_date ? "Need another timing?" : "Your order is ready for collection!"}
+        </h3>
+        <p>
+          Select an available date and time range for Woodlands MRT.
+          Each range has limited availability.
+        </p>
+
+        <div class="pickup-scheduler-fields">
+          <label>
+            <span>Pickup date</span>
+            <input
+              id="pickupScheduleDate"
+              type="date"
+              min="${pickupDateBounds.minimum}"
+              max="${pickupDateBounds.maximum}"
+              value="${escapePresetText(pickupDate)}"
+              onchange="window.updatePickupTimeOptions()"
+            >
+          </label>
+
+          <label>
+            <span>Time range</span>
+            <select id="pickupScheduleTime">
+              <option value="">Choose a time range</option>
+              ${pickupRanges.map(range => `
+                <option
+                  value="${escapePresetText(range)}"
+                  ${range === pickupTimeRange ? "selected" : ""}
+                >
+                  ${escapePresetText(range)}
+                </option>
+              `).join("")}
+            </select>
+          </label>
+        </div>
+
+        <button
+          class="submit-btn"
+          type="button"
+          onclick='window.scheduleTrackedPickup(
+            ${JSON.stringify(order.order_ref)},
+            ${JSON.stringify(statusCustomerEmail.value.trim())},
+            this
+          )'
+        >
+          ${order.pickup_scheduled_date ? "Reschedule Pickup" : "Confirm Pickup Time"}
+        </button>
+      </div>
+    ` : !methodIsDelivery && activeStep < 3 ? `
+      <div class="pickup-scheduling-note">
+        <strong>Pickup timing comes later</strong>
+        <p>
+          Once production is ready, this page will unlock available
+          pickup dates and time ranges.
+        </p>
+      </div>
     ` : ""}
 
     ${canPay ? `

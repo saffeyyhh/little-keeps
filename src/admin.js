@@ -94,6 +94,9 @@ document.querySelector("#app").innerHTML = `
       <button id="assemblyViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">🧩</span> Assembly
       </button>
+      <button id="inventoryViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">📦</span> Inventory
+      </button>
       <button id="settingsViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">⚙️</span> Settings
       </button>
@@ -176,6 +179,7 @@ const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
 const ordersActions = document.getElementById("ordersActions");
 const assemblyViewBtn = document.getElementById("assemblyViewBtn");
+const inventoryViewBtn = document.getElementById("inventoryViewBtn");
 const settingsViewBtn = document.getElementById("settingsViewBtn");
 
 const orderFilters = document.getElementById("orderFilters");
@@ -200,6 +204,7 @@ let currentView = "today";
 let latestOrders = [];
 
 let inventoryItems = {};
+let clearanceInventoryItems = {};
 let adminShopSettings = {};
 let adminPromoCodes = [];
 
@@ -400,6 +405,12 @@ function renderCurrentView() {
     sectionTitle.innerText = "Assembly";
     ordersActions.style.display = "none";
     renderAssemblyQueue();
+  }
+
+  if (currentView === "inventory") {
+    sectionTitle.innerText = "Inventory";
+    ordersActions.style.display = "none";
+    renderInventoryWorkspace();
   }
 
   if (currentView === "settings") {
@@ -863,9 +874,39 @@ window.markReady = async function(id) {
     return;
   }
 
+  const isDelivery = order.collection_method === "delivery";
+  const dispatchDetails = {};
+
+  if (isDelivery) {
+    const courierName = prompt(
+      "Courier name (leave blank if you are delivering it yourself):",
+      order.courier_name || ""
+    );
+    if (courierName === null) return;
+
+    const trackingNumber = prompt(
+      "Tracking number (optional):",
+      order.tracking_number || ""
+    );
+    if (trackingNumber === null) return;
+
+    const trackingUrl = prompt(
+      "Tracking link (optional):",
+      order.tracking_url || ""
+    );
+    if (trackingUrl === null) return;
+
+    dispatchDetails.courier_name = courierName.trim();
+    dispatchDetails.tracking_number = trackingNumber.trim();
+    dispatchDetails.tracking_url = trackingUrl.trim();
+  }
+
   const ok = confirm(
-    `Mark ${order.order_ref} as ready?\n\n` +
-    `This will deduct any remaining parts and send the ready email.`
+    isDelivery
+      ? `Finish ${order.order_ref} and start delivery?\n\n` +
+        `This will deduct any remaining parts, mark it ready and out for delivery, then send one delivery email.`
+      : `Mark ${order.order_ref} as ready for pickup?\n\n` +
+        `This will deduct any remaining parts and send the pickup scheduling email.`
   );
 
   if (!ok) return;
@@ -884,14 +925,60 @@ window.markReady = async function(id) {
     return;
   }
 
+  const finalStatus = isDelivery
+    ? "Out for Delivery"
+    : "Ready for Pickup/Delivery";
+  const updatedOrder = {
+    ...order,
+    ...dispatchDetails,
+    status: finalStatus
+  };
+
+  if (isDelivery) {
+    const { error: dispatchError } = await supabase
+      .from("orders")
+      .update({
+        ...dispatchDetails,
+        status: finalStatus,
+        status_updated_at: new Date().toISOString()
+      })
+      .eq("id", id);
+
+    if (dispatchError) {
+      console.error("Unable to start delivery:", dispatchError);
+      alert(
+        "The order was completed and stock was deducted, but delivery could not be started.\n\n" +
+        "Open the order and set its status to Ready / Out for delivery."
+      );
+      await loadOrders();
+      return;
+    }
+  }
+
   try {
-    await sendOrderStatusEmail(
-      { ...order, status: "Ready for Pickup/Delivery" },
-      "Ready for Pickup/Delivery"
+    const emailResult = await sendOrderStatusEmail(
+      updatedOrder,
+      finalStatus
     );
+
+    if (emailResult.sent) {
+      alert(
+        isDelivery
+          ? `Order finished, delivery started and one delivery email was sent to ${order.customer_email}.`
+          : `Order finished and the pickup scheduling email was sent to ${order.customer_email}.`
+      );
+    } else {
+      alert(
+        "Order finished, but no ready email was sent.\n\n" +
+        (emailResult.reason || "Check Customer updates under Settings.")
+      );
+    }
   } catch (error) {
     console.error("Ready email failed:", error);
-    alert("Order is ready and stock was deducted, but the customer email failed to send.");
+    alert(
+      `${isDelivery ? "Delivery started" : "Order is ready"} and stock was deducted, but the customer email failed to send.\n\n` +
+      (error?.text || error?.message || "Unknown EmailJS error")
+    );
   }
 
   await loadOrders();
@@ -955,6 +1042,82 @@ window.markKeychainComplete = async function(orderId, itemIndex) {
     alert(
       "Nothing was deducted.\n\n" +
       "Run the individual assembly SQL once, then try again."
+    );
+    return;
+  }
+
+  await loadOrders();
+};
+
+window.sendPrintedPartToReprint = async function(
+  orderId,
+  itemIndex,
+  partType,
+  characterIndex = null,
+  keepForClearance = true
+) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(orderId)
+  );
+  const index = Number(itemIndex);
+  const keychain = order?.order_data?.[index];
+  const selectedCharacterIndex =
+    characterIndex === null ? null : Number(characterIndex);
+
+  if (!order || !keychain || keychain.assembly_completed) return;
+
+  const needs = getKeychainPrintablePartNeeds(
+    keychain,
+    partType,
+    Number.isInteger(selectedCharacterIndex)
+      ? selectedCharacterIndex
+      : null
+  );
+
+  if (!Object.keys(needs).length) {
+    alert("This printed part could not be identified.");
+    return;
+  }
+
+  let label = "all printed bases and keycaps";
+
+  if (partType === "base") {
+    label = Number.isInteger(selectedCharacterIndex)
+      ? `the base at position ${selectedCharacterIndex + 1}`
+      : "all bases for this keychain";
+  } else if (partType === "keycap") {
+    const character = Array.from(
+      keychain.clean_name || keychain.name || ""
+    )[selectedCharacterIndex];
+    label = `the ${displayIcon(character)} keycap`;
+  }
+
+  const ok = confirm(
+    `Send ${label} back to Production?\n\n` +
+    "The printed quantity will be reduced so Production shows it as needing reprint. Hardware stock will not change.\n\n" +
+    (keepForClearance
+      ? "The rejected piece will be saved in Clearance / Seconds Inventory."
+      : "The rejected piece will be discarded and will not enter clearance stock.")
+  );
+
+  if (!ok) return;
+
+  const { error } = await supabase.rpc(
+    "mark_inventory_for_reprint",
+    {
+      p_needs: needs,
+      p_keep_for_clearance: Boolean(keepForClearance),
+      p_order_ref: order.order_ref || null,
+      p_reason: "Failed quality check"
+    }
+  );
+
+  if (error) {
+    console.error("Unable to send printed part for reprint:", error);
+    alert(
+      "Unable to send this part back to Production.\n\n" +
+      "Run the latest reprint SQL once, then refresh the admin page.\n\n" +
+      `Supabase: ${error.message || error.details || "Unknown database error"}`
     );
     return;
   }
@@ -1266,6 +1429,15 @@ function renderOrders(orders) {
         <p><strong>Order Reference</strong><br>${orderRef}</p>
 
         <p><strong>Collection Method</strong><br>${getMethodLabel(order.collection_method)}</p>
+        ${order.collection_method === "pickup" ? `
+          <p>
+            <strong>Pickup Appointment</strong><br>
+            ${order.pickup_scheduled_date
+              ? `${formatDate(order.pickup_scheduled_date)} · ${escapeAdminHtml(order.pickup_time_range || "Time not selected")}`
+              : "Customer has not selected a timing yet"
+            }
+          </p>
+        ` : ""}
         <p><strong>${order.order_type === "bulk" || order.order_type === "rush" ? "Preferred Completion" : "Estimated Ready By"}</strong><br>${formatDate(order.requested_completion_date || order.needed_by)}</p>
         <p><strong>Order Type</strong><br>${order.order_type === "rush" ? "⚡ Rush Request" : order.order_type === "bulk" ? "📦 Bulk Request" : "Standard Order"}</p>
         ${order.review_status ? `<p><strong>Review</strong><br>${escapeAdminHtml(order.review_status)}</p>` : ""}
@@ -1331,10 +1503,36 @@ function renderOrders(orders) {
           </button>
         ` : ""}
 
+        ${order.customer_email && [
+          "Ready for Pickup/Delivery",
+          "Out for Delivery",
+          "Completed"
+        ].includes(order.status) ? `
+          <button
+            type="button"
+            class="approve-request-action"
+            onclick='window.resendCurrentStatusEmail(${JSON.stringify(orderId)}, this)'
+          >
+            Resend Status Email
+          </button>
+        ` : ""}
+
         ${whatsappHref ? `
           <a href="${whatsappHref}" target="_blank" rel="noopener">
             WhatsApp
           </a>
+        ` : ""}
+
+        ${whatsappHref &&
+          order.collection_method === "pickup" &&
+          order.status === "Ready for Pickup/Delivery" ? `
+          <button
+            type="button"
+            class="approve-request-action"
+            onclick='window.copyPickupWhatsAppReminder(${JSON.stringify(orderId)}, this)'
+          >
+            Copy Pickup Reminder
+          </button>
         ` : ""}
 
         <button type="button" onclick='window.downloadOrderPdf(${JSON.stringify(orderId)}, this)'>
@@ -1367,8 +1565,19 @@ function renderOrders(orders) {
       <option value="Payment Expired" ${order.status === "Payment Expired" ? "selected" : ""}>Checkout expired - slot released</option>
       <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid - ready to print</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
-      <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>${order.collection_method === "delivery" ? "Ready for delivery" : "Ready for pickup"}</option>
-      ${order.collection_method === "delivery" ? `<option value="Out for Delivery" ${order.status === "Out for Delivery" ? "selected" : ""}>Out for Delivery</option>` : ""}
+      ${order.collection_method === "delivery"
+        ? `
+          <option
+            value="Out for Delivery"
+            ${["Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status) ? "selected" : ""}
+          >
+            Ready / Out for delivery
+          </option>
+        `
+        : `
+          <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for pickup</option>
+        `
+      }
       <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
     </select>
   </div>
@@ -1429,13 +1638,9 @@ function getBaseInventoryName(baseName, baseShape = "ribbed") {
 function getKeycapInventoryName(
   capName,
   letterName,
-  character,
-  orientation = "vertical"
+  character
 ) {
-  const orientationSuffix =
-    orientation === "horizontal" ? " - Sideways" : "";
-
-  return `${capName} Cap + ${letterName} Letter - ${character}${orientationSuffix}`;
+  return `${capName} Cap + ${letterName} Letter - ${character}`;
 }
 
 async function loadInventoryItems() {
@@ -1459,6 +1664,61 @@ async function loadInventoryItems() {
     };
   });
 }
+
+async function loadClearanceInventory() {
+  const { data, error } = await supabase
+    .from("clearance_inventory")
+    .select("*")
+    .order("item_name", { ascending: true });
+
+  if (error) {
+    console.error("Unable to load clearance inventory:", error);
+    clearanceInventoryItems = {};
+    return;
+  }
+
+  clearanceInventoryItems = {};
+
+  (data || []).forEach(item => {
+    clearanceInventoryItems[item.item_name] = {
+      id: item.id,
+      qty: Number(item.qty || 0),
+      latestOrderRef: item.latest_order_ref || "",
+      reason: item.reason || "Failed quality check"
+    };
+  });
+}
+
+window.removeOneClearanceItem = async function(itemName) {
+  const item = clearanceInventoryItems[itemName];
+
+  if (!item?.qty) return;
+
+  if (!confirm(`Remove one ${itemName} from clearance stock?`)) return;
+
+  const { error } = await supabase.rpc(
+    "adjust_clearance_inventory",
+    {
+      p_item_name: itemName,
+      p_change: -1
+    }
+  );
+
+  if (error) {
+    console.error("Unable to update clearance inventory:", error);
+    alert(
+      "Unable to update clearance stock.\n\n" +
+      "Run the supplied clearance SQL once, then try again."
+    );
+    return;
+  }
+
+  if (currentView === "inventory") {
+    await renderInventoryWorkspace();
+  } else {
+    await renderProductionPlanner(latestOrders);
+  }
+};
 
 function getInventoryQty(itemName) {
   return inventoryItems[itemName]?.qty || 0;
@@ -1510,14 +1770,43 @@ async function addInventory(itemName, qtyToAdd, category) {
     }
   }
 
-  await renderProductionPlanner(latestOrders);
+  if (currentView === "inventory") {
+    await renderInventoryWorkspace();
+  } else {
+    await renderProductionPlanner(latestOrders);
+  }
 }
+
+window.removeOneInventoryItem = async function(itemName) {
+  await loadInventoryItems();
+
+  const item = inventoryItems[itemName];
+  if (!item || item.qty <= 0) return;
+
+  if (!confirm(`Remove one ${itemName} from normal stock?`)) return;
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({
+      qty: item.qty - 1,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", item.id);
+
+  if (error) {
+    console.error("Unable to reduce inventory:", error);
+    alert(`Unable to update ${itemName}.`);
+    return;
+  }
+
+  await renderInventoryWorkspace();
+};
 
 async function addCustomInventory(itemName, qtyToAdd, category) {
   const qty = Number(qtyToAdd);
 
   if (!Number.isInteger(qty) || qty <= 0) {
-    alert("Please enter a valid printed quantity.");
+    alert("Please enter a valid quantity.");
     return;
   }
 
@@ -1547,8 +1836,6 @@ function getProductionSummary(orders) {
       const design = item.design;
 
       if (!design) return;
-
-      const letterOrientation = getLetterOrientation(design);
 
       letters.forEach((letter, index) => {
         const base = design.bases[index % design.bases.length];
@@ -1583,7 +1870,7 @@ function getProductionSummary(orders) {
         baseTotals[baseKey].qty += 1;
 
         const groupKey =
-          `${capName} Cap + ${letterName} Letter|${letterOrientation}`;
+          `${capName} Cap + ${letterName} Letter`;
 
         if (!keycapGroups[groupKey]) {
           keycapGroups[groupKey] = {
@@ -1591,7 +1878,6 @@ function getProductionSummary(orders) {
             capHex,
             letterName,
             letterHex,
-            letterOrientation,
             letters: {}
           };
         }
@@ -1617,8 +1903,6 @@ function getOrderInventoryNeeds(order) {
     const design = item.design;
 
     if (!design) return;
-
-    const letterOrientation = getLetterOrientation(design);
 
     letters.forEach((letter, index) => {
       const base = design.bases[index % design.bases.length];
@@ -1653,9 +1937,7 @@ function getOrderInventoryNeeds(order) {
 
           letterName,
 
-          letter,
-
-          letterOrientation
+          letter
 
         ),
 
@@ -1671,6 +1953,63 @@ function getOrderInventoryNeeds(order) {
 
   add("Key Ring", (order.order_data || []).length);
   add("Jump Ring", (order.order_data || []).length);
+
+  return needs;
+}
+
+function getKeychainPrintablePartNeeds(
+  item,
+  partType = "all",
+  characterIndex = null
+) {
+  const needs = {};
+  const characters = Array.from(item.clean_name || item.name || "");
+  const design = item.design || {};
+  const bases = Array.isArray(design.bases) ? design.bases : [];
+  const caps = Array.isArray(design.caps) ? design.caps : [];
+  const letters = Array.isArray(design.letters) ? design.letters : [];
+
+  if (!characters.length || !bases.length || !caps.length || !letters.length) {
+    return needs;
+  }
+
+  const indexes = Number.isInteger(characterIndex)
+    ? [characterIndex]
+    : characters.map((_, index) => index);
+
+  const add = itemName => {
+    needs[itemName] = (needs[itemName] || 0) + 1;
+  };
+
+  indexes.forEach(index => {
+    if (index < 0 || index >= characters.length) return;
+
+    const base = bases[index % bases.length];
+    const cap = caps[index % caps.length];
+    const letterColour = letters[index % letters.length];
+    const baseName = base?.name || base?.hex || base;
+    const capName = cap?.name || cap?.hex || cap;
+    const letterName =
+      letterColour?.name || letterColour?.hex || letterColour;
+    const baseShape =
+      design.base_shape?.key ||
+      design.baseShape ||
+      "ribbed";
+
+    if (partType === "base" || partType === "all") {
+      add(getBaseInventoryName(baseName, baseShape));
+    }
+
+    if (partType === "keycap" || partType === "all") {
+      add(
+        getKeycapInventoryName(
+          capName,
+          letterName,
+          characters[index]
+        )
+      );
+    }
+  });
 
   return needs;
 }
@@ -1997,9 +2336,7 @@ async function generateKeycapCombinationStl(jobId, button) {
 
     for (let index = 0; index < quantity; index += 1) {
       requestedKeycaps.push({
-        character: row.letter,
-        letterOrientation:
-          row.letterOrientation || job.letterOrientation || "vertical"
+        character: row.letter
       });
     }
   });
@@ -2023,10 +2360,7 @@ async function generateKeycapCombinationStl(jobId, button) {
           getProductionKeycapPath(item.character)
         );
 
-        return prepareProductionKeycapGeometry(
-          geometry,
-          item.letterOrientation
-        );
+        return geometry;
       })
     );
 
@@ -2080,10 +2414,7 @@ async function generateKeycapCombinationStl(jobId, button) {
     const letterName = safeProductionFileName(job.letterName, "letter");
 
     link.href = downloadUrl;
-    const orientationName =
-      job.letterOrientation === "horizontal" ? "sideways" : "upright";
-
-    link.download = `${capName}-cap_${letterName}-letter_${orientationName}_${requestedKeycaps.length}-pieces.stl`;
+    link.download = `${capName}-cap_${letterName}-letter_${requestedKeycaps.length}-pieces.stl`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -2120,8 +2451,6 @@ function getRushOrderPrintGroups(order) {
     if (!characters.length || !bases.length || !caps.length || !letters.length) return;
 
     const baseShape = design.base_shape?.key || design.baseShape || "ribbed";
-    const letterOrientation = getLetterOrientation(design);
-
     characters.forEach((character, index) => {
       const base = bases[index % bases.length];
       const cap = caps[index % caps.length];
@@ -2130,7 +2459,7 @@ function getRushOrderPrintGroups(order) {
       const capName = cap?.name || cap?.hex || cap || "Cap";
       const letterName = letterColour?.name || letterColour?.hex || letterColour || "Letter";
       const baseKey = `${baseShape}|${baseName}`;
-      const keycapKey = `${capName}|${letterName}|${letterOrientation}`;
+      const keycapKey = `${capName}|${letterName}`;
 
       if (!baseGroups[baseKey]) {
         baseGroups[baseKey] = { baseShape, baseName, quantity: 0 };
@@ -2141,7 +2470,6 @@ function getRushOrderPrintGroups(order) {
         keycapGroups[keycapKey] = {
           capName,
           letterName,
-          letterOrientation,
           characters: []
         };
       }
@@ -2233,7 +2561,7 @@ async function generateOrderStls(id, button) {
       `${group.baseName} ${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} Bases × ${group.quantity}`
     ),
     ...groups.keycaps.map(group =>
-      `${group.capName} Cap + ${group.letterName} Letter (${group.letterOrientation === "horizontal" ? "Sideways" : "Upright"}) × ${group.characters.length}`
+      `${group.capName} Cap + ${group.letterName} Letter × ${group.characters.length}`
     )
   ];
 
@@ -2268,13 +2596,12 @@ async function generateOrderStls(id, button) {
     for (const group of groups.keycaps) {
       const requests = group.characters.map(character => ({
         kind: "keycap",
-        path: getProductionKeycapPath(character),
-        orientation: group.letterOrientation
+        path: getProductionKeycapPath(character)
       }));
       const blob = await buildRushStlPlate(requests);
       files.push({
         blob,
-        filename: `${reference}_KEYCAP_${safeProductionFileName(group.capName, "cap")}_${safeProductionFileName(group.letterName, "letter")}_${group.letterOrientation}_${group.characters.length}pcs.stl`
+        filename: `${reference}_KEYCAP_${safeProductionFileName(group.capName, "cap")}_${safeProductionFileName(group.letterName, "letter")}_${group.characters.length}pcs.stl`
       });
     }
 
@@ -2410,6 +2737,9 @@ async function renderAssemblyQueue() {
       item.design?.baseShape ||
       "ribbed";
     const letterOrientation = getLetterOrientation(item.design);
+    const characters = Array.from(
+      item.clean_name || sanitizeName(item.name || "")
+    );
 
     return `
       <div class="assembly-item ${completed ? "is-complete" : ""}">
@@ -2448,6 +2778,58 @@ async function renderAssemblyQueue() {
               </p>
             `
             : `
+              <details class="assembly-reprint-controls">
+                <summary>Bad print? Send a part back to Production</summary>
+
+                <p class="hint">
+                  Choose only the piece that needs printing again.
+                </p>
+
+                <label class="clearance-save-option">
+                  <input
+                    type="checkbox"
+                    id="clearance-${order.id}-${itemIndex}"
+                    checked
+                  >
+                  <span>
+                    Keep rejected piece in Clearance / Seconds Inventory
+                    <small>Untick this only if the piece is completely unusable.</small>
+                  </span>
+                </label>
+
+                <div class="reprint-part-grid">
+                  ${characters.map((character, characterIndex) => `
+                    <div class="reprint-character-group">
+                      <strong>Position ${characterIndex + 1} - ${displayIcon(character)}</strong>
+
+                      <button
+                        type="button"
+                        class="reprint-part-btn"
+                        onclick="window.sendPrintedPartToReprint('${order.id}', ${itemIndex}, 'base', ${characterIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
+                      >
+                        Reprint Base
+                      </button>
+
+                      <button
+                        type="button"
+                        class="reprint-part-btn"
+                        onclick="window.sendPrintedPartToReprint('${order.id}', ${itemIndex}, 'keycap', ${characterIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
+                      >
+                        Reprint Keycap
+                      </button>
+                    </div>
+                  `).join("")}
+                </div>
+
+                <button
+                  type="button"
+                  class="reprint-all-btn"
+                  onclick="window.sendPrintedPartToReprint('${order.id}', ${itemIndex}, 'all', null, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
+                >
+                  Reprint All Printed Pieces
+                </button>
+              </details>
+
               <button
                 class="keychain-complete-btn"
                 type="button"
@@ -2545,7 +2927,14 @@ async function renderAssemblyQueue() {
                     class="ready-btn"
                     onclick="window.markReady('${order.id}')"
                   >
-                    Finish Order & Send Ready Email
+                    ${
+                      adminShopSettings.status_emails_enabled &&
+                      String(adminShopSettings.status_email_template_id || "").trim()
+                        ? order.collection_method === "delivery"
+                          ? "Finish Order & Start Delivery"
+                          : "Finish Order & Send Pickup Email"
+                        : "Finish Order (Email Not Set Up)"
+                    }
                   </button>
                 `
                 : `
@@ -2578,6 +2967,389 @@ async function renderAssemblyQueue() {
       ${assemblyOrders.length ? assemblyCards : emptyAssemblyMessage}
     </div>
   `;
+}
+
+function bindPersistentDetails(scope) {
+  ordersContainer
+    .querySelectorAll("details[data-collapse-key]")
+    .forEach(details => {
+      const collapseKey = details.dataset.collapseKey;
+      const storageKey = `little-keeps-${scope}-${collapseKey}`;
+
+      try {
+        const savedState = localStorage.getItem(storageKey);
+
+        if (savedState === "open") details.open = true;
+        if (savedState === "closed") details.open = false;
+      } catch (error) {
+        console.warn("Unable to restore collapsed section:", error);
+      }
+
+      details.addEventListener("toggle", () => {
+        try {
+          localStorage.setItem(
+            storageKey,
+            details.open ? "open" : "closed"
+          );
+        } catch (error) {
+          console.warn("Unable to remember collapsed section:", error);
+        }
+      });
+    });
+}
+
+async function renderInventoryWorkspace() {
+  await Promise.all([
+    loadInventoryItems(),
+    loadClearanceInventory()
+  ]);
+
+  const knownHardwareNames = new Set(
+    hardwareItems.map(item => item.itemName)
+  );
+
+  const allNormalItems = Object.entries(inventoryItems)
+    .map(([itemName, item]) => ({
+      itemName,
+      qty: Number(item.qty || 0),
+      category: item.category || "Other"
+    }))
+    .sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+  const hardwareRows = hardwareItems.map(hardware => {
+    const saved = inventoryItems[hardware.itemName];
+
+    return {
+      itemName: hardware.itemName,
+      label: hardware.label,
+      qty: Number(saved?.qty || 0),
+      category: "Hardware"
+    };
+  });
+
+  const baseRows = allNormalItems.filter(item =>
+    !knownHardwareNames.has(item.itemName) &&
+    (
+      String(item.category).toLowerCase() === "base" ||
+      (
+        item.itemName.endsWith(" Base") &&
+        !item.itemName.includes(" Cap + ")
+      )
+    )
+  );
+
+  const keycapRows = allNormalItems.filter(item =>
+    !knownHardwareNames.has(item.itemName) &&
+    (
+      String(item.category).toLowerCase() === "keycap" ||
+      item.itemName.includes(" Cap + ")
+    )
+  );
+
+  const baseShapeInventoryGroups = [
+    {
+      key: "bubbly",
+      title: "Bubbly Bases",
+      description: "Finished bubbly bases currently available.",
+      rows: baseRows.filter(item => item.itemName.includes(" Bubbly Base"))
+    },
+    {
+      key: "ribbed",
+      title: "Ribbed Bases",
+      description: "Finished ribbed bases currently available.",
+      rows: baseRows.filter(item => !item.itemName.includes(" Bubbly Base"))
+    }
+  ];
+
+  const keycapColourInventoryGroups = new Map();
+
+  keycapRows.forEach(item => {
+    const match = item.itemName.match(
+      /^(.*?) Cap \+ (.*?) Letter - (.*)$/
+    );
+    const capName = match?.[1] || "Other";
+    const letterName = match?.[2] || "Other";
+    const character = match?.[3] || item.itemName;
+
+    if (!keycapColourInventoryGroups.has(capName)) {
+      keycapColourInventoryGroups.set(capName, new Map());
+    }
+
+    const letterGroups = keycapColourInventoryGroups.get(capName);
+
+    if (!letterGroups.has(letterName)) {
+      letterGroups.set(letterName, []);
+    }
+
+    letterGroups.get(letterName).push({
+      ...item,
+      capName,
+      letterName,
+      character,
+      label: `${displayIcon(character)}`
+    });
+  });
+
+  const assignedNames = new Set([
+    ...hardwareRows.map(item => item.itemName),
+    ...baseRows.map(item => item.itemName),
+    ...keycapRows.map(item => item.itemName)
+  ]);
+
+  const otherRows = allNormalItems.filter(
+    item => !assignedNames.has(item.itemName)
+  );
+
+  const renderStockRows = rows => rows.map(item => {
+    const inputId = `inventory-add-${encodeURIComponent(item.itemName)}`;
+
+    return `
+      <div class="inventory-stock-row">
+        <div class="inventory-item-copy">
+          <strong>${escapeAdminHtml(item.label || item.itemName)}</strong>
+          <span>${escapeAdminHtml(item.itemName)}</span>
+        </div>
+
+        <span class="inventory-quantity">${item.qty}</span>
+
+        <div class="inventory-row-actions">
+          <button
+            type="button"
+            class="inventory-minus-btn"
+            ${item.qty <= 0 ? "disabled" : ""}
+            onclick='window.removeOneInventoryItem(${JSON.stringify(item.itemName)})'
+          >
+            -1
+          </button>
+
+          <input
+            id="${inputId}"
+            type="number"
+            min="1"
+            value="1"
+            aria-label="Quantity to add"
+          >
+
+          <button
+            type="button"
+            class="inventory-add-btn"
+            onclick='window.addCustomInventory(
+              ${JSON.stringify(item.itemName)},
+              document.getElementById(${JSON.stringify(inputId)}).value,
+              ${JSON.stringify(item.category)}
+            )'
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const clearanceRows = Object.entries(clearanceInventoryItems)
+    .filter(([, item]) => item.qty > 0)
+    .map(([itemName, item]) => `
+      <div class="inventory-stock-row clearance-row">
+        <div class="inventory-item-copy">
+          <strong>${escapeAdminHtml(itemName)}</strong>
+          <span>
+            ${item.reason ? escapeAdminHtml(item.reason) : "Failed quality check"}
+            ${item.latestOrderRef ? ` · From ${escapeAdminHtml(item.latestOrderRef)}` : ""}
+          </span>
+        </div>
+
+        <span class="inventory-quantity clearance-quantity">${item.qty}</span>
+
+        <div class="inventory-row-actions single-action">
+          <button
+            type="button"
+            class="clearance-remove-btn"
+            onclick='window.removeOneClearanceItem(${JSON.stringify(itemName)})'
+          >
+            Remove One
+          </button>
+        </div>
+      </div>
+    `)
+    .join("");
+
+  const normalTotal = allNormalItems.reduce(
+    (sum, item) => sum + item.qty,
+    0
+  );
+  const clearanceTotal = Object.values(clearanceInventoryItems).reduce(
+    (sum, item) => sum + Number(item.qty || 0),
+    0
+  );
+
+  const section = (
+    collapseKey,
+    title,
+    description,
+    rows,
+    open = false
+  ) => `
+    <details
+      class="inventory-group"
+      data-collapse-key="${encodeURIComponent(collapseKey)}"
+      ${open ? "open" : ""}
+    >
+      <summary>
+        <div>
+          <h3>${title}</h3>
+          <p>${description}</p>
+        </div>
+        <span>${rows.length} item type${rows.length === 1 ? "" : "s"}</span>
+      </summary>
+
+      <div class="inventory-group-body">
+        ${renderStockRows(rows) || `<p class="inventory-empty">No items saved here yet.</p>`}
+      </div>
+    </details>
+  `;
+
+  const keycapSections = Array.from(
+    keycapColourInventoryGroups.entries()
+  )
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([capName, letterGroups]) => {
+      const combinations = Array.from(letterGroups.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]));
+      const itemTypeCount = combinations.reduce(
+        (sum, [, rows]) => sum + rows.length,
+        0
+      );
+      const pieceCount = combinations.reduce(
+        (sum, [, rows]) =>
+          sum + rows.reduce((rowSum, row) => rowSum + row.qty, 0),
+        0
+      );
+
+      return `
+        <details
+          class="inventory-group inventory-cap-group"
+          data-collapse-key="${encodeURIComponent(`keycap-${capName}`)}"
+        >
+          <summary>
+            <div>
+              <h3>${escapeAdminHtml(capName)} Caps</h3>
+              <p>
+                ${itemTypeCount} letter/icon type${itemTypeCount === 1 ? "" : "s"}
+                · ${pieceCount} printed piece${pieceCount === 1 ? "" : "s"}
+              </p>
+            </div>
+            <span>${combinations.length} combination${combinations.length === 1 ? "" : "s"}</span>
+          </summary>
+
+          <div class="inventory-cap-combinations">
+            ${combinations.map(([letterName, rows]) => {
+              const combinationPieces = rows.reduce(
+                (sum, row) => sum + row.qty,
+                0
+              );
+
+              return `
+                <details
+                  class="inventory-combination-group"
+                  data-collapse-key="${encodeURIComponent(`keycap-${capName}-${letterName}`)}"
+                >
+                  <summary>
+                    <div>
+                      <strong>
+                        ${escapeAdminHtml(capName)} Cap +
+                        ${escapeAdminHtml(letterName)} Letter/Icon
+                      </strong>
+                      <small>
+                        ${rows.length} character type${rows.length === 1 ? "" : "s"}
+                      </small>
+                    </div>
+                    <span>${combinationPieces} piece${combinationPieces === 1 ? "" : "s"}</span>
+                  </summary>
+
+                  <div class="inventory-group-body">
+                    ${renderStockRows(rows)}
+                  </div>
+                </details>
+              `;
+            }).join("")}
+          </div>
+        </details>
+      `;
+    })
+    .join("");
+
+  ordersContainer.innerHTML = `
+    <div class="inventory-workspace">
+      <div class="inventory-overview">
+        <div>
+          <span>Normal Stock</span>
+          <strong>${normalTotal}</strong>
+          <small>Ready for customer orders</small>
+        </div>
+
+        <div class="clearance-overview">
+          <span>Clearance / Seconds</span>
+          <strong>${clearanceTotal}</strong>
+          <small>Kept separate from normal stock</small>
+        </div>
+      </div>
+
+      ${section(
+        "hardware",
+        "Hardware",
+        "Mechanical switches, key rings and jump rings.",
+        hardwareRows,
+        true
+      )}
+
+      ${baseShapeInventoryGroups.map(group => section(
+        `base-${group.key}`,
+        group.title,
+        group.description,
+        group.rows,
+        true
+      )).join("")}
+
+      ${keycapSections ||
+        section(
+          "keycap-empty",
+          "Printed Keycaps",
+          "Finished keycaps grouped by cap colour.",
+          []
+        )
+      }
+
+      ${otherRows.length
+        ? section(
+            "other",
+            "Other Stock",
+            "Inventory entries that do not match the standard groups.",
+            otherRows
+          )
+        : ""
+      }
+
+      <details
+        class="inventory-group clearance-inventory-group"
+        data-collapse-key="clearance"
+        open
+      >
+        <summary>
+          <div>
+            <h3>Clearance / Seconds</h3>
+            <p>Usable rejected prints that are not counted towards customer orders.</p>
+          </div>
+          <span>${clearanceTotal} piece${clearanceTotal === 1 ? "" : "s"}</span>
+        </summary>
+
+        <div class="inventory-group-body">
+          ${clearanceRows || `<p class="inventory-empty">No clearance pieces saved yet.</p>`}
+        </div>
+      </details>
+    </div>
+  `;
+
+  bindPersistentDetails("inventory");
 }
 
 async function renderProductionPlanner(orders) {
@@ -2613,16 +3385,15 @@ async function renderProductionPlanner(orders) {
 
   productionStlJobs.clear();
 
-  const keycapGroupHtml = Object.entries(keycapGroups).map(([groupKey, group], groupIndex) => {
+  const keycapCombinationCards = Object.entries(keycapGroups).map(([groupKey, group], groupIndex) => {
     const allRows = Object.entries(group.letters)
       .sort((a, b) => b[1] - a[1])
       .map(([letter, qty]) => {
-    const itemName = getKeycapInventoryName(
-      group.capName,
-      group.letterName,
-      letter,
-      group.letterOrientation
-    );
+        const itemName = getKeycapInventoryName(
+          group.capName,
+          group.letterName,
+          letter
+        );
         const need = qty;
         const stock = getInventoryQty(itemName);
         const toPrint = Math.max(0, need - stock);
@@ -2641,24 +3412,29 @@ async function renderProductionPlanner(orders) {
       ? Math.round((totalReady / totalNeeded) * 100)
       : 100;
 
-    if (!rows.length) return "";
+    if (!rows.length) return null;
 
     const stlJobId = `keycap-combination-${groupIndex}`;
 
     productionStlJobs.set(stlJobId, {
       capName: group.capName,
       letterName: group.letterName,
-      letterOrientation: group.letterOrientation,
       rows: rows.map(row => ({
         letter: row.letter,
-        letterOrientation: group.letterOrientation,
         toPrint: row.toPrint,
         inputId: `printQty-${encodeURIComponent(row.itemName)}`
       }))
     });
 
-    return `
-      <details class="print-group" open>
+    return {
+      capName: group.capName,
+      capHex: group.capHex,
+      html: `
+      <details
+        class="print-group"
+        data-collapse-key="${encodeURIComponent(`keycap-${group.capName}-${group.letterName}`)}"
+        open
+      >
         <summary>
           <div class="group-summary">
             <div
@@ -2671,7 +3447,7 @@ async function renderProductionPlanner(orders) {
             <div>
               <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
               <p class="hint">
-                ${group.letterOrientation === "horizontal" ? "Horizontal / Sideways" : "Vertical / Upright"}
+                Letter direction is handled later during assembly.
               </p>
               <p style="margin-bottom:7px;">
                 <strong>${totalReady} / ${totalNeeded} ready</strong>
@@ -2750,8 +3526,54 @@ async function renderProductionPlanner(orders) {
           </span>
         </div>
       </details>
-    `;
-  }).join("");
+    `
+    };
+  }).filter(Boolean);
+
+  const capColourGroups = new Map();
+
+  keycapCombinationCards.forEach(card => {
+    const capKey = `${card.capName}|${card.capHex}`;
+
+    if (!capColourGroups.has(capKey)) {
+      capColourGroups.set(capKey, {
+        capName: card.capName,
+        capHex: card.capHex,
+        cards: []
+      });
+    }
+
+    capColourGroups.get(capKey).cards.push(card.html);
+  });
+
+  const keycapGroupHtml = Array.from(capColourGroups.values())
+    .sort((a, b) => String(a.capName).localeCompare(String(b.capName)))
+    .map(group => `
+      <details
+        class="cap-colour-section"
+        data-collapse-key="${encodeURIComponent(`cap-colour-${group.capName}`)}"
+        open
+      >
+        <summary class="cap-colour-heading">
+          <span
+            class="cap-colour-swatch"
+            style="background:${group.capHex};"
+          ></span>
+
+          <div>
+            <h3>${group.capName} Caps</h3>
+            <p class="hint">
+              These cap-colour combinations can share one printer plate.
+            </p>
+          </div>
+        </summary>
+
+        <div class="keycap-grid">
+          ${group.cards.join("")}
+        </div>
+      </details>
+    `)
+    .join("");
 
   ordersContainer.innerHTML = `
     <div class="production-card">
@@ -2771,13 +3593,17 @@ async function renderProductionPlanner(orders) {
           const piecesLeft = group.rows.reduce((sum, item) => sum + item.toPrint, 0);
 
           return `
-            <section class="print-group base-shape-group base-shape-${group.key}">
-              <div class="base-shape-heading">
+            <details
+              class="print-group base-shape-group base-shape-${group.key}"
+              data-collapse-key="base-${group.key}"
+              open
+            >
+              <summary class="base-shape-heading">
                 <div>
                   <h4>${group.label}</h4>
                   <p class="hint">${piecesLeft} piece${piecesLeft === 1 ? "" : "s"} left to print</p>
                 </div>
-              </div>
+              </summary>
 
               ${group.rows.map(item => `
                 <div class="print-check-row">
@@ -2811,59 +3637,18 @@ async function renderProductionPlanner(orders) {
                   </div>
                 </div>
               `).join("") || `<p class="base-shape-complete">✓ No ${group.label.toLowerCase()} need printing.</p>`}
-            </section>
+            </details>
           `;
         }).join("")}
       </div>
 
-      <h3>Hardware Stock</h3>
-
-<div class="print-group">
-  ${hardwareItems.map(item => {
-    const stock = getInventoryQty(item.itemName);
-
-    return `
-      <div class="print-check-row">
-
-        <div style="flex:1;">
-          <strong>${item.label}</strong>
-          <p class="hint">
-            Current Stock: ${stock}
-          </p>
-        </div>
-
-        <div class="print-qty-control">
-          <input
-            type="number"
-            min="1"
-            value="1"
-            id="hardware-${encodeURIComponent(item.itemName)}"
-          >
-
-          <button
-            class="ready-btn"
-            onclick='window.addCustomInventory(
-              ${JSON.stringify(item.itemName)},
-              document.getElementById(${JSON.stringify(`hardware-${encodeURIComponent(item.itemName)}`)}).value,
-              "Hardware"
-            )'
-          >
-            Add Stock
-          </button>
-        </div>
-
-      </div>
-    `;
-  }).join("")}
-</div>
-
       <h3>Keycap Printing</h3>
 
-      <div class="keycap-grid">
-        ${keycapGroupHtml || "<p>No keycaps need printing.</p>"}
-      </div>
+      ${keycapGroupHtml || "<p>No keycaps need printing.</p>"}
     </div>
   `;
+
+  bindPersistentDetails("production");
 }
 
 function getEmailOrderItems(order) {
@@ -3950,6 +4735,52 @@ window.archiveOrder = archiveOrder;
 window.restoreOrder = restoreOrder;
 window.approveSpecialOrder = approveSpecialOrder;
 
+window.copyPickupWhatsAppReminder = async function(id, button) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!order) {
+    alert("Order could not be found.");
+    return;
+  }
+
+  const manageUrl =
+    `https://little-keeps.vercel.app/?resume_order=${encodeURIComponent(order.order_ref || "")}` +
+    "#orderStatusSection";
+  const customerName = String(order.customer_name || "there").trim();
+  const message =
+    `Hi ${customerName}! Your Little Keeps order ${order.order_ref || ""} is ready for pickup at Woodlands MRT 🩷\n\n` +
+    `Please choose an available pickup date and time here:\n${manageUrl}\n\n` +
+    `Enter the email used for your order. If you cannot find our ready email, please check your spam or junk folder too. Thank you!`;
+
+  try {
+    await navigator.clipboard.writeText(message);
+  } catch (error) {
+    console.error("Unable to copy pickup reminder:", error);
+    alert("Unable to copy the reminder. Please try again.");
+    return;
+  }
+
+  if (button) {
+    const previousLabel = button.textContent;
+    button.textContent = "Copied ✓";
+    setTimeout(() => {
+      button.textContent = previousLabel;
+    }, 2200);
+  }
+
+  const whatsappHref = getWhatsAppHref(order.customer_phone);
+
+  if (whatsappHref && confirm("Pickup reminder copied. Open the customer’s WhatsApp now?")) {
+    window.open(
+      `${whatsappHref}?text=${encodeURIComponent(message)}`,
+      "_blank",
+      "noopener"
+    );
+  }
+};
+
 function getStatusEmailContent(order, status) {
   const isDelivery = order.collection_method === "delivery";
 
@@ -3962,21 +4793,21 @@ function getStatusEmailContent(order, status) {
           actionDetails: "Watch for another update when your order is handed to the courier or begins delivery."
         }
       : {
-          title: "Your order is ready for pickup!",
-          message: "Your Little Keeps order has finished production and is ready for collection.",
-          actionTitle: "Pickup",
-          actionDetails: "Pickup is at Woodlands MRT. Please reply to arrange a suitable collection time."
+          title: "Your order is ready - choose your pickup time! 🩷",
+          message: "Your personalised Little Keeps order has finished production, passed its quality check and is ready for collection.",
+          actionTitle: "Book your Woodlands MRT pickup",
+          actionDetails: "Tap the pink button below, enter your order email, then choose an available pickup date and time range. Need to change it later? Use the same link to reschedule."
         };
   }
 
   if (status === "Out for Delivery") {
     return {
-      title: "Your order is out for delivery!",
-      message: "Your Little Keeps order is on its way to you.",
+      title: "Your order is ready and out for delivery! 🩷",
+      message: "Your personalised Little Keeps order has finished production, passed its quality check, been packed safely and is now on its way to you.",
       actionTitle: order.courier_name ? `Delivery by ${order.courier_name}` : "Delivery update",
       actionDetails: order.tracking_number
         ? `Tracking number: ${order.tracking_number}`
-        : "This order is being delivered personally, so a courier tracking number may not be available."
+        : "This order is being delivered personally, so a courier tracking number is not required. We may contact you if we need help completing the delivery."
     };
   }
 
@@ -3993,11 +4824,36 @@ function getStatusEmailContent(order, status) {
 }
 
 async function sendOrderStatusEmail(order, status) {
-  if (!adminShopSettings.status_emails_enabled) return { skipped: true };
+  if (!adminShopSettings.status_emails_enabled) {
+    return {
+      skipped: true,
+      reason: "Status emails are disabled under Settings → Customer updates."
+    };
+  }
 
   const templateId = String(adminShopSettings.status_email_template_id || "").trim();
   const content = getStatusEmailContent(order, status);
-  if (!templateId || !content || !order.customer_email) return { skipped: true };
+
+  if (!templateId) {
+    return {
+      skipped: true,
+      reason: "The EmailJS status-template ID is missing under Settings → Customer updates."
+    };
+  }
+
+  if (!order.customer_email) {
+    return {
+      skipped: true,
+      reason: "This order does not have a customer email address."
+    };
+  }
+
+  if (!content) {
+    return {
+      skipped: true,
+      reason: `There is no email content configured for status: ${status}.`
+    };
+  }
 
   await emailjs.send(EMAILJS_SERVICE, templateId, {
     to_email: order.customer_email,
@@ -4007,6 +4863,11 @@ async function sendOrderStatusEmail(order, status) {
     update_message: content.message,
     action_title: content.actionTitle,
     action_details: content.actionDetails,
+    action_button_label:
+      status === "Ready for Pickup/Delivery" &&
+      order.collection_method !== "delivery"
+        ? "Choose Pickup Date & Time"
+        : "View or Manage Your Order",
     has_tracking: Boolean(order.tracking_number),
     tracking_number: order.tracking_number || "",
     tracking_url: order.tracking_url || "",
@@ -4017,6 +4878,57 @@ async function sendOrderStatusEmail(order, status) {
 
   return { sent: true };
 }
+
+window.resendCurrentStatusEmail = async function(id, button) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!order) {
+    alert("Order could not be found.");
+    return;
+  }
+
+  if (![
+    "Ready for Pickup/Delivery",
+    "Out for Delivery",
+    "Completed"
+  ].includes(order.status)) {
+    alert("This order does not currently have a status email to resend.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Resend Status Email";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending…";
+  }
+
+  try {
+    const result = await sendOrderStatusEmail(order, order.status);
+
+    if (result.sent) {
+      alert(`Status email sent to ${order.customer_email}.`);
+    } else {
+      alert(
+        "The status email was not sent.\n\n" +
+        (result.reason || "Check Customer updates under Settings.")
+      );
+    }
+  } catch (error) {
+    console.error("Unable to resend status email:", error);
+    alert(
+      "Unable to send the status email.\n\n" +
+      (error?.text || error?.message || "Unknown EmailJS error")
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+  }
+};
 
 async function updateOrderStatus(id, status) {
   const scrollY = window.scrollY;
@@ -4268,6 +5180,7 @@ function setActiveTab(activeTab) {
     ordersViewBtn.classList.remove("active");
     productionViewBtn.classList.remove("active");
     assemblyViewBtn.classList.remove("active");
+    inventoryViewBtn.classList.remove("active");
     settingsViewBtn.classList.remove("active");
 
     activeTab.classList.add("active");
@@ -4295,6 +5208,12 @@ productionViewBtn.onclick = () => {
 assemblyViewBtn.onclick = () => {
   currentView = "assembly";
   setActiveTab(assemblyViewBtn);
+  renderCurrentView();
+};
+
+inventoryViewBtn.onclick = () => {
+  currentView = "inventory";
+  setActiveTab(inventoryViewBtn);
   renderCurrentView();
 };
 

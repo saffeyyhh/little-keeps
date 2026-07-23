@@ -2214,6 +2214,84 @@ label {
   display: block;
 }
 
+.pickup-scheduler {
+  margin-top: 18px;
+  padding: 20px;
+  border: 2px solid #ffd1e1;
+  border-radius: 20px;
+  background: #fff8fb;
+}
+
+.pickup-scheduler-kicker {
+  display: block;
+  margin-bottom: 6px;
+  color: #e74f86;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.pickup-scheduler h3,
+.pickup-scheduler p {
+  margin: 0;
+}
+
+.pickup-scheduler p {
+  margin-top: 6px;
+  color: #71666b;
+  line-height: 1.55;
+}
+
+.pickup-scheduler-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 17px 0;
+}
+
+.pickup-scheduler-fields label {
+  display: grid;
+  gap: 6px;
+}
+
+.pickup-scheduler-fields label > span {
+  color: #62575c;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pickup-scheduler-fields input,
+.pickup-scheduler-fields select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid #e9bdcd;
+  border-radius: 13px;
+  color: #332d30;
+  background: white;
+  font: inherit;
+}
+
+.pickup-scheduler .submit-btn {
+  width: 100%;
+}
+
+.pickup-scheduling-note {
+  margin-top: 16px;
+  padding: 15px 17px;
+  border: 1px solid #ead9df;
+  border-radius: 15px;
+  color: #655b60;
+  background: #fffafb;
+}
+
+.pickup-scheduling-note p {
+  margin: 5px 0 0;
+  line-height: 1.55;
+}
+
 .order-status-details span {
   color: var(--muted);
   font-size: 9px;
@@ -2354,6 +2432,10 @@ label {
 /* Small tablet and phone */
 
 @media (max-width: 760px) {
+  .pickup-scheduler-fields {
+    grid-template-columns: 1fr;
+  }
+
   html {
     scroll-padding-top: 76px;
   }
