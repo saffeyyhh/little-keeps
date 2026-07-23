@@ -203,6 +203,30 @@ let inventoryItems = {};
 let adminShopSettings = {};
 let adminPromoCodes = [];
 
+const ADMIN_COLOUR_OPTIONS = [
+  { name: "Jade White", hex: "#FFFFFF" },
+  { name: "Sunflower Yellow", hex: "#FEC600" },
+  { name: "Gold", hex: "#E4BD68" },
+  { name: "Pink", hex: "#F55A74" },
+  { name: "Maroon Red", hex: "#9D2235" },
+  { name: "Turquoise", hex: "#00B1B7" },
+  { name: "Cyan", hex: "#0086D6" },
+  { name: "Mistletoe Green", hex: "#3F8E43" },
+  { name: "Dark Green", hex: "#68724D" },
+  { name: "Purple", hex: "#5E43B7" },
+  { name: "Indigo Purple", hex: "#482960" },
+  { name: "Black", hex: "#000000" }
+];
+
+function getUnavailableAdminColours() {
+  return new Set(
+    (Array.isArray(adminShopSettings.unavailable_colours)
+      ? adminShopSettings.unavailable_colours
+      : []
+    ).map(name => String(name).trim().toLowerCase())
+  );
+}
+
 const ACTIVE_ORDER_STATUSES = [
   "Rush Review",
   "Bulk Review",
@@ -570,6 +594,7 @@ function settingNumber(name, label, step = "1", min = "0") {
 
 function renderSettingsWorkspace() {
   const checked = value => value ? "checked" : "";
+  const unavailableColours = getUnavailableAdminColours();
 
   ordersContainer.innerHTML = `
     <form id="shopSettingsForm" class="settings-workspace">
@@ -618,6 +643,44 @@ function renderSettingsWorkspace() {
             ${settingNumber("mechanical_switch_low_stock", "Warn when switches reach")}
             ${settingNumber("key_ring_low_stock", "Warn when key rings reach")}
             ${settingNumber("jump_ring_low_stock", "Warn when jump rings reach")}
+          </div>
+        </section>
+
+        <section class="settings-card settings-card-wide">
+          <div class="settings-card-heading">
+            <div>
+              <h3>Colour availability</h3>
+              <p class="hint">Tick a colour to mark it out of stock across bases, caps and letters.</p>
+            </div>
+            <strong id="colourStockCount" class="colour-stock-count">
+              ${unavailableColours.size} out of stock
+            </strong>
+          </div>
+
+          <div class="admin-colour-grid">
+            ${ADMIN_COLOUR_OPTIONS.map(colour => {
+              const isUnavailable = unavailableColours.has(colour.name.toLowerCase());
+
+              return `
+                <label class="admin-colour-option ${isUnavailable ? "is-oos" : ""}">
+                  <input
+                    name="unavailable_colours"
+                    type="checkbox"
+                    value="${escapeAdminHtml(colour.name)}"
+                    ${checked(isUnavailable)}
+                  >
+                  <span
+                    class="admin-colour-dot"
+                    style="background:${colour.hex};"
+                    aria-hidden="true"
+                  ></span>
+                  <span class="admin-colour-copy">
+                    <strong>${escapeAdminHtml(colour.name)}</strong>
+                    <small>${isUnavailable ? "Out of stock" : "Available"}</small>
+                  </span>
+                </label>
+              `;
+            }).join("")}
           </div>
         </section>
 
@@ -670,6 +733,22 @@ function renderSettingsWorkspace() {
   `;
 
   document.getElementById("shopSettingsForm").addEventListener("submit", saveShopSettings);
+  document
+    .querySelectorAll('.admin-colour-option input[name="unavailable_colours"]')
+    .forEach(input => {
+      input.addEventListener("change", () => {
+        const option = input.closest(".admin-colour-option");
+        option.classList.toggle("is-oos", input.checked);
+        option.querySelector("small").textContent =
+          input.checked ? "Out of stock" : "Available";
+
+        const count = document.querySelectorAll(
+          '.admin-colour-option input[name="unavailable_colours"]:checked'
+        ).length;
+        document.getElementById("colourStockCount").textContent =
+          `${count} out of stock`;
+      });
+    });
 }
 
 async function saveShopSettings(event) {
@@ -689,6 +768,10 @@ async function saveShopSettings(event) {
   updates.status_emails_enabled = form.has("status_emails_enabled");
   updates.stripe_enabled = form.has("stripe_enabled");
   updates.status_email_template_id = String(form.get("status_email_template_id") || "").trim();
+  updates.unavailable_colours = form
+    .getAll("unavailable_colours")
+    .map(name => String(name).trim())
+    .filter(Boolean);
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase.from("shop_settings").upsert(updates).select().single();
@@ -750,7 +833,7 @@ window.markReady = async function(id) {
 
   await loadInventoryItems();
 
-  const needs = getOrderInventoryNeeds(order);
+  const needs = getOrderRemainingInventoryNeeds(order);
 
   const missingItems = Object.entries(needs)
     .map(([itemName, qtyNeeded]) => {
@@ -782,7 +865,7 @@ window.markReady = async function(id) {
 
   const ok = confirm(
     `Mark ${order.order_ref} as ready?\n\n` +
-    `This will deduct the printed parts and hardware for this order only.`
+    `This will deduct any remaining parts and send the ready email.`
   );
 
   if (!ok) return;
@@ -809,6 +892,71 @@ window.markReady = async function(id) {
   } catch (error) {
     console.error("Ready email failed:", error);
     alert("Order is ready and stock was deducted, but the customer email failed to send.");
+  }
+
+  await loadOrders();
+};
+
+window.markKeychainComplete = async function(orderId, itemIndex) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(orderId)
+  );
+  const index = Number(itemIndex);
+  const keychain = order?.order_data?.[index];
+
+  if (!order || !keychain || keychain.assembly_completed) return;
+
+  await loadInventoryItems();
+
+  const needs = getOrderInventoryNeeds({
+    ...order,
+    order_data: [keychain]
+  });
+
+  const missingItems = Object.entries(needs)
+    .map(([itemName, qtyNeeded]) => ({
+      itemName,
+      qtyNeeded,
+      stock: getInventoryQty(itemName)
+    }))
+    .filter(item => item.stock < item.qtyNeeded);
+
+  if (missingItems.length) {
+    alert(
+      "This keychain is still missing stock:\n\n" +
+      missingItems
+        .map(item =>
+          `${item.itemName}: need ${item.qtyNeeded}, stock ${item.stock}`
+        )
+        .join("\n")
+    );
+    await renderAssemblyQueue();
+    return;
+  }
+
+  const ok = confirm(
+    `Complete ${keychain.name || "this keychain"}?\n\n` +
+    `Its printed parts and hardware will be deducted now.`
+  );
+
+  if (!ok) return;
+
+  const { error } = await supabase.rpc(
+    "complete_order_keychain_inventory",
+    {
+      p_order_id: String(orderId),
+      p_item_index: index,
+      p_needs: needs
+    }
+  );
+
+  if (error) {
+    console.error("Unable to complete this keychain safely:", error);
+    alert(
+      "Nothing was deducted.\n\n" +
+      "Run the individual assembly SQL once, then try again."
+    );
+    return;
   }
 
   await loadOrders();
@@ -1389,7 +1537,9 @@ function getProductionSummary(orders) {
   );
 
   activeOrders.forEach(order => {
-    const items = order.order_data || [];
+    const items = (order.order_data || []).filter(
+      item => !item.assembly_completed
+    );
 
     items.forEach(item => {
       const cleanName = item.clean_name || item.name || "";
@@ -1523,6 +1673,15 @@ function getOrderInventoryNeeds(order) {
   add("Jump Ring", (order.order_data || []).length);
 
   return needs;
+}
+
+function getOrderRemainingInventoryNeeds(order) {
+  return getOrderInventoryNeeds({
+    ...order,
+    order_data: (order.order_data || []).filter(
+      item => !item.assembly_completed
+    )
+  });
 }
 
 function isOrderReadyForAssembly(order) {
@@ -2124,8 +2283,14 @@ async function renderAssemblyQueue() {
     .map(order => {
       const readyItems = [];
       const waitingItems = [];
+      const completedItems = [];
 
       (order.order_data || []).forEach((item, itemIndex) => {
+        if (item.assembly_completed) {
+          completedItems.push({ item, itemIndex });
+          return;
+        }
+
         const itemNeeds = getOrderInventoryNeeds({
           ...order,
           order_data: [item]
@@ -2153,20 +2318,27 @@ async function renderAssemblyQueue() {
         order,
         readyItems,
         waitingItems,
-        fullyReady:
-          readyItems.length > 0 &&
-          waitingItems.length === 0 &&
-          readyItems.length === (order.order_data || []).length
+        completedItems,
+        allCompleted:
+          completedItems.length > 0 &&
+          completedItems.length === (order.order_data || []).length
       };
     })
-    .filter(entry => entry.readyItems.length > 0);
+    .filter(entry =>
+      entry.readyItems.length > 0 ||
+      entry.completedItems.length > 0
+    );
 
   const readyKeychainCount = assemblyOrders.reduce(
     (sum, entry) => sum + entry.readyItems.length,
     0
   );
+  const completedKeychainCount = assemblyOrders.reduce(
+    (sum, entry) => sum + entry.completedItems.length,
+    0
+  );
 
-  function renderAssemblyItem(item) {
+  function renderAssemblyItem(order, item, itemIndex, completed = false) {
     const baseShape =
       item.design?.base_shape?.key ||
       item.design?.baseShape ||
@@ -2174,11 +2346,16 @@ async function renderAssemblyQueue() {
     const letterOrientation = getLetterOrientation(item.design);
 
     return `
-      <div class="assembly-item">
+      <div class="assembly-item ${completed ? "is-complete" : ""}">
         <div class="assembly-item-top">
           <strong>${escapeAdminHtml(item.name || "-")}</strong>
 
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${
+              completed
+                ? `<span class="assembly-tag assembly-complete-tag">Completed ✓</span>`
+                : ""
+            }
             <span class="assembly-tag">
               ${sanitizeName(item.name).length} Characters
             </span>
@@ -2196,6 +2373,24 @@ async function renderAssemblyQueue() {
         <div class="mini-chain">
           ${createAssemblyMiniPreview(item.name, item.design)}
         </div>
+
+        ${
+          completed
+            ? `
+              <p class="assembly-completed-time">
+                Completed${item.assembly_completed_at ? ` ${formatDate(item.assembly_completed_at)}` : ""}
+              </p>
+            `
+            : `
+              <button
+                class="keychain-complete-btn"
+                type="button"
+                onclick="window.markKeychainComplete('${order.id}', ${itemIndex})"
+              >
+                Complete Keychain
+              </button>
+            `
+        }
       </div>
     `;
   }
@@ -2216,7 +2411,7 @@ async function renderAssemblyQueue() {
     `;
 
   const assemblyCards = assemblyOrders
-    .map(({ order, readyItems, waitingItems, fullyReady }, index) => {
+    .map(({ order, readyItems, waitingItems, completedItems, allCompleted }, index) => {
       const totalItems = (order.order_data || []).length;
 
       return `
@@ -2228,18 +2423,43 @@ async function renderAssemblyQueue() {
             </div>
 
             <div class="assembly-meta">
-              <span>${readyItems.length}/${totalItems} keychain(s) ready</span>
+              <span>${completedItems.length}/${totalItems} completed</span>
+              ${readyItems.length ? `<span>${readyItems.length} ready now</span>` : ""}
               <span>${getMethodLabel(order.collection_method)}</span>
               <span>${formatDate(order.needed_by)}</span>
             </div>
           </summary>
 
           <div class="assembly-body">
-            <p class="hint">
-              Assemble these ${readyItems.length} keychain(s) now. Printed stock is reserved in needed-by order.
-            </p>
+            ${
+              readyItems.length
+                ? `
+                  <p class="hint">
+                    Complete each keychain after assembling it. Its stock will be deducted immediately.
+                  </p>
+                  ${readyItems
+                    .map(({ item, itemIndex }) =>
+                      renderAssemblyItem(order, item, itemIndex, false)
+                    )
+                    .join("")}
+                `
+                : ""
+            }
 
-            ${readyItems.map(({ item }) => renderAssemblyItem(item)).join("")}
+            ${
+              completedItems.length
+                ? `
+                  <div class="assembly-completed-section">
+                    <h4>Completed keychains</h4>
+                    ${completedItems
+                      .map(({ item, itemIndex }) =>
+                        renderAssemblyItem(order, item, itemIndex, true)
+                      )
+                      .join("")}
+                  </div>
+                `
+                : ""
+            }
 
             ${
               waitingItems.length
@@ -2253,18 +2473,18 @@ async function renderAssemblyQueue() {
             }
 
             ${
-              fullyReady
+              allCompleted
                 ? `
                   <button
                     class="ready-btn"
                     onclick="window.markReady('${order.id}')"
                   >
-                    Full Order Assembly Complete
+                    Finish Order & Send Ready Email
                   </button>
                 `
                 : `
                   <p class="hint">
-                    Keep the assembled keychains together with this order. The completion button appears when the full order is ready.
+                    The final order button appears after every keychain is marked complete.
                   </p>
                 `
             }
@@ -2280,12 +2500,12 @@ async function renderAssemblyQueue() {
         <div>
           <h2>Ready Keychains</h2>
           <p class="hint">
-            Shows individual keychains with every part currently available.
+            Complete keychains individually so assembled pieces stay clearly tracked.
           </p>
         </div>
 
         <p class="active-count">
-          ${readyKeychainCount} keychain(s) · ${assemblyOrders.length} order(s)
+          ${readyKeychainCount} ready · ${completedKeychainCount} completed
         </p>
       </div>
 
@@ -3947,7 +4167,8 @@ async function loadAdminSettings() {
     jump_ring_low_stock: 20,
     status_emails_enabled: false,
     status_email_template_id: "",
-    stripe_enabled: false
+    stripe_enabled: false,
+    unavailable_colours: []
   };
 
   const [{ data: settings, error: settingsError }, { data: promos, error: promosError }] = await Promise.all([
