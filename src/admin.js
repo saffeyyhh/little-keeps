@@ -2110,95 +2110,186 @@ async function renderAssemblyQueue() {
       new Date(b.needed_by || "9999-12-31")
     );
 
-  const readyOrders = candidateOrders.filter(order => {
-    const needs = getOrderInventoryNeeds(order);
+  // Reserve available stock by needed-by date, one keychain at a time.
+  // This lets partially ready orders appear without promising the same
+  // printed piece to two different keychains.
+  const remainingStock = Object.fromEntries(
+    Object.entries(inventoryItems).map(([itemName, item]) => [
+      itemName,
+      Number(item.qty || 0)
+    ])
+  );
 
-    return Object.entries(needs).every(([itemName, qtyNeeded]) => {
-      return getInventoryQty(itemName) >= qtyNeeded;
-    });
-  });
+  const assemblyOrders = candidateOrders
+    .map(order => {
+      const readyItems = [];
+      const waitingItems = [];
+
+      (order.order_data || []).forEach((item, itemIndex) => {
+        const itemNeeds = getOrderInventoryNeeds({
+          ...order,
+          order_data: [item]
+        });
+
+        const hasAllParts = Object.entries(itemNeeds).every(
+          ([itemName, qtyNeeded]) =>
+            Number(remainingStock[itemName] || 0) >= qtyNeeded
+        );
+
+        if (!hasAllParts) {
+          waitingItems.push({ item, itemIndex });
+          return;
+        }
+
+        Object.entries(itemNeeds).forEach(([itemName, qtyNeeded]) => {
+          remainingStock[itemName] =
+            Number(remainingStock[itemName] || 0) - qtyNeeded;
+        });
+
+        readyItems.push({ item, itemIndex });
+      });
+
+      return {
+        order,
+        readyItems,
+        waitingItems,
+        fullyReady:
+          readyItems.length > 0 &&
+          waitingItems.length === 0 &&
+          readyItems.length === (order.order_data || []).length
+      };
+    })
+    .filter(entry => entry.readyItems.length > 0);
+
+  const readyKeychainCount = assemblyOrders.reduce(
+    (sum, entry) => sum + entry.readyItems.length,
+    0
+  );
+
+  function renderAssemblyItem(item) {
+    const baseShape =
+      item.design?.base_shape?.key ||
+      item.design?.baseShape ||
+      "ribbed";
+    const letterOrientation = getLetterOrientation(item.design);
+
+    return `
+      <div class="assembly-item">
+        <div class="assembly-item-top">
+          <strong>${escapeAdminHtml(item.name || "-")}</strong>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="assembly-tag">
+              ${sanitizeName(item.name).length} Characters
+            </span>
+
+            <span class="assembly-tag">
+              ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+            </span>
+
+            <span class="assembly-tag">
+              ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
+            </span>
+          </div>
+        </div>
+
+        <div class="mini-chain">
+          ${createAssemblyMiniPreview(item.name, item.design)}
+        </div>
+      </div>
+    `;
+  }
+
+  const emptyAssemblyMessage = candidateOrders.length
+    ? `
+      <div class="empty-card">
+        <h3>No complete keychains ready yet</h3>
+        <p>Some parts are printed, but every keychain is still missing at least one piece.</p>
+        <p>Use <strong>Add Printed</strong> in Production after each print finishes.</p>
+      </div>
+    `
+    : `
+      <div class="empty-card">
+        <h3>No paid orders waiting for assembly</h3>
+        <p>New paid orders will appear here once their printed parts are ready.</p>
+      </div>
+    `;
+
+  const assemblyCards = assemblyOrders
+    .map(({ order, readyItems, waitingItems, fullyReady }, index) => {
+      const totalItems = (order.order_data || []).length;
+
+      return `
+        <details class="assembly-card" ${index === 0 ? "open" : ""}>
+          <summary class="assembly-summary">
+            <div>
+              <h3>${escapeAdminHtml(order.customer_name || "-")}</h3>
+              <p>${escapeAdminHtml(order.order_ref || "-")}</p>
+            </div>
+
+            <div class="assembly-meta">
+              <span>${readyItems.length}/${totalItems} keychain(s) ready</span>
+              <span>${getMethodLabel(order.collection_method)}</span>
+              <span>${formatDate(order.needed_by)}</span>
+            </div>
+          </summary>
+
+          <div class="assembly-body">
+            <p class="hint">
+              Assemble these ${readyItems.length} keychain(s) now. Printed stock is reserved in needed-by order.
+            </p>
+
+            ${readyItems.map(({ item }) => renderAssemblyItem(item)).join("")}
+
+            ${
+              waitingItems.length
+                ? `
+                  <div class="assembly-waiting-note">
+                    <strong>${waitingItems.length} more keychain(s) still waiting for printed parts.</strong>
+                    <span>They will appear here automatically when enough stock is added in Production.</span>
+                  </div>
+                `
+                : ""
+            }
+
+            ${
+              fullyReady
+                ? `
+                  <button
+                    class="ready-btn"
+                    onclick="window.markReady('${order.id}')"
+                  >
+                    Full Order Assembly Complete
+                  </button>
+                `
+                : `
+                  <p class="hint">
+                    Keep the assembled keychains together with this order. The completion button appears when the full order is ready.
+                  </p>
+                `
+            }
+          </div>
+        </details>
+      `;
+    })
+    .join("");
 
   ordersContainer.innerHTML = `    
-  <div class="production-card">
+    <div class="production-card">
       <div class="production-header">
         <div>
-          <h2>Assembly Queue</h2>
+          <h2>Ready Keychains</h2>
           <p class="hint">
-            Printed stock is reserved by needed-by date.
+            Shows individual keychains with every part currently available.
           </p>
         </div>
 
-        <p class="active-count">${readyOrders.length} order(s)</p>
+        <p class="active-count">
+          ${readyKeychainCount} keychain(s) · ${assemblyOrders.length} order(s)
+        </p>
       </div>
 
-      ${
-        readyOrders.length === 0
-          ? `
-            <div class="empty-card">
-              <h3>No orders ready for assembly yet</h3>
-              <p>Print the missing parts shown in Production first.</p>
-            </div>
-          `
-          : readyOrders.map((order, index) => `
-            <details class="assembly-card" ${index === 0 ? "open" : ""}>
-              <summary class="assembly-summary">
-                <div>
-                  <h3>${order.customer_name || "-"}</h3>
-                  <p>${order.order_ref}</p>
-                </div>
-
-                <div class="assembly-meta">
-                  <span>${(order.order_data || []).length} keychain(s)</span>
-                  <span>${getMethodLabel(order.collection_method)}</span>
-                  <span>${formatDate(order.needed_by)}</span>
-                </div>
-              </summary>
-
-              <div class="assembly-body">
-                ${(order.order_data || []).map(item => {
-                  const baseShape =
-                    item.design?.base_shape?.key ||
-                    item.design?.baseShape ||
-                    "ribbed";
-                  const letterOrientation = getLetterOrientation(item.design);
-
-                  return `
-                    <div class="assembly-item">
-                      <div class="assembly-item-top">
-                        <strong>${item.name}</strong>
-
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                          <span class="assembly-tag">
-                            ${sanitizeName(item.name).length} Letters
-                          </span>
-
-                          <span class="assembly-tag">
-                            ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
-                          </span>
-
-                          <span class="assembly-tag">
-                            ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div class="mini-chain">
-                        ${createAssemblyMiniPreview(item.name, item.design)}
-                      </div>
-                    </div>
-                  `;
-                }).join("")}
-
-                <button
-                  class="ready-btn"
-                  onclick="window.markReady('${order.id}')"
-                >
-                  Assembly Complete
-                </button>
-              </div>
-            </details>
-          `).join("")
-      }
+      ${assemblyOrders.length ? assemblyCards : emptyAssemblyMessage}
     </div>
   `;
 }

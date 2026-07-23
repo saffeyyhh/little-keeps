@@ -632,6 +632,23 @@ body {
   padding: 0 18px 18px;
 }
 
+.assembly-waiting-note {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid #f0d7a7;
+  border-radius: 16px;
+  background: #fff9ec;
+  color: #785f36;
+}
+
+.assembly-waiting-note span {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .assembly-item {
   background: white;
   border-radius: 18px;
