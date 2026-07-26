@@ -21,6 +21,7 @@ const DEFAULT_SHOP_SETTINGS = {
   usual_base_price: 3.9,
   launch_base_price: 3.2,
   launch_price_enabled: true,
+  launch_price_ends_at: null,
   included_characters: 6,
   extra_character_price: 0.2,
   extra_base_colour_price: 0.5,
@@ -146,7 +147,7 @@ try {
   const { data, error } = await supabase
     .from("promo_codes")
     .select(
-      "code,label,discount_type,discount_value,minimum_spend,starts_at,ends_at,active"
+      "code,label,discount_type,discount_value,minimum_spend,starts_at,ends_at,active,featured"
     )
     .eq("active", true);
 
@@ -217,7 +218,38 @@ function getSettingNumber(key, fallback) {
 
 const usualBasePrice = getSettingNumber("usual_base_price", 3.9);
 const launchBasePrice = getSettingNumber("launch_base_price", 3.2);
-const launchPriceEnabled = shopSettings.launch_price_enabled !== false;
+const launchPriceEndsAtTimestamp = Date.parse(
+  String(shopSettings.launch_price_ends_at || "")
+);
+const launchPriceHasDeadline = Number.isFinite(launchPriceEndsAtTimestamp);
+const launchPriceEnabled =
+  shopSettings.launch_price_enabled !== false &&
+  (!launchPriceHasDeadline || Date.now() < launchPriceEndsAtTimestamp);
+const featuredPromo = !launchPriceEnabled
+  ? promoCodeRows.find(row => {
+      if (!row.featured || !row.active) return false;
+
+      const startsAt = row.starts_at ? Date.parse(row.starts_at) : null;
+      const endsAt = row.ends_at ? Date.parse(row.ends_at) : null;
+      const now = Date.now();
+
+      return (
+        (!Number.isFinite(startsAt) || now >= startsAt) &&
+        (!Number.isFinite(endsAt) || now < endsAt)
+      );
+    }) || null
+  : null;
+const featuredPromoEndsAtTimestamp = featuredPromo?.ends_at
+  ? Date.parse(featuredPromo.ends_at)
+  : NaN;
+const featuredPromoHasDeadline = Number.isFinite(
+  featuredPromoEndsAtTimestamp
+);
+const featuredPromoOffer = featuredPromo
+  ? featuredPromo.discount_type === "fixed"
+    ? `${displaySettingMoney(featuredPromo.discount_value)} off`
+    : `${Number(featuredPromo.discount_value || 0)}% off`
+  : "";
 const displayedBasePrice = launchPriceEnabled
   ? launchBasePrice
   : usualBasePrice;
@@ -271,17 +303,34 @@ document.querySelector("#app").innerHTML = `
     <span>Free islandwide delivery above ${displaySettingMoney(freeDeliveryThreshold)}</span>
   </div>
 
-  <span class="announcement-divider"></span>
+  <span id="holidayNoticeDivider" class="announcement-divider hidden"></span>
 
-  <div class="announcement-item announcement-holiday">
+  <div id="holidayNotice" class="announcement-item announcement-holiday hidden">
     <span class="announcement-icon">▧</span>
 
     <span>
       <strong>Holiday Notice:</strong>
-      <span id="holidayNoticeText">
-        No current announcements.
-      </span>
+      <span id="holidayNoticeText"></span>
     </span>
+  </div>
+
+  <span id="launchCountdownDivider" class="announcement-divider ${launchPriceEnabled && launchPriceHasDeadline ? "" : "hidden"}"></span>
+
+  <div id="launchPriceCountdown" class="announcement-item announcement-launch ${launchPriceEnabled && launchPriceHasDeadline ? "" : "hidden"}">
+    <span class="announcement-icon">⌛</span>
+    <strong>Launch price ends in <span id="launchCountdownText"></span></strong>
+  </div>
+
+  <span id="featuredPromoDivider" class="announcement-divider ${featuredPromo ? "" : "hidden"}"></span>
+
+  <div id="featuredPromoAnnouncement" class="announcement-item announcement-promo ${featuredPromo ? "" : "hidden"}">
+    <span class="announcement-icon">✦</span>
+    <strong>
+      ${featuredPromo
+        ? `${escapePresetText(featuredPromoOffer)} with code <span class="announcement-code">${escapePresetText(featuredPromo.code)}</span>${Number(featuredPromo.minimum_spend || 0) > 0 ? ` - min. spend ${displaySettingMoney(featuredPromo.minimum_spend)}` : ""}`
+        : ""}
+      ${featuredPromoHasDeadline ? ` - ends in <span id="featuredPromoCountdownText"></span>` : ""}
+    </strong>
   </div>
 </div>
 
@@ -606,6 +655,15 @@ document.querySelector("#app").innerHTML = `
     </div>
   </article>
 </section>
+
+<aside class="payment-unlock-banner" aria-label="Payment options">
+  <div class="payment-unlock-icon">♡</div>
+  <div>
+    <small>Ordering for a group?</small>
+    <strong>More ways to pay from $30</strong>
+    <p>Card, Apple Pay and Google Pay unlock automatically at checkout. PayNow is available for every order.</p>
+  </div>
+</aside>
 
 <section id="designArea" class="shop-section">
   <div class="customer-progress" aria-label="Order progress">
@@ -1153,12 +1211,12 @@ Chloe</textarea>
 <h3>Ready to Order?</h3>
 
         <p>
-          Payment is via PayNow only.
+          PayNow is available for every order.
         </p>
 
         <p>
-          After submitting, you’ll see the QR code
-          and exact amount to pay.
+          Spend $30 or more to unlock card, Apple Pay
+          and Google Pay at checkout.
         </p>
       </div>
 
@@ -1205,14 +1263,14 @@ Chloe</textarea>
           <span>Keep this reference: <span id="paymentOrderRef"></span></span>
         </div>
 
-        <h2>Pay with PayNow</h2>
+        <h2>Secure Payment</h2>
         <p class="payment-total-label">Total due</p>
         <strong id="paymentTotal" class="payment-total-value"></strong>
 
         ${shopSettings.stripe_enabled ? `
           <div class="online-payment-panel">
-            <p>We’ll open a secure Stripe page with your exact PayNow amount. Your production slot is held for about 30 minutes once it opens.</p>
-            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to PayNow</button>
+            <p>We’ll open a secure Stripe page with your exact amount. Orders from $30 can choose card, Apple Pay or Google Pay. Your production slot is held for about 30 minutes once it opens.</p>
+            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to Secure Payment</button>
             <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
           <p class="hint">Payment is confirmed automatically - no screenshot needed. Your confirmation and order PDF will be emailed after payment. Please check Spam or Junk if it’s not in your inbox.</p>
@@ -1291,7 +1349,7 @@ Chloe</textarea>
     <h2>Track or pay for your order</h2>
     <p>
       Enter your order reference and the same email address used at checkout.
-      Unpaid orders can continue to PayNow here.
+      Unpaid orders can continue to secure payment here.
     </p>
   </div>
 
@@ -2800,12 +2858,101 @@ async function loadShopNotices() {
 
   updateTurnaroundMessaging();
 
-  if (!data.length) return;
+  const holidayNotice = document.getElementById("holidayNotice");
+  const holidayNoticeDivider = document.getElementById("holidayNoticeDivider");
+
+  if (!data.length) {
+    holidayNotice?.classList.add("hidden");
+    holidayNoticeDivider?.classList.add("hidden");
+    return;
+  }
 
   const notice = data[0];
 
   document.getElementById("holidayNoticeText").innerText =
     notice.reason || `We will be away from ${notice.start_date} to ${notice.end_date}.`;
+  holidayNotice?.classList.remove("hidden");
+  holidayNoticeDivider?.classList.remove("hidden");
+}
+
+function startLaunchPriceCountdown() {
+  const countdown = document.getElementById("launchPriceCountdown");
+  const divider = document.getElementById("launchCountdownDivider");
+  const text = document.getElementById("launchCountdownText");
+
+  if (
+    !countdown ||
+    !text ||
+    !launchPriceEnabled ||
+    !launchPriceHasDeadline
+  ) {
+    countdown?.classList.add("hidden");
+    divider?.classList.add("hidden");
+    return;
+  }
+
+  const update = () => {
+    const remaining = launchPriceEndsAtTimestamp - Date.now();
+
+    if (remaining <= 0) {
+      countdown.classList.add("hidden");
+      divider?.classList.add("hidden");
+      window.location.reload();
+      return;
+    }
+
+    const totalSeconds = Math.floor(remaining / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    text.textContent = days > 0
+      ? `${days}d ${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`
+      : `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+  };
+
+  update();
+  window.setInterval(update, 1000);
+}
+
+function startFeaturedPromoCountdown() {
+  const announcement = document.getElementById("featuredPromoAnnouncement");
+  const divider = document.getElementById("featuredPromoDivider");
+  const text = document.getElementById("featuredPromoCountdownText");
+
+  if (
+    !announcement ||
+    !featuredPromo ||
+    !featuredPromoHasDeadline ||
+    !text
+  ) {
+    return;
+  }
+
+  const update = () => {
+    const remaining = featuredPromoEndsAtTimestamp - Date.now();
+
+    if (remaining <= 0) {
+      announcement.classList.add("hidden");
+      divider?.classList.add("hidden");
+      window.location.reload();
+      return;
+    }
+
+    const totalSeconds = Math.floor(remaining / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    text.textContent = days > 0
+      ? `${days}d ${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`
+      : `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+  };
+
+  update();
+  window.setInterval(update, 1000);
 }
 
 function removeColourFromDesign(type, index) {
@@ -4391,7 +4538,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
 
   stripeCheckoutBtn.disabled = true;
   stripeCheckoutBtn.textContent = "Opening secure payment…";
-  stripeCheckoutStatus.textContent = "Creating your secure PayNow checkout…";
+  stripeCheckoutStatus.textContent = "Creating your secure checkout…";
 
   try {
     const { data, error } = await supabase.functions.invoke("stripe-create-checkout", {
@@ -4415,7 +4562,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
       "Online payment is temporarily unavailable. Please contact Little Keeps and quote your order reference."
     );
     stripeCheckoutBtn.disabled = false;
-    stripeCheckoutBtn.textContent = "Try PayNow Again";
+    stripeCheckoutBtn.textContent = "Try Secure Payment Again";
   }
 });
 
@@ -4899,7 +5046,7 @@ function startPaymentHoldCountdown() {
     const remaining = expiresAt - Date.now();
 
     if (!Number.isFinite(expiresAt) || remaining <= 0) {
-      countdown.textContent = "The previous payment hold has expired. Open PayNow again to request a fresh slot.";
+      countdown.textContent = "The previous payment hold has expired. Open payment again to request a fresh slot.";
       countdown.classList.add("is-expired");
       clearInterval(paymentHoldCountdownTimer);
       return;
@@ -5193,17 +5340,17 @@ function renderCustomerOrderStatus(order) {
 
     ${canPay ? `
       <div class="approved-request-payment">
-        <span>${isSpecialRequest ? "Request approved ✓" : paymentExpired ? "Fresh payment slot needed" : "Secure PayNow checkout"}</span>
+        <span>${isSpecialRequest ? "Request approved ✓" : paymentExpired ? "Fresh payment slot needed" : "Secure payment checkout"}</span>
         <h3>Total: ${displaySettingMoney(order.total)}</h3>
         ${order.payment_expires_at && !paymentExpired ? `
           <p class="payment-hold-countdown" data-payment-expiry="${escapePresetText(order.payment_expires_at)}"></p>
         ` : `
           <p>${paymentExpired
-            ? "Your previous checkout expired and no slot is being held. Open PayNow again to reserve a fresh slot."
+            ? "Your previous checkout expired and no slot is being held. Open payment again to reserve a fresh slot."
             : "A production slot will be held for about 30 minutes when the secure payment page opens."}</p>
         `}
         ${shopSettings.stripe_enabled ? `
-          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Open a Fresh PayNow Checkout" : "Pay Securely with PayNow"}</button>
+          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Open a Fresh Payment Checkout" : "Pay Securely"}</button>
         ` : `<p>Online payment is temporarily unavailable. Please contact Little Keeps.</p>`}
       </div>
     ` : ""}
@@ -5212,7 +5359,7 @@ function renderCustomerOrderStatus(order) {
       ${isSpecialRequest && !requestApproved
         ? "Your preferred completion date is being reviewed. Please wait for confirmation before making payment."
         : paymentExpired
-          ? "No production slot is currently reserved for this unpaid order. Availability is checked again when you open PayNow."
+          ? "No production slot is currently reserved for this unpaid order. Availability is checked again when you open payment."
         : "This estimate is based on our current production schedule. Pickup or delivery updates will appear here as your order progresses."}
     </p>
   `;
@@ -5227,7 +5374,7 @@ window.copyTrackedOrderRef = async function(orderRef, button) {
 };
 
 window.payTrackedOrder = async function(orderRef, email, button) {
-  const previousLabel = button?.textContent || "Pay Securely with PayNow";
+  const previousLabel = button?.textContent || "Pay Securely";
   if (button) {
     button.disabled = true;
     button.textContent = "Opening secure payment…";
@@ -5314,6 +5461,8 @@ orderStatusForm?.addEventListener("submit", async event => {
 });
 
 loadShopNotices();
+startLaunchPriceCountdown();
+startFeaturedPromoCountdown();
 renderIconPicker();
 setupColourAccordions();
 
@@ -5365,7 +5514,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
     modalHeading.textContent = "Payment successful ✓";
     if (modalParagraphs[0]) {
       modalParagraphs[0].textContent =
-        "Thank you! Stripe has received your PayNow payment.";
+        "Thank you! Stripe has received your payment.";
     }
     orderRefText.textContent = returnedOrderRef
       ? `Order ${returnedOrderRef}`
@@ -5400,7 +5549,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
       : "Your Little Keeps order";
     if (modalParagraphs[2]) {
       modalParagraphs[2].textContent =
-        "Your payment slot is held only briefly. Use Track / Pay Order with your reference and email whenever you’re ready to reopen PayNow.";
+        "Your payment slot is held only briefly. Use Track / Pay Order with your reference and email whenever you’re ready to reopen payment.";
     }
     if (modalParagraphs[3]) {
       modalParagraphs[3].textContent =

@@ -205,7 +205,39 @@ let latestOrders = [];
 
 let inventoryItems = {};
 let clearanceInventoryItems = {};
-let adminShopSettings = {};
+const DEFAULT_ADMIN_SHOP_SETTINGS = {
+  id: 1,
+  usual_base_price: 3.90,
+  launch_base_price: 3.20,
+  launch_price_enabled: true,
+  launch_price_ends_at: null,
+  included_characters: 6,
+  extra_character_price: 0.20,
+  delivery_fee: 2.50,
+  free_delivery_threshold: 50,
+  max_orders_per_date: 5,
+  large_order_quantity: 5,
+  bulk_order_quantity: 10,
+  standard_min_working_days: 2,
+  standard_max_working_days: 3,
+  large_min_working_days: 3,
+  large_max_working_days: 4,
+  rush_fee_small: 5,
+  rush_fee_large: 8,
+  rush_max_missing_parts: 60,
+  rush_max_active_orders: 5,
+  mechanical_switch_low_stock: 100,
+  key_ring_low_stock: 20,
+  jump_ring_low_stock: 20,
+  status_emails_enabled: false,
+  status_email_template_id: "",
+  stripe_enabled: false,
+  unavailable_colours: []
+};
+
+let adminShopSettings = { ...DEFAULT_ADMIN_SHOP_SETTINGS };
+let adminSettingsLoaded = false;
+let adminSettingsLoadFailed = false;
 let adminPromoCodes = [];
 
 const ADMIN_COLOUR_OPTIONS = [
@@ -603,18 +635,49 @@ function settingNumber(name, label, step = "1", min = "0") {
   `;
 }
 
+function formatDateTimeLocal(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function formatPromoDate(value) {
+  if (!value) return "No limit";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No limit";
+
+  return date.toLocaleString("en-SG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
 function renderSettingsWorkspace() {
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
 
   ordersContainer.innerHTML = `
     <form id="shopSettingsForm" class="settings-workspace">
+      ${adminSettingsLoadFailed ? `
+        <div class="stock-alert">
+          <strong>Settings could not be loaded</strong>
+          <span>Your saved values are protected. Refresh the page or check the Supabase connection before editing.</span>
+        </div>
+      ` : ""}
       <div class="settings-intro">
         <div>
           <h2>Run the shop without editing code</h2>
           <p class="hint">Pricing, capacity, turnaround, email updates and stock reminders are controlled here.</p>
         </div>
-        <button class="ready-btn" type="submit">Save Settings</button>
+        <button class="ready-btn" type="submit" ${adminSettingsLoadFailed ? "disabled" : ""}>Save Settings</button>
       </div>
 
       <div class="settings-grid">
@@ -629,6 +692,15 @@ function renderSettingsWorkspace() {
             ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
           </div>
           <label class="settings-toggle"><input name="launch_price_enabled" type="checkbox" ${checked(adminShopSettings.launch_price_enabled)}> Show launch price and crossed-out usual price</label>
+          <label class="settings-field">
+            <span>Launch price ends at</span>
+            <input
+              name="launch_price_ends_at"
+              type="datetime-local"
+              value="${escapeAdminHtml(formatDateTimeLocal(adminShopSettings.launch_price_ends_at))}"
+            >
+          </label>
+          <p class="hint">Leave blank to keep the launch price active without a countdown.</p>
         </section>
 
         <section class="settings-card">
@@ -709,17 +781,17 @@ function renderSettingsWorkspace() {
           <h3>Online payment</h3>
           <div class="payment-readiness">
             <div>
-              <strong>${adminShopSettings.stripe_enabled ? "Stripe PayNow enabled" : "Manual PayNow remains active"}</strong>
-              <p class="hint">Stripe securely creates the exact PayNow amount and verifies successful payments automatically.</p>
+              <strong>${adminShopSettings.stripe_enabled ? "Stripe checkout enabled" : "Online checkout is disabled"}</strong>
+              <p class="hint">PayNow is available for every order. Orders from $30 can also use card, Apple Pay or Google Pay.</p>
             </div>
-            <label class="settings-toggle"><input name="stripe_enabled" type="checkbox" ${checked(adminShopSettings.stripe_enabled)}> Enable Stripe PayNow checkout</label>
+            <label class="settings-toggle"><input name="stripe_enabled" type="checkbox" ${checked(adminShopSettings.stripe_enabled)}> Enable Stripe checkout</label>
           </div>
         </section>
       </div>
 
       <section class="settings-card promo-manager">
         <div class="settings-card-heading">
-          <div><h3>Promo codes</h3><p class="hint">Add several codes and switch them on or off anytime.</p></div>
+          <div><h3>Promo codes</h3><p class="hint">Schedule codes and feature one in the storefront announcement bar.</p></div>
         </div>
         <div class="promo-create-row">
           <input id="promoCodeInput" placeholder="CODE" maxlength="30">
@@ -727,15 +799,36 @@ function renderSettingsWorkspace() {
           <select id="promoTypeInput"><option value="percent">Percent off</option><option value="fixed">Fixed amount</option></select>
           <input id="promoValueInput" type="number" min="0.01" step="0.01" placeholder="Value">
           <input id="promoMinimumInput" type="number" min="0" step="0.01" value="0" placeholder="Minimum spend">
-          <button class="ready-btn" type="button" onclick="window.addPromoCode()">Add Code</button>
+          <label class="promo-create-field">
+            <span>Starts</span>
+            <input id="promoStartsInput" type="datetime-local">
+          </label>
+          <label class="promo-create-field">
+            <span>Ends</span>
+            <input id="promoEndsInput" type="datetime-local">
+          </label>
+          <label class="promo-feature-toggle">
+            <input id="promoFeaturedInput" type="checkbox">
+            Broadcast on storefront
+          </label>
+          <button class="ready-btn" type="button" onclick="window.addPromoCode()">Save Code</button>
         </div>
         <div class="promo-admin-list">
           ${adminPromoCodes.map(promo => `
-            <div class="promo-admin-row">
-              <div><strong>${escapeAdminHtml(promo.code)}</strong><span>${escapeAdminHtml(promo.label || "Promo")}</span></div>
+            <div class="promo-admin-row ${promo.featured ? "is-featured" : ""}">
+              <div>
+                <strong>${escapeAdminHtml(promo.code)}</strong>
+                <span>${escapeAdminHtml(promo.label || "Promo")}</span>
+                <small>${formatPromoDate(promo.starts_at)} - ${formatPromoDate(promo.ends_at)}</small>
+              </div>
               <span>${promo.discount_type === "fixed" ? formatMoney(promo.discount_value) : `${Number(promo.discount_value)}%`} off</span>
               <span>Min. ${formatMoney(promo.minimum_spend)}</span>
-              <button type="button" class="${promo.active ? "archive-action" : ""}" onclick='window.togglePromoCode(${JSON.stringify(promo.code)}, ${!promo.active})'>${promo.active ? "Pause" : "Enable"}</button>
+              <span class="promo-broadcast-status">${promo.featured ? "Broadcasting" : "Private"}</span>
+              <div class="promo-admin-actions">
+                <button type="button" onclick='window.editPromoCode(${JSON.stringify(promo.code)})'>Edit</button>
+                <button type="button" onclick='window.toggleFeaturedPromo(${JSON.stringify(promo.code)}, ${!promo.featured})'>${promo.featured ? "Stop Broadcast" : "Feature"}</button>
+                <button type="button" class="archive-action" onclick='window.deletePromoCode(${JSON.stringify(promo.code)})'>Delete</button>
+              </div>
             </div>
           `).join("") || `<p class="today-empty">No promo codes yet.</p>`}
         </div>
@@ -764,6 +857,12 @@ function renderSettingsWorkspace() {
 
 async function saveShopSettings(event) {
   event.preventDefault();
+
+  if (adminSettingsLoadFailed) {
+    alert("Your saved settings could not be loaded, so saving is disabled to protect them. Refresh and try again.");
+    return;
+  }
+
   const form = new FormData(event.currentTarget);
   const numberFields = [
     "usual_base_price", "launch_base_price", "included_characters", "extra_character_price",
@@ -776,6 +875,10 @@ async function saveShopSettings(event) {
   const updates = { id: 1 };
   numberFields.forEach(name => { updates[name] = Number(form.get(name)); });
   updates.launch_price_enabled = form.has("launch_price_enabled");
+  const launchPriceEnd = String(form.get("launch_price_ends_at") || "").trim();
+  updates.launch_price_ends_at = launchPriceEnd
+    ? new Date(launchPriceEnd).toISOString()
+    : null;
   updates.status_emails_enabled = form.has("status_emails_enabled");
   updates.stripe_enabled = form.has("stripe_enabled");
   updates.status_email_template_id = String(form.get("status_email_template_id") || "").trim();
@@ -803,15 +906,37 @@ async function addPromoCode() {
   const discountType = document.getElementById("promoTypeInput").value;
   const discountValue = Number(document.getElementById("promoValueInput").value);
   const minimumSpend = Number(document.getElementById("promoMinimumInput").value || 0);
+  const startsValue = document.getElementById("promoStartsInput").value;
+  const endsValue = document.getElementById("promoEndsInput").value;
+  const featured = document.getElementById("promoFeaturedInput").checked;
+  const startsAt = startsValue ? new Date(startsValue).toISOString() : null;
+  const endsAt = endsValue ? new Date(endsValue).toISOString() : null;
 
-  if (!/^[A-Z0-9_-]+$/.test(code) || discountValue <= 0) {
+  if (
+    !/^[A-Z0-9_-]+$/.test(code) ||
+    discountValue <= 0 ||
+    (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt))
+  ) {
     alert("Enter a valid code and discount value.");
     return;
   }
 
+  if (featured) {
+    const { error: clearError } = await supabase
+      .from("promo_codes")
+      .update({ featured: false, updated_at: new Date().toISOString() })
+      .neq("code", code);
+    if (clearError) {
+      console.error("Unable to clear the previous featured promo:", clearError);
+      alert("Unable to update the storefront broadcast. Run the supplied promo broadcast SQL once.");
+      return;
+    }
+  }
+
   const { error } = await supabase.from("promo_codes").upsert({
     code, label, discount_type: discountType, discount_value: discountValue,
-    minimum_spend: minimumSpend, active: true, updated_at: new Date().toISOString()
+    minimum_spend: minimumSpend, starts_at: startsAt, ends_at: endsAt,
+    active: true, featured, updated_at: new Date().toISOString()
   });
   if (error) {
     console.error("Unable to add promo:", error);
@@ -823,17 +948,76 @@ async function addPromoCode() {
   renderSettingsWorkspace();
 }
 
-async function togglePromoCode(code, active) {
-  const { error } = await supabase.from("promo_codes").update({
-    active, updated_at: new Date().toISOString()
-  }).eq("code", code);
-  if (error) return alert("Unable to update that promo code.");
+async function deletePromoCode(code) {
+  const confirmed = window.confirm(
+    `Delete promo code ${code}? Past orders that used it will not be changed.`
+  );
+  if (!confirmed) return;
+
+  const { data, error } = await supabase
+    .from("promo_codes")
+    .delete()
+    .eq("code", code)
+    .select("code");
+
+  if (error) {
+    console.error("Unable to delete promo code:", error);
+    alert("Unable to delete that promo code. Run the supplied promo delete SQL once, then try again.");
+    return;
+  }
+
+  if (!data?.length) {
+    alert("Supabase blocked this deletion. Run the supplied promo delete SQL once, then try again.");
+    return;
+  }
+
   await loadAdminSettings();
   renderSettingsWorkspace();
 }
 
+async function toggleFeaturedPromo(code, featured) {
+  if (featured) {
+    const { error: clearError } = await supabase
+      .from("promo_codes")
+      .update({ featured: false, updated_at: new Date().toISOString() })
+      .neq("code", code);
+    if (clearError) return alert("Unable to change the storefront broadcast.");
+  }
+
+  const { error } = await supabase
+    .from("promo_codes")
+    .update({ featured, updated_at: new Date().toISOString() })
+    .eq("code", code);
+
+  if (error) return alert("Unable to change the storefront broadcast.");
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+}
+
+function editPromoCode(code) {
+  const promo = adminPromoCodes.find(
+    item => String(item.code).toUpperCase() === String(code).toUpperCase()
+  );
+  if (!promo) return;
+
+  document.getElementById("promoCodeInput").value = promo.code;
+  document.getElementById("promoLabelInput").value = promo.label || "";
+  document.getElementById("promoTypeInput").value = promo.discount_type || "percent";
+  document.getElementById("promoValueInput").value = promo.discount_value || "";
+  document.getElementById("promoMinimumInput").value = promo.minimum_spend || 0;
+  document.getElementById("promoStartsInput").value = formatDateTimeLocal(promo.starts_at);
+  document.getElementById("promoEndsInput").value = formatDateTimeLocal(promo.ends_at);
+  document.getElementById("promoFeaturedInput").checked = Boolean(promo.featured);
+  document.getElementById("promoCodeInput").scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  });
+}
+
 window.addPromoCode = addPromoCode;
-window.togglePromoCode = togglePromoCode;
+window.deletePromoCode = deletePromoCode;
+window.toggleFeaturedPromo = toggleFeaturedPromo;
+window.editPromoCode = editPromoCode;
 
 window.markReady = async function(id) {
   const order = latestOrders.find(
@@ -2168,6 +2352,8 @@ function getPdfReadableItemName(item) {
 }
 
 const productionStlJobs = new Map();
+const productionBaseStlJobs = new Map();
+const productionAmsPlateJobs = new Map();
 const productionStlGeometryCache = new Map();
 const productionStlLoader = new STLLoader();
 const productionStlExporter = new STLExporter();
@@ -2207,6 +2393,135 @@ async function loadProductionStlGeometry(path) {
 
   return (await productionStlGeometryCache.get(path)).clone();
 }
+
+function arrangeProductionStlGeometries(
+  sourceGeometries,
+  maximumColumns = 8,
+  spacing = 4
+) {
+  let widest = 0;
+  let deepest = 0;
+
+  sourceGeometries.forEach(geometry => {
+    geometry.computeBoundingBox();
+    const size = new THREE.Vector3();
+    geometry.boundingBox.getSize(size);
+    widest = Math.max(widest, size.x);
+    deepest = Math.max(deepest, size.y);
+  });
+
+  const columns = Math.min(
+    maximumColumns,
+    Math.max(1, Math.ceil(Math.sqrt(sourceGeometries.length)))
+  );
+  const cellWidth = widest + spacing;
+  const cellDepth = deepest + spacing;
+
+  return sourceGeometries.map((geometry, index) => {
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    const centreX = (box.min.x + box.max.x) / 2;
+    const centreY = (box.min.y + box.max.y) / 2;
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+
+    geometry.translate(
+      column * cellWidth - centreX,
+      row * cellDepth - centreY,
+      -box.min.z
+    );
+
+    return geometry;
+  });
+}
+
+function downloadProductionStl(geometry, filename) {
+  geometry.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geometry);
+  const binaryStl = productionStlExporter.parse(mesh, { binary: true });
+  const blob = new Blob([binaryStl], { type: "model/stl" });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+}
+
+async function generateBaseColourStl(jobId, button) {
+  const job = productionBaseStlJobs.get(jobId);
+
+  if (!job) {
+    alert("This base print group is no longer available. Please refresh Production.");
+    return;
+  }
+
+  const input = document.getElementById(job.inputId);
+  const quantity = Math.max(
+    0,
+    Math.floor(Number(input?.value || job.toPrint || 0))
+  );
+
+  if (!quantity) {
+    alert("Set at least one base before downloading the STL.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Download Base STL";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Building base plate…";
+  }
+
+  try {
+    const sourceGeometries = await Promise.all(
+      Array.from({ length: quantity }, () =>
+        loadProductionStlGeometry(
+          `/models/base_${job.baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`
+        )
+      )
+    );
+
+    const arrangedGeometries = arrangeProductionStlGeometries(
+      sourceGeometries,
+      4,
+      5
+    );
+    const mergedGeometry = mergeGeometries(arrangedGeometries, false);
+
+    if (!mergedGeometry) {
+      throw new Error("The selected bases could not be combined.");
+    }
+
+    const colourName = safeProductionFileName(job.baseName, "base");
+    const shapeName = job.baseShape === "bubbly" ? "bubbly" : "ribbed";
+
+    downloadProductionStl(
+      mergedGeometry,
+      `${shapeName}-base_${colourName}_${quantity}-pieces.stl`
+    );
+
+    arrangedGeometries.forEach(geometry => geometry.dispose());
+    mergedGeometry.dispose();
+
+    if (button) button.textContent = `Downloaded ${quantity} bases ✓`;
+    setTimeout(() => {
+      if (button) button.textContent = previousLabel;
+    }, 2500);
+  } catch (error) {
+    console.error("Unable to generate base STL:", error);
+    alert(`Unable to generate the base STL.\n\n${error.message || error}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+window.generateBaseColourStl = generateBaseColourStl;
 
 function splitProductionKeycapGeometry(geometry) {
   const position = geometry.attributes.position;
@@ -2336,7 +2651,9 @@ async function generateKeycapCombinationStl(jobId, button) {
 
     for (let index = 0; index < quantity; index += 1) {
       requestedKeycaps.push({
-        character: row.letter
+        character: row.letter,
+        capName: row.capName || job.capName,
+        letterName: row.letterName || job.letterName
       });
     }
   });
@@ -2364,38 +2681,11 @@ async function generateKeycapCombinationStl(jobId, button) {
       })
     );
 
-    let widest = 0;
-    let deepest = 0;
-
-    sourceGeometries.forEach(geometry => {
-      geometry.computeBoundingBox();
-      const size = new THREE.Vector3();
-      geometry.boundingBox.getSize(size);
-      widest = Math.max(widest, size.x);
-      deepest = Math.max(deepest, size.y);
-    });
-
-    const columns = Math.min(8, Math.ceil(Math.sqrt(sourceGeometries.length)));
-    const spacing = 4;
-    const cellWidth = widest + spacing;
-    const cellDepth = deepest + spacing;
-
-    const arrangedGeometries = sourceGeometries.map((geometry, index) => {
-      geometry.computeBoundingBox();
-      const box = geometry.boundingBox;
-      const centreX = (box.min.x + box.max.x) / 2;
-      const centreY = (box.min.y + box.max.y) / 2;
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-
-      geometry.translate(
-        column * cellWidth - centreX,
-        row * cellDepth - centreY,
-        -box.min.z
-      );
-
-      return geometry;
-    });
+    const arrangedGeometries = arrangeProductionStlGeometries(
+      sourceGeometries,
+      8,
+      4
+    );
 
     const mergedGeometry = mergeGeometries(arrangedGeometries, false);
 
@@ -2403,22 +2693,14 @@ async function generateKeycapCombinationStl(jobId, button) {
       throw new Error("The selected keycaps could not be combined.");
     }
 
-    mergedGeometry.computeVertexNormals();
+    const fileStem = job.fileName
+      ? safeProductionFileName(job.fileName, "keycap-plate")
+      : `${safeProductionFileName(job.capName, "cap")}-cap_${safeProductionFileName(job.letterName, "letter")}-letter`;
 
-    const mesh = new THREE.Mesh(mergedGeometry);
-    const binaryStl = productionStlExporter.parse(mesh, { binary: true });
-    const blob = new Blob([binaryStl], { type: "model/stl" });
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const capName = safeProductionFileName(job.capName, "cap");
-    const letterName = safeProductionFileName(job.letterName, "letter");
-
-    link.href = downloadUrl;
-    link.download = `${capName}-cap_${letterName}-letter_${requestedKeycaps.length}-pieces.stl`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    downloadProductionStl(
+      mergedGeometry,
+      `${fileStem}_${requestedKeycaps.length}-pieces.stl`
+    );
 
     arrangedGeometries.forEach(geometry => geometry.dispose());
     mergedGeometry.dispose();
@@ -2436,6 +2718,161 @@ async function generateKeycapCombinationStl(jobId, button) {
 }
 
 window.generateKeycapCombinationStl = generateKeycapCombinationStl;
+
+function planAmsLiteKeycapPlates(combinationCards) {
+  const colourLimit = 4;
+  const suggestedPieceLimit = 56;
+  const plates = [];
+
+  const combinations = combinationCards
+    .map(card => ({
+      ...card,
+      pieceCount: card.rows.reduce(
+        (sum, row) => sum + Number(row.toPrint || 0),
+        0
+      ),
+      colours: [
+        {
+          name: card.capName,
+          hex: card.capHex
+        },
+        {
+          name: card.letterName,
+          hex: card.letterHex
+        }
+      ].filter(
+        (colour, index, all) =>
+          all.findIndex(
+            other =>
+              String(other.name).toLowerCase() ===
+              String(colour.name).toLowerCase()
+          ) === index
+      )
+    }))
+    .filter(card => card.pieceCount > 0)
+    .sort((a, b) => {
+      const colourDifference = b.colours.length - a.colours.length;
+      return colourDifference || b.pieceCount - a.pieceCount;
+    });
+
+  combinations.forEach(combination => {
+    const possiblePlates = plates
+      .map((plate, index) => {
+        const combinedColours = new Map(plate.colours);
+
+        combination.colours.forEach(colour => {
+          combinedColours.set(String(colour.name).toLowerCase(), colour);
+        });
+
+        return {
+          plate,
+          index,
+          combinedColours,
+          addedColours: combinedColours.size - plate.colours.size,
+          pieceTotal: plate.pieceCount + combination.pieceCount
+        };
+      })
+      .filter(candidate =>
+        candidate.combinedColours.size <= colourLimit &&
+        candidate.pieceTotal <= suggestedPieceLimit
+      )
+      .sort((a, b) =>
+        a.addedColours - b.addedColours ||
+        b.plate.pieceCount - a.plate.pieceCount
+      );
+
+    let selectedPlate = possiblePlates[0]?.plate;
+
+    if (!selectedPlate) {
+      selectedPlate = {
+        combinations: [],
+        colours: new Map(),
+        pieceCount: 0
+      };
+      plates.push(selectedPlate);
+    }
+
+    selectedPlate.combinations.push(combination);
+    selectedPlate.pieceCount += combination.pieceCount;
+
+    combination.colours.forEach(colour => {
+      selectedPlate.colours.set(
+        String(colour.name).toLowerCase(),
+        colour
+      );
+    });
+  });
+
+  return plates;
+}
+
+window.downloadAmsLitePlateStls = async function(plateId, button) {
+  const plate = productionAmsPlateJobs.get(plateId);
+
+  if (!plate) {
+    alert("This AMS Lite plate is no longer available. Please refresh Production.");
+    return;
+  }
+
+  const jobsToDownload = plate.combinationJobIds.filter(jobId => {
+    const job = productionStlJobs.get(jobId);
+    return job?.rows.some(row => {
+      const input = document.getElementById(row.inputId);
+      return Math.max(
+        0,
+        Math.floor(Number(input?.value || row.toPrint || 0))
+      ) > 0;
+    });
+  });
+
+  if (!jobsToDownload.length) {
+    alert("This plate has no remaining STL quantities to download.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Download Plate STLs";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = `Preparing 1 / ${jobsToDownload.length}…`;
+  }
+
+  try {
+    for (let index = 0; index < jobsToDownload.length; index += 1) {
+      if (button) {
+        button.textContent =
+          `Preparing ${index + 1} / ${jobsToDownload.length}…`;
+      }
+
+      await generateKeycapCombinationStl(
+        jobsToDownload[index],
+        null
+      );
+    }
+
+    if (button) {
+      button.textContent =
+        `Downloaded ${jobsToDownload.length} STL${jobsToDownload.length === 1 ? "" : "s"} ✓`;
+    }
+
+    alert(
+      `${jobsToDownload.length} separate STL file${jobsToDownload.length === 1 ? " was" : "s were"} downloaded for this AMS Lite plate.\n\n` +
+      "Import them onto the same Bambu Studio plate, then assign the four listed filament colours."
+    );
+  } catch (error) {
+    console.error("Unable to download AMS Lite plate STLs:", error);
+    alert(
+      "Some plate files could not be downloaded. You can still download each exact combination from the groups below."
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      setTimeout(() => {
+        button.textContent = previousLabel;
+      }, 2500);
+    }
+  }
+};
 
 function getRushOrderPrintGroups(order) {
   const baseGroups = {};
@@ -3384,6 +3821,19 @@ async function renderProductionPlanner(orders) {
   }));
 
   productionStlJobs.clear();
+  productionBaseStlJobs.clear();
+
+  baseRows.forEach((item, index) => {
+    const stlJobId = `base-colour-${index}`;
+    item.stlJobId = stlJobId;
+
+    productionBaseStlJobs.set(stlJobId, {
+      baseName: item.name,
+      baseShape: item.baseShape || "ribbed",
+      toPrint: item.toPrint,
+      inputId: `printQty-${encodeURIComponent(item.itemName)}`
+    });
+  });
 
   const keycapCombinationCards = Object.entries(keycapGroups).map(([groupKey, group], groupIndex) => {
     const allRows = Object.entries(group.letters)
@@ -3419,16 +3869,29 @@ async function renderProductionPlanner(orders) {
     productionStlJobs.set(stlJobId, {
       capName: group.capName,
       letterName: group.letterName,
+      fileName: `${group.capName}-cap_${group.letterName}-letter`,
       rows: rows.map(row => ({
         letter: row.letter,
         toPrint: row.toPrint,
-        inputId: `printQty-${encodeURIComponent(row.itemName)}`
+        inputId: `printQty-${encodeURIComponent(row.itemName)}`,
+        capName: group.capName,
+        letterName: group.letterName
       }))
     });
 
     return {
       capName: group.capName,
       capHex: group.capHex,
+      letterName: group.letterName,
+      letterHex: group.letterHex,
+      stlJobId,
+      rows: rows.map(row => ({
+        letter: row.letter,
+        toPrint: row.toPrint,
+        inputId: `printQty-${encodeURIComponent(row.itemName)}`,
+        capName: group.capName,
+        letterName: group.letterName
+      })),
       html: `
       <details
         class="print-group"
@@ -3493,7 +3956,7 @@ async function renderProductionPlanner(orders) {
             <div class="print-qty-control">
               <input
                 type="number"
-                min="1"
+                min="0"
                 value="${row.toPrint}"
                 id="printQty-${encodeURIComponent(row.itemName)}"
               >
@@ -3518,11 +3981,11 @@ async function renderProductionPlanner(orders) {
             class="ready-btn"
             onclick="window.generateKeycapCombinationStl('${stlJobId}', this)"
           >
-            Generate STL
+            Download This Combination
           </button>
 
           <span class="hint">
-            Uses the quantities above and arranges all pieces on one print plate.
+            Only ${group.capName} caps with ${group.letterName} letters.
           </span>
         </div>
       </details>
@@ -3563,7 +4026,8 @@ async function renderProductionPlanner(orders) {
           <div>
             <h3>${group.capName} Caps</h3>
             <p class="hint">
-              These cap-colour combinations can share one printer plate.
+              Exact combinations grouped by cap colour. Download them
+              individually or follow an AMS suggestion above.
             </p>
           </div>
         </summary>
@@ -3574,6 +4038,117 @@ async function renderProductionPlanner(orders) {
       </details>
     `)
     .join("");
+
+  productionAmsPlateJobs.clear();
+  const amsLitePlates = planAmsLiteKeycapPlates(
+    keycapCombinationCards
+  );
+
+  const amsLitePlanner = amsLitePlates.length
+    ? `
+      <section class="ams-lite-planner">
+        <div class="ams-lite-planner-heading">
+          <div>
+            <span class="optimized-plate-icon" aria-hidden="true">4</span>
+            <div>
+              <h3>AMS Lite Plate Suggestions</h3>
+              <p>
+                Each suggested plate uses no more than four unique filament
+                colours. Exact colour combinations remain as separate STL
+                objects for easy assignment in Bambu Studio.
+              </p>
+            </div>
+          </div>
+          <strong>${amsLitePlates.length} suggested plate${amsLitePlates.length === 1 ? "" : "s"}</strong>
+        </div>
+
+        <div class="ams-lite-plate-grid">
+          ${amsLitePlates.map((plate, plateIndex) => {
+            const plateId = `ams-lite-plate-${plateIndex}`;
+            const colours = Array.from(plate.colours.values());
+            const overSuggestedSize = plate.pieceCount > 56;
+
+            productionAmsPlateJobs.set(plateId, {
+              combinationJobIds: plate.combinations.map(
+                combination => combination.stlJobId
+              )
+            });
+
+            return `
+              <article class="ams-lite-plate-card">
+                <div class="ams-lite-plate-title">
+                  <div>
+                    <span>Plate ${plateIndex + 1}</span>
+                    <strong>${plate.pieceCount} keycap${plate.pieceCount === 1 ? "" : "s"}</strong>
+                  </div>
+                  <b>${colours.length} / 4 AMS slots</b>
+                </div>
+
+                <div class="ams-lite-colours">
+                  ${colours.map(colour => `
+                    <span>
+                      <i style="background:${colour.hex};"></i>
+                      ${escapeAdminHtml(colour.name)}
+                    </span>
+                  `).join("")}
+                </div>
+
+                <div class="ams-lite-combinations">
+                  ${plate.combinations.map(combination => `
+                    <div class="ams-lite-combination-row">
+                      <span class="ams-combination-preview">
+                        <i style="background:${combination.capHex};"></i>
+                        <i style="background:${combination.letterHex};"></i>
+                      </span>
+
+                      <div>
+                        <strong>
+                          ${escapeAdminHtml(combination.capName)} cap +
+                          ${escapeAdminHtml(combination.letterName)} letter
+                        </strong>
+                        <small>
+                          ${combination.pieceCount} piece${combination.pieceCount === 1 ? "" : "s"}
+                        </small>
+                      </div>
+
+                      <button
+                        type="button"
+                        class="stl-download-btn"
+                        onclick="window.generateKeycapCombinationStl('${combination.stlJobId}', this)"
+                      >
+                        STL
+                      </button>
+                    </div>
+                  `).join("")}
+                </div>
+
+                ${overSuggestedSize ? `
+                  <p class="ams-plate-warning">
+                    This group may be too crowded for one A1 Mini plate.
+                    Download the exact combinations separately if needed.
+                  </p>
+                ` : ""}
+
+                <button
+                  type="button"
+                  class="ready-btn ams-download-all-btn"
+                  onclick="window.downloadAmsLitePlateStls('${plateId}', this)"
+                >
+                  Download ${plate.combinations.length} Plate STL${plate.combinations.length === 1 ? "" : "s"}
+                </button>
+              </article>
+            `;
+          }).join("")}
+        </div>
+
+        <p class="optimized-plate-note">
+          Load the listed colours into your AMS Lite, import the downloaded
+          STL files onto the same Bambu plate and assign the matching cap and
+          letter colours. Your browser may ask permission for multiple downloads.
+        </p>
+      </section>
+    `
+    : "";
 
   ordersContainer.innerHTML = `
     <div class="production-card">
@@ -3634,6 +4209,14 @@ async function renderProductionPlanner(orders) {
                     >
                       Add Printed
                     </button>
+
+                    <button
+                      type="button"
+                      class="stl-download-btn"
+                      onclick="window.generateBaseColourStl('${item.stlJobId}', this)"
+                    >
+                      Download STL
+                    </button>
                   </div>
                 </div>
               `).join("") || `<p class="base-shape-complete">✓ No ${group.label.toLowerCase()} need printing.</p>`}
@@ -3643,6 +4226,8 @@ async function renderProductionPlanner(orders) {
       </div>
 
       <h3>Keycap Printing</h3>
+
+      ${amsLitePlanner}
 
       ${keycapGroupHtml || "<p>No keycaps need printing.</p>"}
     </div>
@@ -5095,35 +5680,6 @@ const newQty = currentQty - qtyToDeduct;
 }
 
 async function loadAdminSettings() {
-  const defaults = {
-    id: 1,
-    usual_base_price: 3.90,
-    launch_base_price: 3.20,
-    launch_price_enabled: true,
-    included_characters: 6,
-    extra_character_price: 0.20,
-    delivery_fee: 2.50,
-    free_delivery_threshold: 50,
-    max_orders_per_date: 5,
-    large_order_quantity: 5,
-    bulk_order_quantity: 10,
-    standard_min_working_days: 2,
-    standard_max_working_days: 3,
-    large_min_working_days: 3,
-    large_max_working_days: 4,
-    rush_fee_small: 5,
-    rush_fee_large: 8,
-    rush_max_missing_parts: 60,
-    rush_max_active_orders: 5,
-    mechanical_switch_low_stock: 100,
-    key_ring_low_stock: 20,
-    jump_ring_low_stock: 20,
-    status_emails_enabled: false,
-    status_email_template_id: "",
-    stripe_enabled: false,
-    unavailable_colours: []
-  };
-
   const [{ data: settings, error: settingsError }, { data: promos, error: promosError }] = await Promise.all([
     supabase.from("shop_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.from("promo_codes").select("*").order("created_at", { ascending: false })
@@ -5132,7 +5688,12 @@ async function loadAdminSettings() {
   if (settingsError) console.warn("Using fallback admin settings:", settingsError);
   if (promosError) console.warn("Promo management is not ready yet:", promosError);
 
-  adminShopSettings = { ...defaults, ...(settings || {}) };
+  adminSettingsLoaded = true;
+  adminSettingsLoadFailed = Boolean(settingsError);
+  adminShopSettings = {
+    ...DEFAULT_ADMIN_SHOP_SETTINGS,
+    ...(settingsError ? {} : (settings || {}))
+  };
   adminPromoCodes = promos || [];
 }
 
@@ -5217,9 +5778,15 @@ inventoryViewBtn.onclick = () => {
   renderCurrentView();
 };
 
-settingsViewBtn.onclick = () => {
+settingsViewBtn.onclick = async () => {
   currentView = "settings";
   setActiveTab(settingsViewBtn);
+
+  if (!adminSettingsLoaded) {
+    ordersContainer.innerHTML = `<p class="empty">Loading shop settings...</p>`;
+    await loadAdminSettings();
+  }
+
   renderCurrentView();
 };
 
