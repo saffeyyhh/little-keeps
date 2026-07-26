@@ -3773,9 +3773,7 @@ body {
   position: relative;
   min-height: 220px;
   padding: 28px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  display: block;
   overflow: hidden;
   scroll-snap-align: start;
   border: 1px solid #eed5df;
@@ -3786,10 +3784,41 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+.review-card.has-image {
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(170px, 0.78fr) minmax(260px, 1.22fr);
+}
+
 .review-card.is-featured {
   background:
     radial-gradient(circle at 100% 0, rgba(255, 198, 220, 0.8), transparent 17rem),
     linear-gradient(145deg, #fff7fa, #fff);
+}
+
+.review-photo {
+  min-height: 240px;
+  overflow: hidden;
+  background: #f8eaf0;
+}
+
+.review-photo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.review-card-content {
+  min-height: 164px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.review-card.has-image .review-card-content {
+  min-width: 0;
+  padding: 28px;
 }
 
 .review-quote-mark {
@@ -3800,6 +3829,10 @@ body {
   font-family: Georgia, serif;
   font-size: 76px;
   line-height: 1;
+}
+
+.review-card.has-image .review-quote-mark {
+  right: 19px;
 }
 
 .review-card blockquote {
@@ -4084,6 +4117,22 @@ body {
   .review-card {
     min-height: 210px;
     padding: 23px;
+  }
+
+  .review-card.has-image {
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .review-photo {
+    min-height: 165px;
+    max-height: 185px;
+  }
+
+  .review-card.has-image .review-card-content {
+    min-height: 165px;
+    padding: 22px;
   }
 
   .review-card blockquote {

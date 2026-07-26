@@ -891,6 +891,19 @@ function renderSettingsWorkspace() {
             </datalist>
           </label>
 
+          <label class="review-create-field review-image-field">
+            <span>Customer photo (optional)</span>
+            <input id="reviewImageInput" type="file" accept="image/jpeg,image/png,image/webp">
+            <small>Use a clear product photo with the customer’s permission. Maximum 5 MB.</small>
+          </label>
+
+          <div id="reviewImagePreview" class="review-image-preview hidden"></div>
+
+          <label id="reviewRemoveImageField" class="promo-feature-toggle hidden">
+            <input id="reviewRemoveImageInput" type="checkbox">
+            Remove current photo
+          </label>
+
           <label class="review-create-field">
             <span>Display order</span>
             <input id="reviewSortInput" type="number" min="0" step="1" value="${(adminCustomerReviews.length + 1) * 10}">
@@ -913,7 +926,15 @@ function renderSettingsWorkspace() {
 
         <div class="review-admin-list">
           ${adminCustomerReviews.map(review => `
-            <article class="review-admin-row ${review.active ? "" : "is-hidden"}">
+            <article class="review-admin-row ${review.active ? "" : "is-hidden"} ${review.image_url ? "has-photo" : ""}">
+              ${String(review.image_url || "").startsWith("https://") ? `
+                <img
+                  class="review-admin-thumbnail"
+                  src="${escapeAdminHtml(review.image_url)}"
+                  alt=""
+                  loading="lazy"
+                >
+              ` : ""}
               <div class="review-admin-copy">
                 <blockquote>“${escapeAdminHtml(review.quote)}”</blockquote>
                 <p>
@@ -954,6 +975,26 @@ function renderSettingsWorkspace() {
           `${count} out of stock`;
       });
     });
+
+  const reviewImageInput = document.getElementById("reviewImageInput");
+  reviewImageInput?.addEventListener("change", () => {
+    const preview = document.getElementById("reviewImagePreview");
+    const file = reviewImageInput.files?.[0];
+    if (!preview) return;
+
+    if (!file) {
+      preview.classList.add("hidden");
+      preview.innerHTML = "";
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    preview.innerHTML = `<img src="${objectUrl}" alt="Selected review photo preview">`;
+    preview.classList.remove("hidden");
+    preview.querySelector("img")?.addEventListener("load", () => {
+      URL.revokeObjectURL(objectUrl);
+    }, { once: true });
+  });
 }
 
 async function saveShopSettings(event) {
@@ -1121,6 +1162,45 @@ window.deletePromoCode = deletePromoCode;
 window.toggleFeaturedPromo = toggleFeaturedPromo;
 window.editPromoCode = editPromoCode;
 
+async function uploadCustomerReviewImage(file) {
+  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+  if (!allowedTypes.has(file.type)) {
+    throw new Error("Please choose a JPEG, PNG or WebP image.");
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("The review photo must be smaller than 5 MB.");
+  }
+
+  const extensionByType = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp"
+  };
+  const fileName =
+    `${Date.now()}-${crypto.randomUUID()}.${extensionByType[file.type]}`;
+
+  const { error } = await supabase.storage
+    .from("review-images")
+    .upload(fileName, file, {
+      cacheControl: "3600",
+      contentType: file.type,
+      upsert: false
+    });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage
+    .from("review-images")
+    .getPublicUrl(fileName);
+
+  return {
+    imagePath: fileName,
+    imageUrl: data.publicUrl
+  };
+}
+
 async function saveCustomerReview() {
   const quote = document.getElementById("reviewQuoteInput")?.value.trim() || "";
   const customerLabel =
@@ -1134,6 +1214,15 @@ async function saveCustomerReview() {
   const active = Boolean(
     document.getElementById("reviewActiveInput")?.checked
   );
+  const imageFile = document.getElementById("reviewImageInput")?.files?.[0];
+  const removeCurrentImage = Boolean(
+    document.getElementById("reviewRemoveImageInput")?.checked
+  );
+  const existingReview = editingCustomerReviewId
+    ? adminCustomerReviews.find(
+        item => Number(item.id) === Number(editingCustomerReviewId)
+      )
+    : null;
 
   if (quote.length < 3) {
     alert("Please enter the customer’s review.");
@@ -1145,10 +1234,33 @@ async function saveCustomerReview() {
     return;
   }
 
+  let imagePath = removeCurrentImage
+    ? null
+    : (existingReview?.image_path || null);
+  let imageUrl = removeCurrentImage
+    ? null
+    : (existingReview?.image_url || null);
+  let uploadedImagePath = null;
+
+  if (imageFile) {
+    try {
+      const uploaded = await uploadCustomerReviewImage(imageFile);
+      imagePath = uploaded.imagePath;
+      imageUrl = uploaded.imageUrl;
+      uploadedImagePath = uploaded.imagePath;
+    } catch (error) {
+      console.error("Unable to upload review photo:", error);
+      alert(error.message || "Unable to upload the review photo.");
+      return;
+    }
+  }
+
   const review = {
     quote,
     customer_label: customerLabel,
     occasion,
+    image_path: imagePath,
+    image_url: imageUrl,
     sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
     active,
     updated_at: new Date().toISOString()
@@ -1164,8 +1276,23 @@ async function saveCustomerReview() {
 
   if (error) {
     console.error("Unable to save customer review:", error);
+    if (uploadedImagePath) {
+      await supabase.storage
+        .from("review-images")
+        .remove([uploadedImagePath]);
+    }
     alert("Unable to save the review. Run the supplied customer reviews SQL once, then try again.");
     return;
+  }
+
+  const previousImagePath = existingReview?.image_path || null;
+  if (
+    previousImagePath &&
+    previousImagePath !== imagePath
+  ) {
+    await supabase.storage
+      .from("review-images")
+      .remove([previousImagePath]);
   }
 
   editingCustomerReviewId = null;
@@ -1189,6 +1316,22 @@ function editCustomerReview(id) {
     Number(review.sort_order || 0);
   document.getElementById("reviewActiveInput").checked =
     Boolean(review.active);
+  const preview = document.getElementById("reviewImagePreview");
+  const removeField = document.getElementById("reviewRemoveImageField");
+  if (review.image_url && preview) {
+    preview.innerHTML = `
+      <img
+        src="${escapeAdminHtml(review.image_url)}"
+        alt="Current review photo"
+      >
+    `;
+    preview.classList.remove("hidden");
+    removeField?.classList.remove("hidden");
+  } else {
+    preview?.classList.add("hidden");
+    removeField?.classList.add("hidden");
+  }
+  document.getElementById("reviewRemoveImageInput").checked = false;
   document.getElementById("saveReviewBtn").textContent = "Update Review";
   document.getElementById("cancelReviewEditBtn").classList.remove("hidden");
   document.getElementById("reviewQuoteInput").scrollIntoView({
@@ -1237,6 +1380,15 @@ async function deleteCustomerReview(id) {
     console.error("Unable to delete customer review:", error);
     alert("Unable to delete this review. Check that the customer reviews SQL has been run.");
     return;
+  }
+
+  const deletedReview = adminCustomerReviews.find(
+    item => Number(item.id) === Number(id)
+  );
+  if (deletedReview?.image_path) {
+    await supabase.storage
+      .from("review-images")
+      .remove([deletedReview.image_path]);
   }
 
   if (Number(editingCustomerReviewId) === Number(id)) {

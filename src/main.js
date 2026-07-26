@@ -165,6 +165,7 @@ const DEFAULT_CUSTOMER_REVIEWS = [
     quote: "The clicking is addictive!",
     customer_label: "Little Keeps customer",
     occasion: "Just because",
+    image_url: "",
     sort_order: 10
   },
   {
@@ -172,6 +173,7 @@ const DEFAULT_CUSTOMER_REVIEWS = [
     quote: "So cute, beautifully made and really good quality. It turned out exactly how I imagined, and it’s so affordable too!",
     customer_label: "Little Keeps customer",
     occasion: "Group gifting",
+    image_url: "",
     sort_order: 20
   }
 ];
@@ -249,7 +251,7 @@ try {
 try {
   const { data, error } = await supabase
     .from("customer_reviews")
-    .select("id,quote,customer_label,occasion,sort_order")
+    .select("id,quote,customer_label,occasion,image_url,sort_order")
     .eq("active", true)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -282,16 +284,31 @@ function renderCustomerReviewCards() {
       review.customer_label || "Little Keeps customer"
     );
     const occasion = escapePresetText(review.occasion || "Personalised order");
+    const imageUrl = String(review.image_url || "").trim();
+    const safeImageUrl = /^https:\/\//i.test(imageUrl)
+      ? escapePresetText(imageUrl)
+      : "";
 
     return `
-      <article class="review-card ${index % 2 ? "is-featured" : ""}" role="listitem">
+      <article class="review-card ${index % 2 ? "is-featured" : ""} ${safeImageUrl ? "has-image" : ""}" role="listitem">
+        ${safeImageUrl ? `
+          <div class="review-photo">
+            <img
+              src="${safeImageUrl}"
+              alt="Customer’s Little Keeps order for ${occasion}"
+              loading="lazy"
+            >
+          </div>
+        ` : ""}
         <span class="review-quote-mark" aria-hidden="true">“</span>
-        <blockquote>${quote}</blockquote>
-        <div class="review-card-footer">
-          <span>${index % 2 ? "✦" : "♡"}</span>
-          <div>
-            <strong>${customer}</strong>
-            <small>${occasion}</small>
+        <div class="review-card-content">
+          <blockquote>${quote}</blockquote>
+          <div class="review-card-footer">
+            <span>${index % 2 ? "✦" : "♡"}</span>
+            <div>
+              <strong>${customer}</strong>
+              <small>${occasion}</small>
+            </div>
           </div>
         </div>
       </article>
