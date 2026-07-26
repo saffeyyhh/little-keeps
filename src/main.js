@@ -82,11 +82,100 @@ const DEFAULT_DESIGN_PRESETS = [
     cap_colour: "#FFFFFF",
     letter_colour: "#482960",
     icon_suggestion: "★"
+  },
+  {
+    preset_key: "honey-bee",
+    name: "Honey Bee",
+    emoji: "🐝",
+    base_colour: "#FEC600",
+    cap_colour: "#000000",
+    letter_colour: "#FEC600",
+    icon_suggestion: "✿"
+  },
+  {
+    preset_key: "pink-lemonade",
+    name: "Pink Lemonade",
+    emoji: "🍋",
+    base_colour: "#F55A74",
+    cap_colour: "#FEC600",
+    letter_colour: "#9D2235",
+    icon_suggestion: "♡"
+  },
+  {
+    preset_key: "taro-milk",
+    name: "Taro Milk",
+    emoji: "🧋",
+    base_colour: "#5E43B7",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#482960",
+    icon_suggestion: "★"
+  },
+  {
+    preset_key: "forest-berry",
+    name: "Forest Berry",
+    emoji: "🌲",
+    base_colour: "#68724D",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#9D2235",
+    icon_suggestion: "☘"
+  },
+  {
+    preset_key: "monochrome",
+    name: "Classic Mono",
+    emoji: "🖤",
+    base_colour: "#000000",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#000000",
+    icon_suggestion: "★"
+  },
+  {
+    preset_key: "golden-hour",
+    name: "Golden Hour",
+    emoji: "🌤️",
+    base_colour: "#E4BD68",
+    cap_colour: "#FFFFFF",
+    letter_colour: "#9D2235",
+    icon_suggestion: "☀"
+  },
+  {
+    preset_key: "candy-pop",
+    name: "Candy Pop",
+    emoji: "🍬",
+    base_colour: "#00B1B7",
+    cap_colour: "#F55A74",
+    letter_colour: "#FFFFFF",
+    icon_suggestion: "♡"
+  },
+  {
+    preset_key: "sunny-skies",
+    name: "Sunny Skies",
+    emoji: "🌈",
+    base_colour: "#0086D6",
+    cap_colour: "#FEC600",
+    letter_colour: "#000000",
+    icon_suggestion: "☁"
   }
 ];
 
 let designPresets = [...DEFAULT_DESIGN_PRESETS];
 let promoCodeRows = [];
+const DEFAULT_CUSTOMER_REVIEWS = [
+  {
+    id: "fallback-clicking",
+    quote: "The clicking is addictive!",
+    customer_label: "Little Keeps customer",
+    occasion: "Just because",
+    sort_order: 10
+  },
+  {
+    id: "fallback-group",
+    quote: "So cute, beautifully made and really good quality. It turned out exactly how I imagined, and it’s so affordable too!",
+    customer_label: "Little Keeps customer",
+    occasion: "Group gifting",
+    sort_order: 20
+  }
+];
+let customerReviews = [...DEFAULT_CUSTOMER_REVIEWS];
 
 try {
   const { data, error } = await supabase
@@ -157,6 +246,20 @@ try {
   console.warn("Using the fallback promo code setting:", error);
 }
 
+try {
+  const { data, error } = await supabase
+    .from("customer_reviews")
+    .select("id,quote,customer_label,occasion,sort_order")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  if (data?.length) customerReviews = data;
+} catch (error) {
+  console.warn("Using fallback customer reviews:", error);
+}
+
 function escapePresetText(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
     "&": "&amp;",
@@ -170,6 +273,30 @@ function escapePresetText(value) {
 function safePresetColour(value, fallback = "#FFFFFF") {
   const colour = String(value ?? "").trim();
   return /^#[0-9a-f]{6}$/i.test(colour) ? colour : fallback;
+}
+
+function renderCustomerReviewCards() {
+  return customerReviews.map((review, index) => {
+    const quote = escapePresetText(review.quote);
+    const customer = escapePresetText(
+      review.customer_label || "Little Keeps customer"
+    );
+    const occasion = escapePresetText(review.occasion || "Personalised order");
+
+    return `
+      <article class="review-card ${index % 2 ? "is-featured" : ""}" role="listitem">
+        <span class="review-quote-mark" aria-hidden="true">“</span>
+        <blockquote>${quote}</blockquote>
+        <div class="review-card-footer">
+          <span>${index % 2 ? "✦" : "♡"}</span>
+          <div>
+            <strong>${customer}</strong>
+            <small>${occasion}</small>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderDesignPresetCards() {
@@ -293,7 +420,7 @@ document.querySelector("#app").innerHTML = `
 <div class="announcement-bar">
   <div class="announcement-item">
     <span class="announcement-icon">♡</span>
-    <span>Handmade in Singapore</span>
+    <span>Designed, printed &amp; assembled in Singapore</span>
   </div>
 
   <span class="announcement-divider"></span>
@@ -357,7 +484,7 @@ document.querySelector("#app").innerHTML = `
       Design
     </button>
     <button type="button" data-scroll-target="orderStatusSection">
-      Track / Pay Order
+      Track / Pay
     </button>
   </nav>
 
@@ -431,6 +558,15 @@ document.querySelector("#app").innerHTML = `
     >
       <span>◎</span>
       Track / Pay Order
+    </button>
+
+    <button
+      type="button"
+      class="side-nav-link"
+      data-scroll-target="policiesSection"
+    >
+      <span>◎</span>
+      Shop Policies
     </button>
 
     <button
@@ -538,19 +674,36 @@ document.querySelector("#app").innerHTML = `
         fidget-friendly keychain in your favourite colours.
       </p>
 
-      <button
-        id="startDesignBtn"
-        type="button"
-        class="hero-button"
-      >
-        Start Designing
-        <span>→</span>
-      </button>
+      <div class="hero-actions">
+        <button
+          id="startDesignBtn"
+          type="button"
+          class="hero-button"
+        >
+          Start Designing
+          <span>→</span>
+        </button>
+
+        <button
+          type="button"
+          class="hero-secondary-button"
+          data-scroll-target="howItWorksSection"
+        >
+          See how it works
+        </button>
+      </div>
+
+      <div class="hero-trust-row" aria-label="Shopping benefits">
+        <span>✓ Live 3D preview</span>
+        <span>✓ Secure payment</span>
+        <span>✓ Designed, printed &amp; assembled in Singapore</span>
+      </div>
     </div>
 
     <div class="hero-offer-card">
       <div class="hero-offer-top">
         <div>
+          <span class="hero-bestseller-pill">Little Keeps favourite</span>
           <p>Personalised</p>
           <strong>Clicky Keychains</strong>
         </div>
@@ -656,12 +809,76 @@ document.querySelector("#app").innerHTML = `
   </article>
 </section>
 
+<section id="howItWorksSection" class="how-it-works-section">
+  <div class="how-it-works-heading">
+    <p class="section-eyebrow">Simple from start to finish</p>
+    <h2>Made by you, finished by us.</h2>
+    <p>Create something personal in just a few taps—we’ll handle everything after that.</p>
+  </div>
+
+  <div class="how-it-works-grid">
+    <article>
+      <span>01</span>
+      <div class="how-step-icon">✿</div>
+      <h3>Design it live</h3>
+      <p>Add a name, mix your colours and rotate the 3D preview until it feels just right.</p>
+    </article>
+
+    <article>
+      <span>02</span>
+      <div class="how-step-icon">♡</div>
+      <h3>We make it</h3>
+      <p>Every piece is printed, assembled and quality-checked by hand in Singapore.</p>
+    </article>
+
+    <article>
+      <span>03</span>
+      <div class="how-step-icon">→</div>
+      <h3>Collect or deliver</h3>
+      <p>Choose Woodlands MRT pickup or islandwide delivery and follow every update online.</p>
+    </article>
+  </div>
+</section>
+
+<section class="occasion-section" aria-labelledby="occasionHeading">
+  <div class="occasion-copy">
+    <p class="section-eyebrow">Made for meaningful moments</p>
+    <h2 id="occasionHeading">Tiny keepsakes for every celebration ♡</h2>
+    <p>Personalise every name, colour and icon for one special person or a whole group.</p>
+  </div>
+
+  <div class="occasion-grid">
+    <article><span>🎂</span><strong>Birthday gifts</strong></article>
+    <article><span>🎁</span><strong>Party goodie bags</strong></article>
+    <article><span>✏️</span><strong>Teachers’ Day</strong></article>
+    <article><span>🌈</span><strong>Children’s Day</strong></article>
+    <article><span>♡</span><strong>Friendship gifts</strong></article>
+    <article><span>★</span><strong>Class and team gifts</strong></article>
+  </div>
+
+  <p class="occasion-safety-note">Contains small parts. Please supervise young children.</p>
+</section>
+
+<section class="reviews-section" aria-labelledby="reviewsHeading">
+  <div class="reviews-heading">
+    <div>
+      <p class="section-eyebrow">Real words from real customers</p>
+      <h2 id="reviewsHeading">Loved by you ♡</h2>
+    </div>
+    <span>Swipe to read →</span>
+  </div>
+
+  <div class="reviews-track" role="list" aria-label="Customer reviews">
+    ${renderCustomerReviewCards()}
+  </div>
+</section>
+
 <aside class="payment-unlock-banner" aria-label="Payment options">
   <div class="payment-unlock-icon">♡</div>
   <div>
     <small>Ordering for a group?</small>
     <strong>More ways to pay from $30</strong>
-    <p>Card, Apple Pay and Google Pay unlock automatically at checkout. PayNow is available for every order.</p>
+    <p>PayNow is always available. Card, Apple Pay and Google Pay are available for orders from $30.</p>
   </div>
 </aside>
 
@@ -1131,29 +1348,65 @@ Chloe</textarea>
           id="deliveryAddressSection"
           class="hidden"
         >
+          <label for="deliveryPostalCode">
+            Delivery postal code
+          </label>
+
+          <div class="delivery-postal-row">
+            <input
+              id="deliveryPostalCode"
+              type="text"
+              inputmode="numeric"
+              autocomplete="postal-code"
+              maxlength="6"
+              placeholder="6-digit postal code"
+            >
+
+            <button id="verifyDeliveryAddressBtn" type="button" class="secondary-btn">
+              Find Address
+            </button>
+          </div>
+
+          <p id="deliveryAddressLookupStatus" class="address-lookup-status" aria-live="polite">
+            Enter your postal code.
+          </p>
+
+          <button id="manualDeliveryAddressBtn" type="button" class="address-manual-link">
+            Can’t find it? Enter the address manually
+          </button>
+
           <label for="deliveryAddressLine1">
-            Delivery Address
+            Block and street
           </label>
 
           <input
             id="deliveryAddressLine1"
             type="text"
-            placeholder="Block and street name"
+            autocomplete="address-line1"
+            placeholder="Verified address will appear here"
+            readonly
           >
+
+          <label for="deliveryAddressLine2">
+            Unit number
+          </label>
 
           <input
             id="deliveryAddressLine2"
             type="text"
+            autocomplete="address-line2"
             placeholder="Unit number, e.g. #12-34"
           >
 
-          <input
-            id="deliveryPostalCode"
-            type="text"
-            inputmode="numeric"
-            maxlength="6"
-            placeholder="Postal code"
-          >
+          <div id="deliveryAddressConfirmation" class="delivery-address-confirmation hidden">
+            <span>Deliver to</span>
+            <strong id="deliveryAddressPreview"></strong>
+
+            <label class="address-confirm-toggle" for="confirmDeliveryAddress">
+              <input id="confirmDeliveryAddress" type="checkbox">
+              <span>I confirm that this full address and unit number are correct.</span>
+            </label>
+          </div>
         </div>
 
         <p id="deliveryNote" class="hint"></p>
@@ -1377,6 +1630,41 @@ Chloe</textarea>
     <p id="orderStatusMessage" class="order-status-message" aria-live="polite"></p>
     <div id="orderStatusResult" class="order-status-result hidden"></div>
   </form>
+</section>
+
+<section id="policiesSection" class="policies-section">
+  <div class="section-heading">
+    <p class="section-eyebrow">Good to know</p>
+    <h2>Shop Policies</h2>
+    <p>Clear information about personalised orders, fulfilment and support.</p>
+  </div>
+
+  <div class="policy-grid">
+    <details>
+      <summary>Production and timing</summary>
+      <p>Standard orders are usually ready in 2-3 working days. Large orders usually require 3-4 working days. Rush and bulk requests are subject to availability. Any closure shown on the website is included in the displayed estimate.</p>
+    </details>
+
+    <details>
+      <summary>Personalised orders and changes</summary>
+      <p>Please check every name, icon, colour and orientation before paying. Changes can be requested before production begins, but may not be possible once printing has started.</p>
+    </details>
+
+    <details>
+      <summary>Cancellations, problems and refunds</summary>
+      <p>Because each item is personalised, change-of-mind cancellations may not be accepted after production begins. If your order is incorrect, damaged or faulty, contact us within 7 days of collection or delivery so we can assess a replacement or refund. This does not limit rights provided by Singapore consumer law.</p>
+    </details>
+
+    <details>
+      <summary>Collection and delivery</summary>
+      <p>Pickup is arranged at Woodlands MRT after the ready email is sent. Delivery timing and tracking depend on the selected courier; personally delivered orders may not have a tracking number. Please provide an accurate address and contact number.</p>
+    </details>
+
+    <details>
+      <summary>Privacy</summary>
+      <p>Customer details are used only to process payment, produce and fulfil orders, provide updates and respond to support requests. Payment information is handled by Stripe and is not stored by Little Keeps.</p>
+    </details>
+  </div>
 </section>
 
 <section id="contactSection" class="contact-section">
@@ -1686,6 +1974,27 @@ const deliveryAddressLine2 =
 const deliveryPostalCode =
   document.getElementById("deliveryPostalCode");
 
+const verifyDeliveryAddressBtn =
+  document.getElementById("verifyDeliveryAddressBtn");
+
+const manualDeliveryAddressBtn =
+  document.getElementById("manualDeliveryAddressBtn");
+
+const deliveryAddressLookupStatus =
+  document.getElementById("deliveryAddressLookupStatus");
+
+const deliveryAddressConfirmation =
+  document.getElementById("deliveryAddressConfirmation");
+
+const deliveryAddressPreview =
+  document.getElementById("deliveryAddressPreview");
+
+const confirmDeliveryAddress =
+  document.getElementById("confirmDeliveryAddress");
+
+let deliveryAddressVerifiedPostal = "";
+let deliveryAddressManualOverride = false;
+
 function getDeliveryAddress() {
   return [
     deliveryAddressLine1.value.trim(),
@@ -1697,6 +2006,100 @@ function getDeliveryAddress() {
     .filter(Boolean)
     .join(", ");
 }
+
+function renderDeliveryAddressConfirmation() {
+  const hasAddress =
+    deliveryAddressLine1.value.trim() &&
+    deliveryAddressLine2.value.trim() &&
+    /^\d{6}$/.test(deliveryPostalCode.value.trim());
+
+  deliveryAddressConfirmation.classList.toggle("hidden", !hasAddress);
+  deliveryAddressPreview.textContent = hasAddress ? getDeliveryAddress() : "";
+}
+
+function resetDeliveryAddressVerification({ clearAddress = true } = {}) {
+  deliveryAddressVerifiedPostal = "";
+  deliveryAddressManualOverride = false;
+  confirmDeliveryAddress.checked = false;
+  deliveryAddressLine1.readOnly = true;
+
+  if (clearAddress) {
+    deliveryAddressLine1.value = "";
+  }
+
+  deliveryAddressLookupStatus.className = "address-lookup-status";
+  deliveryAddressLookupStatus.textContent =
+    "Enter your postal code.";
+  renderDeliveryAddressConfirmation();
+}
+
+async function verifyDeliveryAddress() {
+  const postalCode = deliveryPostalCode.value.replace(/\D/g, "").slice(0, 6);
+  deliveryPostalCode.value = postalCode;
+
+  if (!/^\d{6}$/.test(postalCode)) {
+    deliveryAddressLookupStatus.className = "address-lookup-status is-error";
+    deliveryAddressLookupStatus.textContent =
+      "Please enter a complete 6-digit Singapore postal code.";
+    validateForm();
+    return;
+  }
+
+  verifyDeliveryAddressBtn.disabled = true;
+  verifyDeliveryAddressBtn.textContent = "Checking…";
+  deliveryAddressLookupStatus.className = "address-lookup-status is-checking";
+  deliveryAddressLookupStatus.textContent = "Checking the official address…";
+
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "verify-delivery-address",
+      { body: { postal_code: postalCode } }
+    );
+
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    if (!data?.address_line_1) {
+      throw new Error("No matching address was returned.");
+    }
+
+    deliveryAddressLine1.value = data.address_line_1;
+    deliveryAddressLine1.readOnly = true;
+    deliveryAddressVerifiedPostal = postalCode;
+    deliveryAddressManualOverride = false;
+    confirmDeliveryAddress.checked = false;
+    deliveryAddressLookupStatus.className = "address-lookup-status is-success";
+    deliveryAddressLookupStatus.textContent =
+      "Address found ✓ Please add your unit number and confirm it below.";
+    deliveryAddressLine2.focus();
+  } catch (error) {
+    console.error("Unable to verify delivery address:", error);
+    deliveryAddressVerifiedPostal = "";
+    deliveryAddressLookupStatus.className = "address-lookup-status is-error";
+    deliveryAddressLookupStatus.textContent =
+      "We couldn’t verify this postal code right now. Check it again or enter the address manually.";
+  } finally {
+    verifyDeliveryAddressBtn.disabled = false;
+    verifyDeliveryAddressBtn.textContent = "Find Address";
+    renderDeliveryAddressConfirmation();
+    validateForm();
+  }
+}
+
+verifyDeliveryAddressBtn.addEventListener("click", verifyDeliveryAddress);
+
+manualDeliveryAddressBtn.addEventListener("click", () => {
+  deliveryAddressVerifiedPostal = "";
+  deliveryAddressManualOverride = true;
+  deliveryAddressLine1.readOnly = false;
+  deliveryAddressLine1.value = "";
+  confirmDeliveryAddress.checked = false;
+  deliveryAddressLookupStatus.className = "address-lookup-status is-warning";
+  deliveryAddressLookupStatus.textContent =
+    "Manual address selected. Please check every detail carefully before confirming.";
+  deliveryAddressLine1.focus();
+  renderDeliveryAddressConfirmation();
+  validateForm();
+});
 
 const ribbedBaseBtn = document.getElementById("ribbedBaseBtn");
 const bubblyBaseBtn = document.getElementById("bubblyBaseBtn");
@@ -3940,7 +4343,12 @@ async function submitOrder() {
       orderType: checkoutOrderType,
       approved: !isReviewRequest
     });
-    void requestOrderSavedEmail(orderRef, order.customer_email);
+
+    // Wait for the small reference email request to finish before continuing.
+    // This prevents mobile browsers from cancelling it during navigation.
+    if (!isReviewRequest) {
+      await requestOrderSavedEmail(orderRef, order.customer_email);
+    }
   }
 
   if (isReviewRequest) {
@@ -4395,13 +4803,27 @@ dismissPendingOrderBtn?.addEventListener("click", () => {
 
 async function requestOrderSavedEmail(orderRef, email) {
   try {
-    const { error } = await supabase.functions.invoke("send-order-saved-email", {
+    const { data, error } = await supabase.functions.invoke("send-order-saved-email", {
       body: { order_ref: orderRef, email }
     });
-    if (error) console.warn("Order reference email was not sent:", error);
+
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+
+    return data?.ok === true;
   } catch (error) {
     console.warn("Order reference email was not sent:", error);
+    return false;
   }
+}
+
+async function retryRememberedOrderEmail() {
+  const saved = getRememberedPendingOrder();
+  const needsReview =
+    ["rush", "bulk"].includes(saved?.orderType) && !saved?.approved;
+
+  if (!saved || needsReview || isManualOrder) return;
+  await requestOrderSavedEmail(saved.orderRef, saved.email);
 }
 
 startDesignBtn.onclick = () => {
@@ -4444,6 +4866,7 @@ collectionMethod.addEventListener("change", () => {
     deliveryAddressLine1.value = "";
     deliveryAddressLine2.value = "";
     deliveryPostalCode.value = "";
+    resetDeliveryAddressVerification();
   }
 
   updateCollectionNote();
@@ -4465,18 +4888,37 @@ rushOrderToggle.addEventListener("change", () => {
 
 deliveryAddressLine1.addEventListener(
   "input",
-  validateForm
+  () => {
+    confirmDeliveryAddress.checked = false;
+    renderDeliveryAddressConfirmation();
+    validateForm();
+  }
 );
 
 deliveryAddressLine2.addEventListener(
   "input",
-  validateForm
+  () => {
+    confirmDeliveryAddress.checked = false;
+    renderDeliveryAddressConfirmation();
+    validateForm();
+  }
 );
 
 deliveryPostalCode.addEventListener(
   "input",
-  validateForm
+  () => {
+    const postalCode = deliveryPostalCode.value.replace(/\D/g, "").slice(0, 6);
+    deliveryPostalCode.value = postalCode;
+
+    if (postalCode !== deliveryAddressVerifiedPostal) {
+      resetDeliveryAddressVerification();
+    }
+
+    validateForm();
+  }
 );
+
+confirmDeliveryAddress.addEventListener("change", validateForm);
 
 nameList.addEventListener("input", updateNames);
 
@@ -4622,6 +5064,23 @@ function validateForm() {
 
 else if (
   collectionMethod.value === "delivery" &&
+  !/^\d{6}$/.test(deliveryPostalCode.value.trim())
+) {
+  valid = false;
+  message = "Please enter a 6-digit postal code.";
+}
+
+else if (
+  collectionMethod.value === "delivery" &&
+  deliveryAddressVerifiedPostal !== deliveryPostalCode.value.trim() &&
+  !deliveryAddressManualOverride
+) {
+  valid = false;
+  message = "Please use Find Address to verify your postal code.";
+}
+
+else if (
+  collectionMethod.value === "delivery" &&
   !deliveryAddressLine1.value.trim()
 ) {
   valid = false;
@@ -4638,10 +5097,10 @@ else if (
 
 else if (
   collectionMethod.value === "delivery" &&
-  !/^\d{6}$/.test(deliveryPostalCode.value.trim())
+  !confirmDeliveryAddress.checked
 ) {
   valid = false;
-  message = "Postal code must be 6 digits.";
+  message = "Please confirm that your complete delivery address is correct.";
 }
 
     submitOrderBtn.disabled = !valid;
@@ -4687,6 +5146,9 @@ function saveDraft() {
 
     deliveryPostalCode:
       deliveryPostalCode.value,
+    deliveryAddressVerifiedPostal,
+    deliveryAddressManualOverride,
+    deliveryAddressConfirmed: confirmDeliveryAddress.checked,
     orderNotes: orderNotes.value,
 
     singleName: singleName.value,
@@ -4802,7 +5264,31 @@ continueDraftBtn.onclick = () => {
     draftData.deliveryAddressLine2 || "";
 
   deliveryPostalCode.value =
-    draftData.deliveryPostalCode || "";
+    String(draftData.deliveryPostalCode || "").replace(/\D/g, "").slice(0, 6);
+
+  deliveryAddressVerifiedPostal =
+    draftData.deliveryAddressVerifiedPostal === deliveryPostalCode.value
+      ? deliveryPostalCode.value
+      : "";
+
+  deliveryAddressManualOverride =
+    Boolean(draftData.deliveryAddressManualOverride);
+
+  deliveryAddressLine1.readOnly = !deliveryAddressManualOverride;
+  confirmDeliveryAddress.checked =
+    Boolean(draftData.deliveryAddressConfirmed) &&
+    Boolean(deliveryAddressVerifiedPostal || deliveryAddressManualOverride);
+
+  if (deliveryAddressVerifiedPostal) {
+    deliveryAddressLookupStatus.className = "address-lookup-status is-success";
+    deliveryAddressLookupStatus.textContent = "Address found ✓";
+  } else if (deliveryAddressManualOverride) {
+    deliveryAddressLookupStatus.className = "address-lookup-status is-warning";
+    deliveryAddressLookupStatus.textContent =
+      "Manual address selected. Please check every detail carefully.";
+  }
+
+  renderDeliveryAddressConfirmation();
 
   orderNotes.value =
     draftData.orderNotes || "";
@@ -5575,6 +6061,7 @@ if (resumeOrderRef && !paymentReturnState) {
 }
 
 renderPendingOrderBanner();
+void retryRememberedOrderEmail();
 
 // Payment-page preview for layout testing only.
 // This does not create, save or update an order.

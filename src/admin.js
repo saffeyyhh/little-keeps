@@ -114,6 +114,10 @@ document.querySelector("#app").innerHTML = `
             + Manual Order
           </a>
 
+          <button id="cleanupExpiredBtn" type="button">
+            Clean Expired
+          </button>
+
           <button id="refreshBtn" type="button" title="Refresh orders" aria-label="Refresh orders">
             ↻
           </button>
@@ -148,6 +152,7 @@ document.querySelector("#app").innerHTML = `
             <option value="Ready for Pickup/Delivery">Ready</option>
             <option value="Out for Delivery">Out for Delivery</option>
             <option value="Completed">Completed</option>
+            <option value="Refunded">Refunded</option>
           </select>
         </label>
 
@@ -173,6 +178,7 @@ const ordersContainer = document.getElementById("orders");
 const statsContainer = document.getElementById("stats");
 const operationsSummary = document.getElementById("operationsSummary");
 const refreshBtn = document.getElementById("refreshBtn");
+const cleanupExpiredBtn = document.getElementById("cleanupExpiredBtn");
 const todayViewBtn = document.getElementById("todayViewBtn");
 const ordersViewBtn = document.getElementById("ordersViewBtn");
 const productionViewBtn = document.getElementById("productionViewBtn");
@@ -231,6 +237,7 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   jump_ring_low_stock: 20,
   status_emails_enabled: false,
   status_email_template_id: "",
+  review_url: "https://www.instagram.com/madebylittlekeeps/",
   stripe_enabled: false,
   unavailable_colours: []
 };
@@ -239,6 +246,9 @@ let adminShopSettings = { ...DEFAULT_ADMIN_SHOP_SETTINGS };
 let adminSettingsLoaded = false;
 let adminSettingsLoadFailed = false;
 let adminPromoCodes = [];
+let adminCustomerReviews = [];
+let adminReviewsLoadFailed = false;
+let editingCustomerReviewId = null;
 
 const ADMIN_COLOUR_OPTIONS = [
   { name: "Jade White", hex: "#FFFFFF" },
@@ -463,6 +473,7 @@ const ORDER_PROGRESS = {
   "Ready for Pickup/Delivery": { percent: 84, label: "Ready to fulfil" },
   "Out for Delivery": { percent: 94, label: "Out for delivery" },
   "Completed": { percent: 100, label: "Completed" }
+  ,"Refunded": { percent: 100, label: "Refunded" }
 };
 
 function hasExpiredPaymentHold(order) {
@@ -774,6 +785,10 @@ function renderSettingsWorkspace() {
             <span>EmailJS status-template ID</span>
             <input name="status_email_template_id" value="${escapeAdminHtml(adminShopSettings.status_email_template_id || "")}" placeholder="template_xxxxxxx">
           </label>
+          <label class="settings-field">
+            <span>Review / Instagram link</span>
+            <input name="review_url" type="url" value="${escapeAdminHtml(adminShopSettings.review_url || "")}" placeholder="https://instagram.com/...">
+          </label>
           <p class="hint">Use the supplied status email HTML in EmailJS, then paste that template ID here.</p>
         </section>
 
@@ -833,6 +848,92 @@ function renderSettingsWorkspace() {
           `).join("") || `<p class="today-empty">No promo codes yet.</p>`}
         </div>
       </section>
+
+      <section class="settings-card review-manager">
+        <div class="settings-card-heading">
+          <div>
+            <h3>Customer reviews</h3>
+            <p class="hint">Add genuine customer feedback to the swipeable storefront section.</p>
+          </div>
+          <strong>${adminCustomerReviews.length} review${adminCustomerReviews.length === 1 ? "" : "s"}</strong>
+        </div>
+
+        ${adminReviewsLoadFailed ? `
+          <div class="stock-alert">
+            <strong>Review manager is not ready</strong>
+            <span>Run the supplied customer reviews SQL once, then refresh Admin.</span>
+          </div>
+        ` : ""}
+
+        <div class="review-create-grid">
+          <label class="review-create-field review-quote-field">
+            <span>Customer’s words</span>
+            <textarea id="reviewQuoteInput" rows="3" maxlength="500" placeholder="Paste the genuine review here..."></textarea>
+          </label>
+
+          <label class="review-create-field">
+            <span>Customer label</span>
+            <input id="reviewCustomerInput" maxlength="80" value="Little Keeps customer" placeholder="e.g. Aisyah or Little Keeps customer">
+          </label>
+
+          <label class="review-create-field">
+            <span>Occasion / ordered for</span>
+            <input id="reviewOccasionInput" maxlength="80" list="reviewOccasionIdeas" placeholder="e.g. Teachers’ Day gifts">
+            <datalist id="reviewOccasionIdeas">
+              <option value="Birthday gift">
+              <option value="Party goodie bags">
+              <option value="Teachers’ Day gifts">
+              <option value="Children’s Day gifts">
+              <option value="Friendship gift">
+              <option value="Class or team gifts">
+              <option value="Group gifting">
+              <option value="Just because">
+            </datalist>
+          </label>
+
+          <label class="review-create-field">
+            <span>Display order</span>
+            <input id="reviewSortInput" type="number" min="0" step="1" value="${(adminCustomerReviews.length + 1) * 10}">
+          </label>
+
+          <label class="promo-feature-toggle review-active-toggle">
+            <input id="reviewActiveInput" type="checkbox" checked>
+            Show on storefront
+          </label>
+
+          <div class="review-editor-actions">
+            <button id="saveReviewBtn" class="ready-btn" type="button" onclick="window.saveCustomerReview()" ${adminReviewsLoadFailed ? "disabled" : ""}>
+              Add Review
+            </button>
+            <button id="cancelReviewEditBtn" type="button" class="hidden" onclick="window.cancelCustomerReviewEdit()">
+              Cancel Edit
+            </button>
+          </div>
+        </div>
+
+        <div class="review-admin-list">
+          ${adminCustomerReviews.map(review => `
+            <article class="review-admin-row ${review.active ? "" : "is-hidden"}">
+              <div class="review-admin-copy">
+                <blockquote>“${escapeAdminHtml(review.quote)}”</blockquote>
+                <p>
+                  <strong>${escapeAdminHtml(review.customer_label || "Little Keeps customer")}</strong>
+                  <span>${escapeAdminHtml(review.occasion || "No occasion added")}</span>
+                </p>
+              </div>
+              <div class="review-admin-meta">
+                <span>Order ${Number(review.sort_order || 0)}</span>
+                <strong>${review.active ? "Visible" : "Hidden"}</strong>
+              </div>
+              <div class="promo-admin-actions">
+                <button type="button" onclick="window.editCustomerReview(${Number(review.id)})">Edit</button>
+                <button type="button" onclick="window.toggleCustomerReview(${Number(review.id)}, ${!review.active})">${review.active ? "Hide" : "Show"}</button>
+                <button type="button" class="archive-action" onclick="window.deleteCustomerReview(${Number(review.id)})">Delete</button>
+              </div>
+            </article>
+          `).join("") || `<p class="today-empty">No reviews yet. Add your first one above.</p>`}
+        </div>
+      </section>
     </form>
   `;
 
@@ -882,6 +983,7 @@ async function saveShopSettings(event) {
   updates.status_emails_enabled = form.has("status_emails_enabled");
   updates.stripe_enabled = form.has("stripe_enabled");
   updates.status_email_template_id = String(form.get("status_email_template_id") || "").trim();
+  updates.review_url = String(form.get("review_url") || "").trim();
   updates.unavailable_colours = form
     .getAll("unavailable_colours")
     .map(name => String(name).trim())
@@ -1018,6 +1120,138 @@ window.addPromoCode = addPromoCode;
 window.deletePromoCode = deletePromoCode;
 window.toggleFeaturedPromo = toggleFeaturedPromo;
 window.editPromoCode = editPromoCode;
+
+async function saveCustomerReview() {
+  const quote = document.getElementById("reviewQuoteInput")?.value.trim() || "";
+  const customerLabel =
+    document.getElementById("reviewCustomerInput")?.value.trim() ||
+    "Little Keeps customer";
+  const occasion =
+    document.getElementById("reviewOccasionInput")?.value.trim() || "";
+  const sortOrder = Number(
+    document.getElementById("reviewSortInput")?.value || 0
+  );
+  const active = Boolean(
+    document.getElementById("reviewActiveInput")?.checked
+  );
+
+  if (quote.length < 3) {
+    alert("Please enter the customer’s review.");
+    return;
+  }
+
+  if (!occasion) {
+    alert("Please add what the order was for, such as Birthday gift or Group gifting.");
+    return;
+  }
+
+  const review = {
+    quote,
+    customer_label: customerLabel,
+    occasion,
+    sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+    active,
+    updated_at: new Date().toISOString()
+  };
+
+  if (editingCustomerReviewId) {
+    review.id = editingCustomerReviewId;
+  }
+
+  const { error } = await supabase
+    .from("customer_reviews")
+    .upsert(review);
+
+  if (error) {
+    console.error("Unable to save customer review:", error);
+    alert("Unable to save the review. Run the supplied customer reviews SQL once, then try again.");
+    return;
+  }
+
+  editingCustomerReviewId = null;
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+}
+
+function editCustomerReview(id) {
+  const review = adminCustomerReviews.find(
+    item => Number(item.id) === Number(id)
+  );
+  if (!review) return;
+
+  editingCustomerReviewId = Number(review.id);
+  document.getElementById("reviewQuoteInput").value = review.quote || "";
+  document.getElementById("reviewCustomerInput").value =
+    review.customer_label || "Little Keeps customer";
+  document.getElementById("reviewOccasionInput").value =
+    review.occasion || "";
+  document.getElementById("reviewSortInput").value =
+    Number(review.sort_order || 0);
+  document.getElementById("reviewActiveInput").checked =
+    Boolean(review.active);
+  document.getElementById("saveReviewBtn").textContent = "Update Review";
+  document.getElementById("cancelReviewEditBtn").classList.remove("hidden");
+  document.getElementById("reviewQuoteInput").scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  });
+  document.getElementById("reviewQuoteInput").focus();
+}
+
+function cancelCustomerReviewEdit() {
+  editingCustomerReviewId = null;
+  renderSettingsWorkspace();
+}
+
+async function toggleCustomerReview(id, active) {
+  const { error } = await supabase
+    .from("customer_reviews")
+    .update({
+      active,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Unable to update customer review:", error);
+    alert("Unable to change this review.");
+    return;
+  }
+
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+}
+
+async function deleteCustomerReview(id) {
+  if (!window.confirm("Delete this customer review from the storefront?")) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("customer_reviews")
+    .delete()
+    .eq("id", id)
+    .select("id");
+
+  if (error || !data?.length) {
+    console.error("Unable to delete customer review:", error);
+    alert("Unable to delete this review. Check that the customer reviews SQL has been run.");
+    return;
+  }
+
+  if (Number(editingCustomerReviewId) === Number(id)) {
+    editingCustomerReviewId = null;
+  }
+
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+}
+
+window.saveCustomerReview = saveCustomerReview;
+window.editCustomerReview = editCustomerReview;
+window.cancelCustomerReviewEdit = cancelCustomerReviewEdit;
+window.toggleCustomerReview = toggleCustomerReview;
+window.deleteCustomerReview = deleteCustomerReview;
 
 window.markReady = async function(id) {
   const order = latestOrders.find(
@@ -1323,6 +1557,100 @@ function formatDate(date) {
   });
 }
 
+function formatDateTime(value) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString("en-SG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function getPaymentMethodLabel(order) {
+  const method = String(order.stripe_payment_method || "").toLowerCase();
+  const labels = {
+    paynow: "PayNow",
+    card: "Card",
+    apple_pay: "Apple Pay",
+    google_pay: "Google Pay",
+    link: "Link"
+  };
+
+  if (labels[method]) return labels[method];
+  if (order.online_payment_status === "completed") return "Stripe payment";
+  if (order.payment_type === "Paid") return "Manually verified";
+  return "Awaiting payment";
+}
+
+function renderPaymentLedger(order) {
+  if (
+    order.payment_type !== "Paid" &&
+    order.online_payment_status !== "completed"
+  ) {
+    return "";
+  }
+
+  const hasFee =
+    order.stripe_processing_fee !== null &&
+    order.stripe_processing_fee !== undefined;
+  const hasNet =
+    order.stripe_net_amount !== null &&
+    order.stripe_net_amount !== undefined;
+  const stripeReference =
+    order.stripe_balance_transaction_id ||
+    order.stripe_payment_intent_id ||
+    order.stripe_checkout_session_id ||
+    "";
+
+  return `
+    <section class="payment-ledger-card full-row">
+      <div class="payment-ledger-heading">
+        <div>
+          <small>Payment received</small>
+          <strong>${escapeAdminHtml(getPaymentMethodLabel(order))}</strong>
+        </div>
+        <span>${escapeAdminHtml(formatDateTime(order.stripe_payment_completed_at || order.status_updated_at))}</span>
+      </div>
+
+      <div class="payment-ledger-values">
+        <div>
+          <span>Customer paid</span>
+          <strong>${formatMoney(order.total)}</strong>
+        </div>
+        <div>
+          <span>Stripe fee</span>
+          <strong>${hasFee ? `-${formatMoney(order.stripe_processing_fee)}` : "Not recorded"}</strong>
+        </div>
+        <div>
+          <span>Net received</span>
+          <strong>${hasNet ? formatMoney(order.stripe_net_amount) : "Not recorded"}</strong>
+        </div>
+        ${Number(order.refunded_amount || 0) > 0 ? `
+          <div>
+            <span>Refunded</span>
+            <strong>-${formatMoney(order.refunded_amount)}</strong>
+          </div>
+        ` : ""}
+      </div>
+
+      ${stripeReference ? `
+        <p>
+          <span>Stripe reference</span>
+          <code>${escapeAdminHtml(stripeReference)}</code>
+        </p>
+      ` : `
+        <p class="payment-ledger-note">This payment was verified manually, so Stripe fee details are unavailable.</p>
+      `}
+    </section>
+  `;
+}
+
 function getMethodLabel(method) {
   return method === "delivery" ? "Delivery" : "Pickup";
 }
@@ -1334,6 +1662,56 @@ function escapeAdminHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function renderEmailHistory(order) {
+  const entries = [
+    {
+      label: "Order saved",
+      sentAt: order.order_saved_email_sent_at
+    },
+    {
+      label: "Payment reminder",
+      sentAt: order.payment_reminder_sent_at
+    },
+    {
+      label: "Confirmation + PDF",
+      sentAt: order.payment_confirmation_sent_at
+    },
+    {
+      label: order.status_email_type
+        ? `Status: ${order.status_email_type}`
+        : "Status update",
+      sentAt: order.status_email_sent_at
+    },
+    {
+      label: "Review request",
+      sentAt: order.review_request_sent_at
+    }
+  ];
+
+  return `
+    <section class="order-email-history">
+      <div class="order-email-history-heading">
+        <div>
+          <span>Email history</span>
+          <small>Recorded delivery attempts for this order</small>
+        </div>
+      </div>
+
+      <div class="order-email-history-list">
+        ${entries.map(entry => `
+          <div class="order-email-history-item ${entry.sentAt ? "is-sent" : "is-pending"}">
+            <span class="email-history-dot" aria-hidden="true"></span>
+            <div>
+              <strong>${escapeAdminHtml(entry.label)}</strong>
+              <small>${entry.sentAt ? `Sent ${escapeAdminHtml(formatDateTime(entry.sentAt))}` : "Not sent yet"}</small>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function getOrderCharacterCount(order) {
@@ -1659,10 +2037,13 @@ function renderOrders(orders) {
         ${Number(order.rush_fee || 0) > 0 ? `<p><strong>Rush Fee</strong><br>${formatMoney(order.rush_fee)}</p>` : ""}
         <p><strong>Total</strong><br>${formatMoney(order.total)}</p>
         <p><strong>Order Source</strong><br>${escapeAdminHtml(order.order_source || "-")}</p>
+        ${renderPaymentLedger(order)}
         ${["Pending Payment", "Payment Expired"].includes(order.status) ? `
           <p><strong>Payment Slot</strong><br>${escapeAdminHtml(formatPaymentHold(order))}</p>
         ` : ""}
       </div>
+
+      ${renderEmailHistory(order)}
 
       <div class="order-quick-actions">
         ${["Rush Review", "Bulk Review"].includes(order.status) ? `
@@ -1679,6 +2060,24 @@ function renderOrders(orders) {
           <a href="mailto:${encodeURIComponent(order.customer_email)}?subject=${encodeURIComponent(`Little Keeps order ${order.order_ref || ""}`)}">
             Email Customer
           </a>
+        ` : ""}
+
+        ${["Pending Payment", "Payment Expired"].includes(order.status) && order.customer_email ? `
+          <button type="button" onclick='window.sendPaymentReminder(${JSON.stringify(orderId)}, this)'>
+            Email Payment Reminder
+          </button>
+        ` : ""}
+
+        ${order.stripe_payment_intent_id && Number(order.refunded_amount || 0) < Number(order.total || 0) ? `
+          <button type="button" class="danger-action" onclick='window.refundOrder(${JSON.stringify(orderId)}, this)'>
+            Refund
+          </button>
+        ` : ""}
+
+        ${order.status === "Completed" && order.customer_email ? `
+          <button type="button" onclick='window.sendReviewRequest(${JSON.stringify(orderId)}, this)'>
+            ${order.review_request_sent_at ? "Resend Review Request" : "Send Review Request"}
+          </button>
         ` : ""}
 
         ${order.customer_email && (order.payment_type === "Paid" || order.status === "Payment Verified") ? `
@@ -1763,6 +2162,7 @@ function renderOrders(orders) {
         `
       }
       <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
+      <option value="Refunded" ${order.status === "Refunded" ? "selected" : ""}>Refunded</option>
     </select>
   </div>
 
@@ -1774,6 +2174,7 @@ function renderOrders(orders) {
     >
       <option value="Pending" ${order.payment_type === "Pending" ? "selected" : ""}>Awaiting payment</option>
       <option value="Paid" ${order.payment_type === "Paid" ? "selected" : ""}>Paid</option>
+      <option value="Refunded" ${order.payment_type === "Refunded" ? "selected" : ""}>Refunded</option>
       <option value="Free" ${["Free", "Giveaway", "Replacement"].includes(order.payment_type) ? "selected" : ""}>No payment needed</option>
     </select>
   </div>
@@ -5312,6 +5713,154 @@ async function approveSpecialOrder(id) {
   }
 }
 
+async function sendPaymentReminder(id, button) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return alert("Order could not be found.");
+
+  const label = button?.textContent || "Email Payment Reminder";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending…";
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "send-payment-reminder",
+      { body: { order_id: order.id } }
+    );
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    alert(`Payment reminder sent to ${order.customer_email}.`);
+    await loadOrders();
+  } catch (error) {
+    console.error("Unable to send payment reminder:", error);
+    alert(error?.message || "Unable to send the payment reminder.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+}
+
+async function refundOrder(id, button) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return alert("Order could not be found.");
+
+  const remaining = Math.max(
+    0,
+    Number(order.total || 0) - Number(order.refunded_amount || 0)
+  );
+  const entered = prompt(
+    `Refund amount for ${order.order_ref}\nMaximum: ${formatMoney(remaining)}`,
+    remaining.toFixed(2)
+  );
+  if (entered === null) return;
+
+  const amount = Number(entered);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) {
+    return alert(`Enter an amount between $0.01 and ${formatMoney(remaining)}.`);
+  }
+
+  const reason = prompt("Reason for refund:", "Customer request");
+  if (reason === null) return;
+
+  const isFullRefund = amount >= remaining - 0.005;
+  const willRestoreInventory =
+    isFullRefund &&
+    Boolean(order.inventory_deducted_at) &&
+    !order.inventory_restored_at;
+  if (!confirm(
+    `Refund ${formatMoney(amount)} for ${order.order_ref}?` +
+    (willRestoreInventory ? "\n\nThe deducted inventory will also be restored." : "")
+  )) return;
+
+  const label = button?.textContent || "Refund";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Refunding…";
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke("refund-order", {
+      body: {
+        order_id: order.id,
+        amount,
+        reason,
+        inventory_needs: willRestoreInventory
+          ? getOrderInventoryNeeds(order)
+          : {}
+      }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    alert(
+      `${data.refund_status === "full" ? "Full" : "Partial"} refund completed: ` +
+      formatMoney(amount)
+    );
+    await loadOrders();
+  } catch (error) {
+    console.error("Unable to refund order:", error);
+    alert(error?.message || "Unable to complete the refund.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+}
+
+async function sendReviewRequest(id, button) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return alert("Order could not be found.");
+
+  const label = button?.textContent || "Send Review Request";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending…";
+  }
+
+  try {
+    const result = await sendOrderStatusEmail(order, "Completed");
+    if (!result.sent) throw new Error(result.reason || "Review email was skipped.");
+
+    const sentAt = new Date().toISOString();
+    await supabase
+      .from("orders")
+      .update({ review_request_sent_at: sentAt })
+      .eq("id", order.id);
+    alert(`Review request sent to ${order.customer_email}.`);
+    await loadOrders();
+  } catch (error) {
+    console.error("Unable to send review request:", error);
+    alert(error?.message || "Unable to send the review request.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+}
+
+async function cleanupExpiredOrders() {
+  if (!confirm("Archive unpaid orders that have been expired for more than 3 days?")) return;
+
+  cleanupExpiredBtn.disabled = true;
+  cleanupExpiredBtn.textContent = "Cleaning…";
+  try {
+    const { data, error } = await supabase.rpc("archive_stale_unpaid_orders");
+    if (error) throw error;
+    alert(`${Number(data || 0)} expired unpaid order(s) archived.`);
+    await loadOrders();
+  } catch (error) {
+    console.error("Unable to clean expired orders:", error);
+    alert("Unable to clean expired orders. Run the supplied customer-care SQL once.");
+  } finally {
+    cleanupExpiredBtn.disabled = false;
+    cleanupExpiredBtn.textContent = "Clean Expired";
+  }
+}
+
 window.copyOrderReference = copyOrderReference;
 window.downloadOrderPdf = downloadOrderPdf;
 window.sendPaymentConfirmationEmail = sendPaymentConfirmationEmail;
@@ -5319,6 +5868,10 @@ window.deleteTestOrder = deleteTestOrder;
 window.archiveOrder = archiveOrder;
 window.restoreOrder = restoreOrder;
 window.approveSpecialOrder = approveSpecialOrder;
+window.sendPaymentReminder = sendPaymentReminder;
+window.refundOrder = refundOrder;
+window.sendReviewRequest = sendReviewRequest;
+cleanupExpiredBtn.onclick = cleanupExpiredOrders;
 
 window.copyPickupWhatsAppReminder = async function(id, button) {
   const order = latestOrders.find(
@@ -5400,8 +5953,8 @@ function getStatusEmailContent(order, status) {
     return {
       title: "Your Little Keeps order is complete!",
       message: "Your order has been collected or delivered. Thank you so much for supporting Little Keeps!",
-      actionTitle: "Thank you ♡",
-      actionDetails: "If anything is not quite right, please reply to this email and we’ll help."
+      actionTitle: "Love your Little Keeps order?",
+      actionDetails: "We’d be so happy to see your creation! Tap below to share a review or tag us. If anything is not quite right, please reply to this email and we’ll help."
     };
   }
 
@@ -5452,7 +6005,13 @@ async function sendOrderStatusEmail(order, status) {
       status === "Ready for Pickup/Delivery" &&
       order.collection_method !== "delivery"
         ? "Choose Pickup Date & Time"
-        : "View or Manage Your Order",
+        : status === "Completed"
+          ? "Share Your Review"
+          : "View or Manage Your Order",
+    action_url:
+      status === "Completed"
+        ? adminShopSettings.review_url || "https://www.instagram.com/madebylittlekeeps/"
+        : `https://little-keeps.vercel.app/?resume_order=${encodeURIComponent(order.order_ref || "")}#orderStatusSection`,
     has_tracking: Boolean(order.tracking_number),
     tracking_number: order.tracking_number || "",
     tracking_url: order.tracking_url || "",
@@ -5460,6 +6019,21 @@ async function sendOrderStatusEmail(order, status) {
     collection_method: getMethodLabel(order.collection_method),
     needed_by: formatDate(order.needed_by)
   });
+
+  const { error: historyError } = await supabase
+    .from("orders")
+    .update({
+      status_email_sent_at: new Date().toISOString(),
+      status_email_type: status
+    })
+    .eq("id", order.id);
+
+  if (historyError) {
+    console.warn(
+      "Status email sent, but its history could not be recorded:",
+      historyError
+    );
+  }
 
   return { sent: true };
 }
@@ -5600,7 +6174,15 @@ async function updateOrderStatus(id, status) {
   if (shouldSendStatusUpdate) {
     try {
       const result = await sendOrderStatusEmail({ ...order, ...updateData }, status);
-      if (result.sent) alert(`Status updated and email sent to ${order.customer_email}.`);
+      if (result.sent) {
+        if (status === "Completed") {
+          await supabase
+            .from("orders")
+            .update({ review_request_sent_at: new Date().toISOString() })
+            .eq("id", id);
+        }
+        alert(`Status updated and email sent to ${order.customer_email}.`);
+      }
     } catch (error) {
       console.error("Status email failed:", error);
       alert("Status was updated, but the customer email failed to send. You can retry after checking the EmailJS template setting.");
@@ -5680,21 +6262,33 @@ const newQty = currentQty - qtyToDeduct;
 }
 
 async function loadAdminSettings() {
-  const [{ data: settings, error: settingsError }, { data: promos, error: promosError }] = await Promise.all([
+  const [
+    { data: settings, error: settingsError },
+    { data: promos, error: promosError },
+    { data: reviews, error: reviewsError }
+  ] = await Promise.all([
     supabase.from("shop_settings").select("*").eq("id", 1).maybeSingle(),
-    supabase.from("promo_codes").select("*").order("created_at", { ascending: false })
+    supabase.from("promo_codes").select("*").order("created_at", { ascending: false }),
+    supabase
+      .from("customer_reviews")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true })
   ]);
 
   if (settingsError) console.warn("Using fallback admin settings:", settingsError);
   if (promosError) console.warn("Promo management is not ready yet:", promosError);
+  if (reviewsError) console.warn("Customer review management is not ready yet:", reviewsError);
 
   adminSettingsLoaded = true;
   adminSettingsLoadFailed = Boolean(settingsError);
+  adminReviewsLoadFailed = Boolean(reviewsError);
   adminShopSettings = {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
     ...(settingsError ? {} : (settings || {}))
   };
   adminPromoCodes = promos || [];
+  adminCustomerReviews = reviews || [];
 }
 
 async function loadOrders() {
