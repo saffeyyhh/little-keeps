@@ -3798,15 +3798,17 @@ body {
 
 .review-photo {
   min-height: 240px;
+  display: grid;
+  place-items: center;
   overflow: hidden;
-  background: #f8eaf0;
+  background: linear-gradient(145deg, #f8eaf0, #fff7fa);
 }
 
 .review-photo img {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .review-card-content {
@@ -4126,8 +4128,9 @@ body {
   }
 
   .review-photo {
-    min-height: 165px;
-    max-height: 185px;
+    height: 260px;
+    min-height: 260px;
+    max-height: none;
   }
 
   .review-card.has-image .review-card-content {
