@@ -3787,7 +3787,7 @@ body {
 .review-card.has-image {
   padding: 0;
   display: grid;
-  grid-template-columns: minmax(170px, 0.78fr) minmax(260px, 1.22fr);
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
 }
 
 .review-card.is-featured {
@@ -3847,6 +3847,7 @@ body {
   font-weight: 800;
   line-height: 1.42;
   letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
 }
 
 .review-card-footer {
@@ -3882,6 +3883,25 @@ body {
 .review-card-footer small {
   color: var(--muted);
   font-size: 9px;
+}
+
+@media (max-width: 980px) {
+  .reviews-track {
+    grid-auto-columns: min(78vw, 520px);
+  }
+
+  .review-card.has-image {
+    grid-template-columns: 1fr;
+  }
+
+  .review-photo {
+    height: 280px;
+    min-height: 280px;
+  }
+
+  .review-card.has-image .review-card-content {
+    min-height: 180px;
+  }
 }
 
 .payment-unlock-banner {
