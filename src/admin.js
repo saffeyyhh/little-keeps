@@ -2628,6 +2628,127 @@ function getProductionSummary(orders) {
   return { baseTotals, keycapGroups, count: activeOrders.length };
 }
 
+function getOrderPrintableInventoryNeeds(order) {
+  const needs = {};
+
+  const addNeed = (itemName, quantity = 1) => {
+    needs[itemName] = (needs[itemName] || 0) + quantity;
+  };
+
+  (order.order_data || [])
+    .filter(item => !item.assembly_completed)
+    .forEach(item => {
+      const characters = Array.from(
+        item.clean_name || sanitizeName(item.name || "")
+      );
+      const design = item.design || {};
+      const bases = Array.isArray(design.bases) ? design.bases : [];
+      const caps = Array.isArray(design.caps) ? design.caps : [];
+      const letters = Array.isArray(design.letters) ? design.letters : [];
+
+      if (!bases.length || !caps.length || !letters.length) return;
+
+      const baseShape =
+        design.base_shape?.key ||
+        design.baseShape ||
+        "ribbed";
+
+      characters.forEach((character, index) => {
+        const base = bases[index % bases.length];
+        const cap = caps[index % caps.length];
+        const letter = letters[index % letters.length];
+        const baseName = base?.name || base?.hex || base;
+        const capName = cap?.name || cap?.hex || cap;
+        const letterName = letter?.name || letter?.hex || letter;
+
+        addNeed(getBaseInventoryName(baseName, baseShape));
+        addNeed(
+          getKeycapInventoryName(
+            capName,
+            letterName,
+            character
+          )
+        );
+      });
+    });
+
+  return needs;
+}
+
+function getUrgentProductionOrders(orders) {
+  const remainingStock = Object.fromEntries(
+    Object.entries(inventoryItems).map(([itemName, item]) => [
+      itemName,
+      Math.max(0, Number(item.qty || 0))
+    ])
+  );
+
+  return orders
+    .filter(order =>
+      !order.archived_at &&
+      ["Payment Verified", "Printing"].includes(order.status)
+    )
+    .sort((a, b) => {
+      const aDate = String(
+        a.requested_completion_date || a.needed_by || "9999-12-31"
+      ).slice(0, 10);
+      const bDate = String(
+        b.requested_completion_date || b.needed_by || "9999-12-31"
+      ).slice(0, 10);
+      return aDate.localeCompare(bDate);
+    })
+    .map(order => {
+      const dueDate =
+        order.requested_completion_date ||
+        order.needed_by;
+      const daysUntil = getDaysUntil(dueDate);
+      const missingParts = [];
+      const needs = getOrderPrintableInventoryNeeds(order);
+
+      Object.entries(needs).forEach(([itemName, quantity]) => {
+        const available = remainingStock[itemName] || 0;
+        const reserved = Math.min(available, quantity);
+        const missing = quantity - reserved;
+
+        remainingStock[itemName] = available - reserved;
+
+        if (missing > 0) {
+          missingParts.push({
+            itemName,
+            quantity: missing,
+            type: itemName.includes(" Cap + ") ? "keycap" : "base"
+          });
+        }
+      });
+
+      return {
+        order,
+        dueDate,
+        daysUntil,
+        missingParts,
+        totalMissing: missingParts.reduce(
+          (sum, part) => sum + part.quantity,
+          0
+        )
+      };
+    })
+    .filter(entry =>
+      entry.daysUntil !== null &&
+      entry.daysUntil <= 3 &&
+      entry.missingParts.length > 0
+    );
+}
+
+function getUrgentPrintLabel(daysUntil) {
+  if (daysUntil < 0) {
+    const overdueDays = Math.abs(daysUntil);
+    return `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`;
+  }
+  if (daysUntil === 0) return "Due today";
+  if (daysUntil === 1) return "Due tomorrow";
+  return `Due in ${daysUntil} days`;
+}
+
 function getOrderInventoryNeeds(order) {
   const needs = {};
 
@@ -4346,6 +4467,7 @@ async function renderProductionPlanner(orders) {
   await loadInventoryItems();
 
   const { baseTotals, keycapGroups, count } = getProductionSummary(orders);
+  const urgentProductionOrders = getUrgentProductionOrders(orders);
 
   const baseRows = Object.values(baseTotals)
     .map(item => {
@@ -4703,6 +4825,98 @@ async function renderProductionPlanner(orders) {
     `
     : "";
 
+  const urgentProductionPanel = urgentProductionOrders.length
+    ? `
+      <section class="urgent-print-panel">
+        <div class="urgent-print-heading">
+          <div>
+            <span class="urgent-print-icon" aria-hidden="true">!</span>
+            <div>
+              <p>Print these first</p>
+              <h3>Urgent to Print</h3>
+            </div>
+          </div>
+          <strong>
+            ${urgentProductionOrders.length}
+            order${urgentProductionOrders.length === 1 ? "" : "s"}
+            due within 3 days
+          </strong>
+        </div>
+
+        <div class="urgent-print-list">
+          ${urgentProductionOrders.map((entry, priorityIndex) => {
+            const order = entry.order;
+            const customerName =
+              order.customer_name ||
+              order.name ||
+              "Customer";
+            const keychainNames = (order.order_data || [])
+              .filter(item => !item.assembly_completed)
+              .map(item => item.name || item.clean_name)
+              .filter(Boolean);
+
+            return `
+              <article class="urgent-print-order ${entry.daysUntil <= 1 ? "is-critical" : ""}">
+                <div class="urgent-print-priority">
+                  <span>${priorityIndex + 1}</span>
+                  <small>Priority</small>
+                </div>
+
+                <div class="urgent-print-order-main">
+                  <div class="urgent-print-order-title">
+                    <div>
+                      <strong>${escapeAdminHtml(order.order_ref || "No reference")}</strong>
+                      <span>${escapeAdminHtml(customerName)}</span>
+                    </div>
+                    <b>${escapeAdminHtml(getUrgentPrintLabel(entry.daysUntil))}</b>
+                  </div>
+
+                  <p class="urgent-print-names">
+                    ${escapeAdminHtml(keychainNames.join(", ") || "Personalised keychain")}
+                    · Ready by ${escapeAdminHtml(formatDate(entry.dueDate))}
+                  </p>
+
+                  <div class="urgent-print-parts">
+                    ${entry.missingParts.map(part => `
+                      <span class="${part.type}">
+                        ${part.quantity} × ${escapeAdminHtml(part.itemName)}
+                      </span>
+                    `).join("")}
+                  </div>
+                </div>
+
+                <div class="urgent-print-actions">
+                  <strong>${entry.totalMissing} part${entry.totalMissing === 1 ? "" : "s"} to print</strong>
+                  <button
+                    type="button"
+                    onclick='window.generateOrderStls(${JSON.stringify(String(order.id))}, this)'
+                  >
+                    Generate Order STLs
+                  </button>
+                  <button
+                    type="button"
+                    class="urgent-view-order-btn"
+                    onclick='window.focusOrder(${JSON.stringify(String(order.id))})'
+                  >
+                    View Order
+                  </button>
+                </div>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      </section>
+    `
+    : `
+      <section class="urgent-print-panel is-clear">
+        <span aria-hidden="true">✓</span>
+        <div>
+          <h3>No urgent printing right now</h3>
+          <p>Nothing due within the next three days is waiting for printed parts.</p>
+        </div>
+      </section>
+    `;
+
   ordersContainer.innerHTML = `
     <div class="production-card">
       <div class="production-header">
@@ -4713,6 +4927,8 @@ async function renderProductionPlanner(orders) {
 
         <p class="active-count">${count} active order(s)</p>
       </div>
+
+      ${urgentProductionPanel}
 
       <h3>Base Printing</h3>
 
