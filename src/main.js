@@ -451,6 +451,13 @@ document.querySelector("#app").innerHTML = `
     <span>Free islandwide delivery above ${displaySettingMoney(freeDeliveryThreshold)}</span>
   </div>
 
+  <span class="announcement-divider"></span>
+
+  <div class="announcement-item">
+    <span class="announcement-icon">✦</span>
+    <span><strong>Bulk orders welcome</strong> - book at least 1 week ahead</span>
+  </div>
+
   <span id="holidayNoticeDivider" class="announcement-divider hidden"></span>
 
   <div id="holidayNotice" class="announcement-item announcement-holiday hidden">
@@ -1349,10 +1356,7 @@ Chloe</textarea>
           <div id="rushAvailabilityResult" class="rush-availability hidden" aria-live="polite"></div>
         </div>
 
-        <div id="bulkOrderNotice" class="bulk-order-notice hidden">
-          <strong>Instant bulk booking</strong>
-          <p>For ${bulkOrderQuantity} or more keychains, choose an available date at least 7 days away. We keep the day before and after clear so your order has dedicated production time.</p>
-        </div>
+        <div id="bulkOrderNotice" class="bulk-order-notice hidden"></div>
 
         <label for="collectionMethod">
           Collection Method
@@ -2355,6 +2359,40 @@ function addWorkingDays(startDate, workingDays) {
   return date;
 }
 
+function isCalendarDateUnavailable(date, mode) {
+  const dateValue = toLocalDateString(date);
+  const unavailableDates =
+    mode === "bulk"
+      ? bulkUnavailableDates
+      : normalUnavailableDates;
+
+  if (unavailableDates.includes(dateValue)) return true;
+
+  return calendarClosureDates.some(range => {
+    const start = String(range.from || range.start_date || "").slice(0, 10);
+    const end = String(range.to || range.end_date || "").slice(0, 10);
+    return start && end && dateValue >= start && dateValue <= end;
+  });
+}
+
+function getFirstAvailableCalendarDate(mode, startDate, maxDate) {
+  const candidate = new Date(startDate);
+  const lastDate = new Date(maxDate);
+
+  candidate.setHours(0, 0, 0, 0);
+  lastDate.setHours(0, 0, 0, 0);
+
+  while (candidate <= lastDate) {
+    if (!isCalendarDateUnavailable(candidate, mode)) {
+      return new Date(candidate);
+    }
+
+    candidate.setDate(candidate.getDate() + 1);
+  }
+
+  return new Date(startDate);
+}
+
 function getAutomaticReadyDate() {
   const turnaround = getTurnaroundInfo();
   return addWorkingDays(new Date(), turnaround.maxDays);
@@ -2434,7 +2472,7 @@ function showSpecialOrderAssessment(assessment, type = "rush") {
   const isBulk = type === "bulk";
   const heading = assessment.status === "available"
     ? isBulk
-      ? "Bulk date available - instant booking"
+      ? "Date available"
       : `Rush available - +${displaySettingMoney(assessment.fee)}`
     : assessment.status === "review"
       ? "Manual review needed"
@@ -2450,9 +2488,7 @@ function showSpecialOrderAssessment(assessment, type = "rush") {
         : "Please choose another date."
       : assessment.status === "checking"
         ? "One moment please."
-        : isBulk
-          ? "This date and its surrounding days are clear. You can continue straight to payment."
-          : "";
+        : "";
 
   rushAvailabilityResult.innerHTML = `
     <strong>${heading}</strong>
@@ -2590,12 +2626,12 @@ function updateTurnaroundMessaging() {
 
   automaticDateCard.classList.toggle("hidden", isBulk || isRush);
   rushOrderOption.classList.toggle("hidden", isBulk);
-  bulkOrderNotice.classList.toggle("hidden", !isBulk);
+  bulkOrderNotice.classList.add("hidden");
   specialDateSection.classList.toggle("hidden", !isBulk && !isRush);
 
   if (isBulk) {
     specialDateLabel.textContent = "Choose your bulk completion date";
-    specialOrderMessage.textContent = "Available dates are at least 7 days away with a clear day before and after. Confirmed bookings continue straight to payment.";
+    specialOrderMessage.textContent = "Choose an available date at least 7 days away.";
     orderNotes.placeholder = "Customer notes for your bulk order...";
 
     if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
@@ -2654,7 +2690,12 @@ function updateTurnaroundMessaging() {
     // remains natural while the customer is choosing a date.
     if (calendarMode !== specialDateCalendarMode) {
       const selectedDate = specialDateCalendar.selectedDates[0];
-      const dateToShow = selectedDate || (isBulk ? bulkMinimumDate : tomorrow);
+      const firstAvailableDate = getFirstAvailableCalendarDate(
+        calendarMode,
+        isBulk ? bulkMinimumDate : tomorrow,
+        calendarMaxDate
+      );
+      const dateToShow = selectedDate || firstAvailableDate;
 
       specialDateCalendar.jumpToDate(dateToShow, false);
       specialDateCalendarMode = calendarMode;
@@ -3332,7 +3373,23 @@ async function setupNeededByCalendar() {
     ],
 
     onOpen: (_selectedDates, _dateString, instance) => {
-      const firstAvailableDate = addWorkingDays(new Date(), 1);
+      const mode = getCheckoutOrderType() === "bulk"
+        ? "bulk"
+        : getCheckoutOrderType() === "rush"
+          ? "rush"
+          : "standard";
+      const configuredMinimum =
+        instance.config.minDate ||
+        addWorkingDays(new Date(), 1);
+      const configuredMaximum =
+        instance.config.maxDate ||
+        maxDate;
+      const firstAvailableDate = getFirstAvailableCalendarDate(
+        mode,
+        configuredMinimum,
+        configuredMaximum
+      );
+
       instance.jumpToDate(
         instance.selectedDates[0] || firstAvailableDate,
         false

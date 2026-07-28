@@ -3009,9 +3009,7 @@ function getPdfIconLegend(item) {
       seen.add(character);
       return true;
     })
-    .map(character =>
-      `${getPdfIconCode(character)} = ${getPdfIconName(character)}`
-    )
+    .map(character => `${getPdfIconName(character)} icon`)
     .join(", ");
 }
 
@@ -3548,9 +3546,25 @@ window.downloadAmsLitePlateStls = async function(plateId, button) {
   }
 };
 
-function getRushOrderPrintGroups(order) {
+function getRushOrderPrintGroups(order, missingParts = null) {
   const baseGroups = {};
   const keycapGroups = {};
+  const remainingNeeds = Array.isArray(missingParts)
+    ? Object.fromEntries(
+        missingParts.map(part => [
+          part.itemName,
+          Math.max(0, Number(part.quantity || 0))
+        ])
+      )
+    : null;
+
+  const needsPrint = itemName => {
+    if (!remainingNeeds) return true;
+    if (!remainingNeeds[itemName]) return false;
+
+    remainingNeeds[itemName] -= 1;
+    return true;
+  };
 
   getEmailOrderItems(order).forEach(item => {
     const design = item.design || {};
@@ -3567,24 +3581,44 @@ function getRushOrderPrintGroups(order) {
       const cap = caps[index % caps.length];
       const letterColour = letters[index % letters.length];
       const baseName = base?.name || base?.hex || base || "Base";
+      const baseHex = base?.hex || base || "#f6a9c2";
       const capName = cap?.name || cap?.hex || cap || "Cap";
+      const capHex = cap?.hex || cap || "#ffffff";
       const letterName = letterColour?.name || letterColour?.hex || letterColour || "Letter";
+      const letterHex = letterColour?.hex || letterColour || "#332d30";
       const baseKey = `${baseShape}|${baseName}`;
       const keycapKey = `${capName}|${letterName}`;
+      const baseInventoryName = getBaseInventoryName(baseName, baseShape);
+      const keycapInventoryName = getKeycapInventoryName(
+        capName,
+        letterName,
+        character
+      );
 
-      if (!baseGroups[baseKey]) {
-        baseGroups[baseKey] = { baseShape, baseName, quantity: 0 };
+      if (needsPrint(baseInventoryName)) {
+        if (!baseGroups[baseKey]) {
+          baseGroups[baseKey] = {
+            baseShape,
+            baseName,
+            baseHex,
+            quantity: 0
+          };
+        }
+        baseGroups[baseKey].quantity += 1;
       }
-      baseGroups[baseKey].quantity += 1;
 
-      if (!keycapGroups[keycapKey]) {
-        keycapGroups[keycapKey] = {
-          capName,
-          letterName,
-          characters: []
-        };
+      if (needsPrint(keycapInventoryName)) {
+        if (!keycapGroups[keycapKey]) {
+          keycapGroups[keycapKey] = {
+            capName,
+            capHex,
+            letterName,
+            letterHex,
+            characters: []
+          };
+        }
+        keycapGroups[keycapKey].characters.push(character);
       }
-      keycapGroups[keycapKey].characters.push(character);
     });
   });
 
@@ -3592,6 +3626,16 @@ function getRushOrderPrintGroups(order) {
     bases: Object.values(baseGroups),
     keycaps: Object.values(keycapGroups)
   };
+}
+
+function getOrderAmsLitePlatePlan(groups) {
+  return planAmsLiteKeycapPlates(
+    groups.keycaps.map((group, groupIndex) => ({
+      ...group,
+      groupIndex,
+      rows: [{ toPrint: group.characters.length }]
+    }))
+  );
 }
 
 async function buildRushStlPlate(requests) {
@@ -3656,14 +3700,26 @@ async function generateOrderStls(id, button) {
   const order = latestOrders.find(item => String(item.id) === String(id));
   if (!order) return alert("Order could not be found.");
 
-  const groups = getRushOrderPrintGroups(order);
+  await loadInventoryItems();
+
+  const timelineEntry = getProductionTimelineOrders(latestOrders)
+    .find(entry => String(entry.order.id) === String(id));
+  const groups = getRushOrderPrintGroups(
+    order,
+    timelineEntry?.missingParts || null
+  );
   const totalFiles = groups.bases.length + groups.keycaps.length;
   const totalPieces =
     groups.bases.reduce((sum, group) => sum + group.quantity, 0) +
     groups.keycaps.reduce((sum, group) => sum + group.characters.length, 0);
+  const keycapPlatePlan = getOrderAmsLitePlatePlan(groups);
 
   if (!totalFiles || !totalPieces) {
-    alert("This order does not contain enough saved design information to generate STL files.");
+    alert(
+      timelineEntry
+        ? "Nothing needs printing for this order. Its printed parts are already available."
+        : "This order does not contain enough saved design information to generate STL files."
+    );
     return;
   }
 
@@ -3671,13 +3727,14 @@ async function generateOrderStls(id, button) {
     ...groups.bases.map(group =>
       `${group.baseName} ${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} Bases × ${group.quantity}`
     ),
-    ...groups.keycaps.map(group =>
-      `${group.capName} Cap + ${group.letterName} Letter × ${group.characters.length}`
+    ...keycapPlatePlan.map((plate, plateIndex) =>
+      `AMS Plate ${plateIndex + 1}: ${plate.pieceCount} keycaps using ` +
+      `${Array.from(plate.colours.values()).map(colour => colour.name).join(", ")}`
     )
   ];
 
   if (!confirm(
-    `Generate rush-order STLs for ${order.order_ref}?\n\n` +
+    `Generate only the remaining STLs for ${order.order_ref}?\n\n` +
     summary.join("\n") +
     `\n\n${totalFiles} separate colour/shape file${totalFiles === 1 ? "" : "s"} will download.`
   )) return;
@@ -3685,7 +3742,7 @@ async function generateOrderStls(id, button) {
   const previousLabel = button?.textContent || "Generate Order STLs";
   if (button) {
     button.disabled = true;
-    button.textContent = "Building rush STLs…";
+    button.textContent = "Building remaining STLs…";
   }
 
   try {
@@ -3704,16 +3761,36 @@ async function generateOrderStls(id, button) {
       });
     }
 
-    for (const group of groups.keycaps) {
-      const requests = group.characters.map(character => ({
-        kind: "keycap",
-        path: getProductionKeycapPath(character)
-      }));
-      const blob = await buildRushStlPlate(requests);
-      files.push({
-        blob,
-        filename: `${reference}_KEYCAP_${safeProductionFileName(group.capName, "cap")}_${safeProductionFileName(group.letterName, "letter")}_${group.characters.length}pcs.stl`
-      });
+    for (
+      let plateIndex = 0;
+      plateIndex < keycapPlatePlan.length;
+      plateIndex += 1
+    ) {
+      const plate = keycapPlatePlan[plateIndex];
+
+      for (
+        let combinationIndex = 0;
+        combinationIndex < plate.combinations.length;
+        combinationIndex += 1
+      ) {
+        const combination = plate.combinations[combinationIndex];
+        const group = groups.keycaps[combination.groupIndex];
+        const requests = group.characters.map(character => ({
+          kind: "keycap",
+          path: getProductionKeycapPath(character)
+        }));
+        const blob = await buildRushStlPlate(requests);
+
+        files.push({
+          blob,
+          filename:
+            `${reference}_AMS-PLATE-${plateIndex + 1}_` +
+            `${String(combinationIndex + 1).padStart(2, "0")}_` +
+            `${safeProductionFileName(group.capName, "cap")}-cap_` +
+            `${safeProductionFileName(group.letterName, "letter")}-letter_` +
+            `${group.characters.length}pcs.stl`
+        });
+      }
     }
 
     files.forEach((file, index) => {
@@ -3721,6 +3798,12 @@ async function generateOrderStls(id, button) {
     });
 
     if (button) button.textContent = `Downloaded ${files.length} STL${files.length === 1 ? "" : "s"} ✓`;
+    if (keycapPlatePlan.length) {
+      alert(
+        `${keycapPlatePlan.length} optimized AMS Lite plate${keycapPlatePlan.length === 1 ? "" : "s"} prepared.\n\n` +
+        "Files with the same AMS-PLATE number belong on the same Bambu Studio plate. Each plate uses no more than four filament colours."
+      );
+    }
     setTimeout(() => {
       if (button) button.textContent = previousLabel;
     }, 3000);
@@ -3733,6 +3816,121 @@ async function generateOrderStls(id, button) {
 }
 
 window.generateOrderStls = generateOrderStls;
+
+window.generateTimelineAmsPlateStls = async function(
+  orderId,
+  requestedPlateIndex,
+  button
+) {
+  const order = latestOrders.find(
+    item => String(item.id) === String(orderId)
+  );
+
+  if (!order) {
+    alert("Order could not be found.");
+    return;
+  }
+
+  await loadInventoryItems();
+
+  const timelineEntry = getProductionTimelineOrders(latestOrders)
+    .find(entry => String(entry.order.id) === String(orderId));
+
+  if (!timelineEntry) {
+    alert("This order is no longer waiting in the Production Timeline.");
+    return;
+  }
+
+  const groups = getRushOrderPrintGroups(
+    order,
+    timelineEntry.missingParts
+  );
+  const plates = getOrderAmsLitePlatePlan(groups);
+  const plateIndex = Number(requestedPlateIndex);
+  const plate = plates[plateIndex];
+
+  if (!plate) {
+    alert(
+      "This plate is no longer needed. Refresh Production to see the latest print plan."
+    );
+    return;
+  }
+
+  const previousLabel = button?.textContent || `Generate Plate ${plateIndex + 1}`;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Building plate…";
+  }
+
+  try {
+    const reference = safeProductionFileName(
+      order.order_ref,
+      "timeline-order"
+    );
+    const files = [];
+
+    for (
+      let combinationIndex = 0;
+      combinationIndex < plate.combinations.length;
+      combinationIndex += 1
+    ) {
+      if (button) {
+        button.textContent =
+          `Building ${combinationIndex + 1}/${plate.combinations.length}…`;
+      }
+
+      const combination = plate.combinations[combinationIndex];
+      const group = groups.keycaps[combination.groupIndex];
+      const requests = group.characters.map(character => ({
+        kind: "keycap",
+        path: getProductionKeycapPath(character)
+      }));
+      const blob = await buildRushStlPlate(requests);
+
+      files.push({
+        blob,
+        filename:
+          `${reference}_AMS-PLATE-${plateIndex + 1}_` +
+          `${String(combinationIndex + 1).padStart(2, "0")}_` +
+          `${safeProductionFileName(group.capName, "cap")}-cap_` +
+          `${safeProductionFileName(group.letterName, "letter")}-letter_` +
+          `${group.characters.length}pcs.stl`
+      });
+    }
+
+    files.forEach((file, index) => {
+      setTimeout(
+        () => downloadRushStl(file.blob, file.filename),
+        index * 350
+      );
+    });
+
+    if (button) {
+      button.textContent =
+        `Plate ${plateIndex + 1} downloaded ✓`;
+    }
+
+    alert(
+      `Plate ${plateIndex + 1} is ready.\n\n` +
+      `${files.length} STL file${files.length === 1 ? "" : "s"} will download. ` +
+      "Import all files with this AMS-PLATE number onto the same Bambu Studio plate."
+    );
+  } catch (error) {
+    console.error("Unable to generate timeline AMS plate:", error);
+    alert(
+      `Unable to generate Plate ${plateIndex + 1}.\n\n` +
+      (error.message || error)
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      setTimeout(() => {
+        button.textContent = previousLabel;
+      }, 3000);
+    }
+  }
+};
 
 function createAssemblyMiniPreview(name, design) {
   return Array.from(sanitizeName(name))
@@ -4907,6 +5105,13 @@ async function renderProductionPlanner(orders) {
                   const dueLabel = entry.daysUntil === null
                     ? "No date set"
                     : getUrgentPrintLabel(entry.daysUntil);
+                  const remainingPrintGroups = getRushOrderPrintGroups(
+                    order,
+                    entry.missingParts
+                  );
+                  const orderAmsPlates = getOrderAmsLitePlatePlan(
+                    remainingPrintGroups
+                  );
 
                   return `
                     <article class="production-timeline-order ${entry.daysUntil !== null && entry.daysUntil <= 1 ? "is-critical" : ""}">
@@ -4936,6 +5141,88 @@ async function renderProductionPlanner(orders) {
                               : "Printed parts ready"}
                           </strong>
                         </div>
+
+                        ${remainingPrintGroups.bases.length ? `
+                          <section class="timeline-base-plan">
+                            <header>
+                              <span>Bases to print</span>
+                              <b>
+                                ${remainingPrintGroups.bases.reduce(
+                                  (sum, group) => sum + group.quantity,
+                                  0
+                                )} total
+                              </b>
+                            </header>
+
+                            <div class="timeline-base-rows">
+                              ${remainingPrintGroups.bases.map(group => `
+                                <div>
+                                  <i style="background:${getSafePdfColour(group.baseHex, "#f6a9c2")}"></i>
+                                  <span>
+                                    <strong>${escapeAdminHtml(group.baseName)}</strong>
+                                    ${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} base
+                                  </span>
+                                  <b>× ${group.quantity}</b>
+                                </div>
+                              `).join("")}
+                            </div>
+                          </section>
+                        ` : ""}
+
+                        ${orderAmsPlates.length ? `
+                          <details class="timeline-ams-plan">
+                            <summary>
+                              <span>AMS Lite suggestion</span>
+                              <b>${orderAmsPlates.length} plate${orderAmsPlates.length === 1 ? "" : "s"}</b>
+                            </summary>
+
+                            <div class="timeline-ams-plates">
+                              ${orderAmsPlates.map((plate, plateIndex) => {
+                                const colours = Array.from(
+                                  plate.colours.values()
+                                );
+
+                                return `
+                                  <article class="timeline-ams-plate">
+                                    <header>
+                                      <strong>Plate ${plateIndex + 1}</strong>
+                                      <span>${plate.pieceCount} keycap${plate.pieceCount === 1 ? "" : "s"} · ${colours.length}/4 slots</span>
+                                    </header>
+
+                                    <div class="timeline-ams-colours">
+                                      ${colours.map(colour => `
+                                        <span>
+                                          <i style="background:${getSafePdfColour(colour.hex, "#d9d9d9")}"></i>
+                                          ${escapeAdminHtml(colour.name)}
+                                        </span>
+                                      `).join("")}
+                                    </div>
+
+                                    <p>
+                                      ${plate.combinations.map(combination =>
+                                        `${escapeAdminHtml(combination.capName)} cap + ` +
+                                        `${escapeAdminHtml(combination.letterName)} letter ` +
+                                        `(${combination.pieceCount})`
+                                      ).join(" · ")}
+                                    </p>
+
+                                    <button
+                                      type="button"
+                                      class="timeline-ams-generate"
+                                      onclick='window.generateTimelineAmsPlateStls(
+                                        ${JSON.stringify(String(order.id))},
+                                        ${plateIndex},
+                                        this
+                                      )'
+                                    >
+                                      Generate Plate ${plateIndex + 1} STLs
+                                    </button>
+                                  </article>
+                                `;
+                              }).join("")}
+                            </div>
+                          </details>
+                        ` : ""}
                       </div>
 
                       <div class="timeline-order-actions">
@@ -5130,7 +5417,7 @@ function createPdfMiniPreview(item) {
   return characters.map((character, index) => {
     const isIcon = Boolean(specialKeycaps[character]);
     const previewText = isIcon
-      ? getPdfIconCode(character)
+      ? displayIcon(character)
       : character;
     const base = getSafePdfColour(
       bases[index % bases.length],
@@ -5170,7 +5457,7 @@ function createPdfMiniPreview(item) {
           border-radius:7px;
           background:${cap};
           color:${letter};
-          font-size:${isIcon ? "10px" : "17px"};
+          font-size:${isIcon ? "17px" : "17px"};
           font-weight:700;
           line-height:1;
         "><span style="display:inline-block;transform:${letterOrientation === "horizontal" ? "rotate(-90deg)" : "none"};">${escapeEmailHtml(previewText)}</span></span>
@@ -5248,7 +5535,7 @@ async function generateOrderPdfAttachment(order, items) {
               ${escapeEmailHtml(letterOrientation)}
               ${
                 iconLegend
-                  ? `<br><strong style="color:#332d30;">Icon key:</strong> ${escapeEmailHtml(iconLegend)}`
+                  ? `<br><strong style="color:#332d30;">Icons:</strong> ${escapeEmailHtml(iconLegend)}`
                   : ""
               }
             </div>
@@ -5475,6 +5762,30 @@ function getCompactPdfText(value) {
     .replace(/[^\x20-\x7E]/g, "*");
 }
 
+const compactPdfIconImageCache = new Map();
+
+function getCompactPdfIconImage(character) {
+  if (compactPdfIconImageCache.has(character)) {
+    return compactPdfIconImageCache.get(character);
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 48;
+  canvas.height = 48;
+
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.font =
+    "34px 'Apple Color Emoji', 'Segoe UI Emoji', 'Arial Unicode MS', sans-serif";
+  context.fillText(displayIcon(character), 24, 25);
+
+  const image = canvas.toDataURL("image/png");
+  compactPdfIconImageCache.set(character, image);
+  return image;
+}
+
 async function generateCompactOrderPdfAttachment(order, items) {
   const pdf = new jsPDF({
     orientation: "portrait",
@@ -5639,7 +5950,7 @@ async function generateCompactOrderPdfAttachment(order, items) {
       ),
       ...(iconLegend
         ? pdf.splitTextToSize(
-            `Icon key: ${getCompactPdfText(iconLegend)}`,
+            `Icons: ${getCompactPdfText(iconLegend)}`,
             contentWidth - 12
           )
         : [])
@@ -5706,18 +6017,33 @@ async function generateCompactOrderPdfAttachment(order, items) {
           angle: letterOrientation === "horizontal" ? 90 : 0
         });
       } else {
-        pdf.setTextColor(...letterRgb);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(4.2);
-        pdf.text(
-          getPdfIconCode(character),
-          blockX + 4.5,
-          blockY + 5.4,
-          {
-            align: "center",
-            angle: letterOrientation === "horizontal" ? 90 : 0
-          }
-        );
+        try {
+          pdf.addImage(
+            getCompactPdfIconImage(character),
+            "PNG",
+            blockX + 2,
+            blockY + 2,
+            5,
+            5,
+            `little-keeps-${getPdfIconCode(character)}`,
+            "FAST",
+            letterOrientation === "horizontal" ? 90 : 0
+          );
+        } catch (error) {
+          console.warn("Unable to draw PDF icon:", character, error);
+          pdf.setTextColor(...letterRgb);
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(5);
+          pdf.text(
+            getPdfIconName(character).slice(0, 1),
+            blockX + 4.5,
+            blockY + 5.4,
+            {
+              align: "center",
+              angle: letterOrientation === "horizontal" ? 90 : 0
+            }
+          );
+        }
       }
       blockX += 10.5;
     });
