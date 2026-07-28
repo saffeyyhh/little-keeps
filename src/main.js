@@ -399,6 +399,10 @@ const displayedBasePrice = launchPriceEnabled
   : usualBasePrice;
 const deliveryFeeSetting = getSettingNumber("delivery_fee", 2.5);
 const freeDeliveryThreshold = getSettingNumber("free_delivery_threshold", 50);
+const maxOrdersPerDate = Math.max(
+  1,
+  Math.round(getSettingNumber("max_orders_per_date", 5))
+);
 const largeOrderQuantity = Math.max(
   2,
   Math.round(getSettingNumber("large_order_quantity", 5))
@@ -488,19 +492,19 @@ document.querySelector("#app").innerHTML = `
     ☰
   </button>
 
-  <a href="#" class="site-logo">
+  <a href="#" class="site-logo" data-view-target="shop">
     <span class="logo-flower">✿</span>
     Little Keeps
   </a>
 
   <nav class="top-nav" aria-label="Main navigation">
-    <button type="button" class="is-active" data-scroll-target="homeSection">
+    <button type="button" class="is-active" data-view-target="shop">
       Shop
     </button>
-    <button type="button" data-scroll-target="designArea">
+    <button type="button" data-view-target="design">
       Design
     </button>
-    <button type="button" data-scroll-target="orderStatusSection">
+    <button type="button" data-view-target="track">
       Track / Pay
     </button>
   </nav>
@@ -553,7 +557,7 @@ document.querySelector("#app").innerHTML = `
     <button
       type="button"
       class="side-nav-link"
-      data-scroll-target="homeSection"
+      data-view-target="shop"
     >
       <span>⌂</span>
       Home
@@ -562,7 +566,7 @@ document.querySelector("#app").innerHTML = `
     <button
       type="button"
       class="side-nav-link"
-      data-scroll-target="designArea"
+      data-view-target="design"
     >
       <span>✿</span>
       Design Your Keychain
@@ -571,7 +575,7 @@ document.querySelector("#app").innerHTML = `
     <button
       type="button"
       class="side-nav-link"
-      data-scroll-target="orderStatusSection"
+      data-view-target="track"
     >
       <span>◎</span>
       Track / Pay Order
@@ -580,7 +584,8 @@ document.querySelector("#app").innerHTML = `
     <button
       type="button"
       class="side-nav-link"
-      data-scroll-target="policiesSection"
+      data-view-target="shop"
+      data-view-scroll="policiesSection"
     >
       <span>◎</span>
       Shop Policies
@@ -589,7 +594,8 @@ document.querySelector("#app").innerHTML = `
     <button
       type="button"
       class="side-nav-link"
-      data-scroll-target="contactSection"
+      data-view-target="shop"
+      data-view-scroll="contactSection"
     >
       <span>♡</span>
       Contact
@@ -674,7 +680,7 @@ document.querySelector("#app").innerHTML = `
 
 <section id="designScreen" class="design-screen">
 
-<section id="homeSection" class="storefront-hero">
+<section id="homeSection" class="storefront-hero" data-store-view="shop">
   <div class="hero-inner">
     <div class="hero-copy">
       <p class="hero-eyebrow">
@@ -704,7 +710,8 @@ document.querySelector("#app").innerHTML = `
         <button
           type="button"
           class="hero-secondary-button"
-          data-scroll-target="howItWorksSection"
+          data-view-target="shop"
+          data-view-scroll="howItWorksSection"
         >
           See how it works
         </button>
@@ -800,7 +807,7 @@ document.querySelector("#app").innerHTML = `
   <div class="hero-decoration hero-decoration-two"></div>
 </section>
 
-<section class="value-props" aria-label="Why shop with Little Keeps">
+<section class="value-props" aria-label="Why shop with Little Keeps" data-store-view="shop">
   <article>
     <span>✦</span>
     <div>
@@ -820,13 +827,13 @@ document.querySelector("#app").innerHTML = `
   <article>
     <span>◷</span>
     <div>
-      <strong>Ready in 2–3 working days</strong>
-      <small>Large orders are ready in 3–4 working days</small>
+      <strong>Ready in ${standardMinWorkingDays}-${standardMaxWorkingDays} working days</strong>
+      <small>${largeOrderQuantity}+ keychains take ${largeMinWorkingDays}-${largeMaxWorkingDays} working days</small>
     </div>
   </article>
 </section>
 
-<section id="howItWorksSection" class="how-it-works-section">
+<section id="howItWorksSection" class="how-it-works-section" data-store-view="shop">
   <div class="how-it-works-heading">
     <p class="section-eyebrow">Simple from start to finish</p>
     <h2>Made by you, finished by us.</h2>
@@ -857,7 +864,7 @@ document.querySelector("#app").innerHTML = `
   </div>
 </section>
 
-<section class="occasion-section" aria-labelledby="occasionHeading">
+<section class="occasion-section" aria-labelledby="occasionHeading" data-store-view="shop">
   <div class="occasion-copy">
     <p class="section-eyebrow">Made for meaningful moments</p>
     <h2 id="occasionHeading">Tiny keepsakes for every celebration ♡</h2>
@@ -876,7 +883,7 @@ document.querySelector("#app").innerHTML = `
   <p class="occasion-safety-note">Contains small parts. Please supervise young children.</p>
 </section>
 
-<section class="reviews-section" aria-labelledby="reviewsHeading">
+<section class="reviews-section" aria-labelledby="reviewsHeading" data-store-view="shop">
   <div class="reviews-heading">
     <div>
       <p class="section-eyebrow">Real words from real customers</p>
@@ -890,7 +897,7 @@ document.querySelector("#app").innerHTML = `
   </div>
 </section>
 
-<aside class="payment-unlock-banner" aria-label="Payment options">
+<aside class="payment-unlock-banner" aria-label="Payment options" data-store-view="shop">
   <div class="payment-unlock-icon">♡</div>
   <div>
     <small>Ordering for a group?</small>
@@ -899,7 +906,7 @@ document.querySelector("#app").innerHTML = `
   </div>
 </aside>
 
-<section id="designArea" class="shop-section">
+<section id="designArea" class="shop-section" data-store-view="design">
   <div class="customer-progress" aria-label="Order progress">
     <div class="customer-progress-step is-active"><span>1</span>Design</div>
     <div class="customer-progress-step"><span>2</span>Details</div>
@@ -1250,7 +1257,7 @@ Chloe</textarea>
   </div>
 
   <p id="turnaroundSummary" class="design-turnaround-note">
-    🕒 Ready for pickup/dispatch in approximately 2–3 working days.
+    🕒 Ready for pickup/dispatch in approximately ${standardMinWorkingDays}-${standardMaxWorkingDays} working days.
   </p>
 
   <div class="add-cart-area">
@@ -1343,8 +1350,8 @@ Chloe</textarea>
         </div>
 
         <div id="bulkOrderNotice" class="bulk-order-notice hidden">
-          <strong>Bulk order request</strong>
-          <p>For 10 or more keychains, tell us your preferred completion date. We’ll confirm availability before requesting payment.</p>
+          <strong>Instant bulk booking</strong>
+          <p>For ${bulkOrderQuantity} or more keychains, choose an available date at least 7 days away. We keep the day before and after clear so your order has dedicated production time.</p>
         </div>
 
         <label for="collectionMethod">
@@ -1613,7 +1620,7 @@ Chloe</textarea>
       </div>
     </div>
 
-<section id="orderStatusSection" class="order-status-section">
+<section id="orderStatusSection" class="order-status-section" data-store-view="track">
   <div class="order-status-copy">
     <p class="section-eyebrow">Already ordered?</p>
     <h2>Track or pay for your order</h2>
@@ -1649,7 +1656,7 @@ Chloe</textarea>
   </form>
 </section>
 
-<section id="policiesSection" class="policies-section">
+<section id="policiesSection" class="policies-section" data-store-view="shop">
   <div class="section-heading">
     <p class="section-eyebrow">Good to know</p>
     <h2>Shop Policies</h2>
@@ -1659,7 +1666,7 @@ Chloe</textarea>
   <div class="policy-grid">
     <details>
       <summary>Production and timing</summary>
-      <p>Standard orders are usually ready in 2-3 working days. Large orders usually require 3-4 working days. Rush and bulk requests are subject to availability. Any closure shown on the website is included in the displayed estimate.</p>
+      <p>Standard orders are usually ready in ${standardMinWorkingDays}-${standardMaxWorkingDays} working days. Orders of ${largeOrderQuantity} or more keychains usually require ${largeMinWorkingDays}-${largeMaxWorkingDays} working days. We accept up to ${maxOrdersPerDate} order bookings per ready date. Bulk orders of ${bulkOrderQuantity} or more can instantly book an available date at least 7 days away; the surrounding day on each side is reserved for production. Rush requests remain subject to availability. Any closure shown on the website is included in the displayed estimate.</p>
     </details>
 
     <details>
@@ -1684,7 +1691,7 @@ Chloe</textarea>
   </div>
 </section>
 
-<section id="contactSection" class="contact-section">
+<section id="contactSection" class="contact-section" data-store-view="shop">
   <div class="contact-copy">
     <p class="section-eyebrow">Say hello</p>
     <h2>Need a little help?</h2>
@@ -2286,9 +2293,15 @@ const ICON_CATEGORIES = [
 let specialDateCalendar = null;
 let specialDateCalendarMode = "";
 let shopClosureRanges = [];
+let normalUnavailableDates = [];
+let bulkUnavailableDates = [];
+let calendarClosureDates = [];
 let rushAssessment = null;
 let rushAssessmentRequest = 0;
 let rushAssessmentFingerprint = "";
+let bulkAssessment = null;
+let bulkAssessmentRequest = 0;
+let bulkAssessmentFingerprint = "";
 
 function getTurnaroundInfo(quantity = names.length || 1) {
   const isLargeOrder = quantity >= largeOrderQuantity;
@@ -2414,30 +2427,41 @@ function getRushFingerprint() {
   });
 }
 
-function showRushAssessment(assessment) {
+function showSpecialOrderAssessment(assessment, type = "rush") {
   rushAvailabilityResult.classList.remove("hidden", "is-available", "is-review", "is-unavailable", "is-checking");
   rushAvailabilityResult.classList.add(`is-${assessment.status}`);
 
+  const isBulk = type === "bulk";
   const heading = assessment.status === "available"
-    ? `Rush available - +${displaySettingMoney(assessment.fee)}`
+    ? isBulk
+      ? "Bulk date available - instant booking"
+      : `Rush available - +${displaySettingMoney(assessment.fee)}`
     : assessment.status === "review"
       ? "Manual review needed"
       : assessment.status === "checking"
-        ? "Checking rush availability…"
-        : "Rush unavailable for this date";
+        ? `Checking ${isBulk ? "bulk date" : "rush availability"}…`
+        : `${isBulk ? "Bulk date" : "Rush service"} unavailable`;
 
   const customerMessage = assessment.status === "review"
     ? "We’ll check this request and contact you before payment."
     : assessment.status === "unavailable"
-      ? "Please choose another date."
+      ? isBulk
+        ? "Please choose another available date."
+        : "Please choose another date."
       : assessment.status === "checking"
         ? "One moment please."
-        : "";
+        : isBulk
+          ? "This date and its surrounding days are clear. You can continue straight to payment."
+          : "";
 
   rushAvailabilityResult.innerHTML = `
     <strong>${heading}</strong>
     ${customerMessage ? `<span>${customerMessage}</span>` : ""}
   `;
+}
+
+function showRushAssessment(assessment) {
+  showSpecialOrderAssessment(assessment, "rush");
 }
 
 async function checkRushAvailability() {
@@ -2487,11 +2511,57 @@ async function checkRushAvailability() {
   return rushAssessment;
 }
 
+function getBulkFingerprint() {
+  return JSON.stringify({
+    date: requestedCompletionDate.value,
+    quantity: names.length
+  });
+}
+
+async function checkBulkAvailability() {
+  if (getCheckoutOrderType() !== "bulk" || !requestedCompletionDate.value) {
+    bulkAssessment = null;
+    bulkAssessmentFingerprint = "";
+    rushAvailabilityResult.classList.add("hidden");
+    return null;
+  }
+
+  const requestNumber = ++bulkAssessmentRequest;
+  const fingerprint = getBulkFingerprint();
+  bulkAssessment = null;
+  bulkAssessmentFingerprint = "";
+  showSpecialOrderAssessment({ status: "checking" }, "bulk");
+  validateForm();
+
+  const { data, error } = await supabase.rpc("check_bulk_order_date", {
+    p_date: requestedCompletionDate.value
+  });
+
+  if (requestNumber !== bulkAssessmentRequest) return bulkAssessment;
+
+  const allowed = !error && data?.allowed === true;
+  bulkAssessment = {
+    status: allowed ? "available" : "unavailable",
+    reason:
+      data?.reason ||
+      (error
+        ? "Bulk booking is temporarily unavailable."
+        : "Please choose another date.")
+  };
+  bulkAssessmentFingerprint = fingerprint;
+
+  if (error) console.warn("Unable to check bulk date:", error);
+  showSpecialOrderAssessment(bulkAssessment, "bulk");
+  renderReviewOrder();
+  validateForm();
+  return bulkAssessment;
+}
+
 function updateTurnaroundMessaging() {
   const turnaround = getTurnaroundInfo();
   const itemWord = turnaround.quantity === 1 ? "keychain" : "keychains";
   const methodIsDelivery = collectionMethod.value === "delivery";
-  const range = `${turnaround.minDays}–${turnaround.maxDays} working days`;
+  const range = `${turnaround.minDays}-${turnaround.maxDays} working days`;
   const estimateStart = addWorkingDays(new Date(), turnaround.minDays);
   const estimateEnd = addWorkingDays(new Date(), turnaround.maxDays);
   const weekdayOnlyEnd = addWeekdaysOnly(new Date(), turnaround.maxDays);
@@ -2524,9 +2594,15 @@ function updateTurnaroundMessaging() {
   specialDateSection.classList.toggle("hidden", !isBulk && !isRush);
 
   if (isBulk) {
-    specialDateLabel.textContent = "Preferred completion date";
-    specialOrderMessage.textContent = "We’ll review your bulk request and contact you before payment.";
+    specialDateLabel.textContent = "Choose your bulk completion date";
+    specialOrderMessage.textContent = "Available dates are at least 7 days away with a clear day before and after. Confirmed bookings continue straight to payment.";
     orderNotes.placeholder = "Customer notes for your bulk order...";
+
+    if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
+      bulkAssessment = null;
+      bulkAssessmentFingerprint = "";
+      queueMicrotask(() => checkBulkAvailability());
+    }
   } else if (isRush) {
     specialDateLabel.textContent = "When do you need it?";
     specialOrderMessage.textContent = "Only dates earlier than the standard estimate are shown. Choose a date and we’ll check availability instantly.";
@@ -2543,11 +2619,16 @@ function updateTurnaroundMessaging() {
       : "Additional order notes (optional)...";
     rushAssessment = null;
     rushAssessmentFingerprint = "";
+    bulkAssessment = null;
+    bulkAssessmentFingerprint = "";
     rushAvailabilityResult.classList.add("hidden");
   }
 
   if (specialDateCalendar) {
     const tomorrow = addWorkingDays(new Date(), 1);
+    const bulkMinimumDate = new Date();
+    bulkMinimumDate.setHours(0, 0, 0, 0);
+    bulkMinimumDate.setDate(bulkMinimumDate.getDate() + 7);
     const calendarMode = isRush ? "rush" : isBulk ? "bulk" : "standard";
     let calendarMaxDate;
 
@@ -2560,8 +2641,12 @@ function updateTurnaroundMessaging() {
     }
 
     specialDateCalendar.set({
-      minDate: tomorrow,
-      maxDate: calendarMaxDate
+      minDate: isBulk ? bulkMinimumDate : tomorrow,
+      maxDate: calendarMaxDate,
+      disable: [
+        ...calendarClosureDates,
+        ...(isBulk ? bulkUnavailableDates : normalUnavailableDates)
+      ]
     });
 
     // Flatpickr can remain parked on the old maximum month after its range
@@ -2569,7 +2654,7 @@ function updateTurnaroundMessaging() {
     // remains natural while the customer is choosing a date.
     if (calendarMode !== specialDateCalendarMode) {
       const selectedDate = specialDateCalendar.selectedDates[0];
-      const dateToShow = selectedDate || tomorrow;
+      const dateToShow = selectedDate || (isBulk ? bulkMinimumDate : tomorrow);
 
       specialDateCalendar.jumpToDate(dateToShow, false);
       specialDateCalendarMode = calendarMode;
@@ -2578,7 +2663,7 @@ function updateTurnaroundMessaging() {
 
   if (submitOrderBtn) {
     submitOrderBtn.textContent = isBulk
-      ? "Submit Bulk Request"
+      ? "Book Bulk Order & Continue to Payment"
       : isRush
         ? "Submit Rush Request"
         : "Submit Order & Continue to Payment";
@@ -2998,13 +3083,8 @@ function makeSwatches(containerId, colourOptions, type) {
 }
 
 backBtn.onclick = () => {
-  checkoutScreen.classList.add("hidden");
-  paymentScreen.classList.add("hidden");
-  designScreen.classList.remove("hidden");
-
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth"
+  setStorefrontView("design", {
+    scrollTo: "designArea"
   });
 };
 
@@ -3184,12 +3264,16 @@ async function setupNeededByCalendar() {
 
   const today = toLocalDateString(new Date());
 
-  const [closureResult, unavailableDateResult] = await Promise.all([
+  const [closureResult, unavailableDateResult, bulkUnavailableDateResult] = await Promise.all([
     supabase
       .from("shop_closures")
       .select("start_date, end_date")
       .gte("end_date", today),
     supabase.rpc("get_unavailable_needed_by_dates", {
+      p_start: toLocalDateString(minDate),
+      p_end: toLocalDateString(maxDate)
+    }),
+    supabase.rpc("get_unavailable_bulk_dates", {
       p_start: toLocalDateString(minDate),
       p_end: toLocalDateString(maxDate)
     })
@@ -3203,6 +3287,13 @@ async function setupNeededByCalendar() {
     console.error(
       "Unable to load full order dates:",
       unavailableDateResult.error
+    );
+  }
+
+  if (bulkUnavailableDateResult.error) {
+    console.error(
+      "Unable to load bulk booking dates:",
+      bulkUnavailableDateResult.error
     );
   }
 
@@ -3223,16 +3314,22 @@ async function setupNeededByCalendar() {
     .map(item => item.unavailable_date)
     .filter(Boolean);
 
-  const disabledDates = [
-    ...closureDates,
-    ...fullOrderDates
-  ];
+  const unavailableBulkDates = (bulkUnavailableDateResult.data || [])
+    .map(item => item.unavailable_date)
+    .filter(Boolean);
+
+  calendarClosureDates = closureDates;
+  normalUnavailableDates = fullOrderDates;
+  bulkUnavailableDates = unavailableBulkDates;
 
   specialDateCalendar = flatpickr(requestedCompletionDate, {
     dateFormat: "Y-m-d",
     minDate,
     maxDate,
-    disable: disabledDates,
+    disable: [
+      ...calendarClosureDates,
+      ...normalUnavailableDates
+    ],
 
     onOpen: (_selectedDates, _dateString, instance) => {
       const firstAvailableDate = addWorkingDays(new Date(), 1);
@@ -3248,6 +3345,8 @@ async function setupNeededByCalendar() {
       rushAssessmentFingerprint = "";
       if (getCheckoutOrderType() === "rush") {
         await checkRushAvailability();
+      } else if (getCheckoutOrderType() === "bulk") {
+        await checkBulkAvailability();
       }
       validateForm();
     }
@@ -4013,19 +4112,11 @@ function renderReviewOrder() {
       button.addEventListener("click", () => {
         selectedIndex = Number(button.dataset.reviewEdit);
 
-        checkoutScreen.classList.add("hidden");
-        paymentScreen.classList.add("hidden");
-        designScreen.classList.remove("hidden");
-
         refreshUI();
         buildSelectedPreview();
-
-        document
-          .getElementById("designArea")
-          .scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-          });
+        setStorefrontView("design", {
+          scrollTo: "designArea"
+        });
       });
     });
 
@@ -4194,11 +4285,12 @@ async function submitOrder() {
   const estimatedReadyTo = addWorkingDays(new Date(), turnaround.maxDays);
 
   if (["rush", "bulk"].includes(checkoutOrderType) && !requestedCompletionDate.value) {
-    submitStatus.innerText = "Please choose your preferred completion date.";
+    submitStatus.innerText = "Please choose a completion date.";
     return;
   }
 
   let confirmedRushAssessment = null;
+  let confirmedBulkAssessment = null;
   if (checkoutOrderType === "rush" && !isManualOrder) {
     submitStatus.innerText = "Rechecking rush availability…";
     confirmedRushAssessment = await checkRushAvailability();
@@ -4207,15 +4299,26 @@ async function submitOrder() {
       submitStatus.innerText = "Rush service is unavailable for this date. Please choose another date.";
       return;
     }
+  } else if (checkoutOrderType === "bulk" && !isManualOrder) {
+    submitStatus.innerText = "Rechecking bulk date…";
+    confirmedBulkAssessment = await checkBulkAvailability();
+
+    if (!confirmedBulkAssessment || confirmedBulkAssessment.status !== "available") {
+      submitStatus.innerText = "This bulk date is no longer available. Please choose another date.";
+      return;
+    }
   }
 
   const rushAutoApproved =
     checkoutOrderType === "rush" &&
     confirmedRushAssessment?.status === "available";
+  const bulkAutoApproved =
+    checkoutOrderType === "bulk" &&
+    confirmedBulkAssessment?.status === "available";
   const isReviewRequest =
     !isManualOrder &&
-    (checkoutOrderType === "bulk" ||
-      (checkoutOrderType === "rush" && !rushAutoApproved));
+    checkoutOrderType === "rush" &&
+    !rushAutoApproved;
 
   const assignedNeededBy = ["rush", "bulk"].includes(checkoutOrderType)
     ? requestedCompletionDate.value
@@ -4270,7 +4373,7 @@ async function submitOrder() {
       : assignedNeededBy,
     review_status: isReviewRequest
       ? "Pending Review"
-      : rushAutoApproved
+      : rushAutoApproved || bulkAutoApproved
         ? "Auto Approved"
         : null,
 
@@ -4293,7 +4396,7 @@ async function submitOrder() {
       : checkoutOrderType === "rush"
         ? rushAutoApproved ? "Pending Payment" : "Rush Review"
         : checkoutOrderType === "bulk"
-          ? "Bulk Review"
+          ? "Pending Payment"
           : "Pending Payment",
 
     order_data: names.map(item => {
@@ -4398,6 +4501,7 @@ async function submitOrder() {
 
   checkoutScreen.classList.add("hidden");
   paymentScreen.classList.remove("hidden");
+  hideStorefrontViews();
 
   window.scrollTo({
     top: 0,
@@ -4615,19 +4719,11 @@ window.editCartItem = function(index) {
 
   closeCartDrawer();
 
-  designScreen.classList.remove("hidden");
-  checkoutScreen.classList.add("hidden");
-  paymentScreen.classList.add("hidden");
-
   refreshUI();
   buildSelectedPreview();
-
-  document
-    .getElementById("designArea")
-    .scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
+  setStorefrontView("design", {
+    scrollTo: "designArea"
+  });
 };
 
 window.removeCartItem = function(index) {
@@ -4671,6 +4767,7 @@ function proceedToCheckout() {
   designScreen.classList.add("hidden");
   checkoutScreen.classList.remove("hidden");
   paymentScreen.classList.add("hidden");
+  hideStorefrontViews();
 
   refreshUI();
   validateForm();
@@ -4718,30 +4815,76 @@ menuOpenBtn.onclick = openSideMenu;
 menuCloseBtn.onclick = closeSideMenu;
 menuOverlay.onclick = closeSideMenu;
 
-document
-  .querySelectorAll("[data-scroll-target]")
-  .forEach(button => {
-    button.addEventListener("click", () => {
-      const targetId = button.dataset.scrollTarget;
-      const target = document.getElementById(targetId);
+function hideStorefrontViews() {
+  document
+    .querySelectorAll("[data-store-view]")
+    .forEach(section => section.classList.add("store-view-hidden"));
+}
 
-      closeSideMenu();
+function setStorefrontView(view, options = {}) {
+  const selectedView = ["shop", "design", "track"].includes(view)
+    ? view
+    : "shop";
 
-      document
-        .querySelectorAll(".top-nav [data-scroll-target]")
-        .forEach(tab => {
-          tab.classList.toggle(
-            "is-active",
-            tab.dataset.scrollTarget === targetId
-          );
-        });
+  designScreen.classList.remove("hidden");
+  checkoutScreen.classList.add("hidden");
+  paymentScreen.classList.add("hidden");
 
-      target?.scrollIntoView({
-        behavior: "smooth",
+  document
+    .querySelectorAll("[data-store-view]")
+    .forEach(section => {
+      section.classList.toggle(
+        "store-view-hidden",
+        section.dataset.storeView !== selectedView
+      );
+    });
+
+  document
+    .querySelectorAll(".top-nav [data-view-target]")
+    .forEach(tab => {
+      tab.classList.toggle(
+        "is-active",
+        tab.dataset.viewTarget === selectedView
+      );
+    });
+
+  closeSideMenu();
+  closeCartDrawer();
+
+  const scrollTarget = options.scrollTo
+    ? document.getElementById(options.scrollTo)
+    : null;
+
+  requestAnimationFrame(() => {
+    if (scrollTarget) {
+      scrollTarget.scrollIntoView({
+        behavior: options.instant ? "auto" : "smooth",
         block: "start"
+      });
+    } else if (options.scroll !== false) {
+      window.scrollTo({
+        top: 0,
+        behavior: options.instant ? "auto" : "smooth"
+      });
+    }
+  });
+}
+
+document
+  .querySelectorAll("[data-view-target]")
+  .forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      setStorefrontView(button.dataset.viewTarget, {
+        scrollTo: button.dataset.viewScroll || null
       });
     });
   });
+
+setStorefrontView("shop", {
+  instant: true,
+  scroll: false
+});
 
 const PENDING_ORDER_STORAGE_KEY = "littleKeepsPendingOrder";
 
@@ -4804,9 +4947,8 @@ function openRememberedOrder() {
 
   statusOrderRef.value = saved.orderRef;
   statusCustomerEmail.value = saved.email;
-  document.getElementById("orderStatusSection")?.scrollIntoView({
-    behavior: "smooth",
-    block: "start"
+  setStorefrontView("track", {
+    scrollTo: "orderStatusSection"
   });
 
   setTimeout(() => orderStatusForm?.requestSubmit(), 450);
@@ -4844,12 +4986,9 @@ async function retryRememberedOrderEmail() {
 }
 
 startDesignBtn.onclick = () => {
-  document
-    .getElementById("designArea")
-    .scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
+  setStorefrontView("design", {
+    scrollTo: "designArea"
+  });
 };
 
 singleName.addEventListener("input", updateNames);
@@ -5060,7 +5199,7 @@ function validateForm() {
       !requestedCompletionDate.value
     ) {
       valid = false;
-      message = "Please choose your preferred completion date.";
+      message = "Please choose a completion date.";
     }
 
     else if (
@@ -5077,6 +5216,22 @@ function validateForm() {
     ) {
       valid = false;
       message = "Rush service is unavailable for this date. Please choose another date or use the normal estimate.";
+    }
+
+    else if (
+      getCheckoutOrderType() === "bulk" &&
+      (!bulkAssessment || bulkAssessmentFingerprint !== getBulkFingerprint())
+    ) {
+      valid = false;
+      message = "Please wait while we check this bulk date.";
+    }
+
+    else if (
+      getCheckoutOrderType() === "bulk" &&
+      bulkAssessment.status !== "available"
+    ) {
+      valid = false;
+      message = "This bulk date is unavailable. Please choose another date.";
     }
 
 else if (
@@ -6069,9 +6224,8 @@ const resumeOrderRef = paymentReturnParams.get("resume_order");
 if (resumeOrderRef && !paymentReturnState) {
   statusOrderRef.value = resumeOrderRef.trim().toUpperCase();
   setTimeout(() => {
-    document.getElementById("orderStatusSection")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
+    setStorefrontView("track", {
+      scrollTo: "orderStatusSection"
     });
     statusCustomerEmail.focus();
   }, 300);
@@ -6090,6 +6244,7 @@ if (
   designScreen.classList.add("hidden");
   checkoutScreen.classList.add("hidden");
   paymentScreen.classList.remove("hidden");
+  hideStorefrontViews();
 
   paymentOrderRef.innerText = "LK-PREVIEW-1234";
   paymentTotal.innerText = "$5.70";

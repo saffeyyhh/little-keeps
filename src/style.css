@@ -4202,3 +4202,23 @@ body {
   .policy-grid {
     grid-template-columns: 1fr;
   }
+.store-view-hidden {
+  display: none !important;
+}
+
+[data-store-view="design"],
+[data-store-view="track"] {
+  animation: store-view-enter 0.24s ease both;
+}
+
+@keyframes store-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -2675,7 +2675,7 @@ function getOrderPrintableInventoryNeeds(order) {
   return needs;
 }
 
-function getUrgentProductionOrders(orders) {
+function getProductionTimelineOrders(orders) {
   const remainingStock = Object.fromEntries(
     Object.entries(inventoryItems).map(([itemName, item]) => [
       itemName,
@@ -2704,6 +2704,10 @@ function getUrgentProductionOrders(orders) {
       const daysUntil = getDaysUntil(dueDate);
       const missingParts = [];
       const needs = getOrderPrintableInventoryNeeds(order);
+      const totalParts = Object.values(needs).reduce(
+        (sum, quantity) => sum + quantity,
+        0
+      );
 
       Object.entries(needs).forEach(([itemName, quantity]) => {
         const available = remainingStock[itemName] || 0;
@@ -2726,17 +2730,13 @@ function getUrgentProductionOrders(orders) {
         dueDate,
         daysUntil,
         missingParts,
+        totalParts,
         totalMissing: missingParts.reduce(
           (sum, part) => sum + part.quantity,
           0
         )
       };
-    })
-    .filter(entry =>
-      entry.daysUntil !== null &&
-      entry.daysUntil <= 3 &&
-      entry.missingParts.length > 0
-    );
+    });
 }
 
 function getUrgentPrintLabel(daysUntil) {
@@ -4467,7 +4467,7 @@ async function renderProductionPlanner(orders) {
   await loadInventoryItems();
 
   const { baseTotals, keycapGroups, count } = getProductionSummary(orders);
-  const urgentProductionOrders = getUrgentProductionOrders(orders);
+  const productionTimelineOrders = getProductionTimelineOrders(orders);
 
   const baseRows = Object.values(baseTotals)
     .map(item => {
@@ -4825,110 +4825,161 @@ async function renderProductionPlanner(orders) {
     `
     : "";
 
-  const urgentProductionPanel = urgentProductionOrders.length
-    ? `
-      <section class="urgent-print-panel">
-        <div class="urgent-print-heading">
-          <div>
-            <span class="urgent-print-icon" aria-hidden="true">!</span>
-            <div>
-              <p>Print these first</p>
-              <h3>Urgent to Print</h3>
-            </div>
-          </div>
-          <strong>
-            ${urgentProductionOrders.length}
-            order${urgentProductionOrders.length === 1 ? "" : "s"}
-            due within 3 days
-          </strong>
-        </div>
+  const productionTimelineBuckets = [
+    {
+      key: "overdue",
+      label: "Overdue",
+      note: "Handle these first",
+      matches: entry => entry.daysUntil !== null && entry.daysUntil < 0
+    },
+    {
+      key: "today",
+      label: "Today",
+      note: "Due today",
+      matches: entry => entry.daysUntil === 0
+    },
+    {
+      key: "next",
+      label: "Next 3 days",
+      note: "Print next",
+      matches: entry => entry.daysUntil !== null && entry.daysUntil >= 1 && entry.daysUntil <= 3
+    },
+    {
+      key: "week",
+      label: "Later this week",
+      note: "Prepare after urgent work",
+      matches: entry => entry.daysUntil !== null && entry.daysUntil >= 4 && entry.daysUntil <= 7
+    },
+    {
+      key: "later",
+      label: "Later",
+      note: "Upcoming orders",
+      matches: entry => entry.daysUntil === null || entry.daysUntil > 7
+    }
+  ];
 
-        <div class="urgent-print-list">
-          ${urgentProductionOrders.map((entry, priorityIndex) => {
-            const order = entry.order;
-            const customerName =
-              order.customer_name ||
-              order.name ||
-              "Customer";
-            const keychainNames = (order.order_data || [])
-              .filter(item => !item.assembly_completed)
-              .map(item => item.name || item.clean_name)
-              .filter(Boolean);
-
-            return `
-              <article class="urgent-print-order ${entry.daysUntil <= 1 ? "is-critical" : ""}">
-                <div class="urgent-print-priority">
-                  <span>${priorityIndex + 1}</span>
-                  <small>Priority</small>
-                </div>
-
-                <div class="urgent-print-order-main">
-                  <div class="urgent-print-order-title">
-                    <div>
-                      <strong>${escapeAdminHtml(order.order_ref || "No reference")}</strong>
-                      <span>${escapeAdminHtml(customerName)}</span>
-                    </div>
-                    <b>${escapeAdminHtml(getUrgentPrintLabel(entry.daysUntil))}</b>
-                  </div>
-
-                  <p class="urgent-print-names">
-                    ${escapeAdminHtml(keychainNames.join(", ") || "Personalised keychain")}
-                    · Ready by ${escapeAdminHtml(formatDate(entry.dueDate))}
-                  </p>
-
-                  <div class="urgent-print-parts">
-                    ${entry.missingParts.map(part => `
-                      <span class="${part.type}">
-                        ${part.quantity} × ${escapeAdminHtml(part.itemName)}
-                      </span>
-                    `).join("")}
-                  </div>
-                </div>
-
-                <div class="urgent-print-actions">
-                  <strong>${entry.totalMissing} part${entry.totalMissing === 1 ? "" : "s"} to print</strong>
-                  <button
-                    type="button"
-                    onclick='window.generateOrderStls(${JSON.stringify(String(order.id))}, this)'
-                  >
-                    Generate Order STLs
-                  </button>
-                  <button
-                    type="button"
-                    class="urgent-view-order-btn"
-                    onclick='window.focusOrder(${JSON.stringify(String(order.id))})'
-                  >
-                    View Order
-                  </button>
-                </div>
-              </article>
-            `;
-          }).join("")}
-        </div>
-      </section>
-    `
-    : `
-      <section class="urgent-print-panel is-clear">
-        <span aria-hidden="true">✓</span>
+  const productionTimelinePanel = `
+    <section class="production-timeline">
+      <div class="production-timeline-heading">
         <div>
-          <h3>No urgent printing right now</h3>
-          <p>Nothing due within the next three days is waiting for printed parts.</p>
+          <p>What to work on first</p>
+          <h3>Production Timeline</h3>
         </div>
-      </section>
-    `;
+        <strong>${productionTimelineOrders.length} active order${productionTimelineOrders.length === 1 ? "" : "s"}</strong>
+      </div>
+
+      <div class="production-timeline-lanes">
+        ${productionTimelineBuckets.map(bucket => {
+          const entries = productionTimelineOrders.filter(bucket.matches);
+
+          return `
+            <details
+              class="production-timeline-lane timeline-${bucket.key}"
+              data-collapse-key="timeline-${bucket.key}"
+              ${entries.length ? "open" : ""}
+            >
+              <summary>
+                <div>
+                  <span>${bucket.label}</span>
+                  <small>${bucket.note}</small>
+                </div>
+                <b>${entries.length}</b>
+              </summary>
+
+              <div class="production-timeline-list">
+                ${entries.map((entry, index) => {
+                  const order = entry.order;
+                  const customerName =
+                    order.customer_name ||
+                    order.name ||
+                    "Customer";
+                  const keychainNames = (order.order_data || [])
+                    .filter(item => !item.assembly_completed)
+                    .map(item => item.name || item.clean_name)
+                    .filter(Boolean);
+                  const readyParts = Math.max(
+                    0,
+                    entry.totalParts - entry.totalMissing
+                  );
+                  const progress = entry.totalParts
+                    ? Math.round((readyParts / entry.totalParts) * 100)
+                    : 100;
+                  const dueLabel = entry.daysUntil === null
+                    ? "No date set"
+                    : getUrgentPrintLabel(entry.daysUntil);
+
+                  return `
+                    <article class="production-timeline-order ${entry.daysUntil !== null && entry.daysUntil <= 1 ? "is-critical" : ""}">
+                      <div class="timeline-order-position">${index + 1}</div>
+
+                      <div class="timeline-order-copy">
+                        <div class="timeline-order-title">
+                          <div>
+                            <strong>${escapeAdminHtml(order.order_ref || "No reference")}</strong>
+                            <span>${escapeAdminHtml(customerName)}</span>
+                          </div>
+                          <b>${escapeAdminHtml(dueLabel)}</b>
+                        </div>
+
+                        <p>
+                          ${escapeAdminHtml(keychainNames.join(", ") || "Personalised keychain")}
+                          ${entry.dueDate ? ` · Ready by ${escapeAdminHtml(formatDate(entry.dueDate))}` : ""}
+                        </p>
+
+                        <div class="timeline-progress-row">
+                          <div class="timeline-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
+                            <span style="width:${progress}%"></span>
+                          </div>
+                          <strong>
+                            ${entry.totalMissing
+                              ? `${entry.totalMissing} part${entry.totalMissing === 1 ? "" : "s"} to print`
+                              : "Printed parts ready"}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div class="timeline-order-actions">
+                        ${entry.totalMissing ? `
+                          <button
+                            type="button"
+                            onclick='window.generateOrderStls(${JSON.stringify(String(order.id))}, this)'
+                          >
+                            Generate STLs
+                          </button>
+                        ` : ""}
+                        <button
+                          type="button"
+                          class="timeline-view-order"
+                          onclick='window.focusOrder(${JSON.stringify(String(order.id))})'
+                        >
+                          View Order
+                        </button>
+                      </div>
+                    </article>
+                  `;
+                }).join("") || `
+                  <p class="timeline-empty">No orders here.</p>
+                `}
+              </div>
+            </details>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
 
   ordersContainer.innerHTML = `
     <div class="production-card">
       <div class="production-header">
         <div>
           <h2>Production Planner ♡</h2>
-          <p class="hint">Only items that still need printing are shown.</p>
+          <p class="hint">Follow the timeline first, then batch the remaining prints by colour.</p>
         </div>
 
         <p class="active-count">${count} active order(s)</p>
       </div>
 
-      ${urgentProductionPanel}
+      ${productionTimelinePanel}
 
       <h3>Base Printing</h3>
 
