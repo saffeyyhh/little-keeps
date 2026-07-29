@@ -866,7 +866,7 @@ document.querySelector("#app").innerHTML = `
       <span>03</span>
       <div class="how-step-icon">→</div>
       <h3>Collect or deliver</h3>
-      <p>Choose Woodlands MRT pickup or islandwide delivery and follow every update online.</p>
+      <p>Choose pickup at Woodlands MRT or Marsiling MRT, or islandwide delivery. Delivery dates are estimated dispatch dates, with parcels usually arriving 2–3 days later. We’ll share tracking whenever it’s available.</p>
     </article>
   </div>
 </section>
@@ -1359,12 +1359,16 @@ Chloe</textarea>
         <div id="bulkOrderNotice" class="bulk-order-notice hidden"></div>
 
         <label for="collectionMethod">
-          Collection Method
+          Collection or Delivery Method
         </label>
 
         <select id="collectionMethod">
           <option value="pickup">
             📍 Pick Up at Woodlands MRT
+          </option>
+
+          <option value="pickup_marsiling">
+            📍 Pick Up at Marsiling MRT
           </option>
 
           <option value="delivery">
@@ -1580,8 +1584,7 @@ Chloe</textarea>
         <p id="orderRefText"></p>
 
         <p>
-          We’ll contact you nearer to your
-          collection or delivery date.
+          We’ll contact you nearer to your pickup-ready or dispatch date.
         </p>
 
         <p class="hint">
@@ -1670,7 +1673,15 @@ Chloe</textarea>
   <div class="policy-grid">
     <details>
       <summary>Production and timing</summary>
-      <p>Standard orders are usually ready in ${standardMinWorkingDays}-${standardMaxWorkingDays} working days. Orders of ${largeOrderQuantity} or more keychains usually require ${largeMinWorkingDays}-${largeMaxWorkingDays} working days. We accept up to ${maxOrdersPerDate} order bookings per ready date. Bulk orders of ${bulkOrderQuantity} or more can instantly book an available date at least 7 days away; the surrounding day on each side is reserved for production. Rush requests remain subject to availability. Any closure shown on the website is included in the displayed estimate.</p>
+      <ul>
+        <li>Standard orders are usually ready in ${standardMinWorkingDays}-${standardMaxWorkingDays} working days.</li>
+        <li>Orders of ${largeOrderQuantity} or more keychains usually require ${largeMinWorkingDays}-${largeMaxWorkingDays} working days.</li>
+        <li>We accept up to ${maxOrdersPerDate} order bookings per ready date.</li>
+        <li>Bulk orders of ${bulkOrderQuantity} or more can instantly book an available date at least 7 days away.</li>
+        <li>For bulk orders, the surrounding day on each side is reserved for production.</li>
+        <li>Rush requests remain subject to availability.</li>
+        <li>Any closure shown on the website is included in the displayed estimate.</li>
+      </ul>
     </details>
 
     <details>
@@ -1685,7 +1696,7 @@ Chloe</textarea>
 
     <details>
       <summary>Collection and delivery</summary>
-      <p>Pickup is arranged at Woodlands MRT after the ready email is sent. Delivery timing and tracking depend on the selected courier; personally delivered orders may not have a tracking number. Please provide an accurate address and contact number.</p>
+      <p>Pickup is available at Woodlands MRT or Marsiling MRT after your ready email is sent. For delivery, your selected date is the estimated dispatch date. Once your order is on its way, it will usually arrive within 2–3 days, depending on the courier. We’ll share tracking details whenever they’re available. Please double-check your address and contact number before submitting your order.</p>
     </details>
 
     <details>
@@ -2620,9 +2631,11 @@ function updateTurnaroundMessaging() {
     ? "Estimated dispatch"
     : "Estimated ready for collection";
   automaticDateRange.textContent = `${formatEstimateDate(estimateStart)}–${formatEstimateDate(estimateEnd)}`;
-  automaticDateNote.textContent = includesHolidayClosure
-    ? "Our holiday closure is already included in this estimate."
-    : "Based on our current production schedule.";
+  automaticDateNote.textContent = methodIsDelivery
+    ? `Your order is estimated to be dispatched on this date, then delivered within 2–3 days depending on the courier. We’ll share tracking details whenever they’re available.${includesHolidayClosure ? " Our holiday closure is already included." : ""}`
+    : includesHolidayClosure
+      ? "Our holiday closure is already included in this estimate."
+      : "Based on our current production schedule.";
 
   automaticDateCard.classList.toggle("hidden", isBulk || isRush);
   rushOrderOption.classList.toggle("hidden", isBulk);
@@ -2630,8 +2643,12 @@ function updateTurnaroundMessaging() {
   specialDateSection.classList.toggle("hidden", !isBulk && !isRush);
 
   if (isBulk) {
-    specialDateLabel.textContent = "Choose your bulk completion date";
-    specialOrderMessage.textContent = "Choose an available date at least 7 days away.";
+    specialDateLabel.textContent = methodIsDelivery
+      ? "Choose your bulk dispatch date"
+      : "Choose your bulk completion date";
+    specialOrderMessage.textContent = methodIsDelivery
+      ? "Choose an available dispatch date at least 7 days away. Delivery usually follows within 2–3 days."
+      : "Choose an available date at least 7 days away.";
     orderNotes.placeholder = "Customer notes for your bulk order...";
 
     if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
@@ -2640,8 +2657,12 @@ function updateTurnaroundMessaging() {
       queueMicrotask(() => checkBulkAvailability());
     }
   } else if (isRush) {
-    specialDateLabel.textContent = "When do you need it?";
-    specialOrderMessage.textContent = "Only dates earlier than the standard estimate are shown. Choose a date and we’ll check availability instantly.";
+    specialDateLabel.textContent = methodIsDelivery
+      ? "When should we dispatch it?"
+      : "When do you need it?";
+    specialOrderMessage.textContent = methodIsDelivery
+      ? "Choose an earlier dispatch date and we’ll check availability. Delivery usually follows within 2–3 days."
+      : "Only dates earlier than the standard estimate are shown. Choose a date and we’ll check availability instantly.";
     orderNotes.placeholder = "Tell us about your deadline or event...";
 
     if (requestedCompletionDate.value && rushAssessmentFingerprint !== getRushFingerprint()) {
@@ -4573,10 +4594,13 @@ function updateCollectionNote() {
         0
     );
 
-    if (collectionMethod.value === "pickup") {
+    if (collectionMethod.value !== "delivery") {
+        const pickupLocation = collectionMethod.value === "pickup_marsiling"
+          ? "Marsiling MRT"
+          : "Woodlands MRT";
 
         deliveryNote.innerHTML = `
-            📍 <strong>Pickup Location:</strong> Woodlands MRT.<br><br>
+            📍 <strong>Pickup Location:</strong> ${pickupLocation}.<br><br>
 
             Weekdays: <strong>After 7:00 PM</strong><br>
             Weekends: Selected time ranges will be available.<br><br>
@@ -4593,6 +4617,10 @@ function updateCollectionNote() {
           : displaySettingMoney(deliveryFeeSetting);
 
         deliveryNote.innerHTML = `
+            🚚 <strong>Your selected date is the estimated dispatch date.</strong><br><br>
+            Once your order is on its way, delivery usually takes
+            <strong>2–3 days</strong>, depending on the courier.
+            We’ll share tracking details whenever they’re available.<br><br>
             Please enter any delivery instructions below.
         `;
 
@@ -5908,6 +5936,9 @@ function renderCustomerOrderStatus(order) {
   const effectiveStatus = paymentExpired ? "Payment Expired" : order.status;
   const activeStep = getCustomerStatusStep(effectiveStatus);
   const methodIsDelivery = order.collection_method === "delivery";
+  const pickupLocation = order.collection_method === "pickup_marsiling"
+    ? "Marsiling MRT"
+    : "Woodlands MRT";
   const isSpecialRequest = ["rush", "bulk"].includes(order.order_type);
   const requestApproved = ["Approved", "Auto Approved"].includes(order.review_status);
   const canPay =
@@ -5915,7 +5946,9 @@ function renderCustomerOrderStatus(order) {
     ["Pending Payment", "Payment Expired"].includes(effectiveStatus) &&
     (!isSpecialRequest || requestApproved);
   const timingLabel = isSpecialRequest
-    ? "Preferred completion date"
+    ? methodIsDelivery
+      ? "Preferred dispatch date"
+      : "Preferred completion date"
     : methodIsDelivery
       ? "Estimated dispatch"
       : "Estimated ready for collection";
@@ -5962,7 +5995,7 @@ function renderCustomerOrderStatus(order) {
     <div class="order-status-details">
       <p>
         <span>Method</span>
-        <strong>${methodIsDelivery ? "Islandwide delivery" : "Pickup at Woodlands MRT"}</strong>
+        <strong>${methodIsDelivery ? "Islandwide delivery" : `Pickup at ${pickupLocation}`}</strong>
       </p>
       <p>
         <span>${timingLabel}</span>
@@ -5973,6 +6006,12 @@ function renderCustomerOrderStatus(order) {
       ` : ""}
       ${methodIsDelivery && order.tracking_number ? `
         <p><span>Tracking number</span><strong>${escapePresetText(order.tracking_number)}</strong></p>
+      ` : ""}
+      ${methodIsDelivery ? `
+        <p>
+          <span>Delivery timing</span>
+          <strong>Usually arrives within 2–3 days after dispatch</strong>
+        </p>
       ` : ""}
       ${!methodIsDelivery && order.pickup_scheduled_date ? `
         <p>
@@ -5998,7 +6037,7 @@ function renderCustomerOrderStatus(order) {
           ${order.pickup_scheduled_date ? "Need another timing?" : "Your order is ready for collection!"}
         </h3>
         <p>
-          Select an available date and time range for Woodlands MRT.
+          Select an available date and time range for ${escapePresetText(pickupLocation)}.
           Each range has limited availability.
         </p>
 

@@ -2422,11 +2422,20 @@ label {
   cursor: pointer;
 }
 
-.policy-grid p {
+.policy-grid p,
+.policy-grid ul {
   margin: 12px 0 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.7;
+}
+
+.policy-grid ul {
+  padding-left: 18px;
+}
+
+.policy-grid li + li {
+  margin-top: 6px;
 }
 
 .contact-section {

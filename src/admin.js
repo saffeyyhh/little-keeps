@@ -7,6 +7,13 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import {
+  calculateQueuedProductionQuantity,
+  calculateBusinessFinancials,
+  calculatePaidOrderRevenue,
+  getTrackedProductionQuantity,
+  validateInventoryDecrement
+} from "./admin-logic.js";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
@@ -19,10 +26,13 @@ const EMAILJS_PAYMENT_VERIFIED_TEMPLATE = "template_liazurv";
 emailjs.init(EMAILJS_PUBLIC);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const IS_ADMIN_PREVIEW =
+  import.meta.env.DEV &&
+  new URLSearchParams(location.search).get("adminPreview") === "1";
 
 const { data: sessionData } = await supabase.auth.getSession();
 
-if (!sessionData.session) {
+if (!sessionData.session && !IS_ADMIN_PREVIEW) {
   document.querySelector("#app").innerHTML = `
     <main class="admin-page">
       <div class="login-card">
@@ -96,6 +106,9 @@ document.querySelector("#app").innerHTML = `
       </button>
       <button id="inventoryViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">📦</span> Inventory
+      </button>
+      <button id="financeViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">📈</span> Finances
       </button>
       <button id="settingsViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">⚙️</span> Settings
@@ -186,6 +199,7 @@ const sectionTitle = document.getElementById("sectionTitle");
 const ordersActions = document.getElementById("ordersActions");
 const assemblyViewBtn = document.getElementById("assemblyViewBtn");
 const inventoryViewBtn = document.getElementById("inventoryViewBtn");
+const financeViewBtn = document.getElementById("financeViewBtn");
 const settingsViewBtn = document.getElementById("settingsViewBtn");
 
 const orderFilters = document.getElementById("orderFilters");
@@ -211,6 +225,21 @@ let latestOrders = [];
 
 let inventoryItems = {};
 let clearanceInventoryItems = {};
+let productionJobs = [];
+let productionJobsLoadFailed = false;
+let productionStageView = "queue";
+let productionQueueView = "timeline";
+const DEFAULT_BUSINESS_FINANCIALS = {
+  id: 1,
+  printer_spend: 934,
+  filament_accessories_spend: 628.36
+};
+let businessFinancials = { ...DEFAULT_BUSINESS_FINANCIALS };
+let businessFinancialsLoaded = false;
+let businessFinancialsLoadFailed = false;
+let businessExpenses = [];
+let businessExpensesLoaded = false;
+let businessExpensesLoadFailed = false;
 const DEFAULT_ADMIN_SHOP_SETTINGS = {
   id: 1,
   usual_base_price: 3.90,
@@ -453,6 +482,12 @@ function renderCurrentView() {
     sectionTitle.innerText = "Inventory";
     ordersActions.style.display = "none";
     renderInventoryWorkspace();
+  }
+
+  if (currentView === "finance") {
+    sectionTitle.innerText = "Business Finances";
+    ordersActions.style.display = "none";
+    renderFinanceWorkspace();
   }
 
   if (currentView === "settings") {
@@ -1804,7 +1839,16 @@ function renderPaymentLedger(order) {
 }
 
 function getMethodLabel(method) {
-  return method === "delivery" ? "Delivery" : "Pickup";
+  if (method === "delivery") return "Islandwide Delivery";
+  return method === "pickup_marsiling"
+    ? "Marsiling MRT Pickup"
+    : "Woodlands MRT Pickup";
+}
+
+function getPickupLocation(method) {
+  return method === "pickup_marsiling"
+    ? "Marsiling MRT"
+    : "Woodlands MRT";
 }
 
 function escapeAdminHtml(value) {
@@ -2061,6 +2105,457 @@ function renderOperationsSummary(orders) {
   `;
 }
 
+function formatPercentage(value) {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function formatSgdMoney(value) {
+  const amount = Number(value || 0);
+  const sign = amount < 0 ? "-" : "";
+  const formatted = Math.abs(amount).toLocaleString("en-SG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+
+  return `${sign}S$${formatted}`;
+}
+
+async function loadBusinessFinancials() {
+  if (IS_ADMIN_PREVIEW) {
+    businessFinancialsLoaded = true;
+    businessFinancialsLoadFailed = false;
+    businessFinancials = { ...DEFAULT_BUSINESS_FINANCIALS };
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("business_financials")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+
+  businessFinancialsLoaded = true;
+  businessFinancialsLoadFailed = Boolean(error);
+
+  if (error) {
+    console.warn("Using fallback business financials:", error);
+    businessFinancials = { ...DEFAULT_BUSINESS_FINANCIALS };
+    return;
+  }
+
+  businessFinancials = {
+    ...DEFAULT_BUSINESS_FINANCIALS,
+    ...(data || {})
+  };
+}
+
+async function loadBusinessExpenses() {
+  if (IS_ADMIN_PREVIEW) {
+    const previewAmounts = [
+      60.20, 59.34, 34.18, 36.71, 38.20, 38.19, 206.09, 155.45
+    ];
+    businessExpensesLoaded = true;
+    businessExpensesLoadFailed = false;
+    businessExpenses = previewAmounts.map((amount, index) => ({
+      id: index + 1,
+      expense_date: new Date().toISOString().slice(0, 10),
+      category: "Filament & accessories",
+      description: `Purchase batch ${index + 1}${index === 6 ? " (your share)" : ""}`,
+      amount
+    }));
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("business_expenses")
+    .select("*")
+    .order("expense_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  businessExpensesLoaded = true;
+  businessExpensesLoadFailed = Boolean(error);
+
+  if (error) {
+    console.warn("Unable to load business expenses:", error);
+    businessExpenses = [];
+    return;
+  }
+
+  businessExpenses = data || [];
+}
+
+function renderFinanceWorkspace() {
+  const actualRevenue = calculatePaidOrderRevenue(latestOrders);
+  const trackedExpenseTotal = businessExpensesLoadFailed
+    ? Number(businessFinancials.filament_accessories_spend || 0)
+    : businessExpenses.reduce(
+        (sum, expense) => sum + Number(expense.amount || 0),
+        0
+      );
+  const figures = calculateBusinessFinancials({
+    printerSpend: businessFinancials.printer_spend,
+    filamentAccessoriesSpend: trackedExpenseTotal,
+    totalRevenue: actualRevenue
+  });
+  const isCashPositive = figures.netCashPosition >= 0;
+  const amountToPositive = Math.max(0, -figures.netCashPosition);
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore"
+  }).format(new Date());
+  const setupFailed =
+    businessFinancialsLoadFailed || businessExpensesLoadFailed;
+  const expenseRows = businessExpenses.map(expense => `
+    <tr>
+      <td>${formatDate(expense.expense_date)}</td>
+      <td>
+        <span class="expense-category">
+          ${escapeAdminHtml(expense.category || "Filament & accessories")}
+        </span>
+      </td>
+      <td>${escapeAdminHtml(expense.description || "Expense")}</td>
+      <td class="expense-amount">${formatSgdMoney(expense.amount)}</td>
+      <td>
+        <button
+          type="button"
+          class="expense-delete-btn"
+          onclick="window.deleteBusinessExpense(${JSON.stringify(expense.id)})"
+          aria-label="Delete ${escapeAdminHtml(expense.description || "expense")}"
+        >
+          Delete
+        </button>
+      </td>
+    </tr>
+  `).join("");
+
+  ordersContainer.innerHTML = `
+    <div class="finance-workspace">
+      <div class="finance-hero ${isCashPositive ? "is-positive" : ""}">
+        <div>
+          <p class="finance-kicker">
+            ${isCashPositive ? "You made it into the green!" : "Investment recovery"}
+          </p>
+          <h2>${formatPercentage(figures.recoveryPercentage)} recovered</h2>
+          <p>
+            ${isCashPositive
+              ? `${formatSgdMoney(figures.netCashPosition)} beyond your startup investment.`
+              : `${formatSgdMoney(amountToPositive)} more revenue to reach cash positive.`
+            }
+          </p>
+        </div>
+        <span class="finance-hero-icon" aria-hidden="true">
+          ${isCashPositive ? "🌱" : "♡"}
+        </span>
+      </div>
+
+      <div class="finance-progress-card">
+        <div class="finance-progress-heading">
+          <div>
+            <span>Investment recovery</span>
+            <strong>
+              ${formatSgdMoney(figures.totalRevenue)}
+              <small>of ${formatSgdMoney(figures.totalInvestment)}</small>
+            </strong>
+          </div>
+          <span>${formatPercentage(figures.recoveryPercentage)}</span>
+        </div>
+        <div
+          class="finance-progress-track"
+          role="progressbar"
+          aria-label="Investment recovery"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="${Math.round(figures.recoveryProgress)}"
+        >
+          <span style="width:${figures.recoveryProgress}%"></span>
+        </div>
+      </div>
+
+      <div class="finance-metrics">
+        <article class="finance-metric revenue">
+          <span>Total Revenue</span>
+          <strong>${formatSgdMoney(figures.totalRevenue)}</strong>
+          <small>Automatically from paid orders, after refunds</small>
+        </article>
+        <article class="finance-metric">
+          <span>Startup Investment</span>
+          <strong>${formatSgdMoney(figures.totalInvestment)}</strong>
+          <small>Printer spend plus tracked expenses</small>
+        </article>
+        <article class="finance-metric ${isCashPositive ? "positive" : "negative"}">
+          <span>Net Cash Position</span>
+          <strong>${formatSgdMoney(figures.netCashPosition)}</strong>
+          <small>Revenue minus startup investment</small>
+        </article>
+      </div>
+
+      <form id="businessFinancialsForm" class="finance-editor">
+        <div class="finance-editor-heading">
+          <div>
+            <p class="section-kicker">Equipment investment</p>
+            <h3>Printer spend</h3>
+            <p>
+              Revenue is automatic. Only update this if your printer investment changes.
+            </p>
+          </div>
+          <span>Last saved ${businessFinancials.updated_at
+            ? formatDateTime(businessFinancials.updated_at)
+            : "with your starting figures"
+          }</span>
+        </div>
+
+        ${setupFailed ? `
+          <div class="finance-setup-note" role="alert">
+            Run <strong>supabase/business-financials.sql</strong> once in
+            Supabase before saving expenses. The dashboard is showing its
+            safe starting values in the meantime.
+          </div>
+        ` : ""}
+
+        <div class="finance-fields finance-fields-single">
+          <label>
+            <span>Printer spend</span>
+            <div class="money-input">
+              <span>S$</span>
+              <input
+                name="printer_spend"
+                type="number"
+                min="0"
+                step="0.01"
+                value="${figures.printerSpend.toFixed(2)}"
+                required
+              >
+            </div>
+          </label>
+        </div>
+
+        <button
+          class="finance-save-btn"
+          type="submit"
+          ${businessFinancialsLoadFailed ? "disabled" : ""}
+        >
+          Save printer spend
+        </button>
+      </form>
+
+      <section class="expense-ledger">
+        <div class="finance-editor-heading">
+          <div>
+            <p class="section-kicker">Expense tracker</p>
+            <h3>Filament & accessories</h3>
+            <p>Each purchase is saved separately and added to your investment total.</p>
+          </div>
+          <strong>${formatSgdMoney(figures.filamentAccessoriesSpend)}</strong>
+        </div>
+
+        <form id="businessExpenseForm" class="expense-entry-form">
+          <label>
+            <span>Date</span>
+            <input name="expense_date" type="date" value="${today}" required>
+          </label>
+          <label>
+            <span>Category</span>
+            <select name="category" required>
+              <option value="Filament">Filament</option>
+              <option value="Accessories">Accessories</option>
+              <option value="Filament & accessories">Mixed purchase</option>
+            </select>
+          </label>
+          <label class="expense-description-field">
+            <span>Description</span>
+            <input
+              name="description"
+              maxlength="120"
+              placeholder="e.g. PLA Silk+ restock"
+              required
+            >
+          </label>
+          <label>
+            <span>Amount</span>
+            <div class="money-input">
+              <span>S$</span>
+              <input
+                name="amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="0.00"
+                required
+              >
+            </div>
+          </label>
+          <button
+            class="finance-save-btn expense-add-btn"
+            type="submit"
+            ${businessExpensesLoadFailed ? "disabled" : ""}
+          >
+            Add expense
+          </button>
+        </form>
+
+        <div class="expense-table-wrap">
+          <table class="expense-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${expenseRows || `
+                <tr>
+                  <td colspan="5" class="expense-empty">
+                    No expenses recorded yet.
+                  </td>
+                </tr>
+              `}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3">Total filament & accessories</td>
+                <td class="expense-amount">
+                  ${formatSgdMoney(figures.filamentAccessoriesSpend)}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+    </div>
+  `;
+
+  document
+    .getElementById("businessFinancialsForm")
+    ?.addEventListener("submit", saveBusinessFinancials);
+  document
+    .getElementById("businessExpenseForm")
+    ?.addEventListener("submit", addBusinessExpense);
+}
+
+async function saveBusinessFinancials(event) {
+  event.preventDefault();
+
+  if (businessFinancialsLoadFailed) {
+    alert("Set up business financials in Supabase before saving.");
+    return;
+  }
+
+  const form = new FormData(event.currentTarget);
+  const updates = {
+    id: 1,
+    printer_spend: Number(form.get("printer_spend")),
+    updated_at: new Date().toISOString()
+  };
+
+  if (
+    !Number.isFinite(updates.printer_spend) ||
+    updates.printer_spend < 0
+  ) {
+    alert("Please enter a valid printer spend of zero or more.");
+    return;
+  }
+
+  const saveButton = event.currentTarget.querySelector(
+    ".finance-save-btn"
+  );
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving…";
+
+  const { data, error } = await supabase
+    .from("business_financials")
+    .upsert(updates)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Unable to save business financials:", error);
+    alert("Unable to save your figures. Please try again.");
+    saveButton.disabled = false;
+    saveButton.textContent = "Save printer spend";
+    return;
+  }
+
+  businessFinancials = data;
+  renderFinanceWorkspace();
+}
+
+async function addBusinessExpense(event) {
+  event.preventDefault();
+
+  if (businessExpensesLoadFailed) {
+    alert("Set up the expense table in Supabase before adding expenses.");
+    return;
+  }
+
+  const form = new FormData(event.currentTarget);
+  const expense = {
+    expense_date: String(form.get("expense_date") || ""),
+    category: String(form.get("category") || ""),
+    description: String(form.get("description") || "").trim(),
+    amount: Number(form.get("amount"))
+  };
+
+  if (
+    !expense.expense_date ||
+    !["Filament", "Accessories", "Filament & accessories"].includes(
+      expense.category
+    ) ||
+    !expense.description ||
+    !Number.isFinite(expense.amount) ||
+    expense.amount <= 0
+  ) {
+    alert("Please complete the date, category, description and amount.");
+    return;
+  }
+
+  const button = event.currentTarget.querySelector(".expense-add-btn");
+  button.disabled = true;
+  button.textContent = "Adding…";
+
+  const { error } = await supabase
+    .from("business_expenses")
+    .insert(expense);
+
+  if (error) {
+    console.error("Unable to add business expense:", error);
+    alert("Unable to add the expense. Please try again.");
+    button.disabled = false;
+    button.textContent = "Add expense";
+    return;
+  }
+
+  await loadBusinessExpenses();
+  renderFinanceWorkspace();
+}
+
+window.deleteBusinessExpense = async function(expenseId) {
+  const expense = businessExpenses.find(
+    item => String(item.id) === String(expenseId)
+  );
+
+  if (!expense) return;
+  if (!confirm(
+    `Delete "${expense.description}" for ${formatSgdMoney(expense.amount)}?`
+  )) return;
+
+  const { error } = await supabase
+    .from("business_expenses")
+    .delete()
+    .eq("id", expenseId);
+
+  if (error) {
+    console.error("Unable to delete business expense:", error);
+    alert("Unable to delete the expense. Please try again.");
+    return;
+  }
+
+  await loadBusinessExpenses();
+  renderFinanceWorkspace();
+};
+
 function renderOrders(orders) {
   const searchText = orderSearch.value.toLowerCase();
   const orderViewValue = orderViewFilter.value;
@@ -2143,7 +2638,7 @@ function renderOrders(orders) {
         <p><strong>Order Reference</strong><br>${orderRef}</p>
 
         <p><strong>Collection Method</strong><br>${getMethodLabel(order.collection_method)}</p>
-        ${order.collection_method === "pickup" ? `
+        ${order.collection_method !== "delivery" ? `
           <p>
             <strong>Pickup Appointment</strong><br>
             ${order.pickup_scheduled_date
@@ -2167,7 +2662,7 @@ function renderOrders(orders) {
             : `
               <p class="full-row">
                 <strong>Pickup Location</strong><br>
-                Woodlands MRT
+                ${escapeAdminHtml(getPickupLocation(order.collection_method))}
               </p>
             `
         }
@@ -2259,7 +2754,7 @@ function renderOrders(orders) {
         ` : ""}
 
         ${whatsappHref &&
-          order.collection_method === "pickup" &&
+          order.collection_method !== "delivery" &&
           order.status === "Ready for Pickup/Delivery" ? `
           <button
             type="button"
@@ -2381,6 +2876,37 @@ function getKeycapInventoryName(
 }
 
 async function loadInventoryItems() {
+  if (IS_ADMIN_PREVIEW) {
+    inventoryItems = {
+      "Mechanical Switch": {
+        id: 1,
+        qty: 128,
+        category: "Hardware"
+      },
+      "Key Ring": {
+        id: 2,
+        qty: 42,
+        category: "Hardware"
+      },
+      "Jump Ring": {
+        id: 3,
+        qty: 64,
+        category: "Hardware"
+      },
+      "Jade White Ribbed Base": {
+        id: 4,
+        qty: 9,
+        category: "Base"
+      },
+      "Pink Cap + Jade White Letter - A": {
+        id: 5,
+        qty: 6,
+        category: "Keycap"
+      }
+    };
+    return;
+  }
+
   const { data, error } = await supabase
     .from("inventory_items")
     .select("*");
@@ -2403,6 +2929,18 @@ async function loadInventoryItems() {
 }
 
 async function loadClearanceInventory() {
+  if (IS_ADMIN_PREVIEW) {
+    clearanceInventoryItems = {
+      "Pink Cap + Jade White Letter - S": {
+        id: 1,
+        qty: 4,
+        latestOrderRef: "Preview",
+        reason: "Small cosmetic mark"
+      }
+    };
+    return;
+  }
+
   const { data, error } = await supabase
     .from("clearance_inventory")
     .select("*")
@@ -2426,18 +2964,67 @@ async function loadClearanceInventory() {
   });
 }
 
-window.removeOneClearanceItem = async function(itemName) {
+async function loadProductionJobs() {
+  if (IS_ADMIN_PREVIEW) {
+    productionJobsLoadFailed = false;
+    productionJobs = [
+      {
+        id: 1,
+        item_name: "Jade White Ribbed Base",
+        category: "Base",
+        quantity: 4,
+        stage: "printing",
+        started_at: new Date().toISOString()
+      },
+      {
+        id: 2,
+        item_name: "Pink Cap + Jade White Letter - A",
+        category: "Keycap",
+        quantity: 3,
+        stage: "picked",
+        started_at: new Date(Date.now() - 3600000).toISOString(),
+        picked_at: new Date().toISOString()
+      }
+    ];
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("production_jobs")
+    .select("*")
+    .order("started_at", { ascending: true });
+
+  productionJobsLoadFailed = Boolean(error);
+
+  if (error) {
+    console.warn("Unable to load production workflow:", error);
+    productionJobs = [];
+    return;
+  }
+
+  productionJobs = data || [];
+}
+
+window.removeClearanceInventory = async function(itemName, qtyToRemove = 1) {
   const item = clearanceInventoryItems[itemName];
 
   if (!item?.qty) return;
 
-  if (!confirm(`Remove one ${itemName} from clearance stock?`)) return;
+  const validation = validateInventoryDecrement(item.qty, qtyToRemove);
+
+  if (!validation.valid) {
+    alert(validation.message);
+    return;
+  }
+
+  const qty = Number(qtyToRemove);
+  if (!confirm(`Remove ${qty} ${itemName} from clearance stock?`)) return;
 
   const { error } = await supabase.rpc(
     "adjust_clearance_inventory",
     {
       p_item_name: itemName,
-      p_change: -1
+      p_change: -qty
     }
   );
 
@@ -2457,16 +3044,24 @@ window.removeOneClearanceItem = async function(itemName) {
   }
 };
 
+window.removeOneClearanceItem = itemName =>
+  window.removeClearanceInventory(itemName, 1);
+
 function getInventoryQty(itemName) {
   return inventoryItems[itemName]?.qty || 0;
 }
 
-async function addInventory(itemName, qtyToAdd, category) {
+async function addInventory(
+  itemName,
+  qtyToAdd,
+  category,
+  shouldRender = true
+) {
   const qty = Number(qtyToAdd);
 
   if (!Number.isInteger(qty) || qty <= 0) {
     alert("Please enter a valid quantity.");
-    return;
+    return false;
   }
 
   await loadInventoryItems();
@@ -2488,7 +3083,7 @@ async function addInventory(itemName, qtyToAdd, category) {
     if (error) {
       console.error(error);
       alert(`Unable to update ${itemName}.`);
-      return;
+      return false;
     }
   } else {
     const { error } = await supabase
@@ -2503,41 +3098,63 @@ async function addInventory(itemName, qtyToAdd, category) {
     if (error) {
       console.error(error);
       alert(`Unable to create ${itemName}.`);
-      return;
+      return false;
     }
   }
 
-  if (currentView === "inventory") {
-    await renderInventoryWorkspace();
-  } else {
-    await renderProductionPlanner(latestOrders);
+  if (shouldRender) {
+    if (currentView === "inventory") {
+      await renderInventoryWorkspace();
+    } else {
+      await renderProductionPlanner(latestOrders);
+    }
   }
+
+  return true;
 }
 
-window.removeOneInventoryItem = async function(itemName) {
+window.removeInventory = async function(itemName, qtyToRemove = 1) {
   await loadInventoryItems();
 
   const item = inventoryItems[itemName];
   if (!item || item.qty <= 0) return;
 
-  if (!confirm(`Remove one ${itemName} from normal stock?`)) return;
+  const validation = validateInventoryDecrement(item.qty, qtyToRemove);
 
-  const { error } = await supabase
+  if (!validation.valid) {
+    alert(validation.message);
+    return;
+  }
+
+  const qty = Number(qtyToRemove);
+  if (!confirm(`Subtract ${qty} ${itemName} from normal stock?`)) return;
+
+  const { data, error } = await supabase
     .from("inventory_items")
     .update({
-      qty: item.qty - 1,
+      qty: validation.newQty,
       updated_at: new Date().toISOString()
     })
-    .eq("id", item.id);
+    .eq("id", item.id)
+    .gte("qty", qty)
+    .select("id, qty")
+    .maybeSingle();
 
-  if (error) {
+  if (error || !data) {
     console.error("Unable to reduce inventory:", error);
-    alert(`Unable to update ${itemName}.`);
+    alert(
+      data
+        ? `Unable to update ${itemName}.`
+        : `${itemName} changed before this update. Refresh and try again.`
+    );
     return;
   }
 
   await renderInventoryWorkspace();
 };
+
+window.removeOneInventoryItem = itemName =>
+  window.removeInventory(itemName, 1);
 
 async function addCustomInventory(itemName, qtyToAdd, category) {
   const qty = Number(qtyToAdd);
@@ -2553,6 +3170,133 @@ async function addCustomInventory(itemName, qtyToAdd, category) {
 window.addCustomInventory = addCustomInventory;
 
 window.addInventory = addInventory;
+
+window.setProductionStageView = async function(stage) {
+  if (!["queue", "printing", "picked"].includes(stage)) return;
+  productionStageView = stage;
+  await renderProductionPlanner(latestOrders);
+};
+
+window.setProductionQueueView = async function(view) {
+  if (!["timeline", "bases", "keycaps"].includes(view)) return;
+  productionQueueView = view;
+  await renderProductionPlanner(latestOrders);
+};
+
+window.startProductionJob = async function(
+  itemName,
+  qtyToPrint,
+  category
+) {
+  const quantity = Number(qtyToPrint);
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    alert("Please enter a whole number greater than zero.");
+    return;
+  }
+
+  if (productionJobsLoadFailed) {
+    alert(
+      "Set up the production workflow in Supabase before tracking prints."
+    );
+    return;
+  }
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .insert({
+      item_name: itemName,
+      category,
+      quantity,
+      stage: "printing",
+      updated_at: new Date().toISOString()
+    });
+
+  if (error) {
+    console.error("Unable to start production job:", error);
+    alert("Unable to move this item to Printing.");
+    return;
+  }
+
+  productionStageView = "printing";
+  await renderProductionPlanner(latestOrders);
+};
+
+window.updateProductionJobStage = async function(jobId, stage) {
+  if (!["printing", "picked"].includes(stage)) return;
+
+  const updates = {
+    stage,
+    picked_at: stage === "picked" ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .update(updates)
+    .eq("id", jobId);
+
+  if (error) {
+    console.error("Unable to update production job:", error);
+    alert("Unable to update this print stage.");
+    return;
+  }
+
+  productionStageView = stage;
+  await renderProductionPlanner(latestOrders);
+};
+
+window.cancelProductionJob = async function(jobId) {
+  const job = productionJobs.find(
+    item => String(item.id) === String(jobId)
+  );
+  if (!job) return;
+
+  if (!confirm(
+    `Move ${job.quantity} × ${job.item_name} back to To Print?`
+  )) return;
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .delete()
+    .eq("id", jobId);
+
+  if (error) {
+    console.error("Unable to cancel production job:", error);
+    alert("Unable to return this item to the print queue.");
+    return;
+  }
+
+  productionStageView = "queue";
+  await renderProductionPlanner(latestOrders);
+};
+
+window.completeProductionJob = async function(jobId) {
+  const job = productionJobs.find(
+    item => String(item.id) === String(jobId)
+  );
+  if (!job || job.stage !== "picked") return;
+
+  const { error } = await supabase.rpc(
+    "complete_production_job",
+    { p_job_id: jobId }
+  );
+
+  if (error) {
+    console.error("Unable to add completed print to inventory:", error);
+    alert(
+      "Unable to add this print to inventory.\n\n" +
+      "Run supabase/production-workflow.sql once, then try again."
+    );
+    return;
+  }
+
+  await Promise.all([
+    loadInventoryItems(),
+    loadProductionJobs()
+  ]);
+  await renderProductionPlanner(latestOrders);
+};
 
 function getProductionSummary(orders) {
   const baseTotals = {};
@@ -3477,6 +4221,148 @@ function planAmsLiteKeycapPlates(combinationCards) {
 
   return plates;
 }
+
+window.startKeycapCombination = async function(jobId, button) {
+  const combination = productionStlJobs.get(jobId);
+
+  if (!combination) {
+    alert(
+      "This keycap combination is no longer available. Please refresh Production."
+    );
+    return;
+  }
+
+  if (productionJobsLoadFailed) {
+    alert(
+      "Set up the production workflow in Supabase before tracking prints."
+    );
+    return;
+  }
+
+  const jobs = [];
+
+  for (const row of combination.rows || []) {
+    const input = document.getElementById(row.inputId);
+    const quantity = Number(input?.value ?? row.toPrint ?? 0);
+
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      alert(
+        "Every combination quantity must be a whole number of zero or more."
+      );
+      return;
+    }
+
+    if (quantity > 0) {
+      jobs.push({
+        item_name: row.itemName,
+        category: "Keycap",
+        quantity,
+        stage: "printing",
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  if (!jobs.length) {
+    alert("This combination has no remaining quantities to print.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Start Printing";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Moving…";
+  }
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .insert(jobs);
+
+  if (error) {
+    console.error("Unable to start keycap combination:", error);
+    alert("Unable to move this keycap combination to Printing.");
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  productionStageView = "printing";
+  await renderProductionPlanner(latestOrders);
+};
+
+window.startAmsLitePlate = async function(plateId, button) {
+  const plate = productionAmsPlateJobs.get(plateId);
+
+  if (!plate) {
+    alert(
+      "This AMS Lite plate is no longer available. Please refresh Production."
+    );
+    return;
+  }
+
+  if (productionJobsLoadFailed) {
+    alert(
+      "Set up the production workflow in Supabase before tracking prints."
+    );
+    return;
+  }
+
+  const jobs = [];
+
+  for (const item of plate.items || []) {
+    const input = document.getElementById(item.inputId);
+    const quantity = Number(input?.value ?? item.toPrint ?? 0);
+
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      alert("Every plate quantity must be a whole number of zero or more.");
+      return;
+    }
+
+    if (quantity > 0) {
+      jobs.push({
+        item_name: item.itemName,
+        category: "Keycap",
+        quantity,
+        stage: "printing",
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  if (!jobs.length) {
+    alert("This AMS Lite plate has no remaining quantities to print.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Start Printing";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Moving plate…";
+  }
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .insert(jobs);
+
+  if (error) {
+    console.error("Unable to start AMS Lite plate:", error);
+    alert("Unable to move this AMS Lite plate to Printing.");
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  productionStageView = "printing";
+  await renderProductionPlanner(latestOrders);
+};
 
 window.downloadAmsLitePlateStls = async function(plateId, button) {
   const plate = productionAmsPlateJobs.get(plateId);
@@ -4410,7 +5296,7 @@ async function renderInventoryWorkspace() {
   );
 
   const renderStockRows = rows => rows.map(item => {
-    const inputId = `inventory-add-${encodeURIComponent(item.itemName)}`;
+    const inputId = `inventory-adjust-${encodeURIComponent(item.itemName)}`;
 
     return `
       <div class="inventory-stock-row">
@@ -4436,8 +5322,20 @@ async function renderInventoryWorkspace() {
             type="number"
             min="1"
             value="1"
-            aria-label="Quantity to add"
+            aria-label="Quantity to adjust"
           >
+
+          <button
+            type="button"
+            class="inventory-bulk-minus-btn"
+            ${item.qty <= 0 ? "disabled" : ""}
+            onclick='window.removeInventory(
+              ${JSON.stringify(item.itemName)},
+              document.getElementById(${JSON.stringify(inputId)}).value
+            )'
+          >
+            Minus
+          </button>
 
           <button
             type="button"
@@ -4457,7 +5355,11 @@ async function renderInventoryWorkspace() {
 
   const clearanceRows = Object.entries(clearanceInventoryItems)
     .filter(([, item]) => item.qty > 0)
-    .map(([itemName, item]) => `
+    .map(([itemName, item]) => {
+      const inputId =
+        `clearance-adjust-${encodeURIComponent(itemName)}`;
+
+      return `
       <div class="inventory-stock-row clearance-row">
         <div class="inventory-item-copy">
           <strong>${escapeAdminHtml(itemName)}</strong>
@@ -4469,17 +5371,38 @@ async function renderInventoryWorkspace() {
 
         <span class="inventory-quantity clearance-quantity">${item.qty}</span>
 
-        <div class="inventory-row-actions single-action">
+        <div class="inventory-row-actions">
           <button
             type="button"
-            class="clearance-remove-btn"
+            class="inventory-minus-btn"
             onclick='window.removeOneClearanceItem(${JSON.stringify(itemName)})'
           >
-            Remove One
+            -1
+          </button>
+
+          <input
+            id="${inputId}"
+            type="number"
+            min="1"
+            max="${item.qty}"
+            value="1"
+            aria-label="Clearance quantity to remove"
+          >
+
+          <button
+            type="button"
+            class="inventory-bulk-minus-btn clearance-remove-btn"
+            onclick='window.removeClearanceInventory(
+              ${JSON.stringify(itemName)},
+              document.getElementById(${JSON.stringify(inputId)}).value
+            )'
+          >
+            Remove
           </button>
         </div>
       </div>
-    `)
+    `;
+    })
     .join("");
 
   const normalTotal = allNormalItems.reduce(
@@ -4662,7 +5585,10 @@ async function renderInventoryWorkspace() {
 }
 
 async function renderProductionPlanner(orders) {
-  await loadInventoryItems();
+  await Promise.all([
+    loadInventoryItems(),
+    loadProductionJobs()
+  ]);
 
   const { baseTotals, keycapGroups, count } = getProductionSummary(orders);
   const productionTimelineOrders = getProductionTimelineOrders(orders);
@@ -4677,9 +5603,17 @@ async function renderProductionPlanner(orders) {
       );
       const need = item.qty;
       const stock = getInventoryQty(itemName);
-      const toPrint = Math.max(0, need - stock);
+      const tracked = getTrackedProductionQuantity(
+        productionJobs,
+        itemName
+      );
+      const toPrint = calculateQueuedProductionQuantity(
+        need,
+        stock,
+        tracked
+      );
 
-      return { ...item, itemName, need, stock, toPrint };
+      return { ...item, itemName, need, stock, tracked, toPrint };
     })
     .filter(item => item.toPrint > 0);
 
@@ -4719,9 +5653,17 @@ async function renderProductionPlanner(orders) {
         );
         const need = qty;
         const stock = getInventoryQty(itemName);
-        const toPrint = Math.max(0, need - stock);
+        const tracked = getTrackedProductionQuantity(
+          productionJobs,
+          itemName
+        );
+        const toPrint = calculateQueuedProductionQuantity(
+          need,
+          stock,
+          tracked
+        );
 
-        return { letter, itemName, need, stock, toPrint };
+        return { letter, itemName, need, stock, tracked, toPrint };
       });
 
     const rows = allRows.filter(row => row.toPrint > 0);
@@ -4745,6 +5687,7 @@ async function renderProductionPlanner(orders) {
       fileName: `${group.capName}-cap_${group.letterName}-letter`,
       rows: rows.map(row => ({
         letter: row.letter,
+        itemName: row.itemName,
         toPrint: row.toPrint,
         inputId: `printQty-${encodeURIComponent(row.itemName)}`,
         capName: group.capName,
@@ -4760,6 +5703,7 @@ async function renderProductionPlanner(orders) {
       stlJobId,
       rows: rows.map(row => ({
         letter: row.letter,
+        itemName: row.itemName,
         toPrint: row.toPrint,
         inputId: `printQty-${encodeURIComponent(row.itemName)}`,
         capName: group.capName,
@@ -4822,7 +5766,9 @@ async function renderProductionPlanner(orders) {
             <div style="flex:1;">
               <strong>${displayIcon(row.letter)}</strong>
               <p class="hint">
-                Need: ${row.need} · Stock: ${row.stock} · To Print: ${row.toPrint}
+                Need: ${row.need} · Stock: ${row.stock}
+                ${row.tracked ? ` · Tracked: ${row.tracked}` : ""}
+                · To Print: ${row.toPrint}
               </p>
             </div>
 
@@ -4836,13 +5782,14 @@ async function renderProductionPlanner(orders) {
 
               <button
                 class="ready-btn"
-                onclick='window.addCustomInventory(
+                ${productionJobsLoadFailed ? "disabled" : ""}
+                onclick='window.startProductionJob(
                   ${JSON.stringify(row.itemName)},
                   document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(row.itemName)}`)}).value,
                   "Keycap"
                 )'
               >
-                Add Printed
+                Start Printing
               </button>
             </div>
           </div>
@@ -4865,52 +5812,6 @@ async function renderProductionPlanner(orders) {
     `
     };
   }).filter(Boolean);
-
-  const capColourGroups = new Map();
-
-  keycapCombinationCards.forEach(card => {
-    const capKey = `${card.capName}|${card.capHex}`;
-
-    if (!capColourGroups.has(capKey)) {
-      capColourGroups.set(capKey, {
-        capName: card.capName,
-        capHex: card.capHex,
-        cards: []
-      });
-    }
-
-    capColourGroups.get(capKey).cards.push(card.html);
-  });
-
-  const keycapGroupHtml = Array.from(capColourGroups.values())
-    .sort((a, b) => String(a.capName).localeCompare(String(b.capName)))
-    .map(group => `
-      <details
-        class="cap-colour-section"
-        data-collapse-key="${encodeURIComponent(`cap-colour-${group.capName}`)}"
-        open
-      >
-        <summary class="cap-colour-heading">
-          <span
-            class="cap-colour-swatch"
-            style="background:${group.capHex};"
-          ></span>
-
-          <div>
-            <h3>${group.capName} Caps</h3>
-            <p class="hint">
-              Exact combinations grouped by cap colour. Download them
-              individually or follow an AMS suggestion above.
-            </p>
-          </div>
-        </summary>
-
-        <div class="keycap-grid">
-          ${group.cards.join("")}
-        </div>
-      </details>
-    `)
-    .join("");
 
   productionAmsPlateJobs.clear();
   const amsLitePlates = planAmsLiteKeycapPlates(
@@ -4944,6 +5845,13 @@ async function renderProductionPlanner(orders) {
             productionAmsPlateJobs.set(plateId, {
               combinationJobIds: plate.combinations.map(
                 combination => combination.stlJobId
+              ),
+              items: plate.combinations.flatMap(combination =>
+                combination.rows.map(row => ({
+                  itemName: row.itemName,
+                  inputId: row.inputId,
+                  toPrint: row.toPrint
+                }))
               )
             });
 
@@ -4984,13 +5892,23 @@ async function renderProductionPlanner(orders) {
                         </small>
                       </div>
 
-                      <button
-                        type="button"
-                        class="stl-download-btn"
-                        onclick="window.generateKeycapCombinationStl('${combination.stlJobId}', this)"
-                      >
-                        STL
-                      </button>
+                      <div class="ams-combination-actions">
+                        <button
+                          type="button"
+                          class="stl-download-btn"
+                          onclick="window.generateKeycapCombinationStl('${combination.stlJobId}', this)"
+                        >
+                          STL
+                        </button>
+                        <button
+                          type="button"
+                          class="ams-combination-start-btn"
+                          ${productionJobsLoadFailed ? "disabled" : ""}
+                          onclick="window.startKeycapCombination('${combination.stlJobId}', this)"
+                        >
+                          Start Printing
+                        </button>
+                      </div>
                     </div>
                   `).join("")}
                 </div>
@@ -5002,13 +5920,24 @@ async function renderProductionPlanner(orders) {
                   </p>
                 ` : ""}
 
-                <button
-                  type="button"
-                  class="ready-btn ams-download-all-btn"
-                  onclick="window.downloadAmsLitePlateStls('${plateId}', this)"
-                >
-                  Download ${plate.combinations.length} Plate STL${plate.combinations.length === 1 ? "" : "s"}
-                </button>
+                <div class="ams-plate-actions">
+                  <button
+                    type="button"
+                    class="ready-btn ams-download-all-btn"
+                    onclick="window.downloadAmsLitePlateStls('${plateId}', this)"
+                  >
+                    Download ${plate.combinations.length} Plate STL${plate.combinations.length === 1 ? "" : "s"}
+                  </button>
+
+                  <button
+                    type="button"
+                    class="ready-btn ams-start-printing-btn"
+                    ${productionJobsLoadFailed ? "disabled" : ""}
+                    onclick="window.startAmsLitePlate('${plateId}', this)"
+                  >
+                    Start Printing
+                  </button>
+                </div>
               </article>
             `;
           }).join("")}
@@ -5255,6 +6184,126 @@ async function renderProductionPlanner(orders) {
     </section>
   `;
 
+  const printingJobs = productionJobs.filter(
+    job => job.stage === "printing"
+  );
+  const pickedJobs = productionJobs.filter(
+    job => job.stage === "picked"
+  );
+  const baseQueuedPieces = baseRows.reduce(
+    (sum, item) => sum + item.toPrint,
+    0
+  );
+  const keycapQueuedPieces = keycapCombinationCards.reduce(
+    (sum, card) =>
+      sum + card.rows.reduce(
+        (rowSum, row) => rowSum + row.toPrint,
+        0
+      ),
+    0
+  );
+  const queuedPieces = baseQueuedPieces + keycapQueuedPieces;
+
+  const renderTrackedJobCards = (jobs, stage) => `
+    <section class="production-stage-panel">
+      <div class="production-stage-heading">
+        <div>
+          <p>${stage === "printing" ? "Currently on a printer" : "Finished printing"}</p>
+          <h3>${stage === "printing" ? "Printing Now" : "Picked & Ready"}</h3>
+        </div>
+        <strong>
+          ${jobs.reduce((sum, job) => sum + Number(job.quantity || 0), 0)}
+          piece${jobs.reduce((sum, job) => sum + Number(job.quantity || 0), 0) === 1 ? "" : "s"}
+        </strong>
+      </div>
+
+      ${jobs.length ? `
+        <div class="production-job-grid">
+          ${jobs.map(job => `
+            <article class="production-job-card stage-${stage}">
+              <div class="production-job-icon" aria-hidden="true">
+                ${job.category === "Base" ? "◯" : "A"}
+              </div>
+
+              <div class="production-job-copy">
+                <span>${escapeAdminHtml(job.category)}</span>
+                <h4>${escapeAdminHtml(job.item_name)}</h4>
+                <p>
+                  ${stage === "printing" ? "Started" : "Picked"}
+                  ${formatDateTime(
+                    stage === "printing"
+                      ? job.started_at
+                      : job.picked_at || job.updated_at
+                  )}
+                </p>
+              </div>
+
+              <strong class="production-job-quantity">
+                × ${Number(job.quantity || 0)}
+              </strong>
+
+              <div class="production-job-actions">
+                ${stage === "printing" ? `
+                  <button
+                    type="button"
+                    class="production-stage-primary"
+                    onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'picked')"
+                  >
+                    Picked from Printer
+                  </button>
+                  <button
+                    type="button"
+                    class="production-stage-secondary"
+                    onclick="window.cancelProductionJob(${JSON.stringify(job.id)})"
+                  >
+                    Back to To Print
+                  </button>
+                ` : `
+                  <button
+                    type="button"
+                    class="production-stage-primary inventory-action"
+                    onclick="window.completeProductionJob(${JSON.stringify(job.id)})"
+                  >
+                    Add to Inventory
+                  </button>
+                  <button
+                    type="button"
+                    class="production-stage-secondary"
+                    onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'printing')"
+                  >
+                    Back to Printing
+                  </button>
+                `}
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      ` : `
+        <div class="production-stage-empty">
+          <span>${stage === "printing" ? "🖨️" : "📦"}</span>
+          <h3>
+            ${stage === "printing"
+              ? "Nothing is marked as printing"
+              : "No finished prints are waiting"
+            }
+          </h3>
+          <p>
+            ${stage === "printing"
+              ? "Start an item from the To Print tab and it will stay here until you pick it."
+              : "Use “Picked from Printer” when a print finishes, then add it to inventory here."
+            }
+          </p>
+        </div>
+      `}
+    </section>
+  `;
+
+  const trackedStagePanel = productionStageView === "printing"
+    ? renderTrackedJobCards(printingJobs, "printing")
+    : productionStageView === "picked"
+      ? renderTrackedJobCards(pickedJobs, "picked")
+      : "";
+
   ordersContainer.innerHTML = `
     <div class="production-card">
       <div class="production-header">
@@ -5266,77 +6315,148 @@ async function renderProductionPlanner(orders) {
         <p class="active-count">${count} active order(s)</p>
       </div>
 
-      ${productionTimelinePanel}
+      ${productionJobsLoadFailed ? `
+        <div class="production-workflow-setup" role="alert">
+          Run <strong>supabase/production-workflow.sql</strong> once to
+          enable persistent Printing and Picked tracking.
+        </div>
+      ` : ""}
 
-      <h3>Base Printing</h3>
+      <nav class="production-stage-tabs" aria-label="Production stages">
+        <button
+          type="button"
+          class="${productionStageView === "queue" ? "active" : ""}"
+          onclick="window.setProductionStageView('queue')"
+        >
+          <span>To Print</span>
+          <strong>${queuedPieces}</strong>
+        </button>
+        <button
+          type="button"
+          class="${productionStageView === "printing" ? "active" : ""}"
+          onclick="window.setProductionStageView('printing')"
+        >
+          <span>Printing</span>
+          <strong>${printingJobs.length}</strong>
+        </button>
+        <button
+          type="button"
+          class="${productionStageView === "picked" ? "active" : ""}"
+          onclick="window.setProductionStageView('picked')"
+        >
+          <span>Picked / Ready</span>
+          <strong>${pickedJobs.length}</strong>
+        </button>
+      </nav>
 
-      <div class="base-shape-grid">
-        ${baseShapeGroups.map(group => {
-          const piecesLeft = group.rows.reduce((sum, item) => sum + item.toPrint, 0);
+      <div class="production-queue-panel ${productionStageView === "queue" ? "" : "hidden"}">
+        <nav class="production-queue-tabs" aria-label="To print sections">
+          <button
+            type="button"
+            class="${productionQueueView === "timeline" ? "active" : ""}"
+            onclick="window.setProductionQueueView('timeline')"
+          >
+            <span>Production Timeline</span>
+            <strong>${productionTimelineOrders.length}</strong>
+          </button>
+          <button
+            type="button"
+            class="${productionQueueView === "bases" ? "active" : ""}"
+            onclick="window.setProductionQueueView('bases')"
+          >
+            <span>Base Printing</span>
+            <strong>${baseQueuedPieces}</strong>
+          </button>
+          <button
+            type="button"
+            class="${productionQueueView === "keycaps" ? "active" : ""}"
+            onclick="window.setProductionQueueView('keycaps')"
+          >
+            <span>Keycaps Printing</span>
+            <strong>${keycapQueuedPieces}</strong>
+          </button>
+        </nav>
 
-          return `
-            <details
-              class="print-group base-shape-group base-shape-${group.key}"
-              data-collapse-key="base-${group.key}"
-              open
-            >
-              <summary class="base-shape-heading">
-                <div>
-                  <h4>${group.label}</h4>
-                  <p class="hint">${piecesLeft} piece${piecesLeft === 1 ? "" : "s"} left to print</p>
-                </div>
-              </summary>
+        <div class="production-queue-section ${productionQueueView === "timeline" ? "" : "hidden"}">
+          ${productionTimelinePanel}
+        </div>
 
-              ${group.rows.map(item => `
-                <div class="print-check-row">
-                  <span class="colour-dot" style="background:${item.hex}"></span>
+        <div class="production-queue-section ${productionQueueView === "bases" ? "" : "hidden"}">
+          <h3>Base Printing</h3>
 
-                  <div style="flex:1;">
-                    <strong>${item.itemName}</strong>
-                    <p class="hint">
-                      Need: ${item.need} · Stock: ${item.stock} · To Print: ${item.toPrint}
-                    </p>
-                  </div>
+          <div class="base-shape-grid">
+            ${baseShapeGroups.map(group => {
+              const piecesLeft = group.rows.reduce((sum, item) => sum + item.toPrint, 0);
 
-                  <div class="print-qty-control">
-                    <input
-                      type="number"
-                      min="1"
-                      value="${item.toPrint}"
-                      id="printQty-${encodeURIComponent(item.itemName)}"
-                    >
+              return `
+                <details
+                  class="print-group base-shape-group base-shape-${group.key}"
+                  data-collapse-key="base-${group.key}"
+                  open
+                >
+                  <summary class="base-shape-heading">
+                    <div>
+                      <h4>${group.label}</h4>
+                      <p class="hint">${piecesLeft} piece${piecesLeft === 1 ? "" : "s"} left to print</p>
+                    </div>
+                  </summary>
 
-                    <button
-                      class="ready-btn"
-                      onclick='window.addCustomInventory(
-                        ${JSON.stringify(item.itemName)},
-                        document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(item.itemName)}`)}).value,
-                        "Base"
-                      )'
-                    >
-                      Add Printed
-                    </button>
+                  ${group.rows.map(item => `
+                    <div class="print-check-row">
+                      <span class="colour-dot" style="background:${item.hex}"></span>
 
-                    <button
-                      type="button"
-                      class="stl-download-btn"
-                      onclick="window.generateBaseColourStl('${item.stlJobId}', this)"
-                    >
-                      Download STL
-                    </button>
-                  </div>
-                </div>
-              `).join("") || `<p class="base-shape-complete">✓ No ${group.label.toLowerCase()} need printing.</p>`}
-            </details>
-          `;
-        }).join("")}
+                      <div style="flex:1;">
+                        <strong>${item.itemName}</strong>
+                        <p class="hint">
+                          Need: ${item.need} · Stock: ${item.stock}
+                          ${item.tracked ? ` · Tracked: ${item.tracked}` : ""}
+                          · To Print: ${item.toPrint}
+                        </p>
+                      </div>
+
+                      <div class="print-qty-control">
+                        <input
+                          type="number"
+                          min="1"
+                          value="${item.toPrint}"
+                          id="printQty-${encodeURIComponent(item.itemName)}"
+                        >
+
+                        <button
+                          class="ready-btn"
+                          ${productionJobsLoadFailed ? "disabled" : ""}
+                          onclick='window.startProductionJob(
+                            ${JSON.stringify(item.itemName)},
+                            document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(item.itemName)}`)}).value,
+                            "Base"
+                          )'
+                        >
+                          Start Printing
+                        </button>
+
+                        <button
+                          type="button"
+                          class="stl-download-btn"
+                          onclick="window.generateBaseColourStl('${item.stlJobId}', this)"
+                        >
+                          Download STL
+                        </button>
+                      </div>
+                    </div>
+                  `).join("") || `<p class="base-shape-complete">✓ No ${group.label.toLowerCase()} need printing.</p>`}
+                </details>
+              `;
+            }).join("")}
+          </div>
+        </div>
+
+        <div class="production-queue-section ${productionQueueView === "keycaps" ? "" : "hidden"}">
+          <h3>Keycaps Printing</h3>
+          ${amsLitePlanner || "<p>No keycaps need printing.</p>"}
+        </div>
       </div>
 
-      <h3>Keycap Printing</h3>
-
-      ${amsLitePlanner}
-
-      ${keycapGroupHtml || "<p>No keycaps need printing.</p>"}
+      ${trackedStagePanel}
     </div>
   `;
 
@@ -5557,7 +6677,8 @@ async function generateOrderPdfAttachment(order, items) {
         ${escapeEmailHtml(order.delivery_address || "-")}<br>
       `
     : `
-        <strong>Pickup location:</strong> Woodlands MRT<br>
+        <strong>Pickup location:</strong>
+        ${escapeEmailHtml(getPickupLocation(order.collection_method))}<br>
       `;
   const customerNotes =
     order.notes || order.preferred_time || "No additional notes";
@@ -5882,7 +7003,10 @@ async function generateCompactOrderPdfAttachment(order, items) {
   if (order.collection_method === "delivery") {
     drawWrappedDetail("Delivery address", order.delivery_address || "-");
   } else {
-    drawWrappedDetail("Pickup location", "Woodlands MRT");
+    drawWrappedDetail(
+      "Pickup location",
+      getPickupLocation(order.collection_method)
+    );
   }
 
   drawWrappedDetail(
@@ -6633,7 +7757,7 @@ window.copyPickupWhatsAppReminder = async function(id, button) {
     "#orderStatusSection";
   const customerName = String(order.customer_name || "there").trim();
   const message =
-    `Hi ${customerName}! Your Little Keeps order ${order.order_ref || ""} is ready for pickup at Woodlands MRT 🩷\n\n` +
+    `Hi ${customerName}! Your Little Keeps order ${order.order_ref || ""} is ready for pickup at ${getPickupLocation(order.collection_method)} 🩷\n\n` +
     `Please choose an available pickup date and time here:\n${manageUrl}\n\n` +
     `Enter the email used for your order. If you cannot find our ready email, please check your spam or junk folder too. Thank you!`;
 
@@ -6678,7 +7802,7 @@ function getStatusEmailContent(order, status) {
       : {
           title: "Your order is ready - choose your pickup time! 🩷",
           message: "Your personalised Little Keeps order has finished production, passed its quality check and is ready for collection.",
-          actionTitle: "Book your Woodlands MRT pickup",
+          actionTitle: `Book your ${getPickupLocation(order.collection_method)} pickup`,
           actionDetails: "Tap the pink button below, enter your order email, then choose an available pickup date and time range. Need to change it later? Use the same link to reschedule."
         };
   }
@@ -7007,6 +8131,16 @@ const newQty = currentQty - qtyToDeduct;
 }
 
 async function loadAdminSettings() {
+  if (IS_ADMIN_PREVIEW) {
+    adminSettingsLoaded = true;
+    adminSettingsLoadFailed = false;
+    adminReviewsLoadFailed = false;
+    adminShopSettings = { ...DEFAULT_ADMIN_SHOP_SETTINGS };
+    adminPromoCodes = [];
+    adminCustomerReviews = [];
+    return;
+  }
+
   const [
     { data: settings, error: settingsError },
     { data: promos, error: promosError },
@@ -7039,6 +8173,27 @@ async function loadAdminSettings() {
 async function loadOrders() {
   ordersContainer.innerHTML = `<p class="empty">Loading orders...</p>`;
 
+  if (IS_ADMIN_PREVIEW) {
+    latestOrders = [{
+      id: "preview-paid-order",
+      order_ref: "PREVIEW",
+      payment_type: "Paid",
+      total: 363.26,
+      refunded_amount: 0,
+      status: "Completed",
+      order_data: [],
+      created_at: new Date().toISOString()
+    }];
+    await Promise.all([
+      loadInventoryItems(),
+      loadAdminSettings(),
+      loadBusinessFinancials(),
+      loadBusinessExpenses()
+    ]);
+    renderCurrentView();
+    return;
+  }
+
   const { data, error } = await supabase
     .from("orders")
     .select("*")
@@ -7065,7 +8220,9 @@ latestOrders = (data || []).map(order =>
 
 await Promise.all([
   loadInventoryItems(),
-  loadAdminSettings()
+  loadAdminSettings(),
+  loadBusinessFinancials(),
+  loadBusinessExpenses()
 ]);
 
 renderCurrentView();
@@ -7081,6 +8238,7 @@ function setActiveTab(activeTab) {
     productionViewBtn.classList.remove("active");
     assemblyViewBtn.classList.remove("active");
     inventoryViewBtn.classList.remove("active");
+    financeViewBtn.classList.remove("active");
     settingsViewBtn.classList.remove("active");
 
     activeTab.classList.add("active");
@@ -7114,6 +8272,22 @@ assemblyViewBtn.onclick = () => {
 inventoryViewBtn.onclick = () => {
   currentView = "inventory";
   setActiveTab(inventoryViewBtn);
+  renderCurrentView();
+};
+
+financeViewBtn.onclick = async () => {
+  currentView = "finance";
+  setActiveTab(financeViewBtn);
+
+  if (!businessFinancialsLoaded || !businessExpensesLoaded) {
+    ordersContainer.innerHTML =
+      `<p class="empty">Loading business finances...</p>`;
+    await Promise.all([
+      loadBusinessFinancials(),
+      loadBusinessExpenses()
+    ]);
+  }
+
   renderCurrentView();
 };
 
