@@ -73,6 +73,45 @@ export function calculateQueuedProductionQuantity(
   return Math.max(0, required - inventory - tracked);
 }
 
+export function getProductionJobGroup(itemName, category) {
+  if (category === "Base") {
+    return {
+      key: "00-bases",
+      label: "Bases"
+    };
+  }
+
+  const capMatch = String(itemName || "")
+    .match(/^(.+?)\s+Cap\s*\+/i);
+  const capName = capMatch?.[1]?.trim();
+
+  return {
+    key: capName
+      ? `10-${capName.toLowerCase()}`
+      : "99-other-keycaps",
+    label: capName ? `${capName} Caps` : "Other Keycaps"
+  };
+}
+
+export function getDeliveryRouteGroup(deliveryAddress) {
+  const address = String(deliveryAddress || "");
+  const postalMatch = address.match(/(?:^|\D)(\d{6})(?:\D|$)/);
+  const postalCode = postalMatch?.[1] || "";
+  const sector = postalCode.slice(0, 2);
+
+  return {
+    key: sector ? `sector-${sector}` : "sector-unknown",
+    label: sector
+      ? `Nearby deliveries · Postal sector ${sector}`
+      : "Delivery addresses without a postal code",
+    note: sector
+      ? "Ordered by postal code for easier hand-delivery planning."
+      : "Add a six-digit postal code to include these in a nearby group.",
+    postalCode,
+    sortValue: sector ? Number(sector) : Number.MAX_SAFE_INTEGER
+  };
+}
+
 export function validateInventoryDecrement(currentQty, requestedQty) {
   const available = Number(currentQty);
   const requested = Number(requestedQty);

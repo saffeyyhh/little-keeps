@@ -11,6 +11,8 @@ import {
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
   calculatePaidOrderRevenue,
+  getDeliveryRouteGroup,
+  getProductionJobGroup,
   getTrackedProductionQuantity,
   validateInventoryDecrement
 } from "./admin-logic.js";
@@ -178,6 +180,23 @@ document.querySelector("#app").innerHTML = `
             <option value="no-charge">No payment needed</option>
           </select>
         </label>
+
+        <label>
+          <span>Fulfilment</span>
+          <select id="fulfilmentFilter">
+            <option value="all">Pickup & delivery</option>
+            <option value="pickup">Pickup only</option>
+            <option value="delivery">Delivery only</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Order Date</span>
+          <select id="orderDateSort">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+        </label>
       </div>
 
       <div id="orders">
@@ -207,6 +226,8 @@ const orderSearch = document.getElementById("orderSearch");
 const orderViewFilter = document.getElementById("orderViewFilter");
 const statusFilter = document.getElementById("statusFilter");
 const paymentFilter = document.getElementById("paymentFilter");
+const fulfilmentFilter = document.getElementById("fulfilmentFilter");
+const orderDateSort = document.getElementById("orderDateSort");
 
 const logoutBtn = document.getElementById("logoutBtn");
 
@@ -2561,6 +2582,8 @@ function renderOrders(orders) {
   const orderViewValue = orderViewFilter.value;
   const statusValue = statusFilter.value;
   const paymentValue = paymentFilter.value;
+  const fulfilmentValue = fulfilmentFilter.value;
+  const dateSortValue = orderDateSort.value;
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch =
@@ -2586,7 +2609,40 @@ function renderOrders(orders) {
         ? ["Free", "Giveaway", "Replacement"].includes(order.payment_type)
         : order.payment_type === paymentValue);
 
-    return matchesSearch && matchesOrderView && matchesStatus && matchesPayment;
+    const matchesFulfilment =
+      fulfilmentValue === "all" ||
+      (fulfilmentValue === "delivery"
+        ? order.collection_method === "delivery"
+        : order.collection_method !== "delivery");
+
+    return (
+      matchesSearch &&
+      matchesOrderView &&
+      matchesStatus &&
+      matchesPayment &&
+      matchesFulfilment
+    );
+  }).sort((a, b) => {
+    if (fulfilmentValue === "delivery") {
+      const aRoute = getDeliveryRouteGroup(a.delivery_address);
+      const bRoute = getDeliveryRouteGroup(b.delivery_address);
+      const routeDifference = aRoute.sortValue - bRoute.sortValue;
+
+      if (routeDifference) return routeDifference;
+
+      const postalDifference =
+        Number(aRoute.postalCode || Number.MAX_SAFE_INTEGER) -
+        Number(bRoute.postalCode || Number.MAX_SAFE_INTEGER);
+
+      if (postalDifference) return postalDifference;
+    }
+
+    const aDate = new Date(a.created_at || 0).getTime();
+    const bDate = new Date(b.created_at || 0).getTime();
+
+    return dateSortValue === "oldest"
+      ? aDate - bDate
+      : bDate - aDate;
   });
 
   if (!filteredOrders.length) {
@@ -2599,6 +2655,8 @@ function renderOrders(orders) {
     return;
   }
 
+  let previousRouteKey = "";
+
   ordersContainer.innerHTML = filteredOrders.map(order => {
     const due = getDuePresentation(order);
     const orderId = String(order.id);
@@ -2609,8 +2667,29 @@ function renderOrders(orders) {
     const keychainCount = getOrderKeychainCount(order);
     const characterCount = getOrderCharacterCount(order);
     const whatsappHref = getWhatsAppHref(order.customer_phone);
+    const routeGroup = getDeliveryRouteGroup(
+      order.delivery_address
+    );
+    const showRouteHeading =
+      fulfilmentValue === "delivery" &&
+      routeGroup.key !== previousRouteKey;
+
+    if (showRouteHeading) {
+      previousRouteKey = routeGroup.key;
+    }
 
     return `
+    ${showRouteHeading ? `
+      <div class="delivery-route-heading">
+        <div>
+          <span aria-hidden="true">⌖</span>
+          <div>
+            <h3>${escapeAdminHtml(routeGroup.label)}</h3>
+            <p>${escapeAdminHtml(routeGroup.note)}</p>
+          </div>
+        </div>
+      </div>
+    ` : ""}
     <details class="order-card ${due.className} ${order.archived_at ? "is-archived" : ""}" data-order-id="${escapeAdminHtml(orderId)}" data-status="${escapeAdminHtml(order.status || "")}">
       <summary class="order-summary">
         <div class="order-summary-customer">
@@ -2628,6 +2707,7 @@ function renderOrders(orders) {
           <strong>${formatMoney(order.total)}</strong>
           <span>${keychainCount} keychain${keychainCount === 1 ? "" : "s"}</span>
           <span>${characterCount} character${characterCount === 1 ? "" : "s"} · ${getMethodLabel(order.collection_method)}</span>
+          <span>Ordered ${formatDate(order.created_at)}</span>
         </div>
       </summary>
 
@@ -3242,7 +3322,152 @@ window.updateProductionJobStage = async function(jobId, stage) {
     return;
   }
 
-  productionStageView = stage;
+  await renderProductionPlanner(latestOrders);
+};
+
+window.syncProductionJobSelection = function() {
+  const checkboxes = Array.from(
+    document.querySelectorAll("[data-production-job-select]")
+  );
+  const selectedCount = checkboxes.filter(
+    checkbox => checkbox.checked
+  ).length;
+  const selectAll = document.getElementById(
+    "selectAllProductionJobs"
+  );
+  const actionButton = document.getElementById(
+    "productionBulkAction"
+  );
+
+  if (selectAll) {
+    selectAll.checked =
+      checkboxes.length > 0 &&
+      selectedCount === checkboxes.length;
+    selectAll.indeterminate =
+      selectedCount > 0 &&
+      selectedCount < checkboxes.length;
+  }
+
+  if (actionButton) {
+    const actionStage = actionButton.dataset.stage;
+    actionButton.disabled = selectedCount === 0;
+    actionButton.textContent = actionStage === "picked"
+      ? selectedCount
+        ? `Add ${selectedCount} Selected to Inventory`
+        : "Add Selected to Inventory"
+      : selectedCount
+        ? `Mark ${selectedCount} Selected as Picked`
+        : "Mark Selected as Picked";
+  }
+};
+
+window.toggleAllProductionJobs = function(checked) {
+  document
+    .querySelectorAll("[data-production-job-select]")
+    .forEach(checkbox => {
+      checkbox.checked = checked;
+    });
+
+  window.syncProductionJobSelection();
+};
+
+window.markSelectedProductionJobsPicked = async function(button) {
+  const selectedIds = Array.from(
+    document.querySelectorAll(
+      "[data-production-job-select]:checked"
+    )
+  ).map(checkbox => checkbox.value);
+
+  if (!selectedIds.length) return;
+
+  const selectedJobs = productionJobs.filter(job =>
+    selectedIds.includes(String(job.id))
+  );
+
+  if (!selectedJobs.length) return;
+
+  const previousLabel =
+    button?.textContent || "Mark Selected as Picked";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Updating…";
+  }
+
+  const timestamp = new Date().toISOString();
+  const { error } = await supabase
+    .from("production_jobs")
+    .update({
+      stage: "picked",
+      picked_at: timestamp,
+      updated_at: timestamp
+    })
+    .in("id", selectedJobs.map(job => job.id));
+
+  if (error) {
+    console.error("Unable to update selected print jobs:", error);
+    alert("Unable to mark the selected prints as picked.");
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  await renderProductionPlanner(latestOrders);
+};
+
+window.addSelectedProductionJobsToInventory = async function(button) {
+  const selectedIds = Array.from(
+    document.querySelectorAll(
+      "[data-production-job-select]:checked"
+    )
+  ).map(checkbox => checkbox.value);
+
+  if (!selectedIds.length) return;
+
+  const selectedJobs = productionJobs.filter(job =>
+    job.stage === "picked" &&
+    selectedIds.includes(String(job.id))
+  );
+
+  if (!selectedJobs.length) return;
+
+  const previousLabel =
+    button?.textContent || "Add Selected to Inventory";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Adding to Inventory…";
+  }
+
+  const { error } = await supabase.rpc(
+    "complete_production_jobs",
+    { p_job_ids: selectedJobs.map(job => job.id) }
+  );
+
+  if (error) {
+    console.error(
+      "Unable to add selected prints to inventory:",
+      error
+    );
+    alert(
+      "Unable to add the selected prints to inventory.\n\n" +
+      "Run the latest supabase/production-workflow.sql, then try again."
+    );
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  await Promise.all([
+    loadInventoryItems(),
+    loadProductionJobs()
+  ]);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -6204,99 +6429,186 @@ async function renderProductionPlanner(orders) {
   );
   const queuedPieces = baseQueuedPieces + keycapQueuedPieces;
 
-  const renderTrackedJobCards = (jobs, stage) => `
-    <section class="production-stage-panel">
-      <div class="production-stage-heading">
-        <div>
-          <p>${stage === "printing" ? "Currently on a printer" : "Finished printing"}</p>
-          <h3>${stage === "printing" ? "Printing Now" : "Picked & Ready"}</h3>
+  const renderTrackedJobCards = (jobs, stage) => {
+    const groupedJobs = new Map();
+
+    jobs.forEach(job => {
+      const group = getProductionJobGroup(
+        job.item_name,
+        job.category
+      );
+
+      if (!groupedJobs.has(group.key)) {
+        groupedJobs.set(group.key, {
+          ...group,
+          jobs: []
+        });
+      }
+
+      groupedJobs.get(group.key).jobs.push(job);
+    });
+
+    const groups = Array.from(groupedJobs.values())
+      .sort((a, b) => a.key.localeCompare(b.key));
+    const pieceCount = jobs.reduce(
+      (sum, job) => sum + Number(job.quantity || 0),
+      0
+    );
+
+    return `
+      <section class="production-stage-panel">
+        <div class="production-stage-heading">
+          <div>
+            <p>${stage === "printing" ? "Currently on a printer" : "Finished printing"}</p>
+            <h3>${stage === "printing" ? "Printing Now" : "Picked & Ready"}</h3>
+          </div>
+          <strong>
+            ${pieceCount} piece${pieceCount === 1 ? "" : "s"}
+          </strong>
         </div>
-        <strong>
-          ${jobs.reduce((sum, job) => sum + Number(job.quantity || 0), 0)}
-          piece${jobs.reduce((sum, job) => sum + Number(job.quantity || 0), 0) === 1 ? "" : "s"}
-        </strong>
-      </div>
 
-      ${jobs.length ? `
-        <div class="production-job-grid">
-          ${jobs.map(job => `
-            <article class="production-job-card stage-${stage}">
-              <div class="production-job-icon" aria-hidden="true">
-                ${job.category === "Base" ? "◯" : "A"}
-              </div>
+        ${jobs.length ? `
+          <div class="production-selection-toolbar">
+            <label>
+              <input
+                id="selectAllProductionJobs"
+                type="checkbox"
+                onchange="window.toggleAllProductionJobs(this.checked)"
+              >
+              <span>Select all</span>
+            </label>
 
-              <div class="production-job-copy">
-                <span>${escapeAdminHtml(job.category)}</span>
-                <h4>${escapeAdminHtml(job.item_name)}</h4>
-                <p>
-                  ${stage === "printing" ? "Started" : "Picked"}
-                  ${formatDateTime(
-                    stage === "printing"
-                      ? job.started_at
-                      : job.picked_at || job.updated_at
-                  )}
-                </p>
-              </div>
+            <button
+              id="productionBulkAction"
+              type="button"
+              data-stage="${stage}"
+              disabled
+              onclick="${
+                stage === "printing"
+                  ? "window.markSelectedProductionJobsPicked(this)"
+                  : "window.addSelectedProductionJobsToInventory(this)"
+              }"
+            >
+              ${stage === "printing"
+                ? "Mark Selected as Picked"
+                : "Add Selected to Inventory"
+              }
+            </button>
+          </div>
 
-              <strong class="production-job-quantity">
-                × ${Number(job.quantity || 0)}
-              </strong>
+          <div class="production-job-groups">
+            ${groups.map(group => {
+              const groupPieces = group.jobs.reduce(
+                (sum, job) => sum + Number(job.quantity || 0),
+                0
+              );
 
-              <div class="production-job-actions">
-                ${stage === "printing" ? `
-                  <button
-                    type="button"
-                    class="production-stage-primary"
-                    onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'picked')"
-                  >
-                    Picked from Printer
-                  </button>
-                  <button
-                    type="button"
-                    class="production-stage-secondary"
-                    onclick="window.cancelProductionJob(${JSON.stringify(job.id)})"
-                  >
-                    Back to To Print
-                  </button>
-                ` : `
-                  <button
-                    type="button"
-                    class="production-stage-primary inventory-action"
-                    onclick="window.completeProductionJob(${JSON.stringify(job.id)})"
-                  >
-                    Add to Inventory
-                  </button>
-                  <button
-                    type="button"
-                    class="production-stage-secondary"
-                    onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'printing')"
-                  >
-                    Back to Printing
-                  </button>
-                `}
-              </div>
-            </article>
-          `).join("")}
-        </div>
-      ` : `
-        <div class="production-stage-empty">
-          <span>${stage === "printing" ? "🖨️" : "📦"}</span>
-          <h3>
-            ${stage === "printing"
-              ? "Nothing is marked as printing"
-              : "No finished prints are waiting"
-            }
-          </h3>
-          <p>
-            ${stage === "printing"
-              ? "Start an item from the To Print tab and it will stay here until you pick it."
-              : "Use “Picked from Printer” when a print finishes, then add it to inventory here."
-            }
-          </p>
-        </div>
-      `}
-    </section>
-  `;
+              return `
+                <section class="production-job-group">
+                  <div class="production-job-group-heading">
+                    <h4>${escapeAdminHtml(group.label)}</h4>
+                    <span>
+                      ${groupPieces} piece${groupPieces === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  <div class="production-job-grid">
+                    ${group.jobs.map(job => `
+                      <article class="production-job-card stage-${stage} has-selection">
+                        <label
+                          class="production-job-select"
+                          title="Select ${escapeAdminHtml(job.item_name)}"
+                        >
+                          <input
+                            type="checkbox"
+                            value="${escapeAdminHtml(String(job.id))}"
+                            data-production-job-select
+                            aria-label="Select ${escapeAdminHtml(job.item_name)}"
+                            onchange="window.syncProductionJobSelection()"
+                          >
+                        </label>
+
+                        <div class="production-job-icon" aria-hidden="true">
+                          ${job.category === "Base" ? "◯" : "A"}
+                        </div>
+
+                        <div class="production-job-copy">
+                          <span>${escapeAdminHtml(job.category)}</span>
+                          <h4>${escapeAdminHtml(job.item_name)}</h4>
+                          <p>
+                            ${stage === "printing" ? "Started" : "Picked"}
+                            ${formatDateTime(
+                              stage === "printing"
+                                ? job.started_at
+                                : job.picked_at || job.updated_at
+                            )}
+                          </p>
+                        </div>
+
+                        <strong class="production-job-quantity">
+                          × ${Number(job.quantity || 0)}
+                        </strong>
+
+                        <div class="production-job-actions">
+                          ${stage === "printing" ? `
+                            <button
+                              type="button"
+                              class="production-stage-primary"
+                              onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'picked')"
+                            >
+                              Picked from Printer
+                            </button>
+                            <button
+                              type="button"
+                              class="production-stage-secondary"
+                              onclick="window.cancelProductionJob(${JSON.stringify(job.id)})"
+                            >
+                              Back to To Print
+                            </button>
+                          ` : `
+                            <button
+                              type="button"
+                              class="production-stage-primary inventory-action"
+                              onclick="window.completeProductionJob(${JSON.stringify(job.id)})"
+                            >
+                              Add to Inventory
+                            </button>
+                            <button
+                              type="button"
+                              class="production-stage-secondary"
+                              onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'printing')"
+                            >
+                              Back to Printing
+                            </button>
+                          `}
+                        </div>
+                      </article>
+                    `).join("")}
+                  </div>
+                </section>
+              `;
+            }).join("")}
+          </div>
+        ` : `
+          <div class="production-stage-empty">
+            <span>${stage === "printing" ? "🖨️" : "📦"}</span>
+            <h3>
+              ${stage === "printing"
+                ? "Nothing is marked as printing"
+                : "No finished prints are waiting"
+              }
+            </h3>
+            <p>
+              ${stage === "printing"
+                ? "Start an item from the To Print tab and it will stay here until you pick it."
+                : "Use “Picked from Printer” when a print finishes, then add it to inventory here."
+              }
+            </p>
+          </div>
+        `}
+      </section>
+    `;
+  };
 
   const trackedStagePanel = productionStageView === "printing"
     ? renderTrackedJobCards(printingJobs, "printing")
@@ -8307,6 +8619,8 @@ orderViewFilter.addEventListener("change", () => renderOrders(latestOrders));
 orderSearch.addEventListener("input", () => renderOrders(latestOrders));
 statusFilter.addEventListener("change", () => renderOrders(latestOrders));
 paymentFilter.addEventListener("change", () => renderOrders(latestOrders));
+fulfilmentFilter.addEventListener("change", () => renderOrders(latestOrders));
+orderDateSort.addEventListener("change", () => renderOrders(latestOrders));
 
 refreshBtn.onclick = loadOrders;
 loadOrders();

@@ -5,6 +5,8 @@ import {
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
   calculatePaidOrderRevenue,
+  getDeliveryRouteGroup,
+  getProductionJobGroup,
   getTrackedProductionQuantity,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
@@ -56,6 +58,44 @@ test("excludes printing and picked quantities from the production queue", () => 
   assert.equal(tracked, 5);
   assert.equal(calculateQueuedProductionQuantity(12, 2, tracked), 5);
   assert.equal(calculateQueuedProductionQuantity(5, 4, 3), 0);
+});
+
+test("groups tracked keycaps by cap colour and keeps bases together", () => {
+  assert.deepEqual(
+    getProductionJobGroup(
+      "Pink Cap + Jade White Letter - A",
+      "Keycap"
+    ),
+    {
+      key: "10-pink",
+      label: "Pink Caps"
+    }
+  );
+
+  assert.deepEqual(
+    getProductionJobGroup("Jade White Ribbed Base", "Base"),
+    {
+      key: "00-bases",
+      label: "Bases"
+    }
+  );
+});
+
+test("groups nearby deliveries by Singapore postal sector", () => {
+  const woodlands = getDeliveryRouteGroup(
+    "10 Woodlands Street 12, Singapore 738000"
+  );
+  const marsiling = getDeliveryRouteGroup(
+    "20 Marsiling Lane #02-01 S(739111)"
+  );
+  const missingPostalCode = getDeliveryRouteGroup(
+    "Please call before delivery"
+  );
+
+  assert.equal(woodlands.key, "sector-73");
+  assert.equal(marsiling.key, "sector-73");
+  assert.equal(woodlands.postalCode, "738000");
+  assert.equal(missingPostalCode.key, "sector-unknown");
 });
 
 test("allows a valid inventory decrement", () => {

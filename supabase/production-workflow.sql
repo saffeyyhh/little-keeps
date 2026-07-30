@@ -106,3 +106,89 @@ $$;
 revoke all on function public.complete_production_job(bigint) from public;
 grant execute on function public.complete_production_job(bigint)
   to authenticated;
+
+create or replace function public.complete_production_jobs(
+  p_job_ids bigint[]
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_requested_count integer;
+  v_found_count integer;
+  v_item record;
+begin
+  select count(*)
+  into v_requested_count
+  from (
+    select distinct unnest(p_job_ids) as id
+  ) selected_ids;
+
+  if v_requested_count = 0 then
+    raise exception 'Select at least one production job';
+  end if;
+
+  perform 1
+  from public.production_jobs
+  where id = any(p_job_ids)
+  order by id
+  for update;
+
+  select count(*)
+  into v_found_count
+  from public.production_jobs
+  where
+    id = any(p_job_ids) and
+    stage = 'picked';
+
+  if v_found_count <> v_requested_count then
+    raise exception
+      'Every selected production job must exist and be picked';
+  end if;
+
+  for v_item in
+    select
+      item_name,
+      category,
+      sum(quantity)::integer as quantity
+    from public.production_jobs
+    where id = any(p_job_ids)
+    group by item_name, category
+  loop
+    update public.inventory_items
+    set
+      qty = qty + v_item.quantity,
+      category = v_item.category,
+      updated_at = now()
+    where item_name = v_item.item_name;
+
+    if not found then
+      insert into public.inventory_items (
+        item_name,
+        qty,
+        category,
+        updated_at
+      )
+      values (
+        v_item.item_name,
+        v_item.quantity,
+        v_item.category,
+        now()
+      );
+    end if;
+  end loop;
+
+  delete from public.production_jobs
+  where id = any(p_job_ids);
+end;
+$$;
+
+revoke all
+  on function public.complete_production_jobs(bigint[])
+  from public;
+
+grant execute
+  on function public.complete_production_jobs(bigint[])
+  to authenticated;
