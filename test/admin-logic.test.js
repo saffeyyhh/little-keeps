@@ -5,9 +5,16 @@ import {
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
   calculatePaidOrderRevenue,
+  ASSEMBLY_STAGES,
+  buildGoogleMapsRouteUrl,
+  distributeAmsPlatesAcrossPrinters,
   getDeliveryRouteGroup,
+  getOperationalBuckets,
+  getProductionPreviewOrders,
   getProductionJobGroup,
   getTrackedProductionQuantity,
+  normalizeAssemblyProgress,
+  optimizeAmsPlateSequence,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
 
@@ -96,6 +103,190 @@ test("groups nearby deliveries by Singapore postal sector", () => {
   assert.equal(marsiling.key, "sector-73");
   assert.equal(woodlands.postalCode, "738000");
   assert.equal(missingPostalCode.key, "sector-unknown");
+});
+
+test("normalizes every assembly checkpoint without trusting unknown fields", () => {
+  const progress = normalizeAssemblyProgress({
+    base_connected: true,
+    packed: 1,
+    unknown: true
+  });
+
+  assert.deepEqual(Object.keys(progress), ASSEMBLY_STAGES.map(stage => stage.key));
+  assert.equal(progress.base_connected, true);
+  assert.equal(progress.letters_caps_assembled, false);
+  assert.equal(progress.packed, true);
+  assert.equal(progress.unknown, undefined);
+});
+
+test("builds a Google Maps route from selected delivery stops", () => {
+  const url = new URL(buildGoogleMapsRouteUrl([
+    "10 Woodlands Street 12, Singapore 738000",
+    "20 Marsiling Lane, Singapore 739111",
+    "1 Admiralty Drive, Singapore 757713"
+  ]));
+
+  assert.equal(url.hostname, "www.google.com");
+  assert.equal(url.searchParams.get("origin"), "10 Woodlands Street 12, Singapore 738000");
+  assert.equal(url.searchParams.get("destination"), "1 Admiralty Drive, Singapore 757713");
+  assert.equal(url.searchParams.get("waypoints"), "20 Marsiling Lane, Singapore 739111");
+});
+
+test("prioritizes tomorrow, updates, assembly, packed and delivery work", () => {
+  const orders = [
+    {
+      id: 1,
+      status: "Printing",
+      needed_by: "2026-07-31",
+      collection_method: "delivery",
+      update_needs_review: true,
+      rework_required: true,
+      assembly_progress: { base_connected: true }
+    },
+    {
+      id: 2,
+      status: "Ready for Pickup/Delivery",
+      needed_by: "2026-07-30",
+      collection_method: "pickup",
+      assembly_progress: { packed: true }
+    }
+  ];
+  const buckets = getOperationalBuckets(orders, new Date("2026-07-30T12:00:00+08:00"));
+
+  assert.deepEqual(buckets.dueTomorrow.map(order => order.id), [1]);
+  assert.deepEqual(buckets.needsReview.map(order => order.id), [1]);
+  assert.deepEqual(buckets.rework.map(order => order.id), [1]);
+  assert.deepEqual(buckets.assemblyInProgress.map(order => order.id), [1]);
+  assert.deepEqual(buckets.packed.map(order => order.id), [2]);
+  assert.deepEqual(buckets.delivery.map(order => order.id), [1]);
+});
+
+test("keeps only selected active orders in a production preview", () => {
+  const result = getProductionPreviewOrders([
+    { id: 1, status: "Printing" },
+    { id: 2, status: "Pending Payment" },
+    { id: 3, status: "Completed" },
+    { id: 4, status: "Printing", archived_at: "2026-07-30" }
+  ], ["1", "3", "4"]);
+
+  assert.deepEqual(result.map(order => order.id), [1]);
+});
+
+test("orders AMS plates to preserve colours and keeps shared colours in their slots", () => {
+  const plates = optimizeAmsPlateSequence([
+    {
+      id: "pink-gold",
+      pieceCount: 10,
+      colours: [
+        { name: "Pink", hex: "#f55a74" },
+        { name: "Gold", hex: "#e4bd68" }
+      ]
+    },
+    {
+      id: "black-white",
+      pieceCount: 10,
+      colours: [
+        { name: "Black", hex: "#000000" },
+        { name: "White", hex: "#ffffff" }
+      ]
+    },
+    {
+      id: "pink-white",
+      pieceCount: 10,
+      colours: [
+        { name: "Pink", hex: "#f55a74" },
+        { name: "White", hex: "#ffffff" }
+      ]
+    }
+  ]);
+
+  const ids = plates.map(plate => plate.id);
+  assert.equal(ids.indexOf("pink-white"), 0);
+  assert.equal(plates[1].changeCount, 1);
+
+  const firstPinkSlot = plates[0].slotAssignments
+    .find(item => item.colour?.name === "Pink")?.slot;
+  const secondPinkSlot = plates[1].slotAssignments
+    .find(item => item.colour?.name === "Pink")?.slot;
+  assert.equal(firstPinkSlot, secondPinkSlot);
+});
+
+test("balances AMS plates across two printer lanes", () => {
+  const lanes = distributeAmsPlatesAcrossPrinters([
+    { id: "a", pieceCount: 50, colours: [{ name: "Pink" }] },
+    { id: "b", pieceCount: 45, colours: [{ name: "White" }] },
+    { id: "c", pieceCount: 20, colours: [{ name: "Pink" }] },
+    { id: "d", pieceCount: 15, colours: [{ name: "White" }] }
+  ], [
+    { id: "p1", name: "Printer 1" },
+    { id: "p2", name: "Printer 2" }
+  ]);
+
+  assert.equal(lanes.length, 2);
+  assert.deepEqual(
+    lanes.map(lane => lane.pieceCount).sort((a, b) => a - b),
+    [65, 65]
+  );
+  assert.ok(lanes.every(lane => lane.plates.length === 2));
+});
+
+test("maximizes safe simultaneous work across both printers", () => {
+  const lanes = distributeAmsPlatesAcrossPrinters([
+    { id: "pink-large", pieceCount: 50, colours: [{ name: "Pink" }] },
+    { id: "pink-small", pieceCount: 45, colours: [{ name: "Pink" }] },
+    { id: "white", pieceCount: 40, colours: [{ name: "White" }] },
+    { id: "black", pieceCount: 35, colours: [{ name: "Black" }] }
+  ], [
+    { id: "p1", name: "Printer 1" },
+    { id: "p2", name: "Printer 2" }
+  ]);
+
+  const waves = new Map();
+  lanes.forEach(lane => lane.plates.forEach(plate => {
+    if (!waves.has(plate.waveIndex)) waves.set(plate.waveIndex, []);
+    waves.get(plate.waveIndex).push(plate);
+  }));
+
+  assert.equal(waves.size, 2);
+  assert.ok(Array.from(waves.values()).every(wave => wave.length === 2));
+  assert.ok(Array.from(waves.values()).every(([first, second]) => {
+    const firstColours = new Set(
+      Array.from(first.colours.values(), colour => colour.name)
+    );
+    return Array.from(second.colours.values())
+      .every(colour => !firstColours.has(colour.name));
+  }));
+});
+
+test("never schedules the same filament colour on two printers in one wave", () => {
+  const lanes = distributeAmsPlatesAcrossPrinters([
+    {
+      id: "pink-a",
+      pieceCount: 40,
+      colours: [{ name: "Pink" }, { name: "White" }]
+    },
+    {
+      id: "pink-b",
+      pieceCount: 35,
+      colours: [{ name: "Pink" }, { name: "Gold" }]
+    },
+    {
+      id: "black",
+      pieceCount: 30,
+      colours: [{ name: "Black" }]
+    }
+  ], [
+    { id: "p1", name: "Printer 1" },
+    { id: "p2", name: "Printer 2" }
+  ]);
+
+  const scheduled = lanes.flatMap(lane => lane.plates);
+  const pinkWaves = scheduled
+    .filter(plate => Array.from(plate.colours.values())
+      .some(colour => colour.name === "Pink"))
+    .map(plate => plate.waveIndex);
+
+  assert.equal(new Set(pinkWaves).size, pinkWaves.length);
 });
 
 test("allows a valid inventory decrement", () => {

@@ -8,12 +8,19 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import {
+  ASSEMBLY_STAGES,
+  buildGoogleMapsRouteUrl,
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
   calculatePaidOrderRevenue,
+  distributeAmsPlatesAcrossPrinters,
   getDeliveryRouteGroup,
+  getOperationalBuckets,
+  getProductionPreviewOrders,
   getProductionJobGroup,
   getTrackedProductionQuantity,
+  normalizeAssemblyProgress,
+  optimizeAmsPlateSequence,
   validateInventoryDecrement
 } from "./admin-logic.js";
 
@@ -105,6 +112,9 @@ document.querySelector("#app").innerHTML = `
       </button>
       <button id="assemblyViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">🧩</span> Assembly
+      </button>
+      <button id="fulfilmentViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">🚚</span> Fulfilment
       </button>
       <button id="inventoryViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">📦</span> Inventory
@@ -203,6 +213,17 @@ document.querySelector("#app").innerHTML = `
         <p class="empty">Loading orders...</p>
       </div>
     </section>
+
+    <aside class="workshop-notes" aria-label="Persistent workshop notes">
+      <button id="workshopNotesToggle" class="workshop-notes-toggle" type="button" aria-expanded="true">
+        <span>📝 Workshop Notes</span>
+        <small id="workshopNotesSaveState">Saved</small>
+      </button>
+      <div id="workshopNotesBody" class="workshop-notes-body">
+        <textarea id="workshopNotesInput" rows="9" placeholder="Printer issues, add-ons, handoffs, reminders…"></textarea>
+        <p>Visible on every tab · saves automatically</p>
+      </div>
+    </aside>
   </main>
 `;
 
@@ -217,6 +238,7 @@ const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
 const ordersActions = document.getElementById("ordersActions");
 const assemblyViewBtn = document.getElementById("assemblyViewBtn");
+const fulfilmentViewBtn = document.getElementById("fulfilmentViewBtn");
 const inventoryViewBtn = document.getElementById("inventoryViewBtn");
 const financeViewBtn = document.getElementById("financeViewBtn");
 const settingsViewBtn = document.getElementById("settingsViewBtn");
@@ -230,6 +252,10 @@ const fulfilmentFilter = document.getElementById("fulfilmentFilter");
 const orderDateSort = document.getElementById("orderDateSort");
 
 const logoutBtn = document.getElementById("logoutBtn");
+const workshopNotesToggle = document.getElementById("workshopNotesToggle");
+const workshopNotesBody = document.getElementById("workshopNotesBody");
+const workshopNotesInput = document.getElementById("workshopNotesInput");
+const workshopNotesSaveState = document.getElementById("workshopNotesSaveState");
 
 const { data: { session } } = await supabase.auth.getSession();
 
@@ -243,6 +269,10 @@ logoutBtn.onclick = async () => {
 
 let currentView = "today";
 let latestOrders = [];
+let workshopNotesSaveTimer = null;
+let printers = [];
+const selectedOrderIds = new Set();
+const productionOrderSelection = new Set();
 
 let inventoryItems = {};
 let clearanceInventoryItems = {};
@@ -499,6 +529,12 @@ function renderCurrentView() {
     renderAssemblyQueue();
   }
 
+  if (currentView === "fulfilment") {
+    sectionTitle.innerText = "Fulfilment";
+    ordersActions.style.display = "flex";
+    renderFulfilmentWorkspace(latestOrders);
+  }
+
   if (currentView === "inventory") {
     sectionTitle.innerText = "Inventory";
     ordersActions.style.display = "none";
@@ -581,6 +617,184 @@ function renderProgressBar(order, compact = false) {
   `;
 }
 
+function getOrderInstructions(order) {
+  return [
+    order.notes,
+    order.preferred_time,
+    order.special_instructions,
+    order.handoff_notes
+  ]
+    .map(value => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function renderOrderAlerts(order, compact = false) {
+  const instructions = getOrderInstructions(order);
+  const hasHandoff = Boolean(order.handoff_name);
+
+  if (
+    !instructions.length &&
+    !hasHandoff &&
+    !order.update_needs_review &&
+    !order.rework_required
+  ) {
+    return "";
+  }
+
+  return `
+    <div class="order-alert-stack ${compact ? "is-compact" : ""}">
+      ${order.update_needs_review ? `
+        <div class="order-alert order-update-alert">
+          <strong>⚠ Order changed · review required</strong>
+          <span>${escapeAdminHtml(order.update_summary || `Revision ${order.revision_number || 2} may affect production quantities.`)}</span>
+          ${compact ? "" : `
+            <button type="button" onclick='window.acknowledgeOrderUpdate(${JSON.stringify(String(order.id))}, this)'>
+              Acknowledge & use recalculated quantities
+            </button>
+          `}
+        </div>
+      ` : ""}
+      ${order.rework_required ? `
+        <div class="order-alert rework-alert">
+          <strong>↩ Workshop rework required</strong>
+          <span>${escapeAdminHtml(order.rework_reason || "Returned from packing for another quality pass.")}</span>
+          ${compact ? "" : `
+            <button type="button" onclick='window.resolveOrderRework(${JSON.stringify(String(order.id))}, this)'>
+              Mark rework resolved
+            </button>
+          `}
+        </div>
+      ` : ""}
+      ${hasHandoff ? `
+        <div class="order-alert handoff-alert">
+          <strong>↗ Hand off to ${escapeAdminHtml(order.handoff_name)}</strong>
+          <span>${escapeAdminHtml([
+            order.handoff_relationship,
+            order.handoff_phone
+          ].filter(Boolean).join(" · ") || "Recipient is not the customer")}</span>
+        </div>
+      ` : ""}
+      ${instructions.map(instruction => `
+        <div class="order-alert instruction-alert">
+          <strong>Special instruction</strong>
+          <span>${escapeAdminHtml(instruction)}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderProductionNote(order, compact = false) {
+  return `
+    <section class="production-note ${compact ? "is-compact" : ""}">
+      <label>
+        <strong>Private production note</strong>
+        <span>Only for your workshop — not shown to the customer.</span>
+        <textarea rows="${compact ? 2 : 3}" placeholder="e.g. Base connected only; inspect the N cap again…">${escapeAdminHtml(order.production_notes || "")}</textarea>
+      </label>
+      <button
+        type="button"
+        onclick='window.saveOrderProductionNote(
+          ${JSON.stringify(String(order.id))},
+          this.closest(".production-note").querySelector("textarea").value,
+          this
+        )'
+      >
+        Save note
+      </button>
+    </section>
+  `;
+}
+
+function renderAssemblyChecklist(order, compact = false) {
+  const progress = normalizeAssemblyProgress(order.assembly_progress);
+  const completed = Object.values(progress).filter(Boolean).length;
+
+  return `
+    <section class="assembly-checklist ${compact ? "is-compact" : ""}">
+      <header>
+        <strong>Assembly progress</strong>
+        <span>${completed}/${ASSEMBLY_STAGES.length}</span>
+      </header>
+      <div>
+        ${ASSEMBLY_STAGES.map(stage => `
+          <label>
+            <input
+              type="checkbox"
+              ${progress[stage.key] ? "checked" : ""}
+              onchange='window.updateAssemblyStage(${JSON.stringify(String(order.id))}, ${JSON.stringify(stage.key)}, this.checked)'
+            >
+            <span>${escapeAdminHtml(stage.label)}</span>
+          </label>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+async function loadWorkshopNotes() {
+  const localFallback = localStorage.getItem("little-keeps-workshop-notes") || "";
+
+  if (IS_ADMIN_PREVIEW) {
+    workshopNotesInput.value =
+      localFallback ||
+      "Little Keeps · A1 2 is offline — reassign its jobs.\nCheck add-on for LK-1042.\nAlicia: pass to husband.";
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("workshop_notes")
+    .select("content")
+    .eq("id", 1)
+    .maybeSingle();
+
+  workshopNotesInput.value = error ? localFallback : (data?.content || localFallback);
+  if (error) console.warn("Using local workshop notes fallback:", error);
+}
+
+async function saveWorkshopNotes() {
+  const content = workshopNotesInput.value;
+  localStorage.setItem("little-keeps-workshop-notes", content);
+  workshopNotesSaveState.textContent = "Saving…";
+
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("workshop_notes")
+      .upsert({ id: 1, content, updated_at: new Date().toISOString() });
+
+    if (error) {
+      workshopNotesSaveState.textContent = "Saved on this device";
+      console.warn("Unable to sync workshop notes:", error);
+      return;
+    }
+  }
+
+  workshopNotesSaveState.textContent = "Saved";
+}
+
+async function loadPrinters() {
+  if (IS_ADMIN_PREVIEW) {
+    printers = [
+      { id: "a1-mini-1", name: "Whimsy Daisy · A1 1", status: "online", issue_notes: "" },
+      { id: "a1-mini-2", name: "Little Keeps · A1 2", status: "offline", issue_notes: "Print quality failure · nozzle check needed" }
+    ];
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("printers")
+    .select("*")
+    .order("name");
+
+  if (error) {
+    console.warn("Printer tracking is not ready:", error);
+    printers = [];
+    return;
+  }
+  printers = data || [];
+}
+
 function getPriorityOrders(orders) {
   return orders
     .filter(order => !order.archived_at && ACTIVE_ORDER_STATUSES.includes(order.status))
@@ -599,6 +813,8 @@ function renderTodayOrder(order) {
       <span>
         <strong>${escapeAdminHtml(order.order_ref || "-")}</strong>
         <small>${escapeAdminHtml(order.customer_name || "Customer")} · ${getMethodLabel(order.collection_method)}</small>
+        ${order.update_needs_review ? `<em>Changed · review</em>` : ""}
+        ${getOrderInstructions(order).length ? `<em>Special instruction</em>` : ""}
       </span>
       <span class="today-order-right">
         <b>${escapeAdminHtml(due.label)}</b>
@@ -610,6 +826,7 @@ function renderTodayOrder(order) {
 
 function renderTodayWorkspace(orders) {
   const priority = getPriorityOrders(orders);
+  const operational = getOperationalBuckets(orders);
   const dueNow = priority.filter(order => {
     const days = getDaysUntil(order.needed_by);
     return days !== null && days <= 1 && !["Rush Review", "Bulk Review"].includes(order.status);
@@ -625,6 +842,15 @@ function renderTodayWorkspace(orders) {
   );
   const fulfilment = priority.filter(order =>
     ["Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
+  );
+  const reprints = productionJobs.filter(job =>
+    ["failed", "reprint_needed"].includes(job.quality_status)
+  );
+  const offlinePrinterIds = new Set(
+    printers.filter(printer => printer.status === "offline").map(printer => String(printer.id))
+  );
+  const affectedPrinterJobs = productionJobs.filter(job =>
+    job.stage === "printing" && offlinePrinterIds.has(String(job.printer_id))
   );
   const lowStock = hardwareItems
     .map(item => ({
@@ -659,7 +885,34 @@ function renderTodayWorkspace(orders) {
       </div>
     ` : ""}
 
+    <div class="today-command-strip">
+      <article class="${operational.overdue.length ? "is-danger" : ""}">
+        <span>Overdue</span><strong>${operational.overdue.length}</strong>
+      </article>
+      <article class="${operational.dueTomorrow.length ? "is-warning" : ""}">
+        <span>Due tomorrow</span><strong>${operational.dueTomorrow.length}</strong>
+      </article>
+      <article class="${operational.needsReview.length ? "is-warning" : ""}">
+        <span>Changed orders</span><strong>${operational.needsReview.length}</strong>
+      </article>
+      <article class="${reprints.length ? "is-danger" : ""}">
+        <span>Failed / reprint</span><strong>${reprints.length}</strong>
+      </article>
+      <article class="${operational.rework.length ? "is-warning" : ""}">
+        <span>Packing rework</span><strong>${operational.rework.length}</strong>
+      </article>
+      <article class="${affectedPrinterJobs.length ? "is-danger" : ""}">
+        <span>Needs reassignment</span><strong>${affectedPrinterJobs.length}</strong>
+      </article>
+      <article><span>Assembly started</span><strong>${operational.assemblyInProgress.length}</strong></article>
+      <article><span>Packed</span><strong>${operational.packed.length}</strong></article>
+      <article><span>Pickup</span><strong>${operational.pickup.length}</strong></article>
+      <article><span>Delivery</span><strong>${operational.delivery.length}</strong></article>
+    </div>
+
     <div class="today-grid">
+      ${section("Changed orders — acknowledge first", "⚠️", operational.needsReview, "No order changes need review.")}
+      ${section("Overdue & not delivered", "🚨", operational.overdue, "No overdue active orders.")}
       ${section("Rush & bulk requests", "⚡", specialRequests, "No special requests need review.")}
       ${section("Due today or tomorrow", "⏰", dueNow, "Nothing urgent - lovely!")}
       ${section("Payment attention", "💳", awaitingPayment, "No payments need attention.")}
@@ -1960,14 +2213,14 @@ function getWhatsAppHref(phoneValue) {
 function getDaysUntil(dateValue) {
   if (!dateValue) return null;
 
-  const dueDate = new Date(`${String(dateValue).slice(0, 10)}T23:59:59`);
+  const dueDate = new Date(`${String(dateValue).slice(0, 10)}T00:00:00`);
 
   if (Number.isNaN(dueDate.getTime())) return null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  return Math.ceil((dueDate - today) / 86400000);
+  return Math.round((dueDate - today) / 86400000);
 }
 
 function getDuePresentation(order) {
@@ -2589,7 +2842,9 @@ function renderOrders(orders) {
     const matchesSearch =
       (order.order_ref || "").toLowerCase().includes(searchText) ||
       (order.customer_name || "").toLowerCase().includes(searchText) ||
-      (order.customer_email || "").toLowerCase().includes(searchText);
+      (order.customer_email || "").toLowerCase().includes(searchText) ||
+      getOrderInstructions(order).join(" ").toLowerCase().includes(searchText) ||
+      (order.handoff_name || "").toLowerCase().includes(searchText);
 
     const matchesOrderView =
       (orderViewValue === "all" && !order.archived_at) ||
@@ -2657,7 +2912,54 @@ function renderOrders(orders) {
 
   let previousRouteKey = "";
 
-  ordersContainer.innerHTML = filteredOrders.map(order => {
+  const visibleOrderIds = filteredOrders.map(order => String(order.id));
+  const selectedVisibleCount = visibleOrderIds.filter(id => selectedOrderIds.has(id)).length;
+
+  ordersContainer.innerHTML = `
+    <div class="order-batch-toolbar">
+      <label>
+        <input
+          id="selectAllVisibleOrders"
+          type="checkbox"
+          ${selectedVisibleCount === visibleOrderIds.length && visibleOrderIds.length ? "checked" : ""}
+          onchange='window.toggleVisibleOrderSelection(
+            ${JSON.stringify(visibleOrderIds)},
+            this.checked
+          )'
+        >
+        <span>Select all visible</span>
+      </label>
+      <div>
+        <strong id="selectedOrderCount">${selectedOrderIds.size} selected</strong>
+        <button
+          id="previewSelectedProductionBtn"
+          type="button"
+          ${selectedOrderIds.size ? "" : "disabled"}
+          onclick="window.previewSelectedOrdersProduction()"
+        >
+          Preview Production & AMS
+        </button>
+        <button
+          id="clearOrderSelectionBtn"
+          type="button"
+          class="batch-clear-action"
+          ${selectedOrderIds.size ? "" : "disabled"}
+          onclick="window.clearOrderSelection()"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+    ${fulfilmentValue === "delivery" ? `
+      <div class="route-assistance-bar">
+        <div>
+          <strong>Google Maps route assistance</strong>
+          <span>Select stops below. Google Maps may reorder or change routes; this is not guaranteed live optimisation.</span>
+        </div>
+        <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Route</button>
+      </div>
+    ` : ""}
+  ` + filteredOrders.map(order => {
     const due = getDuePresentation(order);
     const orderId = String(order.id);
     const orderRef = escapeAdminHtml(order.order_ref || "-");
@@ -2693,6 +2995,16 @@ function renderOrders(orders) {
     <details class="order-card ${due.className} ${order.archived_at ? "is-archived" : ""}" data-order-id="${escapeAdminHtml(orderId)}" data-status="${escapeAdminHtml(order.status || "")}">
       <summary class="order-summary">
         <div class="order-summary-customer">
+          <label class="order-batch-select" onclick="event.stopPropagation()">
+            <input
+              type="checkbox"
+              data-order-batch-select
+              value="${escapeAdminHtml(orderId)}"
+              ${selectedOrderIds.has(orderId) ? "checked" : ""}
+              onchange='window.toggleOrderSelection(${JSON.stringify(orderId)}, this.checked)'
+            >
+            <span>Select for production preview</span>
+          </label>
           <p class="order-ref-label">${orderRef}</p>
           <h3>${customerName}</h3>
           <div class="order-summary-badges">
@@ -2704,12 +3016,22 @@ function renderOrders(orders) {
         </div>
 
         <div class="order-summary-meta">
+          ${fulfilmentValue === "delivery" ? `
+            <label class="route-stop-select" onclick="event.stopPropagation()">
+              <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
+              Route stop
+            </label>
+          ` : ""}
           <strong>${formatMoney(order.total)}</strong>
           <span>${keychainCount} keychain${keychainCount === 1 ? "" : "s"}</span>
           <span>${characterCount} character${characterCount === 1 ? "" : "s"} · ${getMethodLabel(order.collection_method)}</span>
           <span>Ordered ${formatDate(order.created_at)}</span>
         </div>
       </summary>
+
+      ${renderOrderAlerts(order)}
+      ${renderProductionNote(order)}
+      ${renderAssemblyChecklist(order)}
 
       <div class="order-detail-grid">
         <p><strong>Customer Name</strong><br>${customerName}</p>
@@ -2746,6 +3068,15 @@ function renderOrders(orders) {
               </p>
             `
         }
+
+        ${order.handoff_name ? `
+          <div class="full-row handoff-section">
+            <strong>Hand off to someone else</strong>
+            <p>${escapeAdminHtml(order.handoff_name)}${order.handoff_relationship ? ` · ${escapeAdminHtml(order.handoff_relationship)}` : ""}</p>
+            ${order.handoff_phone ? `<p>${escapeAdminHtml(order.handoff_phone)}</p>` : ""}
+            ${order.handoff_notes ? `<p>${escapeAdminHtml(order.handoff_notes)}</p>` : ""}
+          </div>
+        ` : ""}
 
         <p class="full-row">
           <strong>Customer Notes / Preferred Timing</strong><br>
@@ -2849,6 +3180,12 @@ function renderOrders(orders) {
           Download PDF
         </button>
 
+        ${!order.archived_at && !["Completed", "Refunded"].includes(order.status) ? `
+          <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(orderId)})'>
+            Send Keychain Back to Rework
+          </button>
+        ` : ""}
+
         <button type="button" class="rush-stl-action" onclick='window.generateOrderStls(${JSON.stringify(orderId)}, this)'>
           Generate Order STLs
         </button>
@@ -2938,6 +3275,85 @@ function renderOrders(orders) {
     </details>
   `;
   }).join("");
+}
+
+function renderFulfilmentWorkspace(orders) {
+  const ready = orders.filter(order =>
+    !order.archived_at &&
+    ["Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
+  );
+  const deliveries = ready
+    .filter(order => order.collection_method === "delivery")
+    .sort((a, b) => {
+      const aRoute = getDeliveryRouteGroup(a.delivery_address);
+      const bRoute = getDeliveryRouteGroup(b.delivery_address);
+      return aRoute.sortValue - bRoute.sortValue ||
+        Number(aRoute.postalCode || 999999) - Number(bRoute.postalCode || 999999);
+    });
+  const pickups = ready.filter(order => order.collection_method !== "delivery");
+
+  const fulfilmentCard = order => `
+    <article class="fulfilment-card">
+      <label class="route-stop-select">
+        ${order.collection_method === "delivery" ? `
+          <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
+        ` : ""}
+        <span>${order.collection_method === "delivery" ? "Route stop" : "Pickup"}</span>
+      </label>
+      <div>
+        <strong>${escapeAdminHtml(order.order_ref || "-")} · ${escapeAdminHtml(order.customer_name || "Customer")}</strong>
+        <p>${escapeAdminHtml(
+          order.collection_method === "delivery"
+            ? order.delivery_address || "Address missing"
+            : `${getPickupLocation(order.collection_method)} · ${order.pickup_scheduled_date ? formatDate(order.pickup_scheduled_date) : "Timing not selected"}`
+        )}</p>
+        ${renderOrderAlerts(order, true)}
+        ${renderProductionNote(order, true)}
+        ${renderAssemblyChecklist(order, true)}
+      </div>
+      <div class="fulfilment-card-actions">
+        <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(String(order.id))})'>
+          Send back to rework
+        </button>
+        <button type="button" onclick='window.focusOrder(${JSON.stringify(String(order.id))})'>Open order</button>
+      </div>
+    </article>
+  `;
+
+  let previousRoute = "";
+  const deliveryHtml = deliveries.map(order => {
+    const route = getDeliveryRouteGroup(order.delivery_address);
+    const heading = route.key !== previousRoute
+      ? `<div class="delivery-route-heading"><div><span>⌖</span><div><h3>${escapeAdminHtml(route.label)}</h3><p>${escapeAdminHtml(route.note)}</p></div></div></div>`
+      : "";
+    previousRoute = route.key;
+    return heading + fulfilmentCard(order);
+  }).join("");
+
+  ordersContainer.innerHTML = `
+    <div class="fulfilment-heading">
+      <div>
+        <h2>Ready to hand over</h2>
+        <p>Special instructions and handoff recipients stay visible until the order is completed.</p>
+      </div>
+      <span>${pickups.length} pickup · ${deliveries.length} delivery</span>
+    </div>
+    <div class="route-assistance-bar">
+      <div>
+        <strong>Google Maps route assistance</strong>
+        <span>Choose delivery stops, then open them in Maps. This helps plan the route but is not guaranteed live optimisation.</span>
+      </div>
+      <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
+    </div>
+    <section class="fulfilment-section">
+      <h3>Deliveries</h3>
+      ${deliveryHtml || `<p class="today-empty">No deliveries are ready.</p>`}
+    </section>
+    <section class="fulfilment-section">
+      <h3>Pickups</h3>
+      ${pickups.map(fulfilmentCard).join("") || `<p class="today-empty">No pickups are ready.</p>`}
+    </section>
+  `;
 }
 
 function getBaseInventoryName(baseName, baseShape = "ribbed") {
@@ -3054,6 +3470,9 @@ async function loadProductionJobs() {
         category: "Base",
         quantity: 4,
         stage: "printing",
+        printer_id: "a1-mini-2",
+        quality_status: "reprint_needed",
+        issue_notes: "Layer shift and rough surface",
         started_at: new Date().toISOString()
       },
       {
@@ -3258,7 +3677,7 @@ window.setProductionStageView = async function(stage) {
 };
 
 window.setProductionQueueView = async function(view) {
-  if (!["timeline", "bases", "keycaps"].includes(view)) return;
+  if (!["batch", "timeline", "bases", "keycaps"].includes(view)) return;
   productionQueueView = view;
   await renderProductionPlanner(latestOrders);
 };
@@ -3300,6 +3719,99 @@ window.startProductionJob = async function(
 
   productionStageView = "printing";
   await renderProductionPlanner(latestOrders);
+};
+
+window.startSelectedBaseBatch = async function(button) {
+  const jobs = currentBaseBatchPlan
+    .filter(item => Number.isInteger(item.quantity) && item.quantity > 0)
+    .map(item => ({
+      item_name: item.itemName,
+      category: "Base",
+      quantity: item.quantity,
+      stage: "printing",
+      updated_at: new Date().toISOString()
+    }));
+
+  if (!jobs.length) {
+    alert("No bases are left to print for this selected batch.");
+    return;
+  }
+
+  const total = jobs.reduce((sum, job) => sum + job.quantity, 0);
+  if (!confirm(
+    `Start the combined base batch?\n\n` +
+    `${total} bases across ${jobs.length} colour/shape print group${jobs.length === 1 ? "" : "s"}.`
+  )) return;
+
+  const previousLabel = button?.textContent || "Start All Base Groups";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Starting base batch…";
+  }
+
+  if (IS_ADMIN_PREVIEW) {
+    const timestamp = new Date().toISOString();
+    jobs.forEach((job, index) => {
+      productionJobs.push({
+        id: `preview-base-batch-${timestamp}-${index}`,
+        ...job,
+        started_at: timestamp
+      });
+    });
+    productionStageView = "printing";
+    await renderProductionPlanner(latestOrders);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .insert(jobs);
+
+  if (error) {
+    console.error("Unable to start the base batch:", error);
+    alert("Unable to move the combined base batch to Printing.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  productionStageView = "printing";
+  await renderProductionPlanner(latestOrders);
+};
+
+window.downloadSelectedBaseBatchStls = async function(button) {
+  const groups = currentBaseBatchPlan.filter(item => item.quantity > 0);
+  if (!groups.length) {
+    alert("No base STL files are needed for this batch.");
+    return;
+  }
+
+  if (!confirm(
+    `Download ${groups.length} combined base STL file${groups.length === 1 ? "" : "s"}?\n\n` +
+    "Each colour and base shape stays in its own printable file."
+  )) return;
+
+  const previousLabel = button?.textContent || "Download All Base STLs";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Building base files…";
+  }
+
+  try {
+    for (const group of groups) {
+      await generateBaseColourStl(group.stlJobId);
+    }
+    if (button) button.textContent = `Downloaded ${groups.length} files ✓`;
+  } finally {
+    if (button) {
+      setTimeout(() => {
+        button.disabled = false;
+        button.textContent = previousLabel;
+      }, 2200);
+    }
+  }
 };
 
 window.updateProductionJobStage = async function(jobId, stage) {
@@ -3466,7 +3978,8 @@ window.addSelectedProductionJobsToInventory = async function(button) {
 
   await Promise.all([
     loadInventoryItems(),
-    loadProductionJobs()
+    loadProductionJobs(),
+    loadPrinters()
   ]);
   await renderProductionPlanner(latestOrders);
 };
@@ -3523,12 +4036,17 @@ window.completeProductionJob = async function(jobId) {
   await renderProductionPlanner(latestOrders);
 };
 
-function getProductionSummary(orders) {
+function getProductionSummary(orders, includeSelectedStatuses = false) {
   const baseTotals = {};
   const keycapGroups = {};
 
   const activeOrders = orders.filter(order =>
-    !order.archived_at && ["Payment Verified", "Printing"].includes(order.status)
+    !order.archived_at &&
+    (
+      includeSelectedStatuses
+        ? !["Completed", "Refunded", "Payment Expired"].includes(order.status)
+        : ["Payment Verified", "Printing"].includes(order.status)
+    )
   );
 
   activeOrders.forEach(order => {
@@ -3644,7 +4162,7 @@ function getOrderPrintableInventoryNeeds(order) {
   return needs;
 }
 
-function getProductionTimelineOrders(orders) {
+function getProductionTimelineOrders(orders, includeSelectedStatuses = false) {
   const remainingStock = Object.fromEntries(
     Object.entries(inventoryItems).map(([itemName, item]) => [
       itemName,
@@ -3655,7 +4173,11 @@ function getProductionTimelineOrders(orders) {
   return orders
     .filter(order =>
       !order.archived_at &&
-      ["Payment Verified", "Printing"].includes(order.status)
+      (
+        includeSelectedStatuses
+          ? !["Completed", "Refunded", "Payment Expired"].includes(order.status)
+          : ["Payment Verified", "Printing"].includes(order.status)
+      )
     )
     .sort((a, b) => {
       const aDate = String(
@@ -3995,6 +4517,7 @@ function getPdfReadableItemName(item) {
 const productionStlJobs = new Map();
 const productionBaseStlJobs = new Map();
 const productionAmsPlateJobs = new Map();
+let currentBaseBatchPlan = [];
 const productionStlGeometryCache = new Map();
 const productionStlLoader = new STLLoader();
 const productionStlExporter = new STLExporter();
@@ -4444,10 +4967,56 @@ function planAmsLiteKeycapPlates(combinationCards) {
     });
   });
 
-  return plates;
+  return optimizeAmsPlateSequence(plates);
 }
 
-window.startKeycapCombination = async function(jobId, button) {
+function getProductionJobFilamentColours(job) {
+  const itemName = String(job?.item_name || "").trim();
+  const keycapMatch = itemName.match(
+    /^(.+?)\s+Cap\s+\+\s+(.+?)\s+Letter(?:\s+-|$)/i
+  );
+
+  if (keycapMatch) {
+    return [keycapMatch[1], keycapMatch[2]]
+      .map(colour => colour.trim().toLowerCase());
+  }
+
+  const baseMatch = itemName.match(/^(.+?)\s+Base(?:\s|$)/i);
+  return baseMatch ? [baseMatch[1].trim().toLowerCase()] : [];
+}
+
+function getCrossPrinterColourConflicts(colourNames, printerId) {
+  if (!printerId) return [];
+
+  const desiredColours = new Set(
+    (colourNames || []).map(colour => String(colour).trim().toLowerCase())
+  );
+
+  return productionJobs
+    .filter(job =>
+      job.stage === "printing" &&
+      job.printer_id &&
+      String(job.printer_id) !== String(printerId)
+    )
+    .flatMap(job => getProductionJobFilamentColours(job))
+    .filter(colour => desiredColours.has(colour))
+    .filter((colour, index, colours) => colours.indexOf(colour) === index);
+}
+
+function confirmSharedColourIsAvailable(colourNames, printerId) {
+  const conflicts = getCrossPrinterColourConflicts(colourNames, printerId);
+
+  if (!conflicts.length) return true;
+
+  alert(
+    `Cannot start this plate yet. ${conflicts
+      .map(colour => colour.replace(/\b\w/g, letter => letter.toUpperCase()))
+      .join(", ")} ${conflicts.length === 1 ? "is" : "are"} already in use on the other printer. Finish and pick that print first, then start this one.`
+  );
+  return false;
+}
+
+window.startKeycapCombination = async function(jobId, button, printerId = null) {
   const combination = productionStlJobs.get(jobId);
 
   if (!combination) {
@@ -4461,6 +5030,13 @@ window.startKeycapCombination = async function(jobId, button) {
     alert(
       "Set up the production workflow in Supabase before tracking prints."
     );
+    return;
+  }
+
+  if (!confirmSharedColourIsAvailable(
+    [combination.capName, combination.letterName],
+    printerId
+  )) {
     return;
   }
 
@@ -4483,6 +5059,7 @@ window.startKeycapCombination = async function(jobId, button) {
         category: "Keycap",
         quantity,
         stage: "printing",
+        printer_id: printerId || null,
         updated_at: new Date().toISOString()
       });
     }
@@ -4536,6 +5113,10 @@ window.startAmsLitePlate = async function(plateId, button) {
     return;
   }
 
+  if (!confirmSharedColourIsAvailable(plate.colourNames, plate.printerId)) {
+    return;
+  }
+
   const jobs = [];
 
   for (const item of plate.items || []) {
@@ -4553,6 +5134,7 @@ window.startAmsLitePlate = async function(plateId, button) {
         category: "Keycap",
         quantity,
         stage: "printing",
+        printer_id: plate.printerId || null,
         updated_at: new Date().toISOString()
       });
     }
@@ -4813,7 +5395,14 @@ async function generateOrderStls(id, button) {
 
   await loadInventoryItems();
 
-  const timelineEntry = getProductionTimelineOrders(latestOrders)
+  const selectedScopeActive = productionOrderSelection.size > 0;
+  const timelineSourceOrders = selectedScopeActive
+    ? latestOrders.filter(order => productionOrderSelection.has(String(order.id)))
+    : latestOrders;
+  const timelineEntry = getProductionTimelineOrders(
+    timelineSourceOrders,
+    selectedScopeActive
+  )
     .find(entry => String(entry.order.id) === String(id));
   const groups = getRushOrderPrintGroups(
     order,
@@ -4944,7 +5533,14 @@ window.generateTimelineAmsPlateStls = async function(
 
   await loadInventoryItems();
 
-  const timelineEntry = getProductionTimelineOrders(latestOrders)
+  const selectedScopeActive = productionOrderSelection.size > 0;
+  const timelineSourceOrders = selectedScopeActive
+    ? latestOrders.filter(order => productionOrderSelection.has(String(order.id)))
+    : latestOrders;
+  const timelineEntry = getProductionTimelineOrders(
+    timelineSourceOrders,
+    selectedScopeActive
+  )
     .find(entry => String(entry.order.id) === String(orderId));
 
   if (!timelineEntry) {
@@ -5196,6 +5792,16 @@ async function renderAssemblyQueue() {
               <p class="assembly-completed-time">
                 Completed${item.assembly_completed_at ? ` ${formatDate(item.assembly_completed_at)}` : ""}
               </p>
+              <button
+                type="button"
+                class="rework-action"
+                onclick='window.sendKeychainBackToRework(
+                  ${JSON.stringify(String(order.id))},
+                  ${itemIndex}
+                )'
+              >
+                Not happy with it? Send back to rework
+              </button>
             `
             : `
               <details class="assembly-reprint-controls">
@@ -5299,6 +5905,9 @@ async function renderAssemblyQueue() {
           </summary>
 
           <div class="assembly-body">
+            ${renderOrderAlerts(order)}
+            ${renderProductionNote(order)}
+            ${renderAssemblyChecklist(order)}
             ${
               readyItems.length
                 ? `
@@ -5815,8 +6424,18 @@ async function renderProductionPlanner(orders) {
     loadProductionJobs()
   ]);
 
-  const { baseTotals, keycapGroups, count } = getProductionSummary(orders);
-  const productionTimelineOrders = getProductionTimelineOrders(orders);
+  const selectedScopeActive = productionOrderSelection.size > 0;
+  const planningOrders = selectedScopeActive
+    ? orders.filter(order => productionOrderSelection.has(String(order.id)))
+    : orders;
+  const { baseTotals, keycapGroups, count } = getProductionSummary(
+    planningOrders,
+    selectedScopeActive
+  );
+  const productionTimelineOrders = getProductionTimelineOrders(
+    planningOrders,
+    selectedScopeActive
+  );
 
   const baseRows = Object.values(baseTotals)
     .map(item => {
@@ -5866,6 +6485,14 @@ async function renderProductionPlanner(orders) {
       inputId: `printQty-${encodeURIComponent(item.itemName)}`
     });
   });
+  currentBaseBatchPlan = baseRows.map(item => ({
+    itemName: item.itemName,
+    category: "Base",
+    quantity: item.toPrint,
+    baseName: item.name,
+    baseShape: item.baseShape || "ribbed",
+    stlJobId: item.stlJobId
+  }));
 
   const keycapCombinationCards = Object.entries(keycapGroups).map(([groupKey, group], groupIndex) => {
     const allRows = Object.entries(group.letters)
@@ -6042,8 +6669,45 @@ async function renderProductionPlanner(orders) {
   const amsLitePlates = planAmsLiteKeycapPlates(
     keycapCombinationCards
   );
+  const onlinePrinters = printers.filter(
+    printer => printer.status === "online"
+  );
+  const amsPrinterLanes = distributeAmsPlatesAcrossPrinters(
+    amsLitePlates,
+    onlinePrinters
+  );
+  const scheduledAmsPlates = amsPrinterLanes.flatMap(
+    (lane, laneIndex) => lane.plates.map((plate, lanePlateIndex) => ({
+      ...plate,
+      assignedPrinterId: lane.printer.id,
+      assignedPrinterName: lane.printer.name,
+      laneIndex,
+      lanePlateIndex
+    }))
+  );
+  const amsWaveCount = scheduledAmsPlates.length
+    ? Math.max(...scheduledAmsPlates.map(plate => plate.waveIndex)) + 1
+    : 0;
+  const amsWaves = Array.from(
+    { length: amsWaveCount },
+    (_, waveIndex) => ({
+      waveIndex,
+      lanes: amsPrinterLanes.map((lane, laneIndex) => ({
+        lane,
+        plate: scheduledAmsPlates.find(
+          candidate =>
+            candidate.laneIndex === laneIndex &&
+            candidate.waveIndex === waveIndex
+        )
+      }))
+    })
+  );
+  const totalAmsSpoolChanges = amsPrinterLanes.reduce(
+    (sum, lane) => sum + Number(lane.spoolChanges || 0),
+    0
+  );
 
-  const amsLitePlanner = amsLitePlates.length
+  const amsLitePlanner = scheduledAmsPlates.length
     ? `
       <section class="ams-lite-planner">
         <div class="ams-lite-planner-heading">
@@ -6052,17 +6716,86 @@ async function renderProductionPlanner(orders) {
             <div>
               <h3>AMS Lite Plate Suggestions</h3>
               <p>
-                Each suggested plate uses no more than four unique filament
-                colours. Exact colour combinations remain as separate STL
-                objects for easy assignment in Bambu Studio.
+                The planner first pairs non-overlapping colours so both A1s run
+                together, then balances pieces and reduces spool changes. Each
+                plate still uses no more than four filament colours.
               </p>
             </div>
           </div>
-          <strong>${amsLitePlates.length} suggested plate${amsLitePlates.length === 1 ? "" : "s"}</strong>
+          <div class="ams-change-total">
+            <strong>${scheduledAmsPlates.length} plate${scheduledAmsPlates.length === 1 ? "" : "s"} · ${amsPrinterLanes.length} printer lane${amsPrinterLanes.length === 1 ? "" : "s"}</strong>
+            <span>${totalAmsSpoolChanges} spool change${totalAmsSpoolChanges === 1 ? "" : "s"} after each printer’s setup</span>
+          </div>
         </div>
 
+        <div class="ams-mum-mode">
+          <span aria-hidden="true">♡</span>
+          <div>
+            <strong>Simple handover mode</strong>
+            <p>Start both plates in each wave together. Complete Wave 1 before Wave 2; only touch slots marked “SWAP”.</p>
+          </div>
+        </div>
+
+        <div class="ams-one-spool-rule">
+          <strong>One-spool rule is ON</strong>
+          <span>The same colour will never be scheduled on both printers in the same wave.</span>
+        </div>
+
+        ${printers.length > 1 && onlinePrinters.length < 2 ? `
+          <div class="ams-printer-fallback-warning">
+            Two-printer split is paused because only ${onlinePrinters.length || "no"} printer${onlinePrinters.length === 1 ? " is" : "s are"} marked online.
+            Mark both printers online above to balance plates across two lanes.
+          </div>
+        ` : ""}
+
+        <div class="ams-printer-lane-summary">
+          ${amsPrinterLanes.map(lane => `
+            <article>
+              <span class="printer-dot"></span>
+              <div>
+                <strong>${escapeAdminHtml(lane.printer.name)}</strong>
+                <small>${lane.plates.length} plate${lane.plates.length === 1 ? "" : "s"} · ${lane.pieceCount} keycaps · ${lane.spoolChanges} later swap${lane.spoolChanges === 1 ? "" : "s"}</small>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+
+        <section class="ams-safe-waves">
+          <header>
+            <div>
+              <strong>Shared-colour-safe print waves</strong>
+              <p>Both printers are paired whenever any safe colour combination remains. WAIT appears only when no compatible plate is available.</p>
+            </div>
+            <span>${amsWaveCount} wave${amsWaveCount === 1 ? "" : "s"}</span>
+          </header>
+
+          <div class="ams-wave-grid">
+            ${amsWaves.map(wave => `
+              <article class="ams-wave-row">
+                <b>Wave ${wave.waveIndex + 1}</b>
+                ${wave.lanes.map(({ lane, plate }) => plate ? `
+                  <div class="ams-wave-run">
+                    <strong>${escapeAdminHtml(lane.printer.name)}</strong>
+                    <span>
+                      Plate ${plate.lanePlateIndex + 1} ·
+                      ${Array.from(plate.colours.values())
+                        .map(colour => escapeAdminHtml(colour.name))
+                        .join(", ")}
+                    </span>
+                  </div>
+                ` : `
+                  <div class="ams-wave-wait">
+                    <strong>${escapeAdminHtml(lane.printer.name)}</strong>
+                    <span>WAIT — no compatible colour plate remains</span>
+                  </div>
+                `).join("")}
+              </article>
+            `).join("")}
+          </div>
+        </section>
+
         <div class="ams-lite-plate-grid">
-          ${amsLitePlates.map((plate, plateIndex) => {
+          ${scheduledAmsPlates.map((plate, plateIndex) => {
             const plateId = `ams-lite-plate-${plateIndex}`;
             const colours = Array.from(plate.colours.values());
             const overSuggestedSize = plate.pieceCount > 56;
@@ -6077,17 +6810,24 @@ async function renderProductionPlanner(orders) {
                   inputId: row.inputId,
                   toPrint: row.toPrint
                 }))
-              )
+              ),
+              printerId: plate.assignedPrinterId,
+              printerName: plate.assignedPrinterName,
+              colourNames: colours.map(colour => colour.name),
+              waveIndex: plate.waveIndex
             });
 
             return `
-              <article class="ams-lite-plate-card">
+              <article
+                class="ams-lite-plate-card"
+                style="grid-column:${plate.laneIndex + 1};grid-row:${plate.waveIndex + 1};"
+              >
                 <div class="ams-lite-plate-title">
                   <div>
-                    <span>Plate ${plateIndex + 1}</span>
+                    <span>${escapeAdminHtml(plate.assignedPrinterName)} · Plate ${plate.lanePlateIndex + 1}</span>
                     <strong>${plate.pieceCount} keycap${plate.pieceCount === 1 ? "" : "s"}</strong>
                   </div>
-                  <b>${colours.length} / 4 AMS slots</b>
+                  <b>Wave ${plate.waveIndex + 1} · ${colours.length} / 4 AMS slots</b>
                 </div>
 
                 <div class="ams-lite-colours">
@@ -6097,6 +6837,49 @@ async function renderProductionPlanner(orders) {
                       ${escapeAdminHtml(colour.name)}
                     </span>
                   `).join("")}
+                </div>
+
+                <div class="ams-change-instruction ${plate.changeCount ? "has-changes" : "no-changes"}">
+                  <strong>
+                    ${plate.lanePlateIndex === 0
+                      ? "Initial AMS setup"
+                      : plate.changeCount
+                        ? `${plate.changeCount} spool change${plate.changeCount === 1 ? "" : "s"}`
+                        : "No spool changes"
+                    }
+                  </strong>
+                  <span>
+                    ${plate.lanePlateIndex === 0
+                      ? "Load these colours once before starting."
+                      : plate.changeCount
+                        ? "Change only the purple SWAP slots below."
+                        : "Leave every loaded spool exactly where it is."
+                    }
+                  </span>
+                </div>
+
+                <div class="ams-slot-guide">
+                  ${plate.slotAssignments
+                    .filter(assignment => assignment.colour)
+                    .map(assignment => `
+                      <article class="ams-slot-row action-${assignment.action}">
+                        <b>Slot ${assignment.slot}</b>
+                        <i style="background:${getSafePdfColour(assignment.colour.hex, "#d9d9d9")}"></i>
+                        <div>
+                          <strong>${escapeAdminHtml(assignment.colour.name)}</strong>
+                          <small>
+                            ${plate.lanePlateIndex === 0
+                              ? "LOAD for first plate"
+                              : assignment.action === "keep"
+                                ? "KEEP — do not touch"
+                                : assignment.previousColour
+                                  ? `SWAP out ${escapeAdminHtml(assignment.previousColour.name)}`
+                                  : "LOAD into empty slot"
+                            }
+                          </small>
+                        </div>
+                      </article>
+                    `).join("")}
                 </div>
 
                 <div class="ams-lite-combinations">
@@ -6129,7 +6912,11 @@ async function renderProductionPlanner(orders) {
                           type="button"
                           class="ams-combination-start-btn"
                           ${productionJobsLoadFailed ? "disabled" : ""}
-                          onclick="window.startKeycapCombination('${combination.stlJobId}', this)"
+                          onclick='window.startKeycapCombination(
+                            ${JSON.stringify(combination.stlJobId)},
+                            this,
+                            ${JSON.stringify(plate.assignedPrinterId)}
+                          )'
                         >
                           Start Printing
                         </button>
@@ -6140,7 +6927,7 @@ async function renderProductionPlanner(orders) {
 
                 ${overSuggestedSize ? `
                   <p class="ams-plate-warning">
-                    This group may be too crowded for one A1 Mini plate.
+                    This group may be too crowded for one Bambu A1 plate.
                     Download the exact combinations separately if needed.
                   </p>
                 ` : ""}
@@ -6160,7 +6947,7 @@ async function renderProductionPlanner(orders) {
                     ${productionJobsLoadFailed ? "disabled" : ""}
                     onclick="window.startAmsLitePlate('${plateId}', this)"
                   >
-                    Start Printing
+                    Start on ${escapeAdminHtml(plate.assignedPrinterName)}
                   </button>
                 </div>
               </article>
@@ -6284,6 +7071,8 @@ async function renderProductionPlanner(orders) {
                           ${escapeAdminHtml(keychainNames.join(", ") || "Personalised keychain")}
                           ${entry.dueDate ? ` · Ready by ${escapeAdminHtml(formatDate(entry.dueDate))}` : ""}
                         </p>
+                        ${renderOrderAlerts(order, true)}
+                        ${renderProductionNote(order, true)}
 
                         <div class="timeline-progress-row">
                           <div class="timeline-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}">
@@ -6428,6 +7217,98 @@ async function renderProductionPlanner(orders) {
     0
   );
   const queuedPieces = baseQueuedPieces + keycapQueuedPieces;
+  const selectedBatchPanel = selectedScopeActive ? `
+    <section class="selected-production-batch">
+      <header>
+        <div>
+          <span>Combined print plan</span>
+          <h3>Selected Orders Batch</h3>
+          <p>
+            Review the selected orders, print every base group in bulk, then
+            run all remaining keycaps through the shared AMS Lite suggestions.
+          </p>
+        </div>
+        <strong>${queuedPieces} total pieces</strong>
+      </header>
+
+      <section class="batch-plan-step">
+        <div class="batch-step-number">1</div>
+        <div class="batch-step-content">
+          <header>
+            <div>
+              <h4>Bulk Base Printing</h4>
+              <p>
+                All ${planningOrders.length} selected orders are combined here.
+                Different colours and base shapes stay in separate printable files.
+              </p>
+            </div>
+            <strong>${baseQueuedPieces} bases</strong>
+          </header>
+
+          <div class="batch-base-groups">
+            ${currentBaseBatchPlan.map(group => `
+              <article>
+                <span class="colour-dot" style="background:${getSafePdfColour(
+                  baseRows.find(item => item.itemName === group.itemName)?.hex,
+                  "#d9d9d9"
+                )}"></span>
+                <div>
+                  <strong>${escapeAdminHtml(group.itemName)}</strong>
+                  <small>${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} · combined across selected orders</small>
+                </div>
+                <b>× ${group.quantity}</b>
+                <button
+                  type="button"
+                  onclick="window.generateBaseColourStl('${group.stlJobId}', this)"
+                >
+                  STL
+                </button>
+              </article>
+            `).join("") || `<p class="batch-complete-message">✓ All bases are already covered by stock or tracked prints.</p>`}
+          </div>
+
+          ${currentBaseBatchPlan.length ? `
+            <div class="batch-step-actions">
+              <button type="button" onclick="window.downloadSelectedBaseBatchStls(this)">
+                Download All Combined Base STLs
+              </button>
+              <button
+                type="button"
+                class="batch-start-action"
+                ${productionJobsLoadFailed ? "disabled" : ""}
+                onclick="window.startSelectedBaseBatch(this)"
+              >
+                Start All Base Groups
+              </button>
+            </div>
+          ` : ""}
+        </div>
+      </section>
+
+      <section class="batch-plan-step">
+        <div class="batch-step-number">2</div>
+        <div class="batch-step-content">
+          <header>
+            <div>
+              <h4>All Keycaps · AMS Lite Suggestions</h4>
+              <p>
+                Keycaps from every selected order are combined, then arranged
+                into suggestions using no more than four filament colours per plate.
+              </p>
+            </div>
+            <strong>${keycapQueuedPieces} keycaps</strong>
+          </header>
+          ${amsLitePlanner || `<p class="batch-complete-message">✓ All keycaps are already covered by stock or tracked prints.</p>`}
+        </div>
+      </section>
+
+      <footer>
+        <button type="button" onclick="window.setProductionQueueView('timeline')">
+          Review Selected Orders Again
+        </button>
+      </footer>
+    </section>
+  ` : "";
 
   const renderTrackedJobCards = (jobs, stage) => {
     const groupedJobs = new Map();
@@ -6514,7 +7395,13 @@ async function renderProductionPlanner(orders) {
 
                   <div class="production-job-grid">
                     ${group.jobs.map(job => `
-                      <article class="production-job-card stage-${stage} has-selection">
+                      <article class="production-job-card stage-${stage} has-selection ${
+                        ["failed", "reprint_needed"].includes(job.quality_status) ? "has-quality-issue" : ""
+                      } ${
+                        printers.some(printer => String(printer.id) === String(job.printer_id) && printer.status === "offline")
+                          ? "needs-reassignment"
+                          : ""
+                      }">
                         <label
                           class="production-job-select"
                           title="Select ${escapeAdminHtml(job.item_name)}"
@@ -6550,6 +7437,32 @@ async function renderProductionPlanner(orders) {
                         </strong>
 
                         <div class="production-job-actions">
+                          ${stage === "printing" ? `
+                            <label class="job-printer-select">
+                              <span>Printer</span>
+                              <select onchange="window.assignProductionPrinter(${JSON.stringify(job.id)}, this.value)">
+                                <option value="">Unassigned</option>
+                                ${printers.map(printer => `
+                                  <option value="${escapeAdminHtml(String(printer.id))}" ${String(job.printer_id || "") === String(printer.id) ? "selected" : ""}>
+                                    ${escapeAdminHtml(printer.name)}${printer.status === "offline" ? " · OFFLINE" : ""}
+                                  </option>
+                                `).join("")}
+                              </select>
+                            </label>
+                            ${printers.some(printer => String(printer.id) === String(job.printer_id) && printer.status === "offline")
+                              ? `<strong class="reassignment-badge">Needs reassignment</strong>`
+                              : ""}
+                            ${["failed", "reprint_needed"].includes(job.quality_status)
+                              ? `<strong class="quality-issue-badge">Quality issue · reprint needed</strong>`
+                              : ""}
+                            <button
+                              type="button"
+                              class="production-stage-secondary quality-action"
+                              onclick="window.markProductionQualityIssue(${JSON.stringify(job.id)})"
+                            >
+                              Bad Print / Reprint
+                            </button>
+                          ` : ""}
                           ${stage === "printing" ? `
                             <button
                               type="button"
@@ -6634,6 +7547,56 @@ async function renderProductionPlanner(orders) {
         </div>
       ` : ""}
 
+      ${selectedScopeActive ? `
+        <section class="production-selection-scope">
+          <div>
+            <span>Selected-order planning preview</span>
+            <strong>${planningOrders.length} order${planningOrders.length === 1 ? "" : "s"}</strong>
+            <p>
+              ${planningOrders.map(order =>
+                escapeAdminHtml(order.order_ref || order.customer_name || "Order")
+              ).join(" · ")}
+            </p>
+          </div>
+          <div>
+            <small>
+              Quantities and AMS suggestions below are limited to this batch.
+              Nothing starts until you use a Start Printing action.
+            </small>
+            <button type="button" onclick="window.clearProductionOrderSelection()">
+              Show All Active Orders
+            </button>
+          </div>
+        </section>
+      ` : ""}
+
+      <section class="printer-status-board">
+        <header>
+          <div><p>Capacity check</p><h3>Printers</h3></div>
+          <span>${printers.filter(printer => printer.status === "online").length}/${printers.length || 0} online</span>
+        </header>
+        <div>
+          ${printers.map(printer => {
+            const affected = productionJobs.filter(job =>
+              job.stage === "printing" && String(job.printer_id) === String(printer.id)
+            ).length;
+            return `
+              <article class="${printer.status === "offline" ? "is-offline" : ""}">
+                <span class="printer-dot"></span>
+                <div>
+                  <strong>${escapeAdminHtml(printer.name)}</strong>
+                  <small>${printer.status === "offline" ? "OFFLINE" : "Online"} · ${affected} active job${affected === 1 ? "" : "s"}</small>
+                  ${printer.issue_notes ? `<p>${escapeAdminHtml(printer.issue_notes)}</p>` : ""}
+                </div>
+                <button type="button" onclick='window.togglePrinterStatus(${JSON.stringify(String(printer.id))})'>
+                  Mark ${printer.status === "offline" ? "online" : "offline"}
+                </button>
+              </article>
+            `;
+          }).join("") || `<p class="hint">Run the operations migration to track printer status.</p>`}
+        </div>
+      </section>
+
       <nav class="production-stage-tabs" aria-label="Production stages">
         <button
           type="button"
@@ -6663,6 +7626,16 @@ async function renderProductionPlanner(orders) {
 
       <div class="production-queue-panel ${productionStageView === "queue" ? "" : "hidden"}">
         <nav class="production-queue-tabs" aria-label="To print sections">
+          ${selectedScopeActive ? `
+            <button
+              type="button"
+              class="${productionQueueView === "batch" ? "active" : ""}"
+              onclick="window.setProductionQueueView('batch')"
+            >
+              <span>Combined Batch Plan</span>
+              <strong>${queuedPieces}</strong>
+            </button>
+          ` : ""}
           <button
             type="button"
             class="${productionQueueView === "timeline" ? "active" : ""}"
@@ -6688,6 +7661,12 @@ async function renderProductionPlanner(orders) {
             <strong>${keycapQueuedPieces}</strong>
           </button>
         </nav>
+
+        ${selectedScopeActive ? `
+          <div class="production-queue-section ${productionQueueView === "batch" ? "" : "hidden"}">
+            ${selectedBatchPanel}
+          </div>
+        ` : ""}
 
         <div class="production-queue-section ${productionQueueView === "timeline" ? "" : "hidden"}">
           ${productionTimelinePanel}
@@ -8486,18 +9465,72 @@ async function loadOrders() {
   ordersContainer.innerHTML = `<p class="empty">Loading orders...</p>`;
 
   if (IS_ADMIN_PREVIEW) {
-    latestOrders = [{
-      id: "preview-paid-order",
-      order_ref: "PREVIEW",
-      payment_type: "Paid",
-      total: 363.26,
-      refunded_amount: 0,
-      status: "Completed",
-      order_data: [],
-      created_at: new Date().toISOString()
-    }];
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const previewDesign = {
+      bases: [{ name: "Jade White", hex: "#ffffff" }],
+      caps: [{ name: "Pink", hex: "#f55a74" }],
+      letters: [{ name: "Jade White", hex: "#ffffff" }],
+      base_shape: { key: "ribbed" }
+    };
+    latestOrders = [
+      {
+        id: "preview-changed-order",
+        order_ref: "LK-1042",
+        customer_name: "Alicia Tan",
+        customer_email: "alicia@example.com",
+        customer_phone: "90000001",
+        payment_type: "Paid",
+        total: 38.4,
+        status: "Printing",
+        collection_method: "delivery",
+        delivery_address: "10 Woodlands Street 12, Singapore 738000",
+        needed_by: tomorrow,
+        notes: "Added Aiman after payment. Please pass to husband at lobby.",
+        production_notes: "Base connected only. Double-check the N cap before adding the keyring.",
+        handoff_name: "Safwan",
+        handoff_relationship: "Husband",
+        update_needs_review: true,
+        update_summary: "Add-on: Aiman (+5 printed letters/caps and bases)",
+        revision_number: 2,
+        assembly_progress: { base_connected: true },
+        order_data: [{ name: "AIMAN", clean_name: "AIMAN", design: previewDesign }],
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "preview-packed-order",
+        order_ref: "LK-1040",
+        customer_name: "Nur Syafiqah",
+        payment_type: "Paid",
+        total: 28.8,
+        status: "Ready for Pickup/Delivery",
+        collection_method: "delivery",
+        delivery_address: "20 Marsiling Lane #02-01, Singapore 739111",
+        needed_by: tomorrow,
+        special_instructions: "Call before delivery; teacher will receive it.",
+        production_notes: "Packed in the pink mailer. Inspect the left edge once more.",
+        handoff_name: "Ms Lim",
+        handoff_relationship: "Teacher",
+        assembly_progress: {
+          base_connected: true,
+          letters_caps_assembled: true,
+          keyring_added: true,
+          qc_done: true,
+          packed: true
+        },
+        order_data: [{
+          name: "NUR",
+          clean_name: "NUR",
+          design: previewDesign,
+          assembly_completed: true,
+          assembly_completed_at: new Date().toISOString()
+        }],
+        created_at: new Date(Date.now() - 3600000).toISOString()
+      }
+    ];
     await Promise.all([
       loadInventoryItems(),
+      loadProductionJobs(),
+      loadPrinters(),
       loadAdminSettings(),
       loadBusinessFinancials(),
       loadBusinessExpenses()
@@ -8532,6 +9565,8 @@ latestOrders = (data || []).map(order =>
 
 await Promise.all([
   loadInventoryItems(),
+  loadProductionJobs(),
+  loadPrinters(),
   loadAdminSettings(),
   loadBusinessFinancials(),
   loadBusinessExpenses()
@@ -8543,12 +9578,357 @@ renderCurrentView();
 window.updateOrderStatus = updateOrderStatus;
 window.updatePaymentType = updatePaymentType;
 
+function syncOrderSelectionToolbar() {
+  const count = selectedOrderIds.size;
+  const countLabel = document.getElementById("selectedOrderCount");
+  const previewButton = document.getElementById("previewSelectedProductionBtn");
+  const clearButton = document.getElementById("clearOrderSelectionBtn");
+
+  if (countLabel) countLabel.textContent = `${count} selected`;
+  if (previewButton) previewButton.disabled = count === 0;
+  if (clearButton) clearButton.disabled = count === 0;
+  const visibleInputs = Array.from(
+    document.querySelectorAll("[data-order-batch-select]")
+  );
+  const selectAll = document.getElementById("selectAllVisibleOrders");
+  if (selectAll) {
+    selectAll.checked =
+      visibleInputs.length > 0 &&
+      visibleInputs.every(input => input.checked);
+  }
+}
+
+window.toggleOrderSelection = function(orderId, checked) {
+  const id = String(orderId);
+  if (checked) selectedOrderIds.add(id);
+  else selectedOrderIds.delete(id);
+  syncOrderSelectionToolbar();
+};
+
+window.toggleVisibleOrderSelection = function(orderIds, checked) {
+  (orderIds || []).forEach(orderId => {
+    const id = String(orderId);
+    if (checked) selectedOrderIds.add(id);
+    else selectedOrderIds.delete(id);
+  });
+  document.querySelectorAll("[data-order-batch-select]").forEach(input => {
+    input.checked = checked;
+  });
+  syncOrderSelectionToolbar();
+};
+
+window.clearOrderSelection = function() {
+  selectedOrderIds.clear();
+  document.querySelectorAll("[data-order-batch-select]").forEach(input => {
+    input.checked = false;
+  });
+  const selectAll = document.getElementById("selectAllVisibleOrders");
+  if (selectAll) selectAll.checked = false;
+  syncOrderSelectionToolbar();
+};
+
+window.previewSelectedOrdersProduction = function() {
+  const eligibleOrders = getProductionPreviewOrders(
+    latestOrders,
+    selectedOrderIds
+  );
+
+  if (!eligibleOrders.length) {
+    alert("Select at least one active order to preview.");
+    return;
+  }
+
+  productionOrderSelection.clear();
+  eligibleOrders.forEach(order =>
+    productionOrderSelection.add(String(order.id))
+  );
+  productionStageView = "queue";
+  productionQueueView = "batch";
+  currentView = "production";
+  setActiveTab(productionViewBtn);
+  renderCurrentView();
+};
+
+window.clearProductionOrderSelection = function() {
+  productionOrderSelection.clear();
+  selectedOrderIds.clear();
+  productionQueueView = "timeline";
+  renderCurrentView();
+};
+
+window.saveOrderProductionNote = async function(orderId, note, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  if (!order) return;
+
+  const previousLabel = button?.textContent || "Save note";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving…";
+  }
+
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({ production_notes: String(note || "").trim() })
+      .eq("id", order.id);
+    if (error) {
+      alert("Unable to save the production note. Run the latest operations migration first.");
+      if (button) {
+        button.disabled = false;
+        button.textContent = previousLabel;
+      }
+      return;
+    }
+  }
+
+  order.production_notes = String(note || "").trim();
+  if (button) {
+    button.textContent = "Saved ✓";
+    setTimeout(() => {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }, 1200);
+  }
+};
+
+window.startOrderRework = function(orderId) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const keychains = order?.order_data || [];
+  if (!order || !keychains.length) {
+    alert("No keychain was found for this order.");
+    return;
+  }
+
+  let itemIndex = 0;
+  if (keychains.length > 1) {
+    const choice = prompt(
+      "Which keychain should go back to rework?\n\n" +
+      keychains.map((item, index) => `${index + 1}. ${item.name || "Keychain"}`).join("\n"),
+      "1"
+    );
+    if (choice === null) return;
+    itemIndex = Number(choice) - 1;
+    if (!Number.isInteger(itemIndex) || !keychains[itemIndex]) {
+      alert("Choose a valid keychain number.");
+      return;
+    }
+  }
+
+  window.sendKeychainBackToRework(orderId, itemIndex);
+};
+
+window.sendKeychainBackToRework = async function(orderId, itemIndex) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const index = Number(itemIndex);
+  const keychain = order?.order_data?.[index];
+  if (!order || !keychain) return;
+
+  const reason = prompt(
+    `Send ${keychain.name || "this keychain"} back to Production?\n\n` +
+    "QC and Packed will be unticked. The keychain will reopen in Assembly, and its replacement parts will be recalculated.",
+    keychain.rework_reason || "Did not pass packing quality check"
+  );
+  if (reason === null || !reason.trim()) return;
+
+  if (IS_ADMIN_PREVIEW) {
+    keychain.assembly_completed = false;
+    keychain.assembly_completed_at = null;
+    keychain.rework_required = true;
+    keychain.rework_reason = reason.trim();
+    order.rework_required = true;
+    order.rework_reason = reason.trim();
+    order.status = "Printing";
+    order.assembly_progress = {
+      ...normalizeAssemblyProgress(order.assembly_progress),
+      qc_done: false,
+      packed: false
+    };
+    order.production_notes = [
+      order.production_notes,
+      `Rework: ${keychain.name || "Keychain"} — ${reason.trim()}`
+    ].filter(Boolean).join("\n");
+    renderCurrentView();
+    return;
+  }
+
+  const { error } = await supabase.rpc(
+    "reopen_order_keychain_for_rework",
+    {
+      p_order_id: String(orderId),
+      p_item_index: index,
+      p_reason: reason.trim()
+    }
+  );
+
+  if (error) {
+    console.error("Unable to reopen keychain for rework:", error);
+    alert(
+      "Unable to send this keychain back to Production.\n\n" +
+      "Run the latest tomorrow operations SQL, then try again."
+    );
+    return;
+  }
+
+  await loadOrders();
+};
+
+window.resolveOrderRework = async function(orderId, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  if (!order) return;
+  if (button) button.disabled = true;
+
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        rework_required: false,
+        rework_resolved_at: new Date().toISOString()
+      })
+      .eq("id", order.id);
+    if (error) {
+      alert("Unable to close this rework.");
+      if (button) button.disabled = false;
+      return;
+    }
+  }
+
+  order.rework_required = false;
+  renderCurrentView();
+};
+
+window.updateAssemblyStage = async function(orderId, stage, checked) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  if (!order || !ASSEMBLY_STAGES.some(item => item.key === stage)) return;
+
+  const assemblyProgress = {
+    ...normalizeAssemblyProgress(order.assembly_progress),
+    [stage]: Boolean(checked)
+  };
+  order.assembly_progress = assemblyProgress;
+
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({ assembly_progress: assemblyProgress })
+      .eq("id", order.id);
+    if (error) {
+      alert("Unable to save assembly progress. Run the operations migration first.");
+      await loadOrders();
+      return;
+    }
+  }
+  renderCurrentView();
+};
+
+window.acknowledgeOrderUpdate = async function(orderId, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  if (!order) return;
+  if (button) button.disabled = true;
+
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        update_needs_review: false,
+        update_reviewed_at: new Date().toISOString()
+      })
+      .eq("id", order.id);
+    if (error) {
+      alert("Unable to acknowledge this update.");
+      if (button) button.disabled = false;
+      return;
+    }
+  }
+
+  order.update_needs_review = false;
+  renderCurrentView();
+};
+
+window.openSelectedDeliveryRoute = function() {
+  const addresses = Array.from(
+    document.querySelectorAll("[data-route-address]:checked")
+  ).map(input => input.dataset.routeAddress);
+  const url = buildGoogleMapsRouteUrl(addresses);
+
+  if (!url) {
+    alert("Select at least one delivery stop.");
+    return;
+  }
+  window.open(url, "_blank", "noopener");
+};
+
+window.assignProductionPrinter = async function(jobId, printerId) {
+  if (IS_ADMIN_PREVIEW) {
+    const job = productionJobs.find(item => String(item.id) === String(jobId));
+    if (job) job.printer_id = printerId || null;
+    await renderProductionPlanner(latestOrders);
+    return;
+  }
+  const { error } = await supabase
+    .from("production_jobs")
+    .update({ printer_id: printerId || null, updated_at: new Date().toISOString() })
+    .eq("id", jobId);
+  if (error) {
+    alert("Unable to assign this printer. Run the operations migration first.");
+    return;
+  }
+  await renderProductionPlanner(latestOrders);
+};
+
+window.markProductionQualityIssue = async function(jobId) {
+  const notes = prompt("What went wrong with this print?", "Poor print quality");
+  if (notes === null) return;
+
+  if (IS_ADMIN_PREVIEW) {
+    const job = productionJobs.find(item => String(item.id) === String(jobId));
+    if (job) {
+      job.quality_status = "reprint_needed";
+      job.issue_notes = notes.trim();
+    }
+    await renderProductionPlanner(latestOrders);
+    return;
+  }
+  const { error } = await supabase
+    .from("production_jobs")
+    .update({
+      quality_status: "reprint_needed",
+      issue_notes: notes.trim(),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", jobId);
+  if (error) {
+    alert("Unable to flag this reprint. Run the operations migration first.");
+    return;
+  }
+  await renderProductionPlanner(latestOrders);
+};
+
+window.togglePrinterStatus = async function(printerId) {
+  const printer = printers.find(item => String(item.id) === String(printerId));
+  if (!printer) return;
+  const status = printer.status === "offline" ? "online" : "offline";
+
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("printers")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", printer.id);
+    if (error) {
+      alert("Unable to update printer status.");
+      return;
+    }
+  }
+  printer.status = status;
+  renderCurrentView();
+};
+
 function setActiveTab(activeTab) {
 
     todayViewBtn.classList.remove("active");
     ordersViewBtn.classList.remove("active");
     productionViewBtn.classList.remove("active");
     assemblyViewBtn.classList.remove("active");
+    fulfilmentViewBtn.classList.remove("active");
     inventoryViewBtn.classList.remove("active");
     financeViewBtn.classList.remove("active");
     settingsViewBtn.classList.remove("active");
@@ -8578,6 +9958,12 @@ productionViewBtn.onclick = () => {
 assemblyViewBtn.onclick = () => {
   currentView = "assembly";
   setActiveTab(assemblyViewBtn);
+  renderCurrentView();
+};
+
+fulfilmentViewBtn.onclick = () => {
+  currentView = "fulfilment";
+  setActiveTab(fulfilmentViewBtn);
   renderCurrentView();
 };
 
@@ -8623,4 +10009,19 @@ fulfilmentFilter.addEventListener("change", () => renderOrders(latestOrders));
 orderDateSort.addEventListener("change", () => renderOrders(latestOrders));
 
 refreshBtn.onclick = loadOrders;
+workshopNotesToggle.onclick = () => {
+  const hidden = workshopNotesBody.hidden;
+  workshopNotesBody.hidden = !hidden;
+  workshopNotesToggle.setAttribute("aria-expanded", String(hidden));
+};
+workshopNotesInput.addEventListener("input", () => {
+  workshopNotesSaveState.textContent = "Unsaved";
+  clearTimeout(workshopNotesSaveTimer);
+  workshopNotesSaveTimer = setTimeout(saveWorkshopNotes, 650);
+});
+await loadWorkshopNotes();
+if (window.matchMedia("(max-width: 760px)").matches) {
+  workshopNotesBody.hidden = true;
+  workshopNotesToggle.setAttribute("aria-expanded", "false");
+}
 loadOrders();
