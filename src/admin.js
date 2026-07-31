@@ -739,7 +739,7 @@ async function loadWorkshopNotes() {
   if (IS_ADMIN_PREVIEW) {
     workshopNotesInput.value =
       localFallback ||
-      "Little Keeps · A1 2 is offline — reassign its jobs.\nCheck add-on for LK-1042.\nAlicia: pass to husband.";
+      "Both printers are online.\nCheck add-on for LK-1042.\nAlicia: pass to husband.";
     return;
   }
 
@@ -776,8 +776,8 @@ async function saveWorkshopNotes() {
 async function loadPrinters() {
   if (IS_ADMIN_PREVIEW) {
     printers = [
-      { id: "a1-mini-1", name: "Whimsy Daisy · A1 1", status: "online", issue_notes: "" },
-      { id: "a1-mini-2", name: "Little Keeps · A1 2", status: "offline", issue_notes: "Print quality failure · nozzle check needed" }
+      { id: "a1-mini-1", name: "Whimsy Daisy", status: "online", issue_notes: "" },
+      { id: "a1-mini-2", name: "Little Keeps", status: "online", issue_notes: "" }
     ];
     return;
   }
@@ -792,7 +792,14 @@ async function loadPrinters() {
     printers = [];
     return;
   }
-  printers = data || [];
+  const printerNames = {
+    "a1-mini-1": "Whimsy Daisy",
+    "a1-mini-2": "Little Keeps"
+  };
+  printers = (data || []).map(printer => ({
+    ...printer,
+    name: printerNames[String(printer.id)] || printer.name
+  }));
 }
 
 function getPriorityOrders(orders) {
@@ -4970,52 +4977,6 @@ function planAmsLiteKeycapPlates(combinationCards) {
   return optimizeAmsPlateSequence(plates);
 }
 
-function getProductionJobFilamentColours(job) {
-  const itemName = String(job?.item_name || "").trim();
-  const keycapMatch = itemName.match(
-    /^(.+?)\s+Cap\s+\+\s+(.+?)\s+Letter(?:\s+-|$)/i
-  );
-
-  if (keycapMatch) {
-    return [keycapMatch[1], keycapMatch[2]]
-      .map(colour => colour.trim().toLowerCase());
-  }
-
-  const baseMatch = itemName.match(/^(.+?)\s+Base(?:\s|$)/i);
-  return baseMatch ? [baseMatch[1].trim().toLowerCase()] : [];
-}
-
-function getCrossPrinterColourConflicts(colourNames, printerId) {
-  if (!printerId) return [];
-
-  const desiredColours = new Set(
-    (colourNames || []).map(colour => String(colour).trim().toLowerCase())
-  );
-
-  return productionJobs
-    .filter(job =>
-      job.stage === "printing" &&
-      job.printer_id &&
-      String(job.printer_id) !== String(printerId)
-    )
-    .flatMap(job => getProductionJobFilamentColours(job))
-    .filter(colour => desiredColours.has(colour))
-    .filter((colour, index, colours) => colours.indexOf(colour) === index);
-}
-
-function confirmSharedColourIsAvailable(colourNames, printerId) {
-  const conflicts = getCrossPrinterColourConflicts(colourNames, printerId);
-
-  if (!conflicts.length) return true;
-
-  alert(
-    `Cannot start this plate yet. ${conflicts
-      .map(colour => colour.replace(/\b\w/g, letter => letter.toUpperCase()))
-      .join(", ")} ${conflicts.length === 1 ? "is" : "are"} already in use on the other printer. Finish and pick that print first, then start this one.`
-  );
-  return false;
-}
-
 window.startKeycapCombination = async function(jobId, button, printerId = null) {
   const combination = productionStlJobs.get(jobId);
 
@@ -5030,13 +4991,6 @@ window.startKeycapCombination = async function(jobId, button, printerId = null) 
     alert(
       "Set up the production workflow in Supabase before tracking prints."
     );
-    return;
-  }
-
-  if (!confirmSharedColourIsAvailable(
-    [combination.capName, combination.letterName],
-    printerId
-  )) {
     return;
   }
 
@@ -5110,10 +5064,6 @@ window.startAmsLitePlate = async function(plateId, button) {
     alert(
       "Set up the production workflow in Supabase before tracking prints."
     );
-    return;
-  }
-
-  if (!confirmSharedColourIsAvailable(plate.colourNames, plate.printerId)) {
     return;
   }
 
@@ -6716,9 +6666,9 @@ async function renderProductionPlanner(orders) {
             <div>
               <h3>AMS Lite Plate Suggestions</h3>
               <p>
-                The planner first pairs non-overlapping colours so both A1s run
-                together, then balances pieces and reduces spool changes. Each
-                plate still uses no more than four filament colours.
+                Plates are balanced across both A1s so they can run together,
+                then ordered to reduce AMS spool changes. Each plate still uses
+                no more than four filament colours.
               </p>
             </div>
           </div>
@@ -6734,11 +6684,6 @@ async function renderProductionPlanner(orders) {
             <strong>Simple handover mode</strong>
             <p>Start both plates in each wave together. Complete Wave 1 before Wave 2; only touch slots marked “SWAP”.</p>
           </div>
-        </div>
-
-        <div class="ams-one-spool-rule">
-          <strong>One-spool rule is ON</strong>
-          <span>The same colour will never be scheduled on both printers in the same wave.</span>
         </div>
 
         ${printers.length > 1 && onlinePrinters.length < 2 ? `
@@ -6763,8 +6708,8 @@ async function renderProductionPlanner(orders) {
         <section class="ams-safe-waves">
           <header>
             <div>
-              <strong>Shared-colour-safe print waves</strong>
-              <p>Both printers are paired whenever any safe colour combination remains. WAIT appears only when no compatible plate is available.</p>
+              <strong>Two-printer print waves</strong>
+              <p>Start both listed plates together. The same colours may run on both printers because each A1 has its own filament supply.</p>
             </div>
             <span>${amsWaveCount} wave${amsWaveCount === 1 ? "" : "s"}</span>
           </header>
@@ -6786,7 +6731,7 @@ async function renderProductionPlanner(orders) {
                 ` : `
                   <div class="ams-wave-wait">
                     <strong>${escapeAdminHtml(lane.printer.name)}</strong>
-                    <span>WAIT — no compatible colour plate remains</span>
+                    <span>DONE — no more plates assigned</span>
                   </div>
                 `).join("")}
               </article>

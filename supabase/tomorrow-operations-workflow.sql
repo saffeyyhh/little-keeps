@@ -31,15 +31,19 @@ create table if not exists public.printers (
 
 insert into public.printers (id, name, status, issue_notes)
 values
-  ('a1-mini-1', 'Whimsy Daisy · A1 1', 'online', ''),
+  ('a1-mini-1', 'Whimsy Daisy', 'online', ''),
   (
     'a1-mini-2',
-    'Little Keeps · A1 2',
-    'offline',
-    'Printer down — inspect print quality before returning it to service.'
+    'Little Keeps',
+    'online',
+    ''
   )
 on conflict (id) do update
-set name = excluded.name;
+set
+  name = excluded.name,
+  status = excluded.status,
+  issue_notes = excluded.issue_notes,
+  updated_at = now();
 
 alter table public.printers enable row level security;
 drop policy if exists "Authenticated users manage printers"

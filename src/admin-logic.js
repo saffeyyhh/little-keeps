@@ -205,11 +205,7 @@ export function getProductionPreviewOrders(orders = [], selectedIds = []) {
   );
 }
 
-export function optimizeAmsPlateSequence(
-  plates = [],
-  slotCount = 4,
-  preserveOrder = false
-) {
+export function optimizeAmsPlateSequence(plates = [], slotCount = 4) {
   const normaliseColour = colour => ({
     name: String(colour?.name || colour || "Unknown"),
     hex: colour?.hex || "#d9d9d9"
@@ -239,41 +235,35 @@ export function optimizeAmsPlateSequence(
     });
   });
 
-  let ordered;
+  remaining.sort((a, b) => {
+    const reuseA = Array.from(getColourKeys(a))
+      .reduce((sum, key) => sum + (frequency.get(key) || 0), 0);
+    const reuseB = Array.from(getColourKeys(b))
+      .reduce((sum, key) => sum + (frequency.get(key) || 0), 0);
+    return reuseB - reuseA ||
+      Number(b.pieceCount || 0) - Number(a.pieceCount || 0);
+  });
 
-  if (preserveOrder) {
-    ordered = remaining;
-  } else {
+  const ordered = [remaining.shift()];
+  while (remaining.length) {
+    const currentKeys = getColourKeys(ordered.at(-1));
     remaining.sort((a, b) => {
-      const reuseA = Array.from(getColourKeys(a))
+      const keysA = getColourKeys(a);
+      const keysB = getColourKeys(b);
+      const overlapA = Array.from(keysA)
+        .filter(key => currentKeys.has(key)).length;
+      const overlapB = Array.from(keysB)
+        .filter(key => currentKeys.has(key)).length;
+      const futureReuseA = Array.from(keysA)
         .reduce((sum, key) => sum + (frequency.get(key) || 0), 0);
-      const reuseB = Array.from(getColourKeys(b))
+      const futureReuseB = Array.from(keysB)
         .reduce((sum, key) => sum + (frequency.get(key) || 0), 0);
-      return reuseB - reuseA ||
+
+      return overlapB - overlapA ||
+        futureReuseB - futureReuseA ||
         Number(b.pieceCount || 0) - Number(a.pieceCount || 0);
     });
-
-    ordered = [remaining.shift()];
-    while (remaining.length) {
-      const currentKeys = getColourKeys(ordered.at(-1));
-      remaining.sort((a, b) => {
-        const keysA = getColourKeys(a);
-        const keysB = getColourKeys(b);
-        const overlapA = Array.from(keysA)
-          .filter(key => currentKeys.has(key)).length;
-        const overlapB = Array.from(keysB)
-          .filter(key => currentKeys.has(key)).length;
-        const futureReuseA = Array.from(keysA)
-          .reduce((sum, key) => sum + (frequency.get(key) || 0), 0);
-        const futureReuseB = Array.from(keysB)
-          .reduce((sum, key) => sum + (frequency.get(key) || 0), 0);
-
-        return overlapB - overlapA ||
-          futureReuseB - futureReuseA ||
-          Number(b.pieceCount || 0) - Number(a.pieceCount || 0);
-      });
-      ordered.push(remaining.shift());
-    }
+    ordered.push(remaining.shift());
   }
 
   let slots = Array(slotCount).fill(null);
@@ -355,175 +345,18 @@ export function distributeAmsPlatesAcrossPrinters(
     plates: [],
     pieceCount: 0
   }));
-  const getKeys = plate => new Set(
-    (
-      plate?.colours instanceof Map
-        ? Array.from(plate.colours.values())
-        : Array.isArray(plate?.colours)
-          ? plate.colours
-          : []
-    ).map(colour => String(colour?.name || colour).toLowerCase())
-  );
-  const areCompatible = (first, second) => {
-    const firstKeys = getKeys(first);
-    return !Array.from(getKeys(second)).some(key => firstKeys.has(key));
-  };
-
-  if (printers.length === 1) {
-    const orderedPlates = optimizeAmsPlateSequence(plates).map(
-      (plate, waveIndex) => ({ ...plate, waveIndex })
-    );
-
-    return orderedPlates.length ? [{
-      printer: printers[0],
-      plates: orderedPlates,
-      pieceCount: orderedPlates.reduce(
-        (sum, plate) => sum + Number(plate.pieceCount || 0),
-        0
-      ),
-      spoolChanges: orderedPlates.reduce(
-        (sum, plate) => sum + Number(plate.changeCount || 0),
-        0
-      )
-    }] : [];
-  }
-
-  if (printers.length === 2) {
-    const remaining = [...plates].sort((a, b) =>
-      Number(b.pieceCount || 0) - Number(a.pieceCount || 0)
-    );
-    const findMaximumPairs = items => {
-      if (items.length > 20) {
-        const unused = [...items];
-        const pairs = [];
-
-        while (unused.length > 1) {
-          const first = unused.shift();
-          const partnerIndex = unused.findIndex(candidate =>
-            areCompatible(first, candidate)
-          );
-          if (partnerIndex === -1) continue;
-          pairs.push([first, unused.splice(partnerIndex, 1)[0]]);
-        }
-        return pairs;
-      }
-
-      const memo = new Map();
-      const solve = mask => {
-        if (!mask) return [];
-        if (memo.has(mask)) return memo.get(mask);
-
-        let firstIndex = 0;
-        while (!(mask & (1 << firstIndex))) firstIndex += 1;
-        const withoutFirst = mask & ~(1 << firstIndex);
-        let best = solve(withoutFirst);
-
-        for (
-          let partnerIndex = firstIndex + 1;
-          partnerIndex < items.length;
-          partnerIndex += 1
-        ) {
-          if (
-            !(mask & (1 << partnerIndex)) ||
-            !areCompatible(items[firstIndex], items[partnerIndex])
-          ) {
-            continue;
-          }
-
-          const candidate = [
-            [items[firstIndex], items[partnerIndex]],
-            ...solve(withoutFirst & ~(1 << partnerIndex))
-          ];
-          if (candidate.length > best.length) best = candidate;
-        }
-
-        memo.set(mask, best);
-        return best;
-      };
-
-      return solve((1 << items.length) - 1);
-    };
-
-    const pairedWaves = findMaximumPairs(remaining);
-    const pairedPlates = new Set(pairedWaves.flat());
-    const unpairedPlates = remaining.filter(plate => !pairedPlates.has(plate));
-    const pairedLanes = printers
-      .map(printer => ({ printer, plates: [], pieceCount: 0 }))
-      .sort((a, b) =>
-        String(a.printer.name).localeCompare(String(b.printer.name))
-      );
-    let waveIndex = 0;
-
-    pairedWaves.forEach(([first, second]) => {
-      const directDifference = Math.abs(
-        pairedLanes[0].pieceCount + Number(first.pieceCount || 0) -
-        pairedLanes[1].pieceCount - Number(second.pieceCount || 0)
-      );
-      const flippedDifference = Math.abs(
-        pairedLanes[0].pieceCount + Number(second.pieceCount || 0) -
-        pairedLanes[1].pieceCount - Number(first.pieceCount || 0)
-      );
-      const [leftPlate, rightPlate] = flippedDifference < directDifference
-        ? [second, first]
-        : [first, second];
-
-      pairedLanes[0].plates.push({ ...leftPlate, waveIndex });
-      pairedLanes[1].plates.push({ ...rightPlate, waveIndex });
-      pairedLanes[0].pieceCount += Number(leftPlate.pieceCount || 0);
-      pairedLanes[1].pieceCount += Number(rightPlate.pieceCount || 0);
-      waveIndex += 1;
-    });
-
-    unpairedPlates.forEach(plate => {
-      const lane = pairedLanes
-        .slice()
-        .sort((a, b) => a.pieceCount - b.pieceCount)[0];
-      lane.plates.push({ ...plate, waveIndex });
-      lane.pieceCount += Number(plate.pieceCount || 0);
-      waveIndex += 1;
-    });
-
-    return pairedLanes
-      .filter(lane => lane.plates.length)
-      .map(lane => {
-        const preparedPlates = optimizeAmsPlateSequence(
-          lane.plates,
-          4,
-          true
-        );
-        return {
-          ...lane,
-          plates: preparedPlates,
-          spoolChanges: preparedPlates.reduce(
-            (sum, plate) => sum + Number(plate.changeCount || 0),
-            0
-          )
-        };
-      });
-  }
 
   [...plates]
     .sort((a, b) =>
       Number(b.pieceCount || 0) - Number(a.pieceCount || 0)
     )
     .forEach(plate => {
-      const plateKeys = getKeys(plate);
-      const candidates = lanes.map(lane => {
-        const laneKeys = new Set(
-          lane.plates.flatMap(item => Array.from(getKeys(item)))
-        );
-        const overlap = Array.from(plateKeys)
-          .filter(key => laneKeys.has(key)).length;
-        return {
-          lane,
-          score: lane.pieceCount - overlap * 12
-        };
-      }).sort((a, b) =>
-        a.score - b.score ||
-        a.lane.pieceCount - b.lane.pieceCount ||
-        a.lane.plates.length - b.lane.plates.length
-      );
-      const selectedLane = candidates[0].lane;
+      const selectedLane = lanes
+        .slice()
+        .sort((a, b) =>
+          a.pieceCount - b.pieceCount ||
+          a.plates.length - b.plates.length
+        )[0];
       selectedLane.plates.push(plate);
       selectedLane.pieceCount += Number(plate.pieceCount || 0);
     });
@@ -545,34 +378,13 @@ export function distributeAmsPlatesAcrossPrinters(
       String(a.printer.name).localeCompare(String(b.printer.name))
     );
 
-  const occupiedWaves = new Map();
   return preparedLanes.map(lane => {
-    let earliestWave = 0;
-    const scheduledPlates = lane.plates.map(plate => {
-      const plateKeys = getKeys(plate);
-      let waveIndex = earliestWave;
-
-      while (
-        (occupiedWaves.get(waveIndex) || []).some(otherPlate => {
-          const otherKeys = getKeys(otherPlate);
-          return Array.from(plateKeys).some(key => otherKeys.has(key));
-        })
-      ) {
-        waveIndex += 1;
-      }
-
-      if (!occupiedWaves.has(waveIndex)) {
-        occupiedWaves.set(waveIndex, []);
-      }
-      occupiedWaves.get(waveIndex).push(plate);
-      earliestWave = waveIndex + 1;
-
-      return { ...plate, waveIndex };
-    });
-
     return {
       ...lane,
-      plates: scheduledPlates
+      plates: lane.plates.map((plate, waveIndex) => ({
+        ...plate,
+        waveIndex
+      }))
     };
   });
 }

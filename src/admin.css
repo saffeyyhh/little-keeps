@@ -2911,30 +2911,6 @@ body {
   font-size: 11px;
 }
 
-.ams-one-spool-rule {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: -5px 0 15px;
-  padding: 10px 13px;
-  border: 1px solid #f0b55d;
-  border-radius: 12px;
-  background: #fff5dc;
-  color: #724a08;
-  font-size: 11px;
-}
-
-.ams-one-spool-rule strong {
-  flex: none;
-  padding: 4px 7px;
-  border-radius: 7px;
-  background: #e08a18;
-  color: white;
-  font-size: 9px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
 .ams-printer-fallback-warning {
   margin: 0 0 13px;
   padding: 10px 12px;
@@ -6007,11 +5983,6 @@ a {
 
   .ams-printer-lane-summary {
     grid-template-columns: 1fr;
-  }
-
-  .ams-one-spool-rule {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .ams-safe-waves > header {

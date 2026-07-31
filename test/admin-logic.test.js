@@ -230,7 +230,7 @@ test("balances AMS plates across two printer lanes", () => {
   assert.ok(lanes.every(lane => lane.plates.length === 2));
 });
 
-test("maximizes safe simultaneous work across both printers", () => {
+test("keeps both printers running even when their plates share colours", () => {
   const lanes = distributeAmsPlatesAcrossPrinters([
     { id: "pink-large", pieceCount: 50, colours: [{ name: "Pink" }] },
     { id: "pink-small", pieceCount: 45, colours: [{ name: "Pink" }] },
@@ -249,16 +249,10 @@ test("maximizes safe simultaneous work across both printers", () => {
 
   assert.equal(waves.size, 2);
   assert.ok(Array.from(waves.values()).every(wave => wave.length === 2));
-  assert.ok(Array.from(waves.values()).every(([first, second]) => {
-    const firstColours = new Set(
-      Array.from(first.colours.values(), colour => colour.name)
-    );
-    return Array.from(second.colours.values())
-      .every(colour => !firstColours.has(colour.name));
-  }));
+  assert.ok(Array.from(waves.values()).every(wave => wave.length === 2));
 });
 
-test("never schedules the same filament colour on two printers in one wave", () => {
+test("allows the same filament colour on both printers in one wave", () => {
   const lanes = distributeAmsPlatesAcrossPrinters([
     {
       id: "pink-a",
@@ -286,7 +280,9 @@ test("never schedules the same filament colour on two printers in one wave", () 
       .some(colour => colour.name === "Pink"))
     .map(plate => plate.waveIndex);
 
-  assert.equal(new Set(pinkWaves).size, pinkWaves.length);
+  assert.ok(pinkWaves.some(
+    (wave, index) => pinkWaves.indexOf(wave) !== index
+  ));
 });
 
 test("allows a valid inventory decrement", () => {
