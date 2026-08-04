@@ -48,6 +48,142 @@ export function calculatePaidOrderRevenue(orders = []) {
   return Math.round((revenue + Number.EPSILON) * 100) / 100;
 }
 
+export function calculateSubscriptionSummary(subscriptions = []) {
+  const active = subscriptions.filter(subscription =>
+    String(subscription?.status || "active").toLowerCase() === "active"
+  );
+  const monthlyTotal = active.reduce(
+    (sum, subscription) => sum + Math.max(0, Number(subscription.monthly_amount) || 0),
+    0
+  );
+  const roundMoney = value =>
+    Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+  return {
+    activeCount: active.length,
+    monthlyTotal: roundMoney(monthlyTotal),
+    yearlyEstimate: roundMoney(monthlyTotal * 12)
+  };
+}
+
+export function calculateGiftingBagTotal(quantity = 0, unitPrice = 0.5) {
+  const safeQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const safeUnitPrice = Math.max(0, Number(unitPrice) || 0);
+
+  return Math.round((safeQuantity * safeUnitPrice + Number.EPSILON) * 100) / 100;
+}
+
+export function getGiftingBagSelectionLimit(keychainQuantity = 0, stockQuantity = 0) {
+  const keychains = Math.max(0, Math.floor(Number(keychainQuantity) || 0));
+  const stock = Math.max(0, Math.floor(Number(stockQuantity) || 0));
+
+  return Math.min(Math.ceil(keychains / 2), stock);
+}
+
+export function getBulkApprovalPolicy(quantity = 1) {
+  const safeQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+
+  if (safeQuantity >= 151) {
+    return {
+      quantity: safeQuantity,
+      approvalRequired: true,
+      minLeadDays: 42,
+      timeframeLabel: "approximately 4–6 weeks"
+    };
+  }
+
+  if (safeQuantity >= 101) {
+    return {
+      quantity: safeQuantity,
+      approvalRequired: true,
+      minLeadDays: 28,
+      timeframeLabel: "approximately 3–4 weeks"
+    };
+  }
+
+  if (safeQuantity >= 76) {
+    return {
+      quantity: safeQuantity,
+      approvalRequired: true,
+      minLeadDays: 21,
+      timeframeLabel: "approximately 2–3 weeks"
+    };
+  }
+
+  if (safeQuantity >= 51) {
+    return {
+      quantity: safeQuantity,
+      approvalRequired: true,
+      minLeadDays: 14,
+      timeframeLabel: "approximately 1.5–2 weeks"
+    };
+  }
+
+  if (safeQuantity >= 30) {
+    return {
+      quantity: safeQuantity,
+      approvalRequired: true,
+      minLeadDays: 14,
+      timeframeLabel: "at least 14 days"
+    };
+  }
+
+  if (safeQuantity >= 15) {
+    return {
+      quantity: safeQuantity,
+      approvalRequired: true,
+      minLeadDays: 7,
+      timeframeLabel: "at least 7 days"
+    };
+  }
+
+  return {
+    quantity: safeQuantity,
+    approvalRequired: false,
+    minLeadDays: 0,
+    timeframeLabel: ""
+  };
+}
+
+export function calculateProductionTimeEstimate(
+  baseQuantity = 0,
+  keycapQuantity = 0,
+  onlinePrinterCount = 1,
+  baseMinutesPerPiece = 25,
+  keycapMinutesPerPiece = 15
+) {
+  const safeBaseQuantity = Math.max(0, Math.floor(Number(baseQuantity) || 0));
+  const safeKeycapQuantity = Math.max(0, Math.floor(Number(keycapQuantity) || 0));
+  const printers = Math.max(0, Math.floor(Number(onlinePrinterCount) || 0));
+  const baseMinutes = safeBaseQuantity * Math.max(0, Number(baseMinutesPerPiece) || 0);
+  const keycapMinutes = safeKeycapQuantity * Math.max(0, Number(keycapMinutesPerPiece) || 0);
+  const totalPrinterMinutes = baseMinutes + keycapMinutes;
+  const keycapPrinterCount = Math.max(1, printers - 1);
+  const estimatedElapsedMinutes = printers >= 2
+    ? Math.max(baseMinutes, Math.ceil(keycapMinutes / keycapPrinterCount))
+    : totalPrinterMinutes;
+
+  return {
+    baseQuantity: safeBaseQuantity,
+    keycapQuantity: safeKeycapQuantity,
+    baseMinutes,
+    keycapMinutes,
+    totalPrinterMinutes,
+    estimatedElapsedMinutes,
+    onlinePrinterCount: printers
+  };
+}
+
+export function formatProductionMinutes(minutes = 0) {
+  const safeMinutes = Math.max(0, Math.round(Number(minutes) || 0));
+  const hours = Math.floor(safeMinutes / 60);
+  const remainingMinutes = safeMinutes % 60;
+
+  if (!hours) return `${remainingMinutes} min`;
+  if (!remainingMinutes) return `${hours} hr`;
+  return `${hours} hr ${remainingMinutes} min`;
+}
+
 export function getTrackedProductionQuantity(jobs = [], itemName) {
   return jobs.reduce((sum, job) => {
     if (
@@ -75,9 +211,14 @@ export function calculateQueuedProductionQuantity(
 
 export function getProductionJobGroup(itemName, category) {
   if (category === "Base") {
+    const baseName = String(itemName || "")
+      .replace(/\s+(?:Bubbly|Ribbed)\s+Base$/i, "")
+      .replace(/\s+Base$/i, "")
+      .trim() || "Other";
+
     return {
-      key: "00-bases",
-      label: "Bases"
+      key: `00-base-${baseName.toLowerCase()}`,
+      label: `${baseName} Bases`
     };
   }
 
@@ -119,6 +260,23 @@ export const ASSEMBLY_STAGES = [
   { key: "qc_done", label: "QC Done" },
   { key: "packed", label: "Packed" }
 ];
+
+const ADD_ON_BLOCKED_STATUSES = new Set([
+  "Printing",
+  "Assembly Complete",
+  "Ready for Pickup/Delivery",
+  "Out for Delivery",
+  "Completed",
+  "Refunded",
+  "Cancelled",
+  "Rejected",
+  "Payment Failed",
+  "Payment Expired"
+]);
+
+export function canOrderAcceptAddOn(status) {
+  return !ADD_ON_BLOCKED_STATUSES.has(String(status || ""));
+}
 
 export function normalizeAssemblyProgress(progress = {}) {
   const source = progress && typeof progress === "object" ? progress : {};
@@ -203,6 +361,91 @@ export function getProductionPreviewOrders(orders = [], selectedIds = []) {
     !order?.archived_at &&
     !["Completed", "Refunded", "Payment Expired"].includes(order?.status)
   );
+}
+
+export function getKeychainTurnaround(quantity = 1) {
+  const safeQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+
+  if (safeQuantity <= 3) {
+    return { quantity: safeQuantity, tier: "small", minDays: 2, maxDays: 3 };
+  }
+
+  if (safeQuantity <= 6) {
+    return { quantity: safeQuantity, tier: "medium", minDays: 3, maxDays: 4 };
+  }
+
+  return { quantity: safeQuantity, tier: "large", minDays: 4, maxDays: 5 };
+}
+
+export function isAlternatingProductionDay(
+  dateValue,
+  anchorValue = "2026-08-03"
+) {
+  const date = new Date(`${String(dateValue).slice(0, 10)}T00:00:00`);
+  const anchor = new Date(`${String(anchorValue).slice(0, 10)}T00:00:00`);
+
+  if (Number.isNaN(date.getTime()) || Number.isNaN(anchor.getTime())) {
+    return false;
+  }
+
+  const daysFromAnchor = Math.round((date - anchor) / 86400000);
+  return Math.abs(daysFromAnchor % 2) === 0;
+}
+
+export function formatDateRange(startValue, endValue, formatter) {
+  const format = typeof formatter === "function"
+    ? formatter
+    : value => String(value || "");
+  const start = format(startValue);
+  const end = format(endValue);
+
+  return start === end ? start : `${start}–${end}`;
+}
+
+export function isPickupDay(dateValue) {
+  const date = new Date(`${String(dateValue).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+
+  return [0, 3, 5, 6].includes(date.getDay());
+}
+
+export function getPickupTimeRanges(dateValue) {
+  if (!isPickupDay(dateValue)) return [];
+
+  const date = new Date(`${String(dateValue).slice(0, 10)}T12:00:00`);
+  const day = date.getDay();
+
+  return day === 0 || day === 6
+    ? [
+        "10:00 AM - 12:00 PM",
+        "2:00 PM - 4:00 PM",
+        "7:00 PM - 8:00 PM"
+      ]
+    : [
+        "7:00 PM - 7:30 PM",
+        "7:30 PM - 8:00 PM",
+        "8:00 PM - 8:30 PM"
+      ];
+}
+
+export function assessRushDateCapacity(orderCount = 0, rushOrderCount = 0) {
+  const total = Math.max(0, Math.floor(Number(orderCount) || 0));
+  const rushes = Math.max(0, Math.floor(Number(rushOrderCount) || 0));
+
+  if (rushes > 0) {
+    return { allowed: false, reason: "A rush order is already booked for this date." };
+  }
+
+  if (total <= 2) {
+    return {
+      allowed: true,
+      reason: total === 2
+        ? "The additional rush slot is available."
+        : "Rush capacity is available."
+    };
+  }
+
+  return { allowed: false, reason: "Rush capacity is full for this date." };
 }
 
 export function optimizeAmsPlateSequence(plates = [], slotCount = 4) {
@@ -331,6 +574,75 @@ export function optimizeAmsPlateSequence(plates = [], slotCount = 4) {
       changeCount
     };
   });
+}
+
+export function partitionAmsCombinationsByBusyColours(
+  combinations = [],
+  busyColourNames = []
+) {
+  const colourKey = value =>
+    String(value?.name || value || "").trim().toLowerCase();
+  const busyKeys = new Set(
+    busyColourNames.map(colourKey).filter(Boolean)
+  );
+  const ready = [];
+  const waiting = [];
+
+  combinations.forEach(combination => {
+    const colours = Array.isArray(combination?.colours)
+      ? combination.colours
+      : [combination?.capName, combination?.letterName];
+    const blockedNames = colours
+      .map(colour => String(colour?.name || colour || "").trim())
+      .filter((name, index, all) =>
+        name &&
+        busyKeys.has(colourKey(name)) &&
+        all.findIndex(other => colourKey(other) === colourKey(name)) === index
+      );
+
+    if (blockedNames.length) {
+      waiting.push({
+        ...combination,
+        pieceCount: Number.isFinite(Number(combination?.pieceCount))
+          ? Number(combination.pieceCount)
+          : Array.isArray(combination?.rows)
+            ? combination.rows.reduce(
+                (sum, row) => sum + Number(row?.toPrint || 0),
+                0
+              )
+            : 0,
+        busyColours: blockedNames
+      });
+    } else {
+      ready.push(combination);
+    }
+  });
+
+  return { ready, waiting };
+}
+
+export function getFreeAmsPrinters(printers = [], basePrinterId = null) {
+  const reservedId = String(basePrinterId || "");
+
+  return printers.filter(printer =>
+    printer?.status === "online" &&
+    (!reservedId || String(printer.id) !== reservedId)
+  );
+}
+
+export function getShippingLabelData(order = {}) {
+  const text = value => String(value || "").trim();
+
+  return {
+    orderId: text(order.id),
+    orderRef: text(order.order_ref) || "No order reference",
+    recipient: text(order.customer_name) || "Customer",
+    phone: text(order.customer_phone),
+    address: text(order.delivery_address),
+    courier: text(order.courier_name),
+    trackingNumber: text(order.tracking_number),
+    dispatchBy: text(order.needed_by)
+  };
 }
 
 export function distributeAmsPlatesAcrossPrinters(

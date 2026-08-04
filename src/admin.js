@@ -10,10 +10,17 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import {
   ASSEMBLY_STAGES,
   buildGoogleMapsRouteUrl,
+  canOrderAcceptAddOn,
+  calculateProductionTimeEstimate,
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
   calculatePaidOrderRevenue,
+  calculateSubscriptionSummary,
   distributeAmsPlatesAcrossPrinters,
+  formatProductionMinutes,
+  getBulkApprovalPolicy,
+  getFreeAmsPrinters,
+  getShippingLabelData,
   getDeliveryRouteGroup,
   getOperationalBuckets,
   getProductionPreviewOrders,
@@ -21,8 +28,13 @@ import {
   getTrackedProductionQuantity,
   normalizeAssemblyProgress,
   optimizeAmsPlateSequence,
+  partitionAmsCombinationsByBusyColours,
   validateInventoryDecrement
 } from "./admin-logic.js";
+import {
+  DEFAULT_PRODUCT_CATALOG,
+  normalizeProductCatalog
+} from "./product-catalog.js";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
@@ -83,9 +95,9 @@ document.querySelector("#app").innerHTML = `
   <main class="admin-page">
     <header class="admin-header">
       <div class="admin-header-copy">
-        <p class="eyebrow">Little Keeps</p>
-        <h1>Workshop <span aria-hidden="true">♡</span></h1>
-        <p>Your orders, production and fulfilment control centre.</p>
+        <p class="eyebrow">Little Keeps Admin</p>
+        <h1>Operations Dashboard</h1>
+        <p>A calm view of today’s orders, production and fulfilment.</p>
       </div>
 
       <div class="admin-header-actions">
@@ -102,25 +114,25 @@ document.querySelector("#app").innerHTML = `
 
     <nav class="workshop-tabs" aria-label="Workshop sections">
       <button id="todayViewBtn" class="workshop-tab active" type="button">
-        <span aria-hidden="true">✨</span> Today
+        <span aria-hidden="true">●</span> Today
       </button>
       <button id="ordersViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">📋</span> Orders
+        <span aria-hidden="true">▤</span> Orders
       </button>
       <button id="productionViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">🖨️</span> Production
+        <span aria-hidden="true">▦</span> Production
       </button>
       <button id="assemblyViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">🧩</span> Assembly
+        <span aria-hidden="true">◇</span> Assembly
       </button>
       <button id="fulfilmentViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">🚚</span> Fulfilment
+        <span aria-hidden="true">↗</span> Fulfilment
       </button>
       <button id="inventoryViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">📦</span> Inventory
+        <span aria-hidden="true">□</span> Inventory
       </button>
       <button id="financeViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">📈</span> Finances
+        <span aria-hidden="true">⌁</span> Finances
       </button>
       <button id="settingsViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">⚙️</span> Settings
@@ -130,7 +142,7 @@ document.querySelector("#app").innerHTML = `
     <section class="workspace-panel">
       <div class="section-title">
         <div>
-          <p class="section-kicker">Daily workspace</p>
+          <p class="section-kicker">Workspace</p>
           <h2 id="sectionTitle">Orders</h2>
         </div>
 
@@ -174,6 +186,7 @@ document.querySelector("#app").innerHTML = `
             <option value="Payment Expired">Expired checkouts</option>
             <option value="Payment Verified">Ready to print</option>
             <option value="Printing">Printing</option>
+            <option value="Assembly Complete">Assembly complete</option>
             <option value="Ready for Pickup/Delivery">Ready</option>
             <option value="Out for Delivery">Out for Delivery</option>
             <option value="Completed">Completed</option>
@@ -216,7 +229,7 @@ document.querySelector("#app").innerHTML = `
 
     <aside class="workshop-notes" aria-label="Persistent workshop notes">
       <button id="workshopNotesToggle" class="workshop-notes-toggle" type="button" aria-expanded="true">
-        <span>📝 Workshop Notes</span>
+        <span>Quick Notes</span>
         <small id="workshopNotesSaveState">Saved</small>
       </button>
       <div id="workshopNotesBody" class="workshop-notes-body">
@@ -271,6 +284,20 @@ let currentView = "today";
 let latestOrders = [];
 let workshopNotesSaveTimer = null;
 let printers = [];
+const AMS_BASE_RESERVATION_KEY = "little-keeps-ams-base-reservation";
+let amsBaseReservation = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AMS_BASE_RESERVATION_KEY));
+    return {
+      printerId: String(saved?.printerId || ""),
+      colourNames: Array.isArray(saved?.colourNames)
+        ? saved.colourNames.map(String)
+        : []
+    };
+  } catch {
+    return { printerId: "", colourNames: [] };
+  }
+})();
 const selectedOrderIds = new Set();
 const productionOrderSelection = new Set();
 
@@ -291,6 +318,9 @@ let businessFinancialsLoadFailed = false;
 let businessExpenses = [];
 let businessExpensesLoaded = false;
 let businessExpensesLoadFailed = false;
+let businessSubscriptions = [];
+let businessSubscriptionsLoaded = false;
+let businessSubscriptionsLoadFailed = false;
 const DEFAULT_ADMIN_SHOP_SETTINGS = {
   id: 1,
   usual_base_price: 3.90,
@@ -301,20 +331,19 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   extra_character_price: 0.20,
   delivery_fee: 2.50,
   free_delivery_threshold: 50,
-  max_orders_per_date: 5,
-  large_order_quantity: 5,
-  bulk_order_quantity: 10,
+  max_orders_per_date: 2,
+  large_order_quantity: 7,
+  bulk_order_quantity: 15,
   standard_min_working_days: 2,
   standard_max_working_days: 3,
-  large_min_working_days: 3,
-  large_max_working_days: 4,
+  large_min_working_days: 4,
+  large_max_working_days: 5,
   rush_fee_small: 5,
   rush_fee_large: 8,
   rush_max_missing_parts: 60,
   rush_max_active_orders: 5,
   mechanical_switch_low_stock: 100,
   key_ring_low_stock: 20,
-  jump_ring_low_stock: 20,
   status_emails_enabled: false,
   status_email_template_id: "",
   review_url: "https://www.instagram.com/madebylittlekeeps/",
@@ -329,6 +358,8 @@ let adminPromoCodes = [];
 let adminCustomerReviews = [];
 let adminReviewsLoadFailed = false;
 let editingCustomerReviewId = null;
+let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
+let adminProductsLoadFailed = false;
 
 const ADMIN_COLOUR_OPTIONS = [
   { name: "Jade White", hex: "#FFFFFF" },
@@ -361,6 +392,7 @@ const ACTIVE_ORDER_STATUSES = [
   "Payment Verification",
   "Payment Verified",
   "Printing",
+  "Assembly Complete",
   "Ready for Pickup/Delivery",
   "Out for Delivery"
 ];
@@ -377,14 +409,39 @@ const hardwareItems = [
     category: "Hardware"
   },
   {
-    itemName: "Key Ring",
-    label: "Key Ring",
+    itemName: "Metal Large D Ring",
+    label: "Metal Large D Ring",
     category: "Hardware"
   },
   {
-    itemName: "Jump Ring",
-    label: "Jump Ring",
+    itemName: "Gifting Bag",
+    label: "Gifting Bag",
+    category: "Packaging"
+  },
+  {
+    itemName: "NTAG215 NFC Wet Label (25 mm)",
+    label: "NTAG215 NFC Wet Label · 25 mm",
     category: "Hardware"
+  },
+  {
+    itemName: "White Thickened Courier Bag (28 × 40 cm)",
+    label: "White Thickened Courier Bag · 28 × 40 cm",
+    category: "Packaging"
+  },
+  {
+    itemName: "White Thickened Courier Bag (17 × 30 cm)",
+    label: "White Thickened Courier Bag · 17 × 30 cm",
+    category: "Packaging"
+  },
+  {
+    itemName: "Pink Bubble Packing Bag (25 × 30 + 5 cm)",
+    label: "Pink Bubble Packing Bag · 25 × 30 + 5 cm",
+    category: "Packaging"
+  },
+  {
+    itemName: "Self-Adhesive Transparent Bag (15 × 21 cm)",
+    label: "Self-Adhesive Transparent Bag · 15 × 21 cm",
+    category: "Packaging"
   }
 ];
 
@@ -562,6 +619,7 @@ const ORDER_PROGRESS = {
   "Payment Verification": { percent: 15, label: "Checking payment" },
   "Payment Verified": { percent: 30, label: "Ready for production" },
   "Printing": { percent: 58, label: "Printing parts" },
+  "Assembly Complete": { percent: 76, label: "Assembly complete - ready to notify" },
   "Ready for Pickup/Delivery": { percent: 84, label: "Ready to fulfil" },
   "Out for Delivery": { percent: 94, label: "Out for delivery" },
   "Completed": { percent: 100, label: "Completed" }
@@ -632,10 +690,16 @@ function getOrderInstructions(order) {
 function renderOrderAlerts(order, compact = false) {
   const instructions = getOrderInstructions(order);
   const hasHandoff = Boolean(order.handoff_name);
+  const linkedChildren = latestOrders.filter(item =>
+    String(item.linked_order_ref || "").toUpperCase() ===
+    String(order.order_ref || "").toUpperCase()
+  );
 
   if (
     !instructions.length &&
     !hasHandoff &&
+    !order.linked_order_ref &&
+    !linkedChildren.length &&
     !order.update_needs_review &&
     !order.rework_required
   ) {
@@ -644,6 +708,18 @@ function renderOrderAlerts(order, compact = false) {
 
   return `
     <div class="order-alert-stack ${compact ? "is-compact" : ""}">
+      ${order.linked_order_ref ? `
+        <div class="order-alert linked-order-alert">
+          <strong>🔗 Add-on grouped under ${escapeAdminHtml(order.linked_order_ref)}</strong>
+          <span>Latest shared pickup / dispatch date: ${escapeAdminHtml(formatDate(order.needed_by))}</span>
+        </div>
+      ` : ""}
+      ${linkedChildren.length ? `
+        <div class="order-alert linked-order-alert">
+          <strong>🔗 ${linkedChildren.length} linked add-on${linkedChildren.length === 1 ? "" : "s"}</strong>
+          <span>${linkedChildren.map(item => escapeAdminHtml(item.order_ref)).join(" · ")} · latest shared date ${escapeAdminHtml(formatDate(order.needed_by))}</span>
+        </div>
+      ` : ""}
       ${order.update_needs_review ? `
         <div class="order-alert order-update-alert">
           <strong>⚠ Order changed · review required</strong>
@@ -848,7 +924,7 @@ function renderTodayWorkspace(orders) {
     ["Payment Verified", "Printing"].includes(order.status)
   );
   const fulfilment = priority.filter(order =>
-    ["Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
+    ["Assembly Complete", "Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
   );
   const reprints = productionJobs.filter(job =>
     ["failed", "reprint_needed"].includes(job.quality_status)
@@ -990,6 +1066,18 @@ function formatPromoDate(value) {
 function renderSettingsWorkspace() {
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
+  const productNumberField = (product, field, label, step = "0.01") => `
+    <label class="settings-field">
+      <span>${label}</span>
+      <input
+        name="product:${escapeAdminHtml(product.product_key)}:${field}"
+        type="number"
+        min="0"
+        step="${step}"
+        value="${escapeAdminHtml(product[field] ?? 0)}"
+      >
+    </label>
+  `;
 
   ordersContainer.innerHTML = `
     <form id="shopSettingsForm" class="settings-workspace">
@@ -1008,38 +1096,104 @@ function renderSettingsWorkspace() {
       </div>
 
       <div class="settings-grid">
+        <section class="settings-card settings-card-wide product-settings-section">
+          <div class="settings-card-heading">
+            <div>
+              <h3>Products & pricing</h3>
+              <p class="hint">Each product now has its own price and production timing. Coming-soon prices stay hidden from customers.</p>
+            </div>
+            <strong>${adminProductCatalog.length} products</strong>
+          </div>
+
+          ${adminProductsLoadFailed ? `
+            <div class="stock-alert">
+              <strong>Product catalogue is not connected yet</strong>
+              <span>Run the supplied product-catalog SQL once before saving these cards.</span>
+            </div>
+          ` : ""}
+
+          <div class="product-settings-grid">
+            ${adminProductCatalog.map(product => {
+              const prefix = `product:${product.product_key}:`;
+              const isSolidDraft = product.product_key === "solid-clicky-keychain";
+
+              return `
+                <article class="product-settings-card ${product.status === "active" ? "is-active" : ""}">
+                  <header>
+                    <div>
+                      <span>${escapeAdminHtml(product.eyebrow)}</span>
+                      <h4>${escapeAdminHtml(product.name)}</h4>
+                    </div>
+                    <select name="${escapeAdminHtml(prefix)}status" aria-label="${escapeAdminHtml(product.name)} status">
+                      <option value="active" ${product.status === "active" ? "selected" : ""}>Available</option>
+                      <option value="coming_soon" ${product.status === "coming_soon" ? "selected" : ""}>Coming soon</option>
+                      <option value="hidden" ${product.status === "hidden" ? "selected" : ""}>Hidden</option>
+                    </select>
+                  </header>
+
+                  ${isSolidDraft ? `
+                    <p class="product-draft-note">Draft suggestion: S$3.80 launch, then S$4.50. Keep pricing hidden until the test prints are timed.</p>
+                  ` : ""}
+
+                  <div class="settings-fields two-columns">
+                    ${productNumberField(product, "usual_base_price", "Usual price ($)")}
+                    ${productNumberField(product, "launch_base_price", "Launch price ($)")}
+                    ${productNumberField(product, "included_characters", "Characters included", "1")}
+                    ${productNumberField(product, "extra_character_price", "Extra character ($)")}
+                    ${productNumberField(product, "extra_base_colour_price", "Extra base colour ($)")}
+                    ${productNumberField(product, "extra_cap_colour_price", "Extra cap colour ($)")}
+                    ${productNumberField(product, "extra_letter_colour_price", "Extra letter colour ($)")}
+                    ${productNumberField(product, "maximum_characters", "Maximum characters", "1")}
+                  </div>
+
+                  <div class="product-timing-settings">
+                    <strong>Production timing</strong>
+                    <div class="settings-fields two-columns">
+                      ${productNumberField(product, "base_print_minutes_fixed", "Base fixed minutes")}
+                      ${productNumberField(product, "base_print_minutes_per_character", "Base minutes / character")}
+                      ${productNumberField(product, "keycap_print_minutes_per_character", "Keycap minutes / character")}
+                      ${productNumberField(product, "assembly_minutes_per_item", "Assembly minutes / item")}
+                    </div>
+                  </div>
+
+                  <label class="settings-toggle">
+                    <input name="${escapeAdminHtml(prefix)}launch_price_enabled" type="checkbox" ${checked(product.launch_price_enabled)}>
+                    Use launch price
+                  </label>
+                  <label class="settings-toggle">
+                    <input name="${escapeAdminHtml(prefix)}price_visible" type="checkbox" ${checked(product.price_visible)}>
+                    Show price on product card
+                  </label>
+                  <label class="settings-field">
+                    <span>Production notes</span>
+                    <textarea name="${escapeAdminHtml(prefix)}production_notes" rows="3">${escapeAdminHtml(product.production_notes || "")}</textarea>
+                  </label>
+                </article>
+              `;
+            }).join("")}
+          </div>
+        </section>
+
         <section class="settings-card">
-          <h3>Pricing</h3>
+          <h3>Checkout</h3>
           <div class="settings-fields two-columns">
-            ${settingNumber("usual_base_price", "Usual price ($)", "0.10")}
-            ${settingNumber("launch_base_price", "Launch price ($)", "0.10")}
-            ${settingNumber("included_characters", "Characters included")}
-            ${settingNumber("extra_character_price", "Extra character ($)", "0.10")}
             ${settingNumber("delivery_fee", "Delivery fee ($)", "0.10")}
             ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
           </div>
-          <label class="settings-toggle"><input name="launch_price_enabled" type="checkbox" ${checked(adminShopSettings.launch_price_enabled)}> Show launch price and crossed-out usual price</label>
-          <label class="settings-field">
-            <span>Launch price ends at</span>
-            <input
-              name="launch_price_ends_at"
-              type="datetime-local"
-              value="${escapeAdminHtml(formatDateTimeLocal(adminShopSettings.launch_price_ends_at))}"
-            >
-          </label>
-          <p class="hint">Leave blank to keep the launch price active without a countdown.</p>
+          <p class="hint">Product prices are managed separately above.</p>
         </section>
 
         <section class="settings-card">
           <h3>Capacity & turnaround</h3>
+          <p class="hint"><strong>Calm schedule:</strong> maximum 2 orders on a production day, then 1 protected rest/buffer day. Customer estimates are fixed at 1–3 items: 2–3 days; 4–6: 3–4 days; 7+: 4–5 days.</p>
           <div class="settings-fields two-columns">
-            ${settingNumber("max_orders_per_date", "Orders allowed per date")}
-            ${settingNumber("large_order_quantity", "Large order starts at")}
+            ${settingNumber("max_orders_per_date", "Orders per production day")}
+            ${settingNumber("large_order_quantity", "7+ tier starts at")}
             ${settingNumber("bulk_order_quantity", "Bulk request starts at")}
-            ${settingNumber("standard_min_working_days", "Normal minimum days")}
-            ${settingNumber("standard_max_working_days", "Normal maximum days")}
-            ${settingNumber("large_min_working_days", "Large minimum days")}
-            ${settingNumber("large_max_working_days", "Large maximum days")}
+            ${settingNumber("standard_min_working_days", "1–3 minimum days")}
+            ${settingNumber("standard_max_working_days", "1–3 maximum days")}
+            ${settingNumber("large_min_working_days", "7+ minimum days")}
+            ${settingNumber("large_max_working_days", "7+ maximum days")}
             ${settingNumber("rush_fee_small", "Rush fee: 1–4 items ($)", "0.50")}
             ${settingNumber("rush_fee_large", "Rush fee: 5–9 items ($)", "0.50")}
             ${settingNumber("rush_max_missing_parts", "Auto-approve up to missing parts")}
@@ -1051,8 +1205,7 @@ function renderSettingsWorkspace() {
           <h3>Stock reminders</h3>
           <div class="settings-fields">
             ${settingNumber("mechanical_switch_low_stock", "Warn when switches reach")}
-            ${settingNumber("key_ring_low_stock", "Warn when key rings reach")}
-            ${settingNumber("jump_ring_low_stock", "Warn when jump rings reach")}
+            ${settingNumber("key_ring_low_stock", "Warn when large D rings reach")}
           </div>
         </section>
 
@@ -1323,20 +1476,14 @@ async function saveShopSettings(event) {
 
   const form = new FormData(event.currentTarget);
   const numberFields = [
-    "usual_base_price", "launch_base_price", "included_characters", "extra_character_price",
     "delivery_fee", "free_delivery_threshold", "max_orders_per_date", "large_order_quantity",
     "bulk_order_quantity",
     "standard_min_working_days", "standard_max_working_days", "large_min_working_days",
     "large_max_working_days", "rush_fee_small", "rush_fee_large", "rush_max_missing_parts",
-    "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock", "jump_ring_low_stock"
+    "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock"
   ];
   const updates = { id: 1 };
   numberFields.forEach(name => { updates[name] = Number(form.get(name)); });
-  updates.launch_price_enabled = form.has("launch_price_enabled");
-  const launchPriceEnd = String(form.get("launch_price_ends_at") || "").trim();
-  updates.launch_price_ends_at = launchPriceEnd
-    ? new Date(launchPriceEnd).toISOString()
-    : null;
   updates.status_emails_enabled = form.has("status_emails_enabled");
   updates.stripe_enabled = form.has("stripe_enabled");
   updates.status_email_template_id = String(form.get("status_email_template_id") || "").trim();
@@ -1352,6 +1499,51 @@ async function saveShopSettings(event) {
     console.error("Unable to save settings:", error);
     alert("Unable to save settings. Run the supplied operations SQL once, then try again.");
     return;
+  }
+
+  if (!adminProductsLoadFailed) {
+    const productNumberFields = [
+      "usual_base_price",
+      "launch_base_price",
+      "included_characters",
+      "extra_character_price",
+      "extra_base_colour_price",
+      "extra_cap_colour_price",
+      "extra_letter_colour_price",
+      "maximum_characters",
+      "base_print_minutes_fixed",
+      "base_print_minutes_per_character",
+      "keycap_print_minutes_per_character",
+      "assembly_minutes_per_item"
+    ];
+    const productUpdates = adminProductCatalog.map(product => {
+      const prefix = `product:${product.product_key}:`;
+      const productUpdate = {
+        ...product,
+        status: String(form.get(`${prefix}status`) || product.status),
+        launch_price_enabled: form.has(`${prefix}launch_price_enabled`),
+        price_visible: form.has(`${prefix}price_visible`),
+        production_notes: String(form.get(`${prefix}production_notes`) || "").trim(),
+        updated_at: new Date().toISOString()
+      };
+
+      productNumberFields.forEach(field => {
+        productUpdate[field] = Number(form.get(`${prefix}${field}`));
+      });
+      return productUpdate;
+    });
+    const { data: savedProducts, error: productsError } = await supabase
+      .from("product_catalog")
+      .upsert(productUpdates, { onConflict: "product_key" })
+      .select("*");
+
+    if (productsError) {
+      console.error("Unable to save product settings:", productsError);
+      alert("Checkout settings were saved, but product pricing could not be saved.");
+      return;
+    }
+
+    adminProductCatalog = normalizeProductCatalog(savedProducts);
   }
 
   adminShopSettings = data;
@@ -1721,6 +1913,31 @@ window.cancelCustomerReviewEdit = cancelCustomerReviewEdit;
 window.toggleCustomerReview = toggleCustomerReview;
 window.deleteCustomerReview = deleteCustomerReview;
 
+window.moveAssemblyToFulfilment = async function(id) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return;
+
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        status: "Assembly Complete",
+        status_updated_at: new Date().toISOString()
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert("Unable to move this completed order to Fulfilment.");
+      return;
+    }
+  }
+
+  order.status = "Assembly Complete";
+  currentView = "fulfilment";
+  setActiveTab(fulfilmentViewBtn);
+  await loadOrders();
+};
+
 window.markReady = async function(id) {
   const order = latestOrders.find(
     order => String(order.id) === String(id)
@@ -1765,7 +1982,7 @@ window.markReady = async function(id) {
 
   if (isDelivery) {
     const courierName = prompt(
-      "Courier name (leave blank if you are delivering it yourself):",
+      "Courier name (for example SingPost, Ninja Van or GrabExpress):",
       order.courier_name || ""
     );
     if (courierName === null) return;
@@ -1930,6 +2147,29 @@ window.markKeychainComplete = async function(orderId, itemIndex) {
       "Run the individual assembly SQL once, then try again."
     );
     return;
+  }
+
+  const completesOrder = (order.order_data || []).every(
+    (item, itemPosition) => itemPosition === index || item.assembly_completed
+  );
+
+  if (completesOrder) {
+    if (!IS_ADMIN_PREVIEW) {
+      const { error: statusError } = await supabase
+        .from("orders")
+        .update({
+          status: "Assembly Complete",
+          status_updated_at: new Date().toISOString()
+        })
+        .eq("id", orderId);
+
+      if (statusError) {
+        alert("The keychain was completed, but the order could not move to Fulfilment automatically.");
+      }
+    }
+
+    currentView = "fulfilment";
+    setActiveTab(fulfilmentViewBtn);
   }
 
   await loadOrders();
@@ -2201,6 +2441,10 @@ function getOrderKeychainCount(order) {
   return (order.order_data || []).length;
 }
 
+function getOrderGiftingBagCount(order) {
+  return (order.order_data || []).filter(item => item.gifting_bag === true).length;
+}
+
 function getWhatsAppHref(phoneValue) {
   let digits = String(phoneValue || "").replace(/\D/g, "");
 
@@ -2294,7 +2538,7 @@ function renderStats(orders) {
   );
 
   const readyOrders = activeOrders.filter(
-    order => order.status === "Ready for Pickup/Delivery"
+    order => ["Assembly Complete", "Ready for Pickup/Delivery"].includes(order.status)
   ).length;
 
   statsContainer.innerHTML = `
@@ -2352,7 +2596,7 @@ function renderOperationsSummary(orders) {
     ["Rush Review", "Bulk Review"].includes(order.status)
   ).length;
   const ready = visibleOrders.filter(
-    order => order.status === "Ready for Pickup/Delivery"
+    order => ["Assembly Complete", "Ready for Pickup/Delivery"].includes(order.status)
   ).length;
   const delivery = visibleOrders.filter(order =>
     ACTIVE_ORDER_STATUSES.includes(order.status) &&
@@ -2465,6 +2709,32 @@ async function loadBusinessExpenses() {
   businessExpenses = data || [];
 }
 
+async function loadBusinessSubscriptions() {
+  if (IS_ADMIN_PREVIEW) {
+    businessSubscriptionsLoaded = true;
+    businessSubscriptionsLoadFailed = false;
+    businessSubscriptions = [];
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("business_subscriptions")
+    .select("*")
+    .order("status", { ascending: true })
+    .order("name", { ascending: true });
+
+  businessSubscriptionsLoaded = true;
+  businessSubscriptionsLoadFailed = Boolean(error);
+
+  if (error) {
+    console.warn("Unable to load business subscriptions:", error);
+    businessSubscriptions = [];
+    return;
+  }
+
+  businessSubscriptions = data || [];
+}
+
 function renderFinanceWorkspace() {
   const actualRevenue = calculatePaidOrderRevenue(latestOrders);
   const trackedExpenseTotal = businessExpensesLoadFailed
@@ -2478,6 +2748,7 @@ function renderFinanceWorkspace() {
     filamentAccessoriesSpend: trackedExpenseTotal,
     totalRevenue: actualRevenue
   });
+  const subscriptionSummary = calculateSubscriptionSummary(businessSubscriptions);
   const isCashPositive = figures.netCashPosition >= 0;
   const amountToPositive = Math.max(0, -figures.netCashPosition);
   const today = new Intl.DateTimeFormat("en-CA", {
@@ -2490,7 +2761,7 @@ function renderFinanceWorkspace() {
       <td>${formatDate(expense.expense_date)}</td>
       <td>
         <span class="expense-category">
-          ${escapeAdminHtml(expense.category || "Filament & accessories")}
+          ${escapeAdminHtml(expense.category || "Business expense")}
         </span>
       </td>
       <td>${escapeAdminHtml(expense.description || "Expense")}</td>
@@ -2507,19 +2778,51 @@ function renderFinanceWorkspace() {
       </td>
     </tr>
   `).join("");
+  const subscriptionRows = businessSubscriptions.map(subscription => {
+    const isActive = subscription.status === "active";
+    return `
+      <tr>
+        <td><strong>${escapeAdminHtml(subscription.name || "Subscription")}</strong></td>
+        <td class="expense-amount">${formatSgdMoney(subscription.monthly_amount)}</td>
+        <td>Day ${Number(subscription.billing_day || 1)}</td>
+        <td>${formatDate(subscription.started_on)}</td>
+        <td>
+          <span class="subscription-status ${isActive ? "is-active" : "is-cancelled"}">
+            ${isActive ? "Active" : "Cancelled"}
+          </span>
+        </td>
+        <td class="subscription-actions">
+          <button
+            type="button"
+            class="subscription-toggle-btn"
+            onclick="window.toggleBusinessSubscription(${JSON.stringify(subscription.id)}, ${JSON.stringify(isActive ? "cancelled" : "active")})"
+          >
+            ${isActive ? "Cancel" : "Reactivate"}
+          </button>
+          <button
+            type="button"
+            class="expense-delete-btn"
+            onclick="window.deleteBusinessSubscription(${JSON.stringify(subscription.id)})"
+          >
+            Delete
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("");
 
   ordersContainer.innerHTML = `
     <div class="finance-workspace">
       <div class="finance-hero ${isCashPositive ? "is-positive" : ""}">
         <div>
           <p class="finance-kicker">
-            ${isCashPositive ? "You made it into the green!" : "Investment recovery"}
+            ${isCashPositive ? "You made it into the green!" : "Cost recovery"}
           </p>
           <h2>${formatPercentage(figures.recoveryPercentage)} recovered</h2>
           <p>
             ${isCashPositive
               ? `${formatSgdMoney(figures.netCashPosition)} beyond your startup investment.`
-              : `${formatSgdMoney(amountToPositive)} more revenue to reach cash positive.`
+              : `${formatSgdMoney(amountToPositive)} more revenue to cover recorded business costs.`
             }
           </p>
         </div>
@@ -2531,7 +2834,7 @@ function renderFinanceWorkspace() {
       <div class="finance-progress-card">
         <div class="finance-progress-heading">
           <div>
-            <span>Investment recovery</span>
+            <span>Cost recovery</span>
             <strong>
               ${formatSgdMoney(figures.totalRevenue)}
               <small>of ${formatSgdMoney(figures.totalInvestment)}</small>
@@ -2542,7 +2845,7 @@ function renderFinanceWorkspace() {
         <div
           class="finance-progress-track"
           role="progressbar"
-          aria-label="Investment recovery"
+          aria-label="Cost recovery"
           aria-valuemin="0"
           aria-valuemax="100"
           aria-valuenow="${Math.round(figures.recoveryProgress)}"
@@ -2558,14 +2861,19 @@ function renderFinanceWorkspace() {
           <small>Automatically from paid orders, after refunds</small>
         </article>
         <article class="finance-metric">
-          <span>Startup Investment</span>
+          <span>Business Costs</span>
           <strong>${formatSgdMoney(figures.totalInvestment)}</strong>
-          <small>Printer spend plus tracked expenses</small>
+          <small>Printer spend plus recorded expenses</small>
         </article>
         <article class="finance-metric ${isCashPositive ? "positive" : "negative"}">
           <span>Net Cash Position</span>
           <strong>${formatSgdMoney(figures.netCashPosition)}</strong>
-          <small>Revenue minus startup investment</small>
+          <small>Revenue minus recorded business costs</small>
+        </article>
+        <article class="finance-metric subscription-metric">
+          <span>Monthly Subscriptions</span>
+          <strong>${formatSgdMoney(subscriptionSummary.monthlyTotal)}</strong>
+          <small>${subscriptionSummary.activeCount} active · ${formatSgdMoney(subscriptionSummary.yearlyEstimate)} yearly</small>
         </article>
       </div>
 
@@ -2622,8 +2930,8 @@ function renderFinanceWorkspace() {
         <div class="finance-editor-heading">
           <div>
             <p class="section-kicker">Expense tracker</p>
-            <h3>Filament & accessories</h3>
-            <p>Each purchase is saved separately and added to your investment total.</p>
+            <h3>Business expenses</h3>
+            <p>Record supplies and actual delivery charges paid by Little Keeps.</p>
           </div>
           <strong>${formatSgdMoney(figures.filamentAccessoriesSpend)}</strong>
         </div>
@@ -2639,6 +2947,7 @@ function renderFinanceWorkspace() {
               <option value="Filament">Filament</option>
               <option value="Accessories">Accessories</option>
               <option value="Filament & accessories">Mixed purchase</option>
+              <option value="Delivery">Delivery</option>
             </select>
           </label>
           <label class="expense-description-field">
@@ -2695,13 +3004,83 @@ function renderFinanceWorkspace() {
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="3">Total filament & accessories</td>
+                <td colspan="3">Total business expenses</td>
                 <td class="expense-amount">
                   ${formatSgdMoney(figures.filamentAccessoriesSpend)}
                 </td>
                 <td></td>
               </tr>
             </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="expense-ledger subscription-ledger">
+        <div class="finance-editor-heading">
+          <div>
+            <p class="section-kicker">Recurring expenses</p>
+            <h3>Subscriptions</h3>
+            <p>Track monthly tools and licences without counting future months as money already spent.</p>
+          </div>
+          <strong>${formatSgdMoney(subscriptionSummary.monthlyTotal)}<small>/month</small></strong>
+        </div>
+
+        ${businessSubscriptionsLoadFailed ? `
+          <div class="finance-setup-note" role="alert">
+            Run <strong>supabase/business-subscriptions.sql</strong> once before saving subscriptions.
+          </div>
+        ` : ""}
+
+        <form id="businessSubscriptionForm" class="expense-entry-form subscription-entry-form">
+          <label class="subscription-name-field">
+            <span>Subscription</span>
+            <input name="name" maxlength="100" placeholder="e.g. Patreon licence" required>
+          </label>
+          <label>
+            <span>Monthly amount</span>
+            <div class="money-input">
+              <span>S$</span>
+              <input name="monthly_amount" type="number" min="0.01" step="0.01" placeholder="0.00" required>
+            </div>
+          </label>
+          <label>
+            <span>Billing day</span>
+            <input name="billing_day" type="number" min="1" max="31" value="1" required>
+          </label>
+          <label>
+            <span>Started on</span>
+            <input name="started_on" type="date" value="${today}" required>
+          </label>
+          <button
+            class="finance-save-btn expense-add-btn"
+            type="submit"
+            ${businessSubscriptionsLoadFailed ? "disabled" : ""}
+          >
+            Add subscription
+          </button>
+        </form>
+
+        <div class="expense-table-wrap">
+          <table class="expense-table subscription-table">
+            <thead>
+              <tr>
+                <th>Subscription</th>
+                <th>Monthly</th>
+                <th>Billing</th>
+                <th>Started</th>
+                <th>Status</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${subscriptionRows || `
+                <tr>
+                  <td colspan="6" class="expense-empty">
+                    No subscriptions yet. Add Patreon and Meshy AI above.
+                  </td>
+                </tr>
+              `}
+            </tbody>
           </table>
         </div>
       </section>
@@ -2714,6 +3093,9 @@ function renderFinanceWorkspace() {
   document
     .getElementById("businessExpenseForm")
     ?.addEventListener("submit", addBusinessExpense);
+  document
+    .getElementById("businessSubscriptionForm")
+    ?.addEventListener("submit", addBusinessSubscription);
 }
 
 async function saveBusinessFinancials(event) {
@@ -2781,7 +3163,7 @@ async function addBusinessExpense(event) {
 
   if (
     !expense.expense_date ||
-    !["Filament", "Accessories", "Filament & accessories"].includes(
+    !["Filament", "Accessories", "Filament & accessories", "Delivery"].includes(
       expense.category
     ) ||
     !expense.description ||
@@ -2834,6 +3216,97 @@ window.deleteBusinessExpense = async function(expenseId) {
   }
 
   await loadBusinessExpenses();
+  renderFinanceWorkspace();
+};
+
+async function addBusinessSubscription(event) {
+  event.preventDefault();
+
+  if (businessSubscriptionsLoadFailed) {
+    alert("Set up the subscription table in Supabase before adding subscriptions.");
+    return;
+  }
+
+  const form = new FormData(event.currentTarget);
+  const subscription = {
+    name: String(form.get("name") || "").trim(),
+    monthly_amount: Number(form.get("monthly_amount")),
+    billing_day: Number(form.get("billing_day")),
+    started_on: String(form.get("started_on") || ""),
+    status: "active"
+  };
+
+  if (
+    !subscription.name ||
+    !Number.isFinite(subscription.monthly_amount) ||
+    subscription.monthly_amount <= 0 ||
+    !Number.isInteger(subscription.billing_day) ||
+    subscription.billing_day < 1 ||
+    subscription.billing_day > 31 ||
+    !subscription.started_on
+  ) {
+    alert("Please enter the subscription, monthly amount, billing day and start date.");
+    return;
+  }
+
+  const button = event.currentTarget.querySelector(".expense-add-btn");
+  button.disabled = true;
+  button.textContent = "Adding…";
+
+  const { error } = await supabase
+    .from("business_subscriptions")
+    .insert(subscription);
+
+  if (error) {
+    console.error("Unable to add business subscription:", error);
+    alert("Unable to add the subscription. Please try again.");
+    button.disabled = false;
+    button.textContent = "Add subscription";
+    return;
+  }
+
+  await loadBusinessSubscriptions();
+  renderFinanceWorkspace();
+}
+
+window.toggleBusinessSubscription = async function(subscriptionId, status) {
+  if (!['active', 'cancelled'].includes(status)) return;
+
+  const { error } = await supabase
+    .from("business_subscriptions")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", subscriptionId);
+
+  if (error) {
+    console.error("Unable to update business subscription:", error);
+    alert("Unable to update the subscription. Please try again.");
+    return;
+  }
+
+  await loadBusinessSubscriptions();
+  renderFinanceWorkspace();
+};
+
+window.deleteBusinessSubscription = async function(subscriptionId) {
+  const subscription = businessSubscriptions.find(
+    item => String(item.id) === String(subscriptionId)
+  );
+
+  if (!subscription) return;
+  if (!confirm(`Delete "${subscription.name}"?`)) return;
+
+  const { error } = await supabase
+    .from("business_subscriptions")
+    .delete()
+    .eq("id", subscriptionId);
+
+  if (error) {
+    console.error("Unable to delete business subscription:", error);
+    alert("Unable to delete the subscription. Please try again.");
+    return;
+  }
+
+  await loadBusinessSubscriptions();
   renderFinanceWorkspace();
 };
 
@@ -2974,6 +3447,7 @@ function renderOrders(orders) {
     const customerEmail = escapeAdminHtml(order.customer_email || "-");
     const customerPhone = escapeAdminHtml(order.customer_phone || "-");
     const keychainCount = getOrderKeychainCount(order);
+    const giftingBagCount = getOrderGiftingBagCount(order);
     const characterCount = getOrderCharacterCount(order);
     const whatsappHref = getWhatsAppHref(order.customer_phone);
     const routeGroup = getDeliveryRouteGroup(
@@ -3031,6 +3505,7 @@ function renderOrders(orders) {
           ` : ""}
           <strong>${formatMoney(order.total)}</strong>
           <span>${keychainCount} keychain${keychainCount === 1 ? "" : "s"}</span>
+          ${giftingBagCount > 0 ? `<span>🎁 ${giftingBagCount} gifting bag${giftingBagCount === 1 ? "" : "s"}</span>` : ""}
           <span>${characterCount} character${characterCount === 1 ? "" : "s"} · ${getMethodLabel(order.collection_method)}</span>
           <span>Ordered ${formatDate(order.created_at)}</span>
         </div>
@@ -3099,6 +3574,7 @@ function renderOrders(orders) {
           <p><strong>Subtotal</strong><br>${formatMoney(order.subtotal)}</p>
         `}
         <p><strong>Delivery Fee</strong><br>${formatMoney(order.delivery_fee)}</p>
+        ${giftingBagCount > 0 ? `<p><strong>Gifting Bags</strong><br>${giftingBagCount} × S$0.50</p>` : ""}
         ${Number(order.rush_fee || 0) > 0 ? `<p><strong>Rush Fee</strong><br>${formatMoney(order.rush_fee)}</p>` : ""}
         <p><strong>Total</strong><br>${formatMoney(order.total)}</p>
         <p><strong>Order Source</strong><br>${escapeAdminHtml(order.order_source || "-")}</p>
@@ -3120,6 +3596,19 @@ function renderOrders(orders) {
         <button type="button" onclick='window.copyOrderReference(${JSON.stringify(orderId)})'>
           Copy Reference
         </button>
+
+        ${order.linked_order_ref ? `
+          <button type="button" class="linked-order-action" onclick='window.unlinkOrderAddOn(${JSON.stringify(orderId)}, this)'>
+            Unlink Add-on
+          </button>
+        ` : canOrderAcceptAddOn(order.status) && !latestOrders.some(item =>
+          String(item.linked_order_ref || "").toUpperCase() ===
+          String(order.order_ref || "").toUpperCase()
+        ) ? `
+          <button type="button" class="linked-order-action" onclick='window.linkOrderAsAddOn(${JSON.stringify(orderId)}, this)'>
+            Link as Add-on
+          </button>
+        ` : ""}
 
         ${order.customer_email ? `
           <a href="mailto:${encodeURIComponent(order.customer_email)}?subject=${encodeURIComponent(`Little Keeps order ${order.order_ref || ""}`)}">
@@ -3219,6 +3708,7 @@ function renderOrders(orders) {
       <option value="Payment Expired" ${order.status === "Payment Expired" ? "selected" : ""}>Checkout expired - slot released</option>
       <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid - ready to print</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
+      <option value="Assembly Complete" ${order.status === "Assembly Complete" ? "selected" : ""}>Assembly complete - ready to notify</option>
       ${order.collection_method === "delivery"
         ? `
           <option
@@ -3270,6 +3760,8 @@ function renderOrders(orders) {
           <span class="assembly-tag">
             ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
           </span>
+
+          ${item.gifting_bag ? `<span class="assembly-tag">🎁 Gifting Bag</span>` : ""}
         </div>
 
         <div class="mini-chain">
@@ -3287,7 +3779,7 @@ function renderOrders(orders) {
 function renderFulfilmentWorkspace(orders) {
   const ready = orders.filter(order =>
     !order.archived_at &&
-    ["Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
+    ["Assembly Complete", "Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
   );
   const deliveries = ready
     .filter(order => order.collection_method === "delivery")
@@ -3303,7 +3795,11 @@ function renderFulfilmentWorkspace(orders) {
     <article class="fulfilment-card">
       <label class="route-stop-select">
         ${order.collection_method === "delivery" ? `
-          <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
+          <input
+            type="checkbox"
+            data-route-address="${escapeAdminHtml(order.delivery_address || "")}"
+            data-label-order-id="${escapeAdminHtml(String(order.id))}"
+          >
         ` : ""}
         <span>${order.collection_method === "delivery" ? "Route stop" : "Pickup"}</span>
       </label>
@@ -3319,6 +3815,22 @@ function renderFulfilmentWorkspace(orders) {
         ${renderAssemblyChecklist(order, true)}
       </div>
       <div class="fulfilment-card-actions">
+        ${order.collection_method === "delivery" ? `
+          <button type="button" class="shipping-label-action" onclick='window.printShippingLabel(${JSON.stringify(String(order.id))})'>
+            Print Shipping Label
+          </button>
+        ` : ""}
+        ${order.status === "Assembly Complete" ? `
+          <button type="button" class="ready-btn" onclick='window.markReady(${JSON.stringify(String(order.id))})'>
+            ${order.collection_method === "delivery"
+              ? "Dispatch & Send Delivery Email"
+              : "Send Pickup-Ready Email"}
+          </button>
+        ` : order.customer_email ? `
+          <button type="button" class="approve-request-action" onclick='window.resendCurrentStatusEmail(${JSON.stringify(String(order.id))}, this)'>
+            Resend Customer Email
+          </button>
+        ` : ""}
         <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(String(order.id))})'>
           Send back to rework
         </button>
@@ -3340,8 +3852,8 @@ function renderFulfilmentWorkspace(orders) {
   ordersContainer.innerHTML = `
     <div class="fulfilment-heading">
       <div>
-        <h2>Ready to hand over</h2>
-        <p>Special instructions and handoff recipients stay visible until the order is completed.</p>
+        <h2>Assembly complete → notify when ready</h2>
+        <p>Nothing is emailed automatically here. Pack and check the handoff details, then send the pickup or delivery email when you are ready.</p>
       </div>
       <span>${pickups.length} pickup · ${deliveries.length} delivery</span>
     </div>
@@ -3350,7 +3862,11 @@ function renderFulfilmentWorkspace(orders) {
         <strong>Google Maps route assistance</strong>
         <span>Choose delivery stops, then open them in Maps. This helps plan the route but is not guaranteed live optimisation.</span>
       </div>
-      <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
+      <div class="route-assistance-actions">
+        <button type="button" class="shipping-label-action" onclick="window.printSelectedShippingLabels()">Print Selected Labels</button>
+        <button type="button" class="shipping-label-secondary" onclick="window.printAllShippingLabels()">Print All ${deliveries.length || ""} Labels</button>
+        <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
+      </div>
     </div>
     <section class="fulfilment-section">
       <h3>Deliveries</h3>
@@ -3386,15 +3902,40 @@ async function loadInventoryItems() {
         qty: 128,
         category: "Hardware"
       },
-      "Key Ring": {
+      "Metal Large D Ring": {
         id: 2,
         qty: 42,
         category: "Hardware"
       },
-      "Jump Ring": {
-        id: 3,
-        qty: 64,
+      "Gifting Bag": {
+        id: 6,
+        qty: 20,
+        category: "Packaging"
+      },
+      "NTAG215 NFC Wet Label (25 mm)": {
+        id: 7,
+        qty: 50,
         category: "Hardware"
+      },
+      "White Thickened Courier Bag (28 × 40 cm)": {
+        id: 8,
+        qty: 100,
+        category: "Packaging"
+      },
+      "White Thickened Courier Bag (17 × 30 cm)": {
+        id: 9,
+        qty: 100,
+        category: "Packaging"
+      },
+      "Pink Bubble Packing Bag (25 × 30 + 5 cm)": {
+        id: 10,
+        qty: 48,
+        category: "Packaging"
+      },
+      "Self-Adhesive Transparent Bag (15 × 21 cm)": {
+        id: 11,
+        qty: 500,
+        category: "Packaging"
       },
       "Jade White Ribbed Base": {
         id: 4,
@@ -3724,7 +4265,6 @@ window.startProductionJob = async function(
     return;
   }
 
-  productionStageView = "printing";
   await renderProductionPlanner(latestOrders);
 };
 
@@ -3765,7 +4305,6 @@ window.startSelectedBaseBatch = async function(button) {
         started_at: timestamp
       });
     });
-    productionStageView = "printing";
     await renderProductionPlanner(latestOrders);
     return;
   }
@@ -3784,12 +4323,68 @@ window.startSelectedBaseBatch = async function(button) {
     return;
   }
 
-  productionStageView = "printing";
+  await renderProductionPlanner(latestOrders);
+};
+
+window.startBaseColourBatch = async function(jobId, button) {
+  const group = productionBaseStlJobs.get(jobId);
+  if (!group?.components?.length) return;
+
+  const jobs = group.components.map(component => ({
+    item_name: component.itemName,
+    category: "Base",
+    quantity: Math.max(0, Math.floor(Number(
+      document.getElementById(component.inputId)?.value || component.toPrint
+    ))),
+    stage: "printing",
+    updated_at: new Date().toISOString()
+  })).filter(job => job.quantity > 0);
+
+  if (!jobs.length) {
+    alert("Set at least one base before starting this colour batch.");
+    return;
+  }
+
+  const total = jobs.reduce((sum, job) => sum + job.quantity, 0);
+  if (!confirm(
+    `Start ${group.baseName} as one plate?\n\n` +
+    `${total} bases across ${jobs.length} design${jobs.length === 1 ? "" : "s"}.`
+  )) return;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Starting colour batch…";
+  }
+
+  if (IS_ADMIN_PREVIEW) {
+    const timestamp = new Date().toISOString();
+    productionJobs.push(...jobs.map((job, index) => ({
+      id: `preview-base-colour-${timestamp}-${index}`,
+      ...job,
+      started_at: timestamp
+    })));
+    await renderProductionPlanner(latestOrders);
+    return;
+  }
+
+  const { error } = await supabase.from("production_jobs").insert(jobs);
+  if (error) {
+    console.error("Unable to start base colour batch:", error);
+    alert("Unable to move this colour batch to Printing.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Start Colour Batch";
+    }
+    return;
+  }
+
   await renderProductionPlanner(latestOrders);
 };
 
 window.downloadSelectedBaseBatchStls = async function(button) {
-  const groups = currentBaseBatchPlan.filter(item => item.quantity > 0);
+  const groups = currentBaseColourPlan.filter(group =>
+    group.rows.some(item => item.toPrint > 0)
+  );
   if (!groups.length) {
     alert("No base STL files are needed for this batch.");
     return;
@@ -3797,7 +4392,7 @@ window.downloadSelectedBaseBatchStls = async function(button) {
 
   if (!confirm(
     `Download ${groups.length} combined base STL file${groups.length === 1 ? "" : "s"}?\n\n` +
-    "Each colour and base shape stays in its own printable file."
+    "Each colour becomes one plate file containing both Ribbed and Bubbly designs where needed."
   )) return;
 
   const previousLabel = button?.textContent || "Download All Base STLs";
@@ -4307,8 +4902,11 @@ function getOrderInventoryNeeds(order) {
     return sum + (item.clean_name || item.name || "").length;
   }, 0));
 
-  add("Key Ring", (order.order_data || []).length);
-  add("Jump Ring", (order.order_data || []).length);
+  add("Metal Large D Ring", (order.order_data || []).length);
+  add(
+    "Gifting Bag",
+    (order.order_data || []).filter(item => item.gifting_bag === true).length
+  );
 
   return needs;
 }
@@ -4525,6 +5123,7 @@ const productionStlJobs = new Map();
 const productionBaseStlJobs = new Map();
 const productionAmsPlateJobs = new Map();
 let currentBaseBatchPlan = [];
+let currentBaseColourPlan = [];
 const productionStlGeometryCache = new Map();
 const productionStlLoader = new STLLoader();
 const productionStlExporter = new STLExporter();
@@ -4631,10 +5230,22 @@ async function generateBaseColourStl(jobId, button) {
     return;
   }
 
-  const input = document.getElementById(job.inputId);
-  const quantity = Math.max(
-    0,
-    Math.floor(Number(input?.value || job.toPrint || 0))
+  const components = Array.isArray(job.components)
+    ? job.components.map(component => ({
+        ...component,
+        quantity: Math.max(0, Math.floor(Number(
+          document.getElementById(component.inputId)?.value || component.toPrint || 0
+        )))
+      })).filter(component => component.quantity > 0)
+    : [{
+        baseShape: job.baseShape || "ribbed",
+        quantity: Math.max(0, Math.floor(Number(
+          document.getElementById(job.inputId)?.value || job.toPrint || 0
+        )))
+      }];
+  const quantity = components.reduce(
+    (sum, component) => sum + component.quantity,
+    0
   );
 
   if (!quantity) {
@@ -4651,9 +5262,11 @@ async function generateBaseColourStl(jobId, button) {
 
   try {
     const sourceGeometries = await Promise.all(
-      Array.from({ length: quantity }, () =>
-        loadProductionStlGeometry(
-          `/models/base_${job.baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`
+      components.flatMap(component =>
+        Array.from({ length: component.quantity }, () =>
+          loadProductionStlGeometry(
+            `/models/base_${component.baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`
+          )
         )
       )
     );
@@ -4670,11 +5283,13 @@ async function generateBaseColourStl(jobId, button) {
     }
 
     const colourName = safeProductionFileName(job.baseName, "base");
-    const shapeName = job.baseShape === "bubbly" ? "bubbly" : "ribbed";
+    const shapeCounts = components.map(component =>
+      `${component.baseShape === "bubbly" ? "bubbly" : "ribbed"}-${component.quantity}`
+    ).join("_");
 
     downloadProductionStl(
       mergedGeometry,
-      `${shapeName}-base_${colourName}_${quantity}-pieces.stl`
+      `${colourName}-bases_${shapeCounts}_${quantity}-pieces.stl`
     );
 
     arrangedGeometries.forEach(geometry => geometry.dispose());
@@ -4890,6 +5505,36 @@ async function generateKeycapCombinationStl(jobId, button) {
 
 window.generateKeycapCombinationStl = generateKeycapCombinationStl;
 
+function saveAmsBaseReservation() {
+  localStorage.setItem(
+    AMS_BASE_RESERVATION_KEY,
+    JSON.stringify(amsBaseReservation)
+  );
+}
+
+window.updateAmsBaseReservation = function() {
+  const printerId = String(
+    document.getElementById("amsBasePrinter")?.value || ""
+  );
+  const colourNames = printerId
+    ? Array.from(
+        document.querySelectorAll(
+          'input[name="amsBaseBusyColour"]:checked'
+        )
+      ).map(input => input.value)
+    : [];
+
+  amsBaseReservation = { printerId, colourNames };
+  saveAmsBaseReservation();
+  renderProductionPlanner(latestOrders);
+};
+
+window.clearAmsBaseReservation = function() {
+  amsBaseReservation = { printerId: "", colourNames: [] };
+  saveAmsBaseReservation();
+  renderProductionPlanner(latestOrders);
+};
+
 function planAmsLiteKeycapPlates(combinationCards) {
   const colourLimit = 4;
   const suggestedPieceLimit = 56;
@@ -5046,7 +5691,94 @@ window.startKeycapCombination = async function(jobId, button, printerId = null) 
     return;
   }
 
-  productionStageView = "printing";
+  await renderProductionPlanner(latestOrders);
+};
+
+window.updateAmsCombinationSelection = function() {
+  const selectedCount = document.querySelectorAll(
+    ".ams-combination-select:checked"
+  ).length;
+  const button = document.getElementById("startSelectedAmsCombinations");
+  const count = document.getElementById("selectedAmsCombinationCount");
+
+  if (count) count.textContent = String(selectedCount);
+  if (button) button.disabled = productionJobsLoadFailed || selectedCount === 0;
+};
+
+window.startSelectedKeycapCombinations = async function(button) {
+  const selected = Array.from(document.querySelectorAll(
+    ".ams-combination-select:checked"
+  ));
+
+  if (!selected.length) {
+    alert("Select at least one keycap colour combination first.");
+    return;
+  }
+
+  const jobs = [];
+
+  for (const checkbox of selected) {
+    const combination = productionStlJobs.get(checkbox.value);
+    if (!combination) continue;
+
+    for (const row of combination.rows || []) {
+      const input = document.getElementById(row.inputId);
+      const quantity = Number(input?.value ?? row.toPrint ?? 0);
+
+      if (!Number.isInteger(quantity) || quantity < 0) {
+        alert("Every selected quantity must be a whole number of zero or more.");
+        return;
+      }
+
+      if (quantity > 0) {
+        jobs.push({
+          item_name: row.itemName,
+          category: "Keycap",
+          quantity,
+          stage: "printing",
+          printer_id: checkbox.dataset.printerId || null,
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  if (!jobs.length) {
+    alert("The selected combinations have no remaining quantities to print.");
+    return;
+  }
+
+  if (!confirm(
+    `Send ${selected.length} selected colour combination${selected.length === 1 ? "" : "s"} to Printing?\n\n` +
+    "You will stay on this planning page so you can send another batch."
+  )) return;
+
+  const previousLabel = button?.textContent || "Start Selected Combinations";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending selected…";
+  }
+
+  if (IS_ADMIN_PREVIEW) {
+    const startedAt = new Date().toISOString();
+    jobs.forEach((job, index) => productionJobs.push({
+      ...job,
+      id: `preview-selected-combination-${Date.now()}-${index}`,
+      started_at: startedAt
+    }));
+  } else {
+    const { error } = await supabase.from("production_jobs").insert(jobs);
+    if (error) {
+      console.error("Unable to start selected combinations:", error);
+      alert("Unable to send the selected combinations to Printing.");
+      if (button) {
+        button.disabled = false;
+        button.textContent = previousLabel;
+      }
+      return;
+    }
+  }
+
   await renderProductionPlanner(latestOrders);
 };
 
@@ -5117,7 +5849,6 @@ window.startAmsLitePlate = async function(plateId, button) {
     return;
   }
 
-  productionStageView = "printing";
   await renderProductionPlanner(latestOrders);
 };
 
@@ -5729,6 +6460,8 @@ async function renderAssemblyQueue() {
             <span class="assembly-tag">
               ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
             </span>
+
+            ${item.gifting_bag ? `<span class="assembly-tag">🎁 Gifting Bag</span>` : ""}
           </div>
         </div>
 
@@ -5839,7 +6572,7 @@ async function renderAssemblyQueue() {
       const totalItems = (order.order_data || []).length;
 
       return `
-        <details class="assembly-card" ${index === 0 ? "open" : ""}>
+        <details class="assembly-card">
           <summary class="assembly-summary">
             <div>
               <h3>${escapeAdminHtml(order.customer_name || "-")}</h3>
@@ -5904,16 +6637,9 @@ async function renderAssemblyQueue() {
                 ? `
                   <button
                     class="ready-btn"
-                    onclick="window.markReady('${order.id}')"
+                    onclick="window.moveAssemblyToFulfilment('${order.id}')"
                   >
-                    ${
-                      adminShopSettings.status_emails_enabled &&
-                      String(adminShopSettings.status_email_template_id || "").trim()
-                        ? order.collection_method === "delivery"
-                          ? "Finish Order & Start Delivery"
-                          : "Finish Order & Send Pickup Email"
-                        : "Finish Order (Email Not Set Up)"
-                    }
+                    Move Completed Order to Fulfilment
                   </button>
                 `
                 : `
@@ -6002,7 +6728,7 @@ async function renderInventoryWorkspace() {
       itemName: hardware.itemName,
       label: hardware.label,
       qty: Number(saved?.qty || 0),
-      category: "Hardware"
+      category: hardware.category
     };
   });
 
@@ -6312,8 +7038,8 @@ async function renderInventoryWorkspace() {
 
       ${section(
         "hardware",
-        "Hardware",
-        "Mechanical switches, key rings and jump rings.",
+        "Hardware & packaging",
+        "Hardware, NFC labels, gifting bags and delivery packaging.",
         hardwareRows,
         true
       )}
@@ -6382,6 +7108,26 @@ async function renderProductionPlanner(orders) {
     planningOrders,
     selectedScopeActive
   );
+  const timeEstimateOrders = planningOrders.filter(order =>
+    !order.archived_at &&
+    (
+      selectedScopeActive
+        ? !["Completed", "Refunded", "Payment Expired"].includes(order.status)
+        : ["Payment Verified", "Printing"].includes(order.status)
+    )
+  );
+  const estimatedKeychainCount = timeEstimateOrders.reduce(
+    (sum, order) => sum + (order.order_data || []).filter(
+      item => !item.assembly_completed
+    ).length,
+    0
+  );
+  const onlinePrinterCount = printers.filter(
+    printer => printer.status === "online"
+  ).length;
+  const productionTimingPolicy = getBulkApprovalPolicy(
+    Math.max(1, estimatedKeychainCount)
+  );
   const productionTimelineOrders = getProductionTimelineOrders(
     planningOrders,
     selectedScopeActive
@@ -6411,37 +7157,55 @@ async function renderProductionPlanner(orders) {
     })
     .filter(item => item.toPrint > 0);
 
-  const baseShapeGroups = [
-    { key: "bubbly", label: "Bubbly Bases" },
-    { key: "ribbed", label: "Ribbed Bases" }
-  ].map(group => ({
-    ...group,
-    rows: baseRows
-      .filter(item => (item.baseShape || "ribbed").toLowerCase() === group.key)
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-  }));
+  const baseColourGroups = Array.from(
+    baseRows.reduce((groups, item) => {
+      const key = String(item.name || "Other").trim().toLowerCase();
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: `${item.name} Bases`,
+          baseName: item.name,
+          hex: item.hex,
+          rows: []
+        });
+      }
+      groups.get(key).rows.push(item);
+      return groups;
+    }, new Map()).values()
+  )
+    .map(group => ({
+      ...group,
+      rows: group.rows.sort((a, b) =>
+        String(a.baseShape || "ribbed").localeCompare(String(b.baseShape || "ribbed"))
+      )
+    }))
+    .sort((a, b) => String(a.baseName).localeCompare(String(b.baseName)));
 
   productionStlJobs.clear();
   productionBaseStlJobs.clear();
 
-  baseRows.forEach((item, index) => {
+  baseColourGroups.forEach((group, index) => {
     const stlJobId = `base-colour-${index}`;
-    item.stlJobId = stlJobId;
+    group.stlJobId = stlJobId;
 
     productionBaseStlJobs.set(stlJobId, {
-      baseName: item.name,
-      baseShape: item.baseShape || "ribbed",
-      toPrint: item.toPrint,
-      inputId: `printQty-${encodeURIComponent(item.itemName)}`
+      baseName: group.baseName,
+      components: group.rows.map(item => ({
+        itemName: item.itemName,
+        baseShape: item.baseShape || "ribbed",
+        toPrint: item.toPrint,
+        inputId: `printQty-${encodeURIComponent(item.itemName)}`
+      }))
     });
   });
+  currentBaseColourPlan = baseColourGroups;
   currentBaseBatchPlan = baseRows.map(item => ({
     itemName: item.itemName,
     category: "Base",
     quantity: item.toPrint,
     baseName: item.name,
     baseShape: item.baseShape || "ribbed",
-    stlJobId: item.stlJobId
+    stlJobId: baseColourGroups.find(group => group.rows.includes(item))?.stlJobId
   }));
 
   const keycapCombinationCards = Object.entries(keycapGroups).map(([groupKey, group], groupIndex) => {
@@ -6616,16 +7380,31 @@ async function renderProductionPlanner(orders) {
   }).filter(Boolean);
 
   productionAmsPlateJobs.clear();
+  const validBasePrinter = printers.find(printer =>
+    printer.status === "online" &&
+    String(printer.id) === String(amsBaseReservation.printerId)
+  );
+  const activeBusyColours = validBasePrinter
+    ? amsBaseReservation.colourNames
+    : [];
+  const {
+    ready: freeColourCombinations,
+    waiting: waitingForBusyColours
+  } = partitionAmsCombinationsByBusyColours(
+    keycapCombinationCards,
+    activeBusyColours
+  );
   const amsLitePlates = planAmsLiteKeycapPlates(
-    keycapCombinationCards
+    freeColourCombinations
   );
-  const onlinePrinters = printers.filter(
-    printer => printer.status === "online"
+  const onlinePrinters = printers.filter(printer => printer.status === "online");
+  const freeAmsPrinters = getFreeAmsPrinters(
+    printers,
+    validBasePrinter?.id
   );
-  const amsPrinterLanes = distributeAmsPlatesAcrossPrinters(
-    amsLitePlates,
-    onlinePrinters
-  );
+  const amsPrinterLanes = freeAmsPrinters.length
+    ? distributeAmsPlatesAcrossPrinters(amsLitePlates, freeAmsPrinters)
+    : [];
   const scheduledAmsPlates = amsPrinterLanes.flatMap(
     (lane, laneIndex) => lane.plates.map((plate, lanePlateIndex) => ({
       ...plate,
@@ -6657,7 +7436,7 @@ async function renderProductionPlanner(orders) {
     0
   );
 
-  const amsLitePlanner = scheduledAmsPlates.length
+  const amsLitePlanner = keycapCombinationCards.length
     ? `
       <section class="ams-lite-planner">
         <div class="ams-lite-planner-heading">
@@ -6666,9 +7445,8 @@ async function renderProductionPlanner(orders) {
             <div>
               <h3>AMS Lite Plate Suggestions</h3>
               <p>
-                Plates are balanced across both A1s so they can run together,
-                then ordered to reduce AMS spool changes. Each plate still uses
-                no more than four filament colours.
+                Reserve one A1 for bases when needed. The remaining keycap
+                combinations are rebuilt using only filament colours that are free.
               </p>
             </div>
           </div>
@@ -6678,13 +7456,82 @@ async function renderProductionPlanner(orders) {
           </div>
         </div>
 
-        <div class="ams-mum-mode">
+        <section class="ams-free-colour-control">
+          <header>
+            <div>
+              <span>Base printer reservation</span>
+              <h4>Which colours are busy printing bases?</h4>
+              <p>Select the A1 running bases, then tick only the spools you do not have a duplicate of.</p>
+            </div>
+            ${validBasePrinter ? `
+              <button type="button" onclick="window.clearAmsBaseReservation()">
+                Clear reservation
+              </button>
+            ` : ""}
+          </header>
+
+          <label class="ams-base-printer-select">
+            <span>Printer running bases</span>
+            <select id="amsBasePrinter" onchange="window.updateAmsBaseReservation()">
+              <option value="">Neither — use both A1s for keycaps</option>
+              ${onlinePrinters.map(printer => `
+                <option
+                  value="${escapeAdminHtml(String(printer.id))}"
+                  ${String(validBasePrinter?.id || "") === String(printer.id) ? "selected" : ""}
+                >
+                  ${escapeAdminHtml(printer.name)}
+                </option>
+              `).join("")}
+            </select>
+          </label>
+
+          <div class="ams-busy-colour-options ${validBasePrinter ? "" : "is-disabled"}">
+            ${ADMIN_COLOUR_OPTIONS.map(colour => `
+              <label>
+                <input
+                  type="checkbox"
+                  name="amsBaseBusyColour"
+                  value="${escapeAdminHtml(colour.name)}"
+                  ${activeBusyColours.some(name => String(name).toLowerCase() === colour.name.toLowerCase()) ? "checked" : ""}
+                  ${validBasePrinter ? "" : "disabled"}
+                  onchange="window.updateAmsBaseReservation()"
+                >
+                <i style="background:${colour.hex}"></i>
+                <span>${escapeAdminHtml(colour.name)}</span>
+              </label>
+            `).join("")}
+          </div>
+
+          <footer>
+            ${validBasePrinter ? `
+              <strong>${escapeAdminHtml(validBasePrinter.name)} is reserved for bases.</strong>
+              <span>
+                ${activeBusyColours.length
+                  ? `${activeBusyColours.length} non-duplicate colour${activeBusyColours.length === 1 ? " is" : "s are"} temporarily unavailable.`
+                  : "No shared colours are blocked; keycaps may use every filament colour on the other A1."
+                }
+              </span>
+            ` : `
+              <strong>Both A1s are available for keycaps.</strong>
+              <span>No base-printer colours are reserved.</span>
+            `}
+          </footer>
+        </section>
+
+        ${scheduledAmsPlates.length ? `<div class="ams-mum-mode">
           <span aria-hidden="true">♡</span>
           <div>
             <strong>Simple handover mode</strong>
             <p>Start both plates in each wave together. Complete Wave 1 before Wave 2; only touch slots marked “SWAP”.</p>
           </div>
-        </div>
+        </div>` : `
+          <div class="ams-printer-fallback-warning">
+            ${freeColourCombinations.length
+              ? "No online A1 is currently free for keycaps. Clear the base reservation or mark another printer online."
+              : "Every remaining keycap combination is waiting for a busy base colour. Untick a colour when that spool becomes free."
+            }
+          </div>
+        `}
 
         ${printers.length > 1 && onlinePrinters.length < 2 ? `
           <div class="ams-printer-fallback-warning">
@@ -6693,7 +7540,7 @@ async function renderProductionPlanner(orders) {
           </div>
         ` : ""}
 
-        <div class="ams-printer-lane-summary">
+        ${amsPrinterLanes.length ? `<div class="ams-printer-lane-summary">
           ${amsPrinterLanes.map(lane => `
             <article>
               <span class="printer-dot"></span>
@@ -6703,9 +7550,9 @@ async function renderProductionPlanner(orders) {
               </div>
             </article>
           `).join("")}
-        </div>
+        </div>` : ""}
 
-        <section class="ams-safe-waves">
+        ${amsWaves.length ? `<section class="ams-safe-waves">
           <header>
             <div>
               <strong>Two-printer print waves</strong>
@@ -6737,9 +7584,25 @@ async function renderProductionPlanner(orders) {
               </article>
             `).join("")}
           </div>
-        </section>
+        </section>` : ""}
 
-        <div class="ams-lite-plate-grid">
+        ${scheduledAmsPlates.length ? `<div class="ams-batch-start-bar">
+          <div>
+            <strong>Send several colour combinations together</strong>
+            <span>Tick the combinations below. You will stay on this page after sending them.</span>
+          </div>
+          <button
+            id="startSelectedAmsCombinations"
+            type="button"
+            class="ready-btn"
+            disabled
+            onclick="window.startSelectedKeycapCombinations(this)"
+          >
+            Start Selected (<span id="selectedAmsCombinationCount">0</span>)
+          </button>
+        </div>` : ""}
+
+        ${scheduledAmsPlates.length ? `<div class="ams-lite-plate-grid">
           ${scheduledAmsPlates.map((plate, plateIndex) => {
             const plateId = `ams-lite-plate-${plateIndex}`;
             const colours = Array.from(plate.colours.values());
@@ -6830,6 +7693,16 @@ async function renderProductionPlanner(orders) {
                 <div class="ams-lite-combinations">
                   ${plate.combinations.map(combination => `
                     <div class="ams-lite-combination-row">
+                      <label class="ams-combination-picker" title="Select this combination for a batch start">
+                        <input
+                          type="checkbox"
+                          class="ams-combination-select"
+                          value="${escapeAdminHtml(combination.stlJobId)}"
+                          data-printer-id="${escapeAdminHtml(String(plate.assignedPrinterId || ""))}"
+                          onchange="window.updateAmsCombinationSelection()"
+                        >
+                        <span>Select</span>
+                      </label>
                       <span class="ams-combination-preview">
                         <i style="background:${combination.capHex};"></i>
                         <i style="background:${combination.letterHex};"></i>
@@ -6898,7 +7771,34 @@ async function renderProductionPlanner(orders) {
               </article>
             `;
           }).join("")}
-        </div>
+        </div>` : ""}
+
+        ${waitingForBusyColours.length ? `
+          <section class="ams-waiting-queue">
+            <header>
+              <div>
+                <span>Waiting for filament</span>
+                <h4>${waitingForBusyColours.length} combination${waitingForBusyColours.length === 1 ? "" : "s"} paused</h4>
+              </div>
+              <strong>Returns automatically when you untick the busy colour</strong>
+            </header>
+            <div>
+              ${waitingForBusyColours.map(combination => `
+                <article>
+                  <span class="ams-combination-preview">
+                    <i style="background:${combination.capHex};"></i>
+                    <i style="background:${combination.letterHex};"></i>
+                  </span>
+                  <div>
+                    <strong>${escapeAdminHtml(combination.capName)} cap + ${escapeAdminHtml(combination.letterName)} letter</strong>
+                    <small>${combination.rows.reduce((sum, row) => sum + Number(row.toPrint || 0), 0)} piece${combination.rows.reduce((sum, row) => sum + Number(row.toPrint || 0), 0) === 1 ? "" : "s"} · waiting for ${combination.busyColours.map(escapeAdminHtml).join(" + ")}</small>
+                  </div>
+                  <button type="button" onclick="window.generateKeycapCombinationStl('${combination.stlJobId}', this)">STL</button>
+                </article>
+              `).join("")}
+            </div>
+          </section>
+        ` : ""}
 
         <p class="optimized-plate-note">
           Load the listed colours into your AMS Lite, import the downloaded
@@ -7162,6 +8062,11 @@ async function renderProductionPlanner(orders) {
     0
   );
   const queuedPieces = baseQueuedPieces + keycapQueuedPieces;
+  const productionTimeEstimate = calculateProductionTimeEstimate(
+    baseQueuedPieces,
+    keycapQueuedPieces,
+    onlinePrinterCount
+  );
   const selectedBatchPanel = selectedScopeActive ? `
     <section class="selected-production-batch">
       <header>
@@ -7184,24 +8089,26 @@ async function renderProductionPlanner(orders) {
               <h4>Bulk Base Printing</h4>
               <p>
                 All ${planningOrders.length} selected orders are combined here.
-                Different colours and base shapes stay in separate printable files.
+                Bases are grouped by colour; Ribbed and Bubbly share the same colour plate.
               </p>
             </div>
             <strong>${baseQueuedPieces} bases</strong>
           </header>
 
           <div class="batch-base-groups">
-            ${currentBaseBatchPlan.map(group => `
+            ${currentBaseColourPlan.map(group => `
               <article>
                 <span class="colour-dot" style="background:${getSafePdfColour(
-                  baseRows.find(item => item.itemName === group.itemName)?.hex,
+                  group.hex,
                   "#d9d9d9"
                 )}"></span>
                 <div>
-                  <strong>${escapeAdminHtml(group.itemName)}</strong>
-                  <small>${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} · combined across selected orders</small>
+                  <strong>${escapeAdminHtml(group.label)}</strong>
+                  <small>${group.rows.map(item =>
+                    `${item.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} × ${item.toPrint}`
+                  ).join(" · ")} · one colour plate</small>
                 </div>
-                <b>× ${group.quantity}</b>
+                <b>× ${group.rows.reduce((sum, item) => sum + item.toPrint, 0)}</b>
                 <button
                   type="button"
                   onclick="window.generateBaseColourStl('${group.stlJobId}', this)"
@@ -7212,7 +8119,7 @@ async function renderProductionPlanner(orders) {
             `).join("") || `<p class="batch-complete-message">✓ All bases are already covered by stock or tracked prints.</p>`}
           </div>
 
-          ${currentBaseBatchPlan.length ? `
+          ${currentBaseColourPlan.length ? `
             <div class="batch-step-actions">
               <button type="button" onclick="window.downloadSelectedBaseBatchStls(this)">
                 Download All Combined Base STLs
@@ -7515,6 +8422,45 @@ async function renderProductionPlanner(orders) {
         </section>
       ` : ""}
 
+      <section class="production-time-estimate">
+        <header>
+          <div>
+            <p>Print-time calculator</p>
+            <h3>${queuedPieces} queued piece${queuedPieces === 1 ? "" : "s"}</h3>
+            <small>${baseQueuedPieces} bases · ${keycapQueuedPieces} keycaps</small>
+          </div>
+          <strong>${formatProductionMinutes(productionTimeEstimate.totalPrinterMinutes)} machine time</strong>
+        </header>
+
+        <div>
+          <article>
+            <span>Bases · 25 min each</span>
+            <strong>${formatProductionMinutes(productionTimeEstimate.baseMinutes)}</strong>
+          </article>
+          <article>
+            <span>Keycaps · 15 min each</span>
+            <strong>${formatProductionMinutes(productionTimeEstimate.keycapMinutes)}</strong>
+          </article>
+          <article class="is-highlighted">
+            <span>Estimated elapsed time</span>
+            <strong>${formatProductionMinutes(productionTimeEstimate.estimatedElapsedMinutes)}</strong>
+          </article>
+        </div>
+
+        <p>
+          ${onlinePrinterCount >= 2
+            ? `Assumes one printer runs bases while ${onlinePrinterCount - 1} printer${onlinePrinterCount - 1 === 1 ? "" : "s"} run keycaps.`
+            : "Assumes sequential printing on one printer."
+          }
+          Based on the To Print quantities only; pieces already printing are tracked separately.
+          Add setup, plate changes, failed prints, assembly and packing separately.
+          ${productionTimingPolicy.approvalRequired
+            ? `<br><strong>Suggested customer window: ${escapeAdminHtml(productionTimingPolicy.timeframeLabel)}.</strong>`
+            : ""
+          }
+        </p>
+      </section>
+
       <section class="printer-status-board">
         <header>
           <div><p>Capacity check</p><h3>Printers</h3></div>
@@ -7620,20 +8566,23 @@ async function renderProductionPlanner(orders) {
         <div class="production-queue-section ${productionQueueView === "bases" ? "" : "hidden"}">
           <h3>Base Printing</h3>
 
-          <div class="base-shape-grid">
-            ${baseShapeGroups.map(group => {
+          <p class="hint">Grouped by filament colour. Ribbed and Bubbly designs can print together on one plate.</p>
+
+          <div class="base-shape-grid base-colour-grid">
+            ${baseColourGroups.map(group => {
               const piecesLeft = group.rows.reduce((sum, item) => sum + item.toPrint, 0);
 
               return `
                 <details
-                  class="print-group base-shape-group base-shape-${group.key}"
-                  data-collapse-key="base-${group.key}"
+                  class="print-group base-shape-group base-colour-group"
+                  data-collapse-key="base-colour-${encodeURIComponent(group.key)}"
                   open
                 >
                   <summary class="base-shape-heading">
+                    <span class="colour-dot" style="background:${getSafePdfColour(group.hex, "#d9d9d9")}"></span>
                     <div>
                       <h4>${group.label}</h4>
-                      <p class="hint">${piecesLeft} piece${piecesLeft === 1 ? "" : "s"} left to print</p>
+                      <p class="hint">${piecesLeft} piece${piecesLeft === 1 ? "" : "s"} · one combined colour plate</p>
                     </div>
                   </summary>
 
@@ -7642,7 +8591,7 @@ async function renderProductionPlanner(orders) {
                       <span class="colour-dot" style="background:${item.hex}"></span>
 
                       <div style="flex:1;">
-                        <strong>${item.itemName}</strong>
+                        <strong>${item.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} design</strong>
                         <p class="hint">
                           Need: ${item.need} · Stock: ${item.stock}
                           ${item.tracked ? ` · Tracked: ${item.tracked}` : ""}
@@ -7670,16 +8619,30 @@ async function renderProductionPlanner(orders) {
                           Start Printing
                         </button>
 
-                        <button
-                          type="button"
-                          class="stl-download-btn"
-                          onclick="window.generateBaseColourStl('${item.stlJobId}', this)"
-                        >
-                          Download STL
-                        </button>
                       </div>
                     </div>
+
                   `).join("") || `<p class="base-shape-complete">✓ No ${group.label.toLowerCase()} need printing.</p>`}
+
+                  ${group.rows.length ? `
+                    <div class="batch-step-actions base-colour-actions">
+                      <button
+                        type="button"
+                        class="stl-download-btn"
+                        onclick="window.generateBaseColourStl('${group.stlJobId}', this)"
+                      >
+                        Download Combined STL
+                      </button>
+                      <button
+                        type="button"
+                        class="ready-btn"
+                        ${productionJobsLoadFailed ? "disabled" : ""}
+                        onclick="window.startBaseColourBatch('${group.stlJobId}', this)"
+                      >
+                        Start Colour Batch
+                      </button>
+                    </div>
+                  ` : ""}
                 </details>
               `;
             }).join("")}
@@ -8313,6 +9276,9 @@ async function generateCompactOrderPdfAttachment(order, items) {
             `Icons: ${getCompactPdfText(iconLegend)}`,
             contentWidth - 12
           )
+        : []),
+      ...(item.gifting_bag
+        ? pdf.splitTextToSize("Packaging: Gifting bag included", contentWidth - 12)
         : [])
     ];
     const cardHeight = 34 + colourLines.length * 3.8;
@@ -8781,7 +9747,20 @@ async function approveSpecialOrder(id) {
   }
 
   const originalTotalWithoutRush = Number(order.total || 0) - Number(order.rush_fee || 0);
-  const updatedTotal = originalTotalWithoutRush + rushFee;
+  let updatedTotal = originalTotalWithoutRush + rushFee;
+
+  if (order.order_type === "bulk") {
+    const enteredTotal = prompt(
+      "Confirm the final event-order total ($):",
+      Number(order.total || 0).toFixed(2)
+    );
+    if (enteredTotal === null) return;
+    updatedTotal = Number(enteredTotal);
+    if (!Number.isFinite(updatedTotal) || updatedTotal < 0) {
+      alert("Please enter a valid final total.");
+      return;
+    }
+  }
   const { error } = await supabase.from("orders").update({
     needed_by: confirmedDate.trim(),
     rush_fee: rushFee,
@@ -8901,12 +9880,24 @@ async function refundOrder(id, button) {
     if (data?.error) throw new Error(data.error);
     alert(
       `${data.refund_status === "full" ? "Full" : "Partial"} refund completed: ` +
-      formatMoney(amount)
+      formatMoney(amount) +
+      (data.warning ? `\n\n${data.warning}` : "")
     );
     await loadOrders();
   } catch (error) {
     console.error("Unable to refund order:", error);
-    alert(error?.message || "Unable to complete the refund.");
+    let message = error?.message || "Unable to complete the refund.";
+
+    if (error?.context instanceof Response) {
+      try {
+        const details = await error.context.clone().json();
+        message = details?.error || message;
+      } catch {
+        // Keep the connection error supplied by Supabase.
+      }
+    }
+
+    alert(message);
   } finally {
     if (button) {
       button.disabled = false;
@@ -9045,12 +10036,12 @@ function getStatusEmailContent(order, status) {
 
   if (status === "Out for Delivery") {
     return {
-      title: "Your order is ready and out for delivery! 🩷",
-      message: "Your personalised Little Keeps order has finished production, passed its quality check, been packed safely and is now on its way to you.",
+      title: "Your Little Keeps order has been dispatched! 🩷",
+      message: "Your personalised order has finished production, passed its quality check and has been handed over for delivery. Please allow 1–3 days for arrival.",
       actionTitle: order.courier_name ? `Delivery by ${order.courier_name}` : "Delivery update",
       actionDetails: order.tracking_number
         ? `Tracking number: ${order.tracking_number}`
-        : "This order is being delivered personally, so a courier tracking number is not required. We may contact you if we need help completing the delivery."
+        : "Tracking details will be emailed unless your order is hand delivered. Please allow 1–3 days after dispatch."
     };
   }
 
@@ -9140,6 +10131,42 @@ async function sendOrderStatusEmail(order, status) {
     );
   }
 
+  return { sent: true };
+}
+
+async function sendLinkedOrderEmail(order, rootRef, latestDate) {
+  if (!adminShopSettings.status_emails_enabled) {
+    return { skipped: true, reason: "Status emails are disabled in Settings." };
+  }
+  const templateId = String(adminShopSettings.status_email_template_id || "").trim();
+  if (!templateId || !order.customer_email) {
+    return { skipped: true, reason: "The status email template or customer email is missing." };
+  }
+
+  await emailjs.send(EMAILJS_SERVICE, templateId, {
+    to_email: order.customer_email,
+    customer_name: order.customer_name || "Customer",
+    order_ref: rootRef,
+    update_title: "Your add-on has been linked! 🩷",
+    update_message: `Your add-on (${order.order_ref}) is now grouped under ${rootRef}.`,
+    action_title: "One combined order",
+    action_details: `Both parts now follow the later pickup or dispatch date: ${formatDate(latestDate)}.`,
+    action_button_label: "View Your Order",
+    action_url: `https://little-keeps.vercel.app/?resume_order=${encodeURIComponent(rootRef)}#orderStatusSection`,
+    has_tracking: false,
+    tracking_number: "",
+    tracking_url: "",
+    courier_name: "",
+    collection_method: getMethodLabel(order.collection_method),
+    needed_by: formatDate(latestDate)
+  });
+
+  if (!IS_ADMIN_PREVIEW) {
+    await supabase
+      .from("orders")
+      .update({ link_email_sent_at: new Date().toISOString() })
+      .eq("id", order.id);
+  }
   return { sent: true };
 }
 
@@ -9374,13 +10401,16 @@ async function loadAdminSettings() {
     adminShopSettings = { ...DEFAULT_ADMIN_SHOP_SETTINGS };
     adminPromoCodes = [];
     adminCustomerReviews = [];
+    adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
+    adminProductsLoadFailed = false;
     return;
   }
 
   const [
     { data: settings, error: settingsError },
     { data: promos, error: promosError },
-    { data: reviews, error: reviewsError }
+    { data: reviews, error: reviewsError },
+    { data: products, error: productsError }
   ] = await Promise.all([
     supabase.from("shop_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.from("promo_codes").select("*").order("created_at", { ascending: false }),
@@ -9388,22 +10418,29 @@ async function loadAdminSettings() {
       .from("customer_reviews")
       .select("*")
       .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("product_catalog")
+      .select("*")
+      .order("sort_order", { ascending: true })
   ]);
 
   if (settingsError) console.warn("Using fallback admin settings:", settingsError);
   if (promosError) console.warn("Promo management is not ready yet:", promosError);
   if (reviewsError) console.warn("Customer review management is not ready yet:", reviewsError);
+  if (productsError) console.warn("Product catalogue is not ready yet:", productsError);
 
   adminSettingsLoaded = true;
   adminSettingsLoadFailed = Boolean(settingsError);
   adminReviewsLoadFailed = Boolean(reviewsError);
+  adminProductsLoadFailed = Boolean(productsError);
   adminShopSettings = {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
     ...(settingsError ? {} : (settings || {}))
   };
   adminPromoCodes = promos || [];
   adminCustomerReviews = reviews || [];
+  adminProductCatalog = normalizeProductCatalog(productsError ? [] : products);
 }
 
 async function loadOrders() {
@@ -9789,6 +10826,244 @@ window.acknowledgeOrderUpdate = async function(orderId, button) {
   renderCurrentView();
 };
 
+window.linkOrderAsAddOn = async function(orderId, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  if (!order) return;
+  const parentRef = prompt(
+    `Which original order should ${order.order_ref} be linked to?`,
+    ""
+  )?.trim().toUpperCase();
+  if (!parentRef) return;
+  if (button) button.disabled = true;
+
+  if (IS_ADMIN_PREVIEW) {
+    order.linked_order_ref = parentRef;
+    order.linked_at = new Date().toISOString();
+    renderCurrentView();
+    return;
+  }
+
+  const { data, error } = await supabase.rpc("admin_link_order_add_on", {
+    p_child_id: String(order.id),
+    p_parent_order_ref: parentRef
+  });
+  if (error || !data?.ok) {
+    alert(error?.message || "Unable to link these orders. Both must still be before Printing.");
+    if (button) button.disabled = false;
+    return;
+  }
+
+  let emailResult = { skipped: true };
+  try {
+    emailResult = await sendLinkedOrderEmail(order, data.order_ref, data.latest_date);
+  } catch (emailError) {
+    console.warn("Orders linked, but the customer email failed:", emailError);
+  }
+
+  alert(
+    `Linked under ${data.order_ref}. Both orders now use ${formatDate(data.latest_date)}.` +
+    (emailResult.sent ? " The customer was emailed." : " The customer email was not sent; you can email them from the order card.")
+  );
+  await loadOrders();
+};
+
+window.unlinkOrderAddOn = async function(orderId, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  if (!order?.linked_order_ref) return;
+  if (!confirm(`Unlink ${order.order_ref} from ${order.linked_order_ref}?`)) return;
+  if (button) button.disabled = true;
+
+  if (IS_ADMIN_PREVIEW) {
+    order.linked_order_ref = null;
+    renderCurrentView();
+    return;
+  }
+
+  const { error } = await supabase.rpc("admin_unlink_order_add_on", {
+    p_child_id: String(order.id)
+  });
+  if (error) {
+    alert(error.message || "Unable to unlink this add-on.");
+    if (button) button.disabled = false;
+    return;
+  }
+  await loadOrders();
+};
+
+function buildShippingLabelPdf(orders) {
+  const labels = orders.map(getShippingLabelData);
+  const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: [100, 150],
+    compress: true
+  });
+  const pageWidth = 100;
+  const margin = 7;
+  const contentWidth = pageWidth - margin * 2;
+  const dark = [45, 40, 43];
+  const muted = [102, 91, 97];
+  const pink = [239, 79, 136];
+  const palePink = [255, 234, 242];
+
+  labels.forEach((label, index) => {
+    if (index > 0) pdf.addPage([100, 150], "portrait");
+
+    pdf.setFillColor(...palePink);
+    pdf.rect(0, 0, pageWidth, 22, "F");
+    pdf.setTextColor(...pink);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(16);
+    pdf.text("Little Keeps", margin, 10);
+    pdf.setTextColor(...muted);
+    pdf.setFontSize(8);
+    pdf.text("SHIPPING LABEL", margin, 16);
+    pdf.setTextColor(...dark);
+    pdf.setFontSize(10);
+    pdf.text(getCompactPdfText(label.orderRef), pageWidth - margin, 11, {
+      align: "right"
+    });
+
+    let y = 30;
+    pdf.setTextColor(...pink);
+    pdf.setFontSize(8);
+    pdf.text("DELIVER TO", margin, y);
+    y += 7;
+
+    pdf.setTextColor(...dark);
+    pdf.setFontSize(17);
+    const recipientLines = pdf.splitTextToSize(
+      getCompactPdfText(label.recipient),
+      contentWidth
+    ).slice(0, 2);
+    pdf.text(recipientLines, margin, y);
+    y += recipientLines.length * 7 + 1;
+
+    if (label.phone) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(11);
+      pdf.text(getCompactPdfText(label.phone), margin, y);
+      y += 7;
+    }
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(15);
+    const addressLines = pdf.splitTextToSize(
+      getCompactPdfText(label.address),
+      contentWidth
+    ).slice(0, 7);
+    pdf.text(addressLines, margin, y);
+    y += addressLines.length * 6.5;
+
+    const detailsY = Math.max(103, Math.min(119, y + 5));
+    pdf.setDrawColor(220, 207, 213);
+    pdf.line(margin, detailsY, pageWidth - margin, detailsY);
+    pdf.setFont("helvetica", "normal");
+    pdf.setTextColor(...muted);
+    pdf.setFontSize(8.5);
+
+    const dispatchLabel = label.dispatchBy
+      ? `Dispatch by: ${formatDate(label.dispatchBy)}`
+      : "Dispatch date: -";
+    pdf.text(getCompactPdfText(dispatchLabel), margin, detailsY + 7);
+
+    if (label.courier) {
+      pdf.text(
+        getCompactPdfText(`Courier: ${label.courier}`),
+        margin,
+        detailsY + 13
+      );
+    }
+    if (label.trackingNumber) {
+      pdf.setFont("helvetica", "bold");
+      pdf.text(
+        getCompactPdfText(`Tracking: ${label.trackingNumber}`),
+        margin,
+        detailsY + 19
+      );
+    }
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(...dark);
+    pdf.setFontSize(8);
+    pdf.text(
+      "PERSONALISED KEYCHAINS · HANDLE WITH CARE",
+      pageWidth / 2,
+      143,
+      { align: "center" }
+    );
+  });
+
+  pdf.setProperties({
+    title: labels.length === 1
+      ? `${labels[0].orderRef} Shipping Label`
+      : `Little Keeps Shipping Labels (${labels.length})`,
+    subject: "100 x 150 mm shipping labels",
+    author: "Little Keeps"
+  });
+  if (typeof pdf.autoPrint === "function") pdf.autoPrint();
+  return pdf;
+}
+
+function printShippingLabels(orderIds) {
+  const requestedIds = new Set(orderIds.map(String));
+  const orders = latestOrders.filter(order =>
+    requestedIds.has(String(order.id)) &&
+    order.collection_method === "delivery"
+  );
+
+  if (!orders.length) {
+    alert("Select at least one delivery order.");
+    return;
+  }
+
+  const missingAddressOrders = orders.filter(
+    order => !String(order.delivery_address || "").trim()
+  );
+  if (missingAddressOrders.length) {
+    alert(
+      "Add a delivery address before printing:\n\n" +
+      missingAddressOrders.map(order => order.order_ref || "Unknown order").join("\n")
+    );
+    return;
+  }
+
+  const pdf = buildShippingLabelPdf(orders);
+  const pdfUrl = pdf.output("bloburl");
+  const printWindow = window.open(pdfUrl, "_blank");
+
+  if (!printWindow) {
+    const filename = orders.length === 1
+      ? `${safeProductionFileName(orders[0].order_ref, "shipping")}-shipping-label.pdf`
+      : `little-keeps-${orders.length}-shipping-labels.pdf`;
+    pdf.save(filename);
+    alert("The printable label PDF was downloaded because the print window was blocked.");
+  }
+}
+
+window.printShippingLabel = function(orderId) {
+  printShippingLabels([orderId]);
+};
+
+window.printSelectedShippingLabels = function() {
+  const orderIds = Array.from(
+    document.querySelectorAll("[data-label-order-id]:checked")
+  ).map(input => input.dataset.labelOrderId);
+  printShippingLabels(orderIds);
+};
+
+window.printAllShippingLabels = function() {
+  const orderIds = latestOrders
+    .filter(order =>
+      !order.archived_at &&
+      order.collection_method === "delivery" &&
+      ["Assembly Complete", "Ready for Pickup/Delivery", "Out for Delivery"]
+        .includes(order.status)
+    )
+    .map(order => order.id);
+  printShippingLabels(orderIds);
+};
+
 window.openSelectedDeliveryRoute = function() {
   const addresses = Array.from(
     document.querySelectorAll("[data-route-address]:checked")
@@ -9922,12 +11197,17 @@ financeViewBtn.onclick = async () => {
   currentView = "finance";
   setActiveTab(financeViewBtn);
 
-  if (!businessFinancialsLoaded || !businessExpensesLoaded) {
+  if (
+    !businessFinancialsLoaded ||
+    !businessExpensesLoaded ||
+    !businessSubscriptionsLoaded
+  ) {
     ordersContainer.innerHTML =
       `<p class="empty">Loading business finances...</p>`;
     await Promise.all([
       loadBusinessFinancials(),
-      loadBusinessExpenses()
+      loadBusinessExpenses(),
+      loadBusinessSubscriptions()
     ]);
   }
 

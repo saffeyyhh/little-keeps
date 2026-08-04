@@ -1,0 +1,73 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  DEFAULT_PRODUCT_CATALOG,
+  MODULAR_PRODUCT_KEY,
+  SOLID_PRODUCT_KEY,
+  calculateProductProductionEstimate,
+  calculateProductUnitPrice,
+  getProductByKey,
+  normalizeProductCatalog
+} from "../src/product-catalog.js";
+
+test("keeps the modular product live and the solid product safely hidden", () => {
+  const catalogue = normalizeProductCatalog([]);
+  const modular = getProductByKey(catalogue, MODULAR_PRODUCT_KEY);
+  const solid = getProductByKey(catalogue, SOLID_PRODUCT_KEY);
+
+  assert.equal(modular.status, "active");
+  assert.equal(modular.price_visible, true);
+  assert.equal(solid.status, "coming_soon");
+  assert.equal(solid.price_visible, false);
+});
+
+test("calculates modular pricing from its own product rules", () => {
+  const modular = getProductByKey(DEFAULT_PRODUCT_CATALOG, MODULAR_PRODUCT_KEY);
+
+  assert.equal(calculateProductUnitPrice({
+    product: modular,
+    characterCount: 6,
+    baseColourCount: 1,
+    capColourCount: 1,
+    letterColourCount: 1
+  }), 3.2);
+
+  assert.equal(calculateProductUnitPrice({
+    product: modular,
+    characterCount: 8,
+    baseColourCount: 2,
+    capColourCount: 2,
+    letterColourCount: 2
+  }), 4.6);
+});
+
+test("stores production timing separately for each product", () => {
+  const modular = getProductByKey(DEFAULT_PRODUCT_CATALOG, MODULAR_PRODUCT_KEY);
+  const estimate = calculateProductProductionEstimate(modular, 6, 2);
+
+  assert.deepEqual(estimate, {
+    productKey: MODULAR_PRODUCT_KEY,
+    quantity: 2,
+    characterCount: 6,
+    baseMinutes: 300,
+    keycapMinutes: 180,
+    assemblyMinutes: 0,
+    totalMinutes: 480
+  });
+});
+
+test("merges saved product settings over safe defaults", () => {
+  const catalogue = normalizeProductCatalog([{
+    product_key: SOLID_PRODUCT_KEY,
+    status: "active",
+    price_visible: true,
+    launch_base_price: "4.10"
+  }]);
+  const solid = getProductByKey(catalogue, SOLID_PRODUCT_KEY);
+
+  assert.equal(solid.status, "active");
+  assert.equal(solid.price_visible, true);
+  assert.equal(solid.launch_base_price, 4.1);
+  assert.equal(solid.name, "Solid Clicky Keychain");
+});

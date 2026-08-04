@@ -4,19 +4,99 @@ import assert from "node:assert/strict";
 import {
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
+  calculateGiftingBagTotal,
   calculatePaidOrderRevenue,
+  calculateProductionTimeEstimate,
+  calculateSubscriptionSummary,
   ASSEMBLY_STAGES,
   buildGoogleMapsRouteUrl,
+  canOrderAcceptAddOn,
   distributeAmsPlatesAcrossPrinters,
+  getFreeAmsPrinters,
+  getBulkApprovalPolicy,
+  getGiftingBagSelectionLimit,
+  getShippingLabelData,
   getDeliveryRouteGroup,
+  getPickupTimeRanges,
+  getKeychainTurnaround,
   getOperationalBuckets,
   getProductionPreviewOrders,
   getProductionJobGroup,
   getTrackedProductionQuantity,
   normalizeAssemblyProgress,
+  assessRushDateCapacity,
+  formatDateRange,
+  formatProductionMinutes,
+  isAlternatingProductionDay,
+  isPickupDay,
   optimizeAmsPlateSequence,
+  partitionAmsCombinationsByBusyColours,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
+
+test("allows add-ons only before an order enters printing", () => {
+  assert.equal(canOrderAcceptAddOn("Pending Payment"), true);
+  assert.equal(canOrderAcceptAddOn("Payment Verified"), true);
+  assert.equal(canOrderAcceptAddOn("Printing"), false);
+  assert.equal(canOrderAcceptAddOn("Assembly Complete"), false);
+  assert.equal(canOrderAcceptAddOn("Completed"), false);
+});
+
+test("uses the three promised keychain turnaround tiers", () => {
+  assert.deepEqual(getKeychainTurnaround(1), {
+    quantity: 1,
+    tier: "small",
+    minDays: 2,
+    maxDays: 3
+  });
+  assert.equal(getKeychainTurnaround(3).tier, "small");
+  assert.deepEqual(getKeychainTurnaround(4), {
+    quantity: 4,
+    tier: "medium",
+    minDays: 3,
+    maxDays: 4
+  });
+  assert.equal(getKeychainTurnaround(6).tier, "medium");
+  assert.deepEqual(getKeychainTurnaround(7), {
+    quantity: 7,
+    tier: "large",
+    minDays: 4,
+    maxDays: 5
+  });
+});
+
+test("alternates production days with protected buffer days", () => {
+  assert.equal(isAlternatingProductionDay("2026-08-03"), true);
+  assert.equal(isAlternatingProductionDay("2026-08-04"), false);
+  assert.equal(isAlternatingProductionDay("2026-08-05"), true);
+  assert.equal(isAlternatingProductionDay("not-a-date"), false);
+});
+
+test("shows a single estimate when both dates are the same", () => {
+  assert.equal(formatDateRange("11 Aug", "11 Aug"), "11 Aug");
+  assert.equal(formatDateRange("11 Aug", "13 Aug"), "11 Aug–13 Aug");
+});
+
+test("offers pickup only on Wednesdays, Fridays, and weekends", () => {
+  assert.equal(isPickupDay("2026-08-05"), true);
+  assert.equal(isPickupDay("2026-08-07"), true);
+  assert.equal(isPickupDay("2026-08-08"), true);
+  assert.equal(isPickupDay("2026-08-09"), true);
+  assert.equal(isPickupDay("2026-08-06"), false);
+  assert.deepEqual(getPickupTimeRanges("2026-08-05"), [
+    "7:00 PM - 7:30 PM",
+    "7:30 PM - 8:00 PM",
+    "8:00 PM - 8:30 PM"
+  ]);
+  assert.equal(getPickupTimeRanges("2026-08-06").length, 0);
+});
+
+test("allows one extra rush order on a date with up to two normal orders", () => {
+  assert.equal(assessRushDateCapacity(1, 0).allowed, true);
+  assert.equal(assessRushDateCapacity(2, 0).allowed, true);
+  assert.equal(assessRushDateCapacity(3, 0).allowed, false);
+  assert.equal(assessRushDateCapacity(1, 1).allowed, false);
+});
 
 test("calculates the initial Little Keeps financial position", () => {
   const result = calculateBusinessFinancials({
@@ -53,6 +133,91 @@ test("calculates actual paid revenue and subtracts refunds", () => {
   ]), 363.26);
 });
 
+test("summarises only active monthly subscriptions", () => {
+  assert.deepEqual(calculateSubscriptionSummary([
+    { name: "Patreon licence", monthly_amount: 12.5, status: "active" },
+    { name: "Meshy AI", monthly_amount: 25, status: "active" },
+    { name: "Old tool", monthly_amount: 9, status: "cancelled" }
+  ]), {
+    activeCount: 2,
+    monthlyTotal: 37.5,
+    yearlyEstimate: 450
+  });
+});
+
+test("prices gifting bags at fifty cents each", () => {
+  assert.equal(calculateGiftingBagTotal(0), 0);
+  assert.equal(calculateGiftingBagTotal(1), 0.5);
+  assert.equal(calculateGiftingBagTotal(3), 1.5);
+  assert.equal(calculateGiftingBagTotal(-2), 0);
+});
+
+test("limits gifting bags by capacity and live stock", () => {
+  assert.equal(getGiftingBagSelectionLimit(1, 10), 1);
+  assert.equal(getGiftingBagSelectionLimit(4, 10), 2);
+  assert.equal(getGiftingBagSelectionLimit(7, 3), 3);
+  assert.equal(getGiftingBagSelectionLimit(7, 0), 0);
+});
+
+test("requires approval and longer lead time for event quantities", () => {
+  assert.deepEqual(getBulkApprovalPolicy(14), {
+    quantity: 14,
+    approvalRequired: false,
+    minLeadDays: 0,
+    timeframeLabel: ""
+  });
+  assert.deepEqual(getBulkApprovalPolicy(15), {
+    quantity: 15,
+    approvalRequired: true,
+    minLeadDays: 7,
+    timeframeLabel: "at least 7 days"
+  });
+  assert.deepEqual(getBulkApprovalPolicy(30), {
+    quantity: 30,
+    approvalRequired: true,
+    minLeadDays: 14,
+    timeframeLabel: "at least 14 days"
+  });
+  assert.deepEqual(getBulkApprovalPolicy(51), {
+    quantity: 51,
+    approvalRequired: true,
+    minLeadDays: 14,
+    timeframeLabel: "approximately 1.5–2 weeks"
+  });
+  assert.equal(getBulkApprovalPolicy(75).timeframeLabel, "approximately 1.5–2 weeks");
+  assert.deepEqual(getBulkApprovalPolicy(100), {
+    quantity: 100,
+    approvalRequired: true,
+    minLeadDays: 21,
+    timeframeLabel: "approximately 2–3 weeks"
+  });
+  assert.deepEqual(getBulkApprovalPolicy(150), {
+    quantity: 150,
+    approvalRequired: true,
+    minLeadDays: 28,
+    timeframeLabel: "approximately 3–4 weeks"
+  });
+  assert.deepEqual(getBulkApprovalPolicy(151), {
+    quantity: 151,
+    approvalRequired: true,
+    minLeadDays: 42,
+    timeframeLabel: "approximately 4–6 weeks"
+  });
+});
+
+test("estimates base and keycap printer time for a bulk order", () => {
+  const estimate = calculateProductionTimeEstimate(106, 50, 2);
+
+  assert.equal(estimate.baseQuantity, 106);
+  assert.equal(estimate.keycapQuantity, 50);
+  assert.equal(estimate.baseMinutes, 2650);
+  assert.equal(estimate.keycapMinutes, 750);
+  assert.equal(estimate.totalPrinterMinutes, 3400);
+  assert.equal(estimate.estimatedElapsedMinutes, 2650);
+  assert.equal(formatProductionMinutes(estimate.totalPrinterMinutes), "56 hr 40 min");
+  assert.equal(formatProductionMinutes(estimate.estimatedElapsedMinutes), "44 hr 10 min");
+});
+
 test("excludes printing and picked quantities from the production queue", () => {
   const jobs = [
     { item_name: "Pink Base", quantity: 3, stage: "printing" },
@@ -67,7 +232,7 @@ test("excludes printing and picked quantities from the production queue", () => 
   assert.equal(calculateQueuedProductionQuantity(5, 4, 3), 0);
 });
 
-test("groups tracked keycaps by cap colour and keeps bases together", () => {
+test("groups tracked keycaps and bases by colour", () => {
   assert.deepEqual(
     getProductionJobGroup(
       "Pink Cap + Jade White Letter - A",
@@ -82,9 +247,14 @@ test("groups tracked keycaps by cap colour and keeps bases together", () => {
   assert.deepEqual(
     getProductionJobGroup("Jade White Ribbed Base", "Base"),
     {
-      key: "00-bases",
-      label: "Bases"
+      key: "00-base-jade white",
+      label: "Jade White Bases"
     }
+  );
+
+  assert.deepEqual(
+    getProductionJobGroup("Jade White Bubbly Base", "Base"),
+    getProductionJobGroup("Jade White Ribbed Base", "Base")
   );
 });
 
@@ -283,6 +453,72 @@ test("allows the same filament colour on both printers in one wave", () => {
   assert.ok(pinkWaves.some(
     (wave, index) => pinkWaves.indexOf(wave) !== index
   ));
+});
+
+test("keeps combinations using a base printer colour in a waiting queue", () => {
+  const combinations = [
+    {
+      id: "pink-white",
+      capName: "Pink",
+      letterName: "Jade White",
+      rows: [{ toPrint: 3 }]
+    },
+    { id: "black-gold", capName: "Black", letterName: "Gold" },
+    { id: "pink-pink", capName: "Pink", letterName: "Pink" }
+  ];
+  const result = partitionAmsCombinationsByBusyColours(
+    combinations,
+    ["pink"]
+  );
+
+  assert.deepEqual(result.ready.map(item => item.id), ["black-gold"]);
+  assert.deepEqual(result.waiting.map(item => item.id), [
+    "pink-white",
+    "pink-pink"
+  ]);
+  assert.deepEqual(result.waiting[1].busyColours, ["Pink"]);
+  assert.equal(result.waiting[0].pieceCount, 3);
+});
+
+test("reserves the base printer and leaves the other online A1 for AMS", () => {
+  const printers = [
+    { id: "a1", name: "Whimsy Daisy", status: "online" },
+    { id: "a2", name: "Little Keeps", status: "online" },
+    { id: "a3", name: "Offline backup", status: "offline" }
+  ];
+
+  assert.deepEqual(
+    getFreeAmsPrinters(printers, "a1").map(printer => printer.id),
+    ["a2"]
+  );
+  assert.deepEqual(
+    getFreeAmsPrinters(printers).map(printer => printer.id),
+    ["a1", "a2"]
+  );
+});
+
+test("prepares only delivery-safe details for a shipping label", () => {
+  assert.deepEqual(getShippingLabelData({
+    id: 42,
+    order_ref: " LK-1042 ",
+    customer_name: " Alicia Tan ",
+    customer_phone: " 9123 4567 ",
+    customer_email: "private@example.com",
+    delivery_address: " 10 Woodlands Street 12, Singapore 738000 ",
+    courier_name: " SingPost ",
+    tracking_number: " SP123 ",
+    needed_by: "2026-08-03",
+    production_note: "Do not expose this"
+  }), {
+    orderId: "42",
+    orderRef: "LK-1042",
+    recipient: "Alicia Tan",
+    phone: "9123 4567",
+    address: "10 Woodlands Street 12, Singapore 738000",
+    courier: "SingPost",
+    trackingNumber: "SP123",
+    dispatchBy: "2026-08-03"
+  });
 });
 
 test("allows a valid inventory decrement", () => {

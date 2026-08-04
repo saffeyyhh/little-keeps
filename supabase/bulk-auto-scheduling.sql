@@ -13,13 +13,20 @@ security definer
 set search_path = public
 as $$
 declare
-  v_limit integer := 5;
+  v_limit integer := 2;
   v_order_count integer := 0;
 begin
   if p_date is null then
     return jsonb_build_object(
       'allowed', false,
       'reason', 'Please choose a date.'
+    );
+  end if;
+
+  if mod(p_date - date '2026-08-03', 2) <> 0 then
+    return jsonb_build_object(
+      'allowed', false,
+      'reason', 'This is a protected rest and production buffer day.'
     );
   end if;
 
@@ -31,7 +38,7 @@ begin
         from public.shop_settings
         where id = 1
       ),
-      5
+      2
     )
   )
   into v_limit;

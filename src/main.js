@@ -2,10 +2,34 @@ import "./style.css";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
+import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
+import polygonClipping from "polygon-clipping";
 import confetti from "canvas-confetti";
 import { createClient } from "@supabase/supabase-js";
+import emailjs from "@emailjs/browser";
 import flatpickr from "flatpickr";
 import "flatpickr/dist/flatpickr.min.css";
+import {
+  calculateGiftingBagTotal,
+  formatDateRange,
+  getBulkApprovalPolicy,
+  getGiftingBagSelectionLimit,
+  getPickupTimeRanges,
+  getKeychainTurnaround,
+  isPickupDay,
+  isAlternatingProductionDay
+} from "./admin-logic.js";
+import {
+  DEFAULT_PRODUCT_CATALOG,
+  MODULAR_PRODUCT_KEY,
+  SOLID_PRODUCT_KEY,
+  STANDARD_PRODUCT_KEY,
+  calculateProductUnitPrice,
+  getProductByKey,
+  getProductDisplayPrice,
+  normalizeProductCatalog
+} from "./product-catalog.js";
 
 const isManualOrder =
   new URLSearchParams(window.location.search).get("manual") === "true";
@@ -14,8 +38,11 @@ console.log("Manual mode:", isManualOrder);
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
+const EMAILJS_SERVICE = "service_joll6ie";
+const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+emailjs.init(EMAILJS_PUBLIC);
 
 const DEFAULT_SHOP_SETTINGS = {
   usual_base_price: 3.9,
@@ -29,15 +56,18 @@ const DEFAULT_SHOP_SETTINGS = {
   extra_letter_colour_price: 0.2,
   delivery_fee: 2.5,
   free_delivery_threshold: 50,
-  large_order_quantity: 5,
+  max_orders_per_date: 2,
+  large_order_quantity: 7,
   standard_min_working_days: 2,
   standard_max_working_days: 3,
   large_min_working_days: 3,
   large_max_working_days: 4,
-  bulk_order_quantity: 10,
+  bulk_order_quantity: 15,
   rush_fee_small: 5,
   rush_fee_large: 8,
   stripe_enabled: false,
+  status_emails_enabled: false,
+  status_email_template_id: "",
   unavailable_colours: [],
   promo_code: "CHILDRENSDAY",
   promo_percent_off: 10,
@@ -45,6 +75,7 @@ const DEFAULT_SHOP_SETTINGS = {
 };
 
 let shopSettings = { ...DEFAULT_SHOP_SETTINGS };
+let productCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 
 const DEFAULT_DESIGN_PRESETS = [
   {
@@ -190,6 +221,18 @@ try {
   if (data) shopSettings = { ...shopSettings, ...data };
 } catch (error) {
   console.warn("Using default shop pricing settings:", error);
+}
+
+try {
+  const { data, error } = await supabase
+    .from("product_catalog")
+    .select("*")
+    .order("sort_order", { ascending: true });
+
+  if (error) throw error;
+  productCatalog = normalizeProductCatalog(data);
+} catch (error) {
+  console.warn("Using the built-in product catalogue:", error);
 }
 
 const unavailableColourNames = new Set(
@@ -360,14 +403,27 @@ function getSettingNumber(key, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-const usualBasePrice = getSettingNumber("usual_base_price", 3.9);
-const launchBasePrice = getSettingNumber("launch_base_price", 3.2);
+const modularProduct = getProductByKey(productCatalog, MODULAR_PRODUCT_KEY);
+const solidProduct = getProductByKey(productCatalog, SOLID_PRODUCT_KEY);
+const standardProduct = getProductByKey(
+  productCatalog,
+  STANDARD_PRODUCT_KEY
+);
+
+let activeProduct = modularProduct;
+
+const usualBasePrice = Number(
+  modularProduct.usual_base_price ?? getSettingNumber("usual_base_price", 3.9)
+);
+const launchBasePrice = Number(
+  modularProduct.launch_base_price ?? getSettingNumber("launch_base_price", 3.2)
+);
 const launchPriceEndsAtTimestamp = Date.parse(
-  String(shopSettings.launch_price_ends_at || "")
+  String(modularProduct.launch_price_ends_at || "")
 );
 const launchPriceHasDeadline = Number.isFinite(launchPriceEndsAtTimestamp);
 const launchPriceEnabled =
-  shopSettings.launch_price_enabled !== false &&
+  modularProduct.launch_price_enabled !== false &&
   (!launchPriceHasDeadline || Date.now() < launchPriceEndsAtTimestamp);
 const featuredPromo = !launchPriceEnabled
   ? promoCodeRows.find(row => {
@@ -397,35 +453,25 @@ const featuredPromoOffer = featuredPromo
 const displayedBasePrice = launchPriceEnabled
   ? launchBasePrice
   : usualBasePrice;
+const modularCardPrice = modularProduct.price_visible
+  ? `From ${displaySettingMoney(getProductDisplayPrice(modularProduct))}`
+  : "Pricing soon";
+const solidCardPrice = solidProduct.price_visible
+  ? `From ${displaySettingMoney(getProductDisplayPrice(solidProduct))}`
+  : "Pricing coming soon";
+  const standardCardPrice = standardProduct.price_visible
+  ? displaySettingMoney(getProductDisplayPrice(standardProduct))
+  : "Price coming soon";
 const deliveryFeeSetting = getSettingNumber("delivery_fee", 2.5);
 const freeDeliveryThreshold = getSettingNumber("free_delivery_threshold", 50);
 const maxOrdersPerDate = Math.max(
   1,
-  Math.round(getSettingNumber("max_orders_per_date", 5))
+  Math.round(getSettingNumber("max_orders_per_date", 2))
 );
-const largeOrderQuantity = Math.max(
-  2,
-  Math.round(getSettingNumber("large_order_quantity", 5))
-);
-const standardMinWorkingDays = Math.max(
-  1,
-  Math.round(getSettingNumber("standard_min_working_days", 2))
-);
-const standardMaxWorkingDays = Math.max(
-  standardMinWorkingDays,
-  Math.round(getSettingNumber("standard_max_working_days", 3))
-);
-const largeMinWorkingDays = Math.max(
-  standardMinWorkingDays,
-  Math.round(getSettingNumber("large_min_working_days", 3))
-);
-const largeMaxWorkingDays = Math.max(
-  largeMinWorkingDays,
-  Math.round(getSettingNumber("large_max_working_days", 4))
-);
+const largeOrderQuantity = 7;
 const bulkOrderQuantity = Math.max(
   largeOrderQuantity + 1,
-  Math.round(getSettingNumber("bulk_order_quantity", 10))
+  Math.round(getSettingNumber("bulk_order_quantity", 15))
 );
 const rushFeeSmall = Math.max(0, getSettingNumber("rush_fee_small", 5));
 const rushFeeLarge = Math.max(rushFeeSmall, getSettingNumber("rush_fee_large", 8));
@@ -441,7 +487,7 @@ document.querySelector("#app").innerHTML = `
 <div class="announcement-bar">
   <div class="announcement-item">
     <span class="announcement-icon">♡</span>
-    <span>Designed, printed &amp; assembled in Singapore</span>
+    <span>Made in Singapore</span>
   </div>
 
   <span class="announcement-divider"></span>
@@ -455,7 +501,7 @@ document.querySelector("#app").innerHTML = `
 
   <div class="announcement-item">
     <span class="announcement-icon">✦</span>
-    <span><strong>Bulk orders welcome</strong> - book at least 1 week ahead</span>
+    <span><strong>Bulk orders welcome</strong></span>
   </div>
 
   <span id="holidayNoticeDivider" class="announcement-divider hidden"></span>
@@ -624,8 +670,6 @@ document.querySelector("#app").innerHTML = `
   </nav>
 
   <div class="side-menu-footer">
-    <p>Personalised and made with love in Singapore.</p>
-
     <a
       href="https://www.instagram.com/madebylittlekeeps"
       target="_blank"
@@ -700,8 +744,7 @@ document.querySelector("#app").innerHTML = `
       </h1>
 
       <p class="hero-description">
-        Design your own personalised, clicky and
-        fidget-friendly keychain in your favourite colours.
+        Design a clicky keychain in your favourite colours.
       </p>
 
       <div class="hero-actions">
@@ -710,7 +753,7 @@ document.querySelector("#app").innerHTML = `
           type="button"
           class="hero-button"
         >
-          Start Designing
+          View Products
           <span>→</span>
         </button>
 
@@ -724,11 +767,6 @@ document.querySelector("#app").innerHTML = `
         </button>
       </div>
 
-      <div class="hero-trust-row" aria-label="Shopping benefits">
-        <span>✓ Live 3D preview</span>
-        <span>✓ Secure payment</span>
-        <span>✓ Designed, printed &amp; assembled in Singapore</span>
-      </div>
     </div>
 
     <div class="hero-offer-card">
@@ -757,23 +795,13 @@ document.querySelector("#app").innerHTML = `
       <div class="hero-included-list">
         <p class="hero-card-label">Included in the price</p>
 
-        <span class="character-inclusion">
-          ✓ Up to ${getSettingNumber("included_characters", 6)} characters
-          <small>
-            Letters, numbers and icons each count as one character.
-          </small>
-        </span>
+        <span class="character-inclusion">✓ Up to ${modularProduct.included_characters} characters</span>
         <span>✓ 1 base, 1 cap and 1 letter/icon colour</span>
         <span>✓ Clicky switches and keyring</span>
       </div>
 
-      <div class="hero-compact-size">
-        <strong>📏 Size note:</strong>
-        A 6-character keychain is approximately 17.5 cm long.
-      </div>
-
       <details class="hero-more-details">
-        <summary>View size &amp; extra charges</summary>
+        <summary>Size &amp; extras</summary>
 
         <div class="hero-pricing-guide">
           <p>Approximate size</p>
@@ -783,26 +811,31 @@ document.querySelector("#app").innerHTML = `
             <strong>3.5 × 2.7 cm</strong>
           </div>
 
+          <div class="hero-price-row">
+            <span>Letters, numbers and icons</span>
+            <strong>1 character each</strong>
+          </div>
+
           <p style="margin-top:14px;">Optional additions</p>
 
           <div class="hero-price-row">
-            <span>Each character after ${getSettingNumber("included_characters", 6)}</span>
-            <strong>+${displaySettingMoney(getSettingNumber("extra_character_price", 0.2))}</strong>
+            <span>Each character after ${modularProduct.included_characters}</span>
+            <strong>+${displaySettingMoney(modularProduct.extra_character_price)}</strong>
           </div>
 
           <div class="hero-price-row">
             <span>Extra base colour</span>
-            <strong>+${displaySettingMoney(getSettingNumber("extra_base_colour_price", 0.5))}</strong>
+            <strong>+${displaySettingMoney(modularProduct.extra_base_colour_price)}</strong>
           </div>
 
           <div class="hero-price-row">
             <span>Extra cap colour</span>
-            <strong>+${displaySettingMoney(getSettingNumber("extra_cap_colour_price", 0.3))}</strong>
+            <strong>+${displaySettingMoney(modularProduct.extra_cap_colour_price)}</strong>
           </div>
 
           <div class="hero-price-row">
             <span>Extra letter/icon colour</span>
-            <strong>+${displaySettingMoney(getSettingNumber("extra_letter_colour_price", 0.2))}</strong>
+            <strong>+${displaySettingMoney(modularProduct.extra_letter_colour_price)}</strong>
           </div>
 
         </div>
@@ -814,37 +847,120 @@ document.querySelector("#app").innerHTML = `
   <div class="hero-decoration hero-decoration-two"></div>
 </section>
 
-<section class="value-props" aria-label="Why shop with Little Keeps" data-store-view="shop">
-  <article>
-    <span>✦</span>
-    <div>
-      <strong>Design it live</strong>
-      <small>See every colour in the 3D preview</small>
-    </div>
-  </article>
+<section id="productsSection" class="products-section" data-store-view="shop" aria-labelledby="productsHeading">
+  <div class="products-heading">
+    <p class="section-eyebrow">Our Products</p>
+    <h2 id="productsHeading">Choose your little keep</h2>
+  </div>
 
-  <article>
-    <span>♡</span>
-    <div>
-      <strong>Made in Singapore</strong>
-      <small>Printed, assembled and checked by hand</small>
-    </div>
-  </article>
+  <div class="product-card-grid">
+  ${modularProduct.status !== "hidden" ? `
+    <article class="product-card product-card-current">
+      <div class="product-card-visual">
+        <img
+          src="/images/modular-clicky-keychain.jpg"
+          alt="Colourful modular clicky keychains"
+          loading="eager"
+        >
+        <span class="product-card-badge">Available now</span>
+      </div>
 
-  <article>
-    <span>◷</span>
-    <div>
-      <strong>Ready in ${standardMinWorkingDays}-${standardMaxWorkingDays} working days</strong>
-      <small>${largeOrderQuantity}+ keychains take ${largeMinWorkingDays}-${largeMaxWorkingDays} working days</small>
-    </div>
-  </article>
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(modularProduct.eyebrow)}</small>
+          <h3>${escapePresetText(modularProduct.name)}</h3>
+        </div>
+        <p>${escapePresetText(modularProduct.description)}</p>
+        <span class="product-card-price">${escapePresetText(modularCardPrice)}</span>
+        <button type="button" data-product-key="${MODULAR_PRODUCT_KEY}" data-view-target="design">
+          Design yours <span>→</span>
+        </button>
+      </div>
+    </article>
+  ` : ""}
+
+  ${solidProduct.status !== "hidden" ? `
+    <article class="product-card product-card-coming" aria-disabled="true">
+      <div class="product-card-visual mystery-product-visual" aria-hidden="true">
+        <div class="mystery-solid-base">
+          <i></i><i></i><i></i><b>ABC</b>
+        </div>
+        <span class="product-card-badge">Coming soon</span>
+      </div>
+
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(standardProduct.eyebrow)}</small>
+          <h3>${escapePresetText(standardProduct.name)}</h3>
+        </div>
+
+        <p>${escapePresetText(standardProduct.description)}</p>
+
+        <span class="product-card-price">
+          ${escapePresetText(standardCardPrice)}
+        </span>
+
+        <button type="button" disabled>
+          Coming soon
+        </button>
+      </div>
+    </article>
+  ` : ""}
+
+  ${standardProduct.status !== "hidden" ? `
+    <article class="product-card product-card-coming" aria-disabled="true">
+      <div class="product-card-visual mystery-product-visual" aria-hidden="true">
+        <div class="mystery-solid-base">
+          <i></i><i></i><i></i><b>ABC</b>
+        </div>
+
+        <span class="product-card-badge">
+          ${standardProduct.status === "coming_soon"
+            ? "Coming soon"
+            : "Available now"}
+        </span>
+      </div>
+
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(standardProduct.eyebrow)}</small>
+          <h3>${escapePresetText(standardProduct.name)}</h3>
+        </div>
+
+        <p>${escapePresetText(standardProduct.description)}</p>
+
+        <span class="product-card-price">
+          ${escapePresetText(standardCardPrice)}
+        </span>
+
+        ${
+          standardProduct.status === "active"
+            ? `
+              <button
+                type="button"
+                data-product-key="${STANDARD_PRODUCT_KEY}"
+                data-view-target="design"
+              >
+                Design yours <span>→</span>
+              </button>
+            `
+            : `
+              <button type="button" disabled>
+                Coming soon
+              </button>
+            `
+        }
+      </div>
+    </article>
+  ` : ""}
+
+</div>
+  </div>
 </section>
 
 <section id="howItWorksSection" class="how-it-works-section" data-store-view="shop">
   <div class="how-it-works-heading">
-    <p class="section-eyebrow">Simple from start to finish</p>
-    <h2>Made by you, finished by us.</h2>
-    <p>Create something personal in just a few taps—we’ll handle everything after that.</p>
+    <h2>How it works</h2>
   </div>
 
   <div class="how-it-works-grid">
@@ -852,30 +968,28 @@ document.querySelector("#app").innerHTML = `
       <span>01</span>
       <div class="how-step-icon">✿</div>
       <h3>Design it live</h3>
-      <p>Add a name, mix your colours and rotate the 3D preview until it feels just right.</p>
+      <p>Add a name and choose your colours.</p>
     </article>
 
     <article>
       <span>02</span>
       <div class="how-step-icon">♡</div>
       <h3>We make it</h3>
-      <p>Every piece is printed, assembled and quality-checked by hand in Singapore.</p>
+      <p>We print, assemble and check it.</p>
     </article>
 
     <article>
       <span>03</span>
       <div class="how-step-icon">→</div>
       <h3>Collect or deliver</h3>
-      <p>Choose pickup at Woodlands MRT or Marsiling MRT, or islandwide delivery. Delivery dates are estimated dispatch dates, with parcels usually arriving 2–3 days later. We’ll share tracking whenever it’s available.</p>
+      <p>Pick up at Woodlands or Marsiling MRT, or choose delivery.</p>
     </article>
   </div>
 </section>
 
 <section class="occasion-section" aria-labelledby="occasionHeading" data-store-view="shop">
   <div class="occasion-copy">
-    <p class="section-eyebrow">Made for meaningful moments</p>
-    <h2 id="occasionHeading">Tiny keepsakes for every celebration ♡</h2>
-    <p>Personalise every name, colour and icon for one special person or a whole group.</p>
+    <h2 id="occasionHeading">Made for little moments ♡</h2>
   </div>
 
   <div class="occasion-grid">
@@ -907,9 +1021,7 @@ document.querySelector("#app").innerHTML = `
 <aside class="payment-unlock-banner" aria-label="Payment options" data-store-view="shop">
   <div class="payment-unlock-icon">♡</div>
   <div>
-    <small>Ordering for a group?</small>
-    <strong>More ways to pay from $30</strong>
-    <p>PayNow is always available. Card, Apple Pay and Google Pay are available for orders from $30.</p>
+    <strong>PayNow for all orders · Cards and wallets from $30</strong>
   </div>
 </aside>
 
@@ -921,34 +1033,14 @@ document.querySelector("#app").innerHTML = `
     <div class="customer-progress-step"><span>4</span>Payment</div>
   </div>
 
-  <div class="section-heading">
-    <p class="section-eyebrow">Create yours</p>
-
-    <h2>Design Your Keychain</h2>
-
-    <p>
-      Enter your name, choose your style and preview
-      your personalised keychain in 3D.
-    </p>
-  </div>
-
   <div class="designer-setup">
     <div class="designer-setup-heading">
-      <p class="section-eyebrow">Start here</p>
-      <h2>Who are you designing for?</h2>
-
-      <p>
-        Choose one keychain or enter several names for a group order.
-      </p>
+      <h2>Start your design</h2>
     </div>
 
     <div class="setup-grid">
       <div class="card order-type-card">
         <h3>Order Type</h3>
-
-        <p class="hint">
-          Choose single for one keychain, or group for multiple names.
-        </p>
 
         <div class="toggle-row">
           <button
@@ -973,25 +1065,33 @@ document.querySelector("#app").innerHTML = `
         <div id="singleSection">
           <h3>Enter Name</h3>
 
-          <p class="hint">
-            Type your name, then tap an icon if you want to add one.
-          </p>
-
           <input
             id="singleName"
             value="Alicia"
-            maxlength="10"
+            maxlength="${Math.max(
+              1,
+              Number(modularProduct.maximum_characters) || 10
+            )}"
           >
+
+          <label class="design-quantity-field" for="singleQuantity">
+            <span>How many of this design?</span>
+            <input
+              id="singleQuantity"
+              type="number"
+              min="1"
+              max="250"
+              step="1"
+              value="1"
+              inputmode="numeric"
+            >
+          </label>
 
           <div id="iconPicker" class="icon-picker"></div>
         </div>
 
         <div id="groupSection" class="hidden">
           <h3>Enter Names</h3>
-
-          <p class="hint">
-            Enter one name per line.
-          </p>
 
           <textarea
             id="nameList"
@@ -1002,9 +1102,7 @@ Chloe</textarea>
 
           <p id="nameCount">3 names</p>
 
-          <p class="hint">
-            Tap an icon to add it to the current line.
-          </p>
+          <p class="hint">One name per line · icons optional</p>
 
           <div
             id="groupIconPicker"
@@ -1019,9 +1117,6 @@ Chloe</textarea>
         <div>
           <h3>Choose a Keychain to Edit</h3>
 
-          <p class="hint">
-            For group orders, select the keychain you want to customise.
-          </p>
         </div>
 
         <div id="applyAllSection">
@@ -1044,7 +1139,6 @@ Chloe</textarea>
         <div class="preview-card">
           <div class="preview-card-heading">
             <div>
-              <p class="section-eyebrow">Live preview</p>
               <h2>Your Keychain</h2>
             </div>
 
@@ -1067,6 +1161,8 @@ Chloe</textarea>
             </div>
           </div>
 
+          <div id="previewColourLegend" class="preview-colour-legend" aria-live="polite"></div>
+
           <p id="editModeText" class="preview-editing-text">
             Currently editing: Alicia only
           </p>
@@ -1084,10 +1180,8 @@ Chloe</textarea>
         </p>
       </div>
 
-      <div class="design-inspiration">
+      <div id="designInspiration" class="design-inspiration">
         <h3>Need inspiration? ✨</h3>
-        <p>Tap a colour idea to try it on your current keychain.</p>
-
         <div class="inspiration-scroll">
           ${renderDesignPresetCards()}
         </div>
@@ -1100,22 +1194,18 @@ Chloe</textarea>
     <section class="options-column">
       <div class="card colours-card">
         <div class="customiser-heading">
-          <p class="section-eyebrow">Make it yours</p>
-          <h2>Customise Your Design</h2>
-
-          <p>
-            Choose your base shape, base colours,
-            cap colours and letter colours.
-          </p>
+          <h2>Choose Your Style</h2>
         </div>
 
-        <div class="customisation-section">
-          <div class="customisation-title">
-            <div>
-              <h3>Base Shape</h3>
-              <p>Choose the shape of the keychain base.</p>
-            </div>
-          </div>
+<div
+  id="clickyBaseShapeSection"
+  class="customisation-section clicky-only-option"
+>
+  <div class="customisation-title">
+    <div>
+      <h3>Base Shape</h3>
+    </div>
+  </div>
 
           <div class="toggle-row">
             <button
@@ -1136,11 +1226,13 @@ Chloe</textarea>
           </div>
         </div>
 
-        <div class="customisation-section">
+          <div
+            id="clickyOrientationSection"
+            class="customisation-section clicky-only-option"
+          >
           <div class="customisation-title">
             <div>
               <h3>Letter Orientation</h3>
-              <p>Choose how the letters and icons should face.</p>
             </div>
           </div>
 
@@ -1169,7 +1261,6 @@ Chloe</textarea>
           <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="true">
             <div>
               <h3>Base Colours</h3>
-              <p>Select one or more base colours.</p>
             </div>
             <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
           </button>
@@ -1184,12 +1275,14 @@ Chloe</textarea>
             <div id="baseColours" class="swatches"></div>
           </div>
         </div>
-
-        <div class="customisation-section colour-accordion" data-colour-accordion="cap">
+        <div
+          id="clickyCapColourSection"
+          class="customisation-section colour-accordion clicky-only-option"
+          data-colour-accordion="cap"
+        >
           <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="false">
             <div>
               <h3>Cap Colours</h3>
-              <p>Select one or more top cap colours.</p>
             </div>
             <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
           </button>
@@ -1209,7 +1302,6 @@ Chloe</textarea>
           <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="false">
             <div>
               <h3>Letter Colours</h3>
-              <p>Select one or more raised letter colours.</p>
             </div>
             <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
           </button>
@@ -1229,27 +1321,20 @@ Chloe</textarea>
           <div class="special-colour-icon">♡</div>
 
           <div>
-            <strong>Looking for another colour?</strong>
-
-            <p>
-              Message us on WhatsApp. We may be able to
-              specially order it at no additional cost.
-            </p>
+            <strong>Need another colour?</strong>
 
             <a
-              href="https://wa.me/6585121915"
+              href="https://wa.me/6589915507"
               target="_blank"
               rel="noopener noreferrer"
             >
-              Ask about another colour →
+              Ask us on WhatsApp →
             </a>
           </div>
         </div>
 
         <p class="screen-colour-note">
-          Colours shown on screen are for reference only.
-          Slight differences may occur between monitors
-          and filament batches.
+          Screen colours may vary slightly from the finished piece.
         </p>
 
         <button
@@ -1264,7 +1349,7 @@ Chloe</textarea>
   </div>
 
   <p id="turnaroundSummary" class="design-turnaround-note">
-    🕒 Ready for pickup/dispatch in approximately ${standardMinWorkingDays}-${standardMaxWorkingDays} working days.
+    🕒 Ready in about 2–3 working days. Allow another 1–3 days for delivery.
   </p>
 
   <div class="add-cart-area">
@@ -1304,7 +1389,6 @@ Chloe</textarea>
 <div class="checkout-heading">
   <p class="section-eyebrow">Checkout</p>
   <h2>Your Details</h2>
-  <p>Tell us how you would like to receive your order.</p>
 </div>
 
         <label for="customerName">Full name</label>
@@ -1330,6 +1414,27 @@ Chloe</textarea>
           autocomplete="tel"
           placeholder="Contact Number"
         >
+
+        <div class="add-on-link-box">
+          <label class="add-on-link-toggle" for="linkExistingOrderToggle">
+            <input id="linkExistingOrderToggle" type="checkbox">
+            <span>
+              <strong>Add this to an existing order</strong>
+              <small>Available only before the original order enters Printing.</small>
+            </span>
+          </label>
+
+          <div id="linkExistingOrderPanel" class="add-on-link-panel hidden">
+            <label for="existingOrderRef">Original order ID</label>
+            <div class="add-on-link-row">
+              <input id="existingOrderRef" type="text" autocomplete="off" placeholder="e.g. LK-1042">
+              <button id="verifyExistingOrderBtn" type="button" class="secondary-btn">Verify & Link</button>
+            </div>
+            <p id="existingOrderLinkStatus" class="hint" aria-live="polite">
+              Enter the original order ID and use the same email address above.
+            </p>
+          </div>
+        </div>
 
         <div id="automaticDateCard" class="automatic-date-card">
           <span id="automaticDateLabel">Estimated ready for collection</span>
@@ -1375,6 +1480,29 @@ Chloe</textarea>
             🚚 Islandwide Delivery (+${displaySettingMoney(deliveryFeeSetting)})
           </option>
         </select>
+
+        <div id="checkoutPickupSection" class="checkout-pickup-section">
+          <div class="checkout-pickup-heading">
+            <strong>Choose your pickup slot</strong>
+            <span id="checkoutPickupGuidance">We’ll show slots after your estimated completion date.</span>
+          </div>
+
+          <div class="checkout-pickup-fields">
+            <label for="checkoutPickupDate">
+              Pickup date
+              <input id="checkoutPickupDate" type="text" placeholder="Choose a date" readonly>
+            </label>
+
+            <label for="checkoutPickupTime">
+              Pickup time
+              <select id="checkoutPickupTime">
+                <option value="">Choose a date first</option>
+              </select>
+            </label>
+          </div>
+
+          <p id="checkoutPickupStatus" class="hint" aria-live="polite"></p>
+        </div>
 
         <div
           id="deliveryAddressSection"
@@ -1443,6 +1571,47 @@ Chloe</textarea>
 
         <p id="deliveryNote" class="hint"></p>
 
+        <div class="gifting-bag-addon">
+          <a
+            class="gifting-bag-photo-link"
+            href="/images/gifting-bag.png"
+            target="_blank"
+            rel="noopener"
+            aria-label="View a larger photo of the gifting bags"
+          >
+            <img
+              class="gifting-bag-photo"
+              src="/images/gifting-bag.png"
+              alt="Frosted gifting bags with a white star pattern"
+              loading="lazy"
+            >
+          </a>
+          <div class="gifting-bag-copy">
+            <div>
+              <strong>Add gifting bags?</strong>
+              <small>S$0.50 each · fits 2 keychains up to 6 characters each; longer names will protrude</small>
+            </div>
+          </div>
+          <div class="gifting-bag-quantity-control">
+            <span class="gifting-bag-quantity-label">Quantity</span>
+            <div class="quantity-stepper">
+              <button id="giftingBagDecrease" type="button" aria-label="Remove one gifting bag">−</button>
+              <input
+                id="giftingBagQuantity"
+                type="number"
+                min="0"
+                max="0"
+                step="1"
+                value="0"
+                inputmode="numeric"
+                aria-label="Gifting bag quantity"
+              >
+              <button id="giftingBagIncrease" type="button" aria-label="Add one gifting bag">+</button>
+            </div>
+            <small id="giftingBagStockStatus" class="gifting-bag-stock-status">Checking stock…</small>
+          </div>
+        </div>
+
         <textarea
           id="orderNotes"
           placeholder="Additional order notes (optional)..."
@@ -1454,7 +1623,7 @@ Chloe</textarea>
 
         <div class="review-summary">
           <p>
-            Total names:
+            Total keychains:
             <strong id="reviewCount">0</strong>
           </p>
 
@@ -1469,7 +1638,6 @@ Chloe</textarea>
 
       <div class="promo-box">
         <h3>Have a promo code? ♡</h3>
-        <p>Enter it here before submitting your order.</p>
 
         <div class="promo-code-row">
           <input
@@ -1495,14 +1663,7 @@ Chloe</textarea>
       <div class="payment-box">
 <h3>Ready to Order?</h3>
 
-        <p>
-          PayNow is available for every order.
-        </p>
-
-        <p>
-          Spend $30 or more to unlock card, Apple Pay
-          and Google Pay at checkout.
-        </p>
+        <p>PayNow for all orders · Cards and wallets from $30</p>
       </div>
 
 <div class="checkout-submit-bar">
@@ -1546,6 +1707,7 @@ Chloe</textarea>
         <div class="payment-status-banner">
           <strong>Order saved ✓</strong>
           <span>Keep this reference: <span id="paymentOrderRef"></span></span>
+          <span id="paymentLinkedOrderNote" class="hidden"></span>
         </div>
 
         <h2>Secure Payment</h2>
@@ -1554,11 +1716,11 @@ Chloe</textarea>
 
         ${shopSettings.stripe_enabled ? `
           <div class="online-payment-panel">
-            <p>We’ll open a secure Stripe page with your exact amount. Orders from $30 can choose card, Apple Pay or Google Pay. Your production slot is held for about 30 minutes once it opens.</p>
+            <p>Your secure payment session holds this production slot for about 30 minutes.</p>
             <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to Secure Payment</button>
             <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
-          <p class="hint">Payment is confirmed automatically - no screenshot needed. Your confirmation and order PDF will be emailed after payment. Please check Spam or Junk if it’s not in your inbox.</p>
+          <p class="hint">We’ll email your confirmation and order PDF after payment.</p>
         ` : `
           <div class="online-payment-panel">
             <h3>Online payment is temporarily unavailable</h3>
@@ -1579,17 +1741,10 @@ Chloe</textarea>
       <div class="modal-card">
         <h2>Order Submitted ♡</h2>
 
-        <p>Thank you! We’ve received your order.</p>
-
         <p id="orderRefText"></p>
 
-        <p>
-          We’ll contact you nearer to your pickup-ready or dispatch date.
-        </p>
-
         <p class="hint">
-          📧 Please check your email for your order reference and return link.<br>
-          If you don’t see it, kindly check your Junk or Spam folder too.
+          Check your email for your confirmation and return link.
         </p>
 
         <button
@@ -1631,10 +1786,7 @@ Chloe</textarea>
   <div class="order-status-copy">
     <p class="section-eyebrow">Already ordered?</p>
     <h2>Track or pay for your order</h2>
-    <p>
-      Enter your order reference and the same email address used at checkout.
-      Unpaid orders can continue to secure payment here.
-    </p>
+    <p>Enter your order reference and checkout email.</p>
   </div>
 
   <form id="orderStatusForm" class="order-status-form">
@@ -1667,20 +1819,25 @@ Chloe</textarea>
   <div class="section-heading">
     <p class="section-eyebrow">Good to know</p>
     <h2>Shop Policies</h2>
-    <p>Clear information about personalised orders, fulfilment and support.</p>
   </div>
 
   <div class="policy-grid">
     <details>
       <summary>Production and timing</summary>
       <ul>
-        <li>Standard orders are usually ready in ${standardMinWorkingDays}-${standardMaxWorkingDays} working days.</li>
-        <li>Orders of ${largeOrderQuantity} or more keychains usually require ${largeMinWorkingDays}-${largeMaxWorkingDays} working days.</li>
-        <li>We accept up to ${maxOrdersPerDate} order bookings per ready date.</li>
-        <li>Bulk orders of ${bulkOrderQuantity} or more can instantly book an available date at least 7 days away.</li>
-        <li>For bulk orders, the surrounding day on each side is reserved for production.</li>
-        <li>Rush requests remain subject to availability.</li>
-        <li>Any closure shown on the website is included in the displayed estimate.</li>
+        <li>1–3 keychains usually require 2–3 working days.</li>
+        <li>4–6 keychains usually require 3–4 working days.</li>
+        <li>7–14 keychains usually require 4–5 working days.</li>
+        <li>The date shown at checkout includes current availability and closures.</li>
+        <li>For ${bulkOrderQuantity}–29 keychains, allow at least 7 days.</li>
+        <li>For 30–50 keychains, allow at least 14 days.</li>
+        <li>51–75 keychains take approximately 1.5–2 weeks.</li>
+        <li>76–100 keychains take approximately 2–3 weeks.</li>
+        <li>101–150 keychains take approximately 3–4 weeks.</li>
+        <li>More than 150 keychains take approximately 4–6 weeks.</li>
+        <li>Event orders are available by islandwide delivery only.</li>
+        <li>We’ll confirm the timing and final quote before payment.</li>
+        <li>Rush requests are subject to availability.</li>
       </ul>
     </details>
 
@@ -1696,7 +1853,7 @@ Chloe</textarea>
 
     <details>
       <summary>Collection and delivery</summary>
-      <p>Pickup is available at Woodlands MRT or Marsiling MRT after your ready email is sent. For delivery, your selected date is the estimated dispatch date. Once your order is on its way, it will usually arrive within 2–3 days, depending on the courier. We’ll share tracking details whenever they’re available. Please double-check your address and contact number before submitting your order.</p>
+      <p>Choose your pickup slot during checkout. Pickup is available on Wednesdays and Fridays after 7pm, and on weekends. For delivery, the date shown is the estimated dispatch date; allow 1–3 days for arrival. Tracking is emailed unless we deliver your order by hand.</p>
     </details>
 
     <details>
@@ -1712,14 +1869,13 @@ Chloe</textarea>
     <h2>Need a little help?</h2>
 
     <p>
-      Have a colour request, group order or custom idea?
-      Send us a message and we’ll be happy to help.
+      Colour request, group order or custom idea? Message us.
     </p>
   </div>
 
   <div class="contact-links">
     <a
-      href="https://wa.me/6585121915"
+      href="https://wa.me/6589915507"
       target="_blank"
       rel="noopener noreferrer"
       class="contact-link-card"
@@ -1757,10 +1913,6 @@ Chloe</textarea>
     Little Keeps ♡
   </a>
 
-  <p>
-    Personalised keepsakes, lovingly made in Singapore.
-  </p>
-
   <small>
     © ${new Date().getFullYear()} Little Keeps
   </small>
@@ -1770,16 +1922,17 @@ Chloe</textarea>
 `;
 
 const BASE_PRICE = displayedBasePrice;
-const INCLUDED_CHARACTERS = getSettingNumber("included_characters", 6);
-const EXTRA_CHARACTER_PRICE = getSettingNumber("extra_character_price", 0.2);
+const INCLUDED_CHARACTERS = Number(modularProduct.included_characters);
+const EXTRA_CHARACTER_PRICE = Number(modularProduct.extra_character_price);
 
-const INCLUDED_BASE_COLOURS = 1;
-const INCLUDED_CAP_COLOURS = 1;
-const INCLUDED_LETTER_COLOURS = 1;
+const INCLUDED_BASE_COLOURS = Number(modularProduct.included_base_colours);
+const INCLUDED_CAP_COLOURS = Number(modularProduct.included_cap_colours);
+const INCLUDED_LETTER_COLOURS = Number(modularProduct.included_letter_colours);
 
-const EXTRA_BASE_COLOUR_PRICE = getSettingNumber("extra_base_colour_price", 0.5);
-const EXTRA_CAP_COLOUR_PRICE = getSettingNumber("extra_cap_colour_price", 0.3);
-const EXTRA_LETTER_COLOUR_PRICE = getSettingNumber("extra_letter_colour_price", 0.2);
+const EXTRA_BASE_COLOUR_PRICE = Number(modularProduct.extra_base_colour_price);
+const EXTRA_CAP_COLOUR_PRICE = Number(modularProduct.extra_cap_colour_price);
+const EXTRA_LETTER_COLOUR_PRICE = Number(modularProduct.extra_letter_colour_price);
+const GIFTING_BAG_PRICE = 0.5;
 
 const configuredPromoCode = String(shopSettings.promo_code || "")
   .trim()
@@ -1819,6 +1972,7 @@ const PROMO_CODES = promoCodeRows.length
   : fallbackPromoCodes;
 
 let appliedPromoCode = "";
+let verifiedLinkedOrder = null;
 
 const canvas = document.getElementById("previewCanvas");
 const singleBtn = document.getElementById("singleBtn");
@@ -1826,6 +1980,7 @@ const groupBtn = document.getElementById("groupBtn");
 const singleSection = document.getElementById("singleSection");
 const groupSection = document.getElementById("groupSection");
 const singleName = document.getElementById("singleName");
+const singleQuantity = document.getElementById("singleQuantity");
 const nameList = document.getElementById("nameList");
 const nameCount = document.getElementById("nameCount");
 const nameCards = document.getElementById("nameCards");
@@ -1833,6 +1988,7 @@ const nameCardsSection = document.getElementById("nameCardsSection");
 const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
 const dimensionEstimate = document.getElementById("dimensionEstimate");
+const previewColourLegend = document.getElementById("previewColourLegend");
 const inspirationStatus = document.getElementById("inspirationStatus");
 
 const applyAllSection = document.getElementById("applyAllSection");
@@ -1846,6 +2002,11 @@ const promoCodeStatus = document.getElementById("promoCodeStatus");
 const customerName = document.getElementById("customerName");
 const customerEmail = document.getElementById("customerEmail");
 const customerPhone = document.getElementById("customerPhone");
+const linkExistingOrderToggle = document.getElementById("linkExistingOrderToggle");
+const linkExistingOrderPanel = document.getElementById("linkExistingOrderPanel");
+const existingOrderRef = document.getElementById("existingOrderRef");
+const verifyExistingOrderBtn = document.getElementById("verifyExistingOrderBtn");
+const existingOrderLinkStatus = document.getElementById("existingOrderLinkStatus");
 const neededBy = document.getElementById("neededBy");
 const automaticDateCard = document.getElementById("automaticDateCard");
 const automaticDateLabel = document.getElementById("automaticDateLabel");
@@ -1862,7 +2023,16 @@ const bulkOrderNotice = document.getElementById("bulkOrderNotice");
 const turnaroundSummary =
   document.getElementById("turnaroundSummary");
 const collectionMethod = document.getElementById("collectionMethod");
+const checkoutPickupSection = document.getElementById("checkoutPickupSection");
+const checkoutPickupGuidance = document.getElementById("checkoutPickupGuidance");
+const checkoutPickupDate = document.getElementById("checkoutPickupDate");
+const checkoutPickupTime = document.getElementById("checkoutPickupTime");
+const checkoutPickupStatus = document.getElementById("checkoutPickupStatus");
 const deliveryNote = document.getElementById("deliveryNote");
+const giftingBagQuantityInput = document.getElementById("giftingBagQuantity");
+const giftingBagDecrease = document.getElementById("giftingBagDecrease");
+const giftingBagIncrease = document.getElementById("giftingBagIncrease");
+const giftingBagStockStatus = document.getElementById("giftingBagStockStatus");
 const orderNotes = document.getElementById("orderNotes");
 const submitOrderBtn = document.getElementById("submitOrderBtn");
 const submitStatus = document.getElementById("submitStatus");
@@ -1977,6 +2147,8 @@ const paymentOrderRef =
 document.getElementById("paymentOrderRef");
 const paymentTotal =
 document.getElementById("paymentTotal");
+const paymentLinkedOrderNote =
+document.getElementById("paymentLinkedOrderNote");
 const paymentDoneBtn =
 document.getElementById("paymentDoneBtn");
 const stripeCheckoutBtn =
@@ -2307,6 +2479,7 @@ const ICON_CATEGORIES = [
 
 let specialDateCalendar = null;
 let specialDateCalendarMode = "";
+let checkoutPickupCalendar = null;
 let shopClosureRanges = [];
 let normalUnavailableDates = [];
 let bulkUnavailableDates = [];
@@ -2318,18 +2491,11 @@ let bulkAssessment = null;
 let bulkAssessmentRequest = 0;
 let bulkAssessmentFingerprint = "";
 
-function getTurnaroundInfo(quantity = names.length || 1) {
-  const isLargeOrder = quantity >= largeOrderQuantity;
-
+function getTurnaroundInfo(quantity = getTotalKeychainQuantity() || 1) {
+  const turnaround = getKeychainTurnaround(quantity);
   return {
-    quantity,
-    isLargeOrder,
-    minDays: isLargeOrder
-      ? largeMinWorkingDays
-      : standardMinWorkingDays,
-    maxDays: isLargeOrder
-      ? largeMaxWorkingDays
-      : standardMaxWorkingDays
+    ...turnaround,
+    isLargeOrder: turnaround.tier === "large"
   };
 }
 
@@ -2375,9 +2541,12 @@ function isCalendarDateUnavailable(date, mode) {
   const unavailableDates =
     mode === "bulk"
       ? bulkUnavailableDates
-      : normalUnavailableDates;
+      : mode === "rush"
+        ? []
+        : normalUnavailableDates;
 
   if (unavailableDates.includes(dateValue)) return true;
+  if (mode === "standard" && !isAlternatingProductionDay(dateValue)) return true;
 
   return calendarClosureDates.some(range => {
     const start = String(range.from || range.start_date || "").slice(0, 10);
@@ -2406,7 +2575,21 @@ function getFirstAvailableCalendarDate(mode, startDate, maxDate) {
 
 function getAutomaticReadyDate() {
   const turnaround = getTurnaroundInfo();
-  return addWorkingDays(new Date(), turnaround.maxDays);
+  return alignToProductionDay(
+    addWorkingDays(new Date(), turnaround.maxDays)
+  );
+}
+
+function alignToProductionDay(dateValue) {
+  let candidate = new Date(dateValue);
+  while (
+    !isAlternatingProductionDay(toLocalDateString(candidate)) ||
+    normalUnavailableDates.includes(toLocalDateString(candidate)) ||
+    isShopClosedDate(candidate)
+  ) {
+    candidate = addWorkingDays(candidate, 1);
+  }
+  return candidate;
 }
 
 function toLocalDateString(date) {
@@ -2423,15 +2606,131 @@ function formatEstimateDate(date) {
   });
 }
 
+function dateFromLocalValue(value) {
+  const date = new Date(`${String(value || "").slice(0, 10)}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getCheckoutPickupReadyDate() {
+  const orderType = getCheckoutOrderType();
+  if (["rush", "bulk"].includes(orderType) && requestedCompletionDate.value) {
+    return dateFromLocalValue(requestedCompletionDate.value) || getAutomaticReadyDate();
+  }
+
+  return getAutomaticReadyDate();
+}
+
+function isCheckoutPickupDateAvailable(dateValue) {
+  const date = dateValue instanceof Date
+    ? new Date(dateValue)
+    : dateFromLocalValue(dateValue);
+  if (!date) return false;
+
+  const readyDate = getCheckoutPickupReadyDate();
+  date.setHours(0, 0, 0, 0);
+  readyDate.setHours(0, 0, 0, 0);
+
+  return date >= readyDate && isPickupDay(toLocalDateString(date)) && !isShopClosedDate(date);
+}
+
+function getFirstCheckoutPickupDate() {
+  const candidate = getCheckoutPickupReadyDate();
+  const maximum = new Date(candidate);
+  maximum.setDate(maximum.getDate() + 60);
+
+  while (candidate <= maximum) {
+    if (isCheckoutPickupDateAvailable(candidate)) return new Date(candidate);
+    candidate.setDate(candidate.getDate() + 1);
+  }
+
+  return getCheckoutPickupReadyDate();
+}
+
+function updateCheckoutPickupTimeOptions(selectedValue = "") {
+  const ranges = getPickupTimeRanges(checkoutPickupDate?.value);
+  if (!checkoutPickupTime) return;
+
+  checkoutPickupTime.innerHTML = ranges.length
+    ? `
+      <option value="">Choose a time</option>
+      ${ranges.map(range => `
+        <option value="${escapePresetText(range)}" ${range === selectedValue ? "selected" : ""}>
+          ${escapePresetText(range)}
+        </option>
+      `).join("")}
+    `
+    : `<option value="">Choose a date first</option>`;
+}
+
+function updateCheckoutPickupOptions() {
+  if (!checkoutPickupSection) return;
+
+  const shouldShow = collectionMethod.value !== "delivery" && !hasVerifiedLinkedOrder();
+  checkoutPickupSection.classList.toggle("hidden", !shouldShow);
+
+  if (!shouldShow) {
+    checkoutPickupCalendar?.clear();
+    checkoutPickupTime.value = "";
+    checkoutPickupStatus.textContent = "";
+    return;
+  }
+
+  const readyDate = getCheckoutPickupReadyDate();
+  const firstPickupDate = getFirstCheckoutPickupDate();
+  const maximum = new Date(firstPickupDate);
+  maximum.setDate(maximum.getDate() + 60);
+
+  checkoutPickupGuidance.textContent =
+    `Estimated completion: ${formatEstimateDate(readyDate)}. Choose Wednesday or Friday after 7pm, or a weekend.`;
+
+  if (checkoutPickupCalendar) {
+    checkoutPickupCalendar.set({
+      minDate: readyDate,
+      maxDate: maximum,
+      enable: [date => isCheckoutPickupDateAvailable(date)]
+    });
+
+    if (checkoutPickupDate.value && !isCheckoutPickupDateAvailable(checkoutPickupDate.value)) {
+      checkoutPickupCalendar.clear();
+      updateCheckoutPickupTimeOptions();
+    }
+
+    checkoutPickupCalendar.jumpToDate(
+      checkoutPickupCalendar.selectedDates[0] || firstPickupDate,
+      false
+    );
+  }
+}
+
+function setupCheckoutPickupCalendar() {
+  if (!checkoutPickupDate || checkoutPickupCalendar) return;
+
+  checkoutPickupCalendar = flatpickr(checkoutPickupDate, {
+    dateFormat: "Y-m-d",
+    minDate: getCheckoutPickupReadyDate(),
+    enable: [date => isCheckoutPickupDateAvailable(date)],
+    onChange: () => {
+      updateCheckoutPickupTimeOptions();
+      checkoutPickupStatus.textContent = checkoutPickupDate.value
+        ? "Now choose a pickup time."
+        : "";
+      draftHasMeaningfulChanges = true;
+      validateForm();
+    }
+  });
+
+  updateCheckoutPickupOptions();
+}
+
 function getCheckoutOrderType() {
-  if (names.length >= bulkOrderQuantity) return "bulk";
+  if (getTotalKeychainQuantity() >= bulkOrderQuantity) return "bulk";
   if (rushOrderToggle?.checked) return "rush";
   return "standard";
 }
 
 function getRushFee() {
   if (getCheckoutOrderType() !== "rush") return 0;
-  return names.length <= 4 ? rushFeeSmall : rushFeeLarge;
+  return getTotalKeychainQuantity() <= 4 ? rushFeeSmall : rushFeeLarge;
 }
 
 function getRushInventoryNeeds() {
@@ -2446,32 +2745,36 @@ function getRushInventoryNeeds() {
     const orientation = design.letterOrientation === "horizontal" ? "horizontal" : "vertical";
     const shapeLabel = design.baseShape === "bubbly" ? "Bubbly" : "Ribbed";
 
+    const itemQuantity = getItemQuantity(item);
+
     characters.forEach((character, index) => {
       const baseName = getColourName(design.bases[index % design.bases.length]);
       const capName = getColourName(design.caps[index % design.caps.length]);
       const letterName = getColourName(design.letters[index % design.letters.length]);
-      add(`${baseName} ${shapeLabel} Base`);
+      add(`${baseName} ${shapeLabel} Base`, itemQuantity);
       add(
         `${capName} Cap + ${letterName} Letter - ${character}` +
-        (orientation === "horizontal" ? " - Sideways" : "")
+        (orientation === "horizontal" ? " - Sideways" : ""),
+        itemQuantity
       );
     });
   });
 
   const characterCount = names.reduce(
-    (sum, item) => sum + Array.from(sanitizeName(item.name)).length,
+    (sum, item) =>
+      sum + Array.from(sanitizeName(item.name)).length * getItemQuantity(item),
     0
   );
   add("Mechanical Switch", characterCount);
-  add("Key Ring", names.length);
-  add("Jump Ring", names.length);
+  add("Metal Large D Ring", getTotalKeychainQuantity());
+  add("Gifting Bag", giftingBagQuantity);
   return needs;
 }
 
 function getRushFingerprint() {
   return JSON.stringify({
     date: requestedCompletionDate.value,
-    quantity: names.length,
+    quantity: getTotalKeychainQuantity(),
     needs: getRushInventoryNeeds()
   });
 }
@@ -2499,7 +2802,9 @@ function showSpecialOrderAssessment(assessment, type = "rush") {
         : "Please choose another date."
       : assessment.status === "checking"
         ? "One moment please."
-        : "";
+        : isBulk
+          ? "This date can be requested. We’ll confirm the timing and final quote before payment."
+          : "";
 
   rushAvailabilityResult.innerHTML = `
     <strong>${heading}</strong>
@@ -2526,12 +2831,13 @@ async function checkRushAvailability() {
   validateForm();
 
   const characterCount = names.reduce(
-    (sum, item) => sum + Array.from(sanitizeName(item.name)).length,
+    (sum, item) =>
+      sum + Array.from(sanitizeName(item.name)).length * getItemQuantity(item),
     0
   );
   const { data, error } = await supabase.rpc("assess_rush_order", {
     p_requested_date: requestedCompletionDate.value,
-    p_keychain_count: names.length,
+    p_keychain_count: getTotalKeychainQuantity(),
     p_character_count: characterCount,
     p_needs: getRushInventoryNeeds()
   });
@@ -2561,7 +2867,7 @@ async function checkRushAvailability() {
 function getBulkFingerprint() {
   return JSON.stringify({
     date: requestedCompletionDate.value,
-    quantity: names.length
+    quantity: getTotalKeychainQuantity()
   });
 }
 
@@ -2607,13 +2913,34 @@ async function checkBulkAvailability() {
 function updateTurnaroundMessaging() {
   const turnaround = getTurnaroundInfo();
   const itemWord = turnaround.quantity === 1 ? "keychain" : "keychains";
+  const isBulk = turnaround.quantity >= bulkOrderQuantity;
+
+  if (isBulk) {
+    if (linkExistingOrderToggle.checked) {
+      linkExistingOrderToggle.checked = false;
+      linkExistingOrderPanel.classList.add("hidden");
+      verifiedLinkedOrder = null;
+    }
+    linkExistingOrderToggle.disabled = true;
+    collectionMethod.value = "delivery";
+    collectionMethod.disabled = true;
+    deliveryAddressSection.classList.remove("hidden");
+  } else {
+    linkExistingOrderToggle.disabled = false;
+    collectionMethod.disabled = hasVerifiedLinkedOrder();
+  }
+
   const methodIsDelivery = collectionMethod.value === "delivery";
   const range = `${turnaround.minDays}-${turnaround.maxDays} working days`;
-  const estimateStart = addWorkingDays(new Date(), turnaround.minDays);
-  const estimateEnd = addWorkingDays(new Date(), turnaround.maxDays);
+  const estimateStart = alignToProductionDay(
+    addWorkingDays(new Date(), turnaround.minDays)
+  );
+  const estimateEnd = alignToProductionDay(
+    addWorkingDays(new Date(), turnaround.maxDays)
+  );
   const weekdayOnlyEnd = addWeekdaysOnly(new Date(), turnaround.maxDays);
   const includesHolidayClosure = estimateEnd.getTime() > weekdayOnlyEnd.getTime();
-  const isBulk = turnaround.quantity >= bulkOrderQuantity;
+  const bulkPolicy = getBulkApprovalPolicy(turnaround.quantity);
   const isRush = !isBulk && Boolean(rushOrderToggle?.checked);
 
   neededBy.value = isBulk || isRush
@@ -2621,21 +2948,29 @@ function updateTurnaroundMessaging() {
     : toLocalDateString(estimateEnd);
 
   if (turnaroundSummary) {
-    turnaroundSummary.innerHTML = `
-      🕒 <strong>${turnaround.quantity} ${itemWord}</strong>
-      ready for pickup/dispatch in approximately <strong>${range}</strong>.
-    `;
+    turnaroundSummary.innerHTML = isBulk
+      ? `📦 <strong>${turnaround.quantity} ${itemWord}</strong> · allow <strong>${bulkPolicy.timeframeLabel}</strong>. We’ll confirm the timing and final quote before payment.`
+      : `
+        🕒 <strong>${turnaround.quantity} ${itemWord}</strong>
+        ${methodIsDelivery ? "estimated to dispatch" : "estimated ready for pickup"}
+        in approximately <strong>${range}</strong>.
+        ${methodIsDelivery ? "<br><small>Allow another 1–3 days for delivery.</small>" : ""}
+      `;
   }
 
   automaticDateLabel.textContent = methodIsDelivery
     ? "Estimated dispatch"
     : "Estimated ready for collection";
-  automaticDateRange.textContent = `${formatEstimateDate(estimateStart)}–${formatEstimateDate(estimateEnd)}`;
+  automaticDateRange.textContent = formatDateRange(
+    estimateStart,
+    estimateEnd,
+    formatEstimateDate
+  );
   automaticDateNote.textContent = methodIsDelivery
-    ? `Your order is estimated to be dispatched on this date, then delivered within 2–3 days depending on the courier. We’ll share tracking details whenever they’re available.${includesHolidayClosure ? " Our holiday closure is already included." : ""}`
+    ? `This is the dispatch date. Allow 1–3 days for delivery.${includesHolidayClosure ? " Our holiday closure is already included." : ""}`
     : includesHolidayClosure
-      ? "Our holiday closure is already included in this estimate."
-      : "Based on our current production schedule.";
+      ? "Our holiday closure is included. Choose a pickup slot below."
+      : "Choose an available pickup slot below.";
 
   automaticDateCard.classList.toggle("hidden", isBulk || isRush);
   rushOrderOption.classList.toggle("hidden", isBulk);
@@ -2643,12 +2978,17 @@ function updateTurnaroundMessaging() {
   specialDateSection.classList.toggle("hidden", !isBulk && !isRush);
 
   if (isBulk) {
+    bulkOrderNotice.classList.remove("hidden");
+    bulkOrderNotice.innerHTML = `
+      <strong>Event order request</strong>
+      <p>Delivery is required for event orders. We’ll review the details and contact you with the confirmed timing and final quote before payment.</p>
+    `;
     specialDateLabel.textContent = methodIsDelivery
       ? "Choose your bulk dispatch date"
       : "Choose your bulk completion date";
     specialOrderMessage.textContent = methodIsDelivery
-      ? "Choose an available dispatch date at least 7 days away. Delivery usually follows within 2–3 days."
-      : "Choose an available date at least 7 days away.";
+      ? `Choose a preferred dispatch date ${bulkPolicy.timeframeLabel} away. We’ll confirm it with your final quote. Allow 1–3 days for delivery.`
+      : `Choose a preferred date ${bulkPolicy.timeframeLabel} away. We’ll confirm it with your final quote.`;
     orderNotes.placeholder = "Customer notes for your bulk order...";
 
     if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
@@ -2661,7 +3001,7 @@ function updateTurnaroundMessaging() {
       ? "When should we dispatch it?"
       : "When do you need it?";
     specialOrderMessage.textContent = methodIsDelivery
-      ? "Choose an earlier dispatch date and we’ll check availability. Delivery usually follows within 2–3 days."
+      ? "Choose an earlier dispatch date and we’ll check availability. Allow 1–3 days for delivery."
       : "Only dates earlier than the standard estimate are shown. Choose a date and we’ll check availability instantly.";
     orderNotes.placeholder = "Tell us about your deadline or event...";
 
@@ -2685,7 +3025,9 @@ function updateTurnaroundMessaging() {
     const tomorrow = addWorkingDays(new Date(), 1);
     const bulkMinimumDate = new Date();
     bulkMinimumDate.setHours(0, 0, 0, 0);
-    bulkMinimumDate.setDate(bulkMinimumDate.getDate() + 7);
+    bulkMinimumDate.setDate(
+      bulkMinimumDate.getDate() + Math.max(7, bulkPolicy.minLeadDays)
+    );
     const calendarMode = isRush ? "rush" : isBulk ? "bulk" : "standard";
     let calendarMaxDate;
 
@@ -2702,7 +3044,11 @@ function updateTurnaroundMessaging() {
       maxDate: calendarMaxDate,
       disable: [
         ...calendarClosureDates,
-        ...(isBulk ? bulkUnavailableDates : normalUnavailableDates)
+        ...(isBulk
+          ? bulkUnavailableDates
+          : isRush
+            ? []
+            : normalUnavailableDates)
       ]
     });
 
@@ -2725,11 +3071,13 @@ function updateTurnaroundMessaging() {
 
   if (submitOrderBtn) {
     submitOrderBtn.textContent = isBulk
-      ? "Book Bulk Order & Continue to Payment"
+      ? "Request Event Order Quote"
       : isRush
         ? "Submit Rush Request"
         : "Submit Order & Continue to Payment";
   }
+
+  updateCheckoutPickupOptions();
 }
 
 function updateAddCartVisibility() {
@@ -2777,7 +3125,11 @@ async function findAutomaticAvailableDate() {
 
   for (let attempt = 0; attempt < 45; attempt += 1) {
     const day = candidate.getDay();
-    if (day === 0 || day === 6) {
+    if (
+      day === 0 ||
+      day === 6 ||
+      !isAlternatingProductionDay(toLocalDateString(candidate))
+    ) {
       candidate = addWorkingDays(candidate, 1);
       continue;
     }
@@ -2861,6 +3213,9 @@ function displayIcon(char) {
 
 let draftData = null;
 let orderType = "single";
+let giftingBagQuantity = 0;
+let giftingBagStock = 0;
+let giftingBagStockConfirmed = false;
 let selectedIndex = 0;
 let orderSubmitted = false;
 
@@ -2907,6 +3262,18 @@ const BASE_SHAPES = {
 
 let names = [];
 
+function normalizeItemQuantity(value) {
+  return Math.min(250, Math.max(1, Math.floor(Number(value) || 1)));
+}
+
+function getItemQuantity(item) {
+  return normalizeItemQuantity(item?.quantity);
+}
+
+function getTotalKeychainQuantity() {
+  return names.reduce((total, item) => total + getItemQuantity(item), 0);
+}
+
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 
@@ -2946,6 +3313,9 @@ const loader = new STLLoader();
 const keychain = new THREE.Group();
 scene.add(keychain);
 
+const designInspiration =
+  document.getElementById("designInspiration");
+
 const geometryCache = {};
 
 function generateOrderRef() {
@@ -2970,37 +3340,15 @@ function getUniqueColourCount(colours) {
 }
 
 function calculatePrice(design, name = "") {
-  const extraBaseColours = Math.max(
-    0,
-    getUniqueColourCount(design.bases) -
-      INCLUDED_BASE_COLOURS
-  );
-
-  const extraCapColours = Math.max(
-    0,
-    getUniqueColourCount(design.caps) -
-      INCLUDED_CAP_COLOURS
-  );
-
-  const extraLetterColours = Math.max(
-    0,
-    getUniqueColourCount(design.letters) -
-      INCLUDED_LETTER_COLOURS
-  );
-
   const characterCount = Array.from(sanitizeName(name)).length;
-  const extraCharacters = Math.max(
-    0,
-    characterCount - INCLUDED_CHARACTERS
-  );
 
-  return (
-    BASE_PRICE +
-    extraCharacters * EXTRA_CHARACTER_PRICE +
-    extraBaseColours * EXTRA_BASE_COLOUR_PRICE +
-    extraCapColours * EXTRA_CAP_COLOUR_PRICE +
-    extraLetterColours * EXTRA_LETTER_COLOUR_PRICE
-  );
+  return calculateProductUnitPrice({
+    product: activeProduct,
+    characterCount,
+    baseColourCount: getUniqueColourCount(design.bases),
+    capColourCount: getUniqueColourCount(design.caps),
+    letterColourCount: getUniqueColourCount(design.letters)
+  });
 }
 
 function getActiveDesign() {
@@ -3151,11 +3499,149 @@ backBtn.onclick = () => {
 };
 
 function getOrderSubtotal() {
-  return names.reduce(
+  const keychainSubtotal = names.reduce(
     (sum, item) =>
-      sum + calculatePrice(getDesign(item), item.name),
+      sum + calculatePrice(getDesign(item), item.name) * getItemQuantity(item),
     0
   );
+
+  return roundMoney(
+    keychainSubtotal + calculateGiftingBagTotal(giftingBagQuantity, GIFTING_BAG_PRICE)
+  );
+}
+
+function getMaxGiftingBagQuantity() {
+  if (!giftingBagStockConfirmed) return 0;
+  return getGiftingBagSelectionLimit(
+    getTotalKeychainQuantity(),
+    giftingBagStock
+  );
+}
+
+function updateGiftingBagOptions() {
+  if (!giftingBagQuantityInput) return;
+
+  const maxGiftingBagQuantity = getMaxGiftingBagQuantity();
+  const bagCapacityLimit = Math.ceil(getTotalKeychainQuantity() / 2);
+
+  giftingBagQuantity = Math.min(
+    Math.max(0, Math.floor(Number(giftingBagQuantity) || 0)),
+    maxGiftingBagQuantity
+  );
+
+  giftingBagQuantityInput.max = String(maxGiftingBagQuantity);
+  giftingBagQuantityInput.value = String(giftingBagQuantity);
+  giftingBagQuantityInput.disabled = !giftingBagStockConfirmed || maxGiftingBagQuantity === 0;
+  giftingBagDecrease.disabled = giftingBagQuantity <= 0;
+  giftingBagIncrease.disabled =
+    !giftingBagStockConfirmed || giftingBagQuantity >= maxGiftingBagQuantity;
+
+  if (giftingBagStockStatus) {
+    giftingBagStockStatus.textContent = !giftingBagStockConfirmed
+      ? "Stock unavailable"
+      : giftingBagStock <= 0
+        ? "Currently out of stock"
+        : giftingBagStock < bagCapacityLimit
+          ? `Only ${giftingBagStock} left`
+          : `${giftingBagStock} available`;
+  }
+}
+
+async function refreshGiftingBagStock() {
+  let stockValue = null;
+
+  const rpcResult = await supabase.rpc("get_gifting_bag_stock");
+
+  if (!rpcResult.error) {
+    stockValue = rpcResult.data;
+  } else {
+    const fallback = await supabase
+      .from("inventory_items")
+      .select("qty")
+      .eq("item_name", "Gifting Bag")
+      .maybeSingle();
+
+    if (!fallback.error) stockValue = fallback.data?.qty;
+  }
+
+  const parsedStock = Number(stockValue);
+  giftingBagStockConfirmed = Number.isFinite(parsedStock);
+  giftingBagStock = giftingBagStockConfirmed
+    ? Math.max(0, Math.floor(parsedStock))
+    : 0;
+  updateGiftingBagOptions();
+
+  return giftingBagStockConfirmed;
+}
+
+function hasVerifiedLinkedOrder() {
+  return Boolean(
+    linkExistingOrderToggle?.checked &&
+    verifiedLinkedOrder?.orderRef &&
+    verifiedLinkedOrder.orderRef === existingOrderRef.value.trim().toUpperCase() &&
+    verifiedLinkedOrder.email === customerEmail.value.trim().toLowerCase()
+  );
+}
+
+function resetLinkedOrderVerification(message = "Enter the original order ID and use the same email address above.") {
+  verifiedLinkedOrder = null;
+  collectionMethod.disabled = false;
+  existingOrderLinkStatus.className = "hint";
+  existingOrderLinkStatus.textContent = message;
+  validateForm();
+}
+
+async function verifyExistingOrderLink() {
+  const orderRef = existingOrderRef.value.trim().toUpperCase();
+  const email = customerEmail.value.trim().toLowerCase();
+
+  existingOrderRef.value = orderRef;
+
+  if (!orderRef || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    resetLinkedOrderVerification("Enter the original order ID and a valid matching email address first.");
+    return;
+  }
+
+  verifyExistingOrderBtn.disabled = true;
+  verifyExistingOrderBtn.textContent = "Checking…";
+  existingOrderLinkStatus.className = "hint is-checking";
+  existingOrderLinkStatus.textContent = "Checking that the original order can still accept an add-on…";
+
+  const { data, error } = await supabase.rpc("verify_add_on_order", {
+    p_order_ref: orderRef,
+    p_email: email
+  });
+
+  verifyExistingOrderBtn.disabled = false;
+  verifyExistingOrderBtn.textContent = "Verify & Link";
+
+  if (error || !data?.allowed) {
+    verifiedLinkedOrder = null;
+    collectionMethod.disabled = false;
+    existingOrderLinkStatus.className = "hint is-error";
+    existingOrderLinkStatus.textContent =
+      data?.reason ||
+      "Unable to verify this order. Check the ID and email, or try again after the linking update is installed.";
+    validateForm();
+    return;
+  }
+
+  verifiedLinkedOrder = {
+    orderRef: String(data.order_ref || orderRef).toUpperCase(),
+    email,
+    collectionMethod: data.collection_method || "pickup",
+    latestDate: data.latest_date || ""
+  };
+  existingOrderRef.value = verifiedLinkedOrder.orderRef;
+  collectionMethod.value = verifiedLinkedOrder.collectionMethod;
+  collectionMethod.disabled = true;
+  deliveryAddressSection.classList.add("hidden");
+  existingOrderLinkStatus.className = "hint is-success";
+  existingOrderLinkStatus.textContent =
+    `Linked to ${verifiedLinkedOrder.orderRef} ✓ No second delivery fee. Both orders will use whichever pickup/dispatch date is later.`;
+  updateCollectionNote();
+  renderReviewOrder();
+  validateForm();
 }
 
 function roundMoney(value) {
@@ -3273,7 +3759,8 @@ function applyPromoCode() {
 }
 
 function updateCartDisplay() {
-  const cartCount = cartHasItems ? names.length : 0;
+  const totalKeychains = getTotalKeychainQuantity();
+  const cartCount = cartHasItems ? totalKeychains : 0;
   const currentDesignTotal = getOrderSubtotal();
   const cartSubtotal = cartHasItems ? currentDesignTotal : 0;
 
@@ -3288,7 +3775,7 @@ function updateCartDisplay() {
 
   if (mobileOrderSummary) {
     mobileOrderSummary.textContent =
-      `${names.length} keychain${names.length === 1 ? "" : "s"}`;
+      `${totalKeychains} keychain${totalKeychains === 1 ? "" : "s"}`;
   }
 
   if (addCartButtonLabel) {
@@ -3307,9 +3794,25 @@ function updateCartDisplay() {
 function addColourToDesign(type, colour) {
   const design = getActiveDesign();
 
-  if (type === "base") design.bases.push(colour);
-  if (type === "cap") design.caps.push(colour);
-  if (type === "letter") design.letters.push(colour);
+  const isStandardProduct =
+    activeProduct.product_key === STANDARD_PRODUCT_KEY;
+
+  if (isStandardProduct) {
+    if (type === "base") {
+      design.bases = [colour];
+    }
+
+    if (type === "letter") {
+      design.letters = [colour];
+    }
+
+    // Normal keychains do not use caps.
+    if (type === "cap") return;
+  } else {
+    if (type === "base") design.bases.push(colour);
+    if (type === "cap") design.caps.push(colour);
+    if (type === "letter") design.letters.push(colour);
+  }
 
   if (applyAllToggle.checked) {
     names.forEach(item => {
@@ -3430,6 +3933,7 @@ async function setupNeededByCalendar() {
     }
   });
 
+  setupCheckoutPickupCalendar();
   updateTurnaroundMessaging();
 }
 
@@ -3553,11 +4057,26 @@ function startFeaturedPromoCountdown() {
 }
 
 function removeColourFromDesign(type, index) {
+  const isStandardProduct =
+    activeProduct.product_key === STANDARD_PRODUCT_KEY;
+
+  // Standard keychains must always keep one background
+  // colour and one name colour.
+  if (isStandardProduct) return;
+
   const design = getActiveDesign();
 
-  if (type === "base" && design.bases.length > 1) design.bases.splice(index, 1);
-  if (type === "cap" && design.caps.length > 1) design.caps.splice(index, 1);
-  if (type === "letter" && design.letters.length > 1) design.letters.splice(index, 1);
+  if (type === "base" && design.bases.length > 1) {
+    design.bases.splice(index, 1);
+  }
+
+  if (type === "cap" && design.caps.length > 1) {
+    design.caps.splice(index, 1);
+  }
+
+  if (type === "letter" && design.letters.length > 1) {
+    design.letters.splice(index, 1);
+  }
 
   if (applyAllToggle.checked) {
     names.forEach(item => {
@@ -3568,6 +4087,7 @@ function removeColourFromDesign(type, index) {
   refreshUI();
   buildSelectedPreview();
 }
+
 
 function renderColourSlots() {
   const design = getActiveDesign();
@@ -3582,10 +4102,18 @@ function renderSlots(containerId, colours, type) {
 
   colours.forEach((colour, index) => {
     const slot = document.createElement("button");
-    slot.className = "colour-slot";
-    slot.style.background = colour;
+  slot.className = "colour-slot";
+
+  const isStandardProduct =
+    activeProduct.product_key === STANDARD_PRODUCT_KEY;
+
+  if (!isStandardProduct) {
     slot.title = "Click to remove this colour";
     slot.onclick = () => removeColourFromDesign(type, index);
+  } else {
+    slot.classList.add("is-fixed-colour");
+  }
+    slot.style.background = colour;
     container.appendChild(slot);
   });
 }
@@ -3778,7 +4306,376 @@ async function createKeycap(letter, index, design) {
   return group;
 }
 
+const previewFontLoader = new FontLoader();
+
+let standardPreviewFont = null;
+let standardPreviewFontPromise = null;
+
+function getStandardPreviewFont() {
+  if (standardPreviewFont) {
+    return Promise.resolve(standardPreviewFont);
+  }
+
+  if (!standardPreviewFontPromise) {
+    standardPreviewFontPromise = new Promise((resolve, reject) => {
+      previewFontLoader.load(
+        "/fonts/fredoka_bold.typeface.json",
+        font => {
+          standardPreviewFont = font;
+          resolve(font);
+        },
+        undefined,
+        error => {
+          console.error(
+            "Unable to load standard preview font:",
+            error
+          );
+
+          standardPreviewFontPromise = null;
+          reject(error);
+        }
+      );
+    });
+  }
+
+  return standardPreviewFontPromise;
+}
+
+const selectedStandardSize = 24;
 let previewBuildNumber = 0;
+
+function disposePreviewObject(object) {
+  object.traverse(child => {
+    if (child.geometry) {
+      child.geometry.dispose();
+    }
+
+    if (child.material) {
+      const materials = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+
+      materials.forEach(material => material.dispose());
+    }
+  });
+}
+
+function clearKeychainPreview() {
+  while (keychain.children.length) {
+    const child = keychain.children.pop();
+    disposePreviewObject(child);
+  }
+}
+
+function createStandardTextGeometry(
+  name,
+  font,
+  depth,
+  {
+    bevelEnabled = false,
+    bevelSize = 0,
+    bevelThickness = 0
+  } = {}
+) {
+  const geometry = new TextGeometry(name, {
+    font,
+    size: selectedStandardSize,
+    depth,
+    curveSegments: 16,
+    bevelEnabled,
+    bevelThickness,
+    bevelSize,
+    bevelSegments: bevelEnabled ? 4 : 1
+  });
+
+  geometry.computeBoundingBox();
+
+  if (geometry.boundingBox) {
+    const centre = new THREE.Vector3();
+
+    geometry.boundingBox.getCenter(centre);
+    geometry.userData.sourceCentreY = centre.y;
+
+    geometry.translate(
+      -centre.x,
+      -centre.y,
+      -centre.z
+    );
+  }
+
+  return geometry;
+}
+
+function createStandardBackground(
+  name,
+  font,
+  backgroundColour
+) {
+  const outlineRadius = 2.5;
+  const outlineSteps = 32;
+  const offsets = [[0, 0]];
+  const contours = font
+    .generateShapes(name, selectedStandardSize)
+    .map(shape => shape.getPoints(20))
+    .filter(points => points.length >= 3);
+
+  for (let index = 0; index < outlineSteps; index += 1) {
+    const angle = (index / outlineSteps) * Math.PI * 2;
+    offsets.push([
+      Math.cos(angle) * outlineRadius,
+      Math.sin(angle) * outlineRadius
+    ]);
+  }
+
+  const offsetPolygons = [];
+
+  contours.forEach(points => {
+    offsets.forEach(([offsetX, offsetY]) => {
+      const ring = points.map(point => [
+        point.x + offsetX,
+        point.y + offsetY
+      ]);
+
+      ring.push([...ring[0]]);
+      offsetPolygons.push([ring]);
+    });
+  });
+
+  const mergedPolygons = offsetPolygons.length
+    ? polygonClipping.union(...offsetPolygons)
+    : [];
+
+  const mergedShapes = mergedPolygons
+    .filter(polygon => polygon[0]?.length >= 4)
+    .map(polygon => {
+      const outerPoints = polygon[0]
+        .slice(0, -1)
+        .map(([x, y]) => new THREE.Vector2(x, y));
+      const shape = new THREE.Shape(outerPoints);
+
+      polygon.slice(1).forEach(holeRing => {
+        if (holeRing.length < 4) return;
+
+        const holePoints = holeRing
+          .slice(0, -1)
+          .map(([x, y]) => new THREE.Vector2(x, y));
+
+        shape.holes.push(new THREE.Path(holePoints));
+      });
+
+      return shape;
+    });
+
+  const geometry = new THREE.ExtrudeGeometry(
+    mergedShapes,
+    {
+      depth: 3,
+      curveSegments: 16,
+      bevelEnabled: false
+    }
+  );
+
+  geometry.computeBoundingBox();
+
+  if (geometry.boundingBox) {
+    const centre = new THREE.Vector3();
+    geometry.boundingBox.getCenter(centre);
+    geometry.translate(-centre.x, -centre.y, -centre.z);
+  }
+
+  return new THREE.Mesh(
+    geometry,
+    createMat(backgroundColour)
+  );
+}
+
+function addStandardKeyringLoop(
+  group,
+  textWidth,
+  textSourceCentreY,
+  backgroundColour
+) {
+  const outerRadius = 5;
+  const innerRadius = 2.25;
+  const depth = 3;
+  const loopOverlap = 2.5;
+  const loopX =
+    -(textWidth / 2) - outerRadius + loopOverlap;
+  const loopY =
+    selectedStandardSize * 0.38 - textSourceCentreY;
+  const ringShape = new THREE.Shape();
+
+  ringShape.absarc(
+    0,
+    0,
+    outerRadius,
+    0,
+    Math.PI * 2,
+    false
+  );
+
+  const hole = new THREE.Path();
+
+  hole.absarc(
+    0,
+    0,
+    innerRadius,
+    0,
+    Math.PI * 2,
+    true
+  );
+
+  ringShape.holes.push(hole);
+
+  const ringGeometry = new THREE.ExtrudeGeometry(
+    ringShape,
+    {
+      depth,
+      bevelEnabled: false,
+      curveSegments: 48
+    }
+  );
+
+  ringGeometry.translate(0, 0, -depth / 2);
+
+  const loop = new THREE.Mesh(
+    ringGeometry,
+    createMat(backgroundColour)
+  );
+
+  loop.position.set(loopX, loopY, 0);
+
+  group.add(loop);
+
+  const bridge = new THREE.Mesh(
+    new THREE.CylinderGeometry(2, 2, depth, 48),
+    createMat(backgroundColour)
+  );
+
+  bridge.rotation.x = Math.PI / 2;
+
+  bridge.position.set(
+    loopX + outerRadius,
+    loopY,
+    0
+  );
+
+  group.add(bridge);
+}
+async function buildStandardKeychain(name, design) {
+  const thisBuildNumber = ++previewBuildNumber;
+
+  previewLoading?.classList.remove("hidden");
+  clearKeychainPreview();
+
+  try {
+    const cleanName =
+      String(name || "Alicia")
+        .trim()
+        .replace(/[^a-z0-9 ]/gi, "") ||
+      "Alicia";
+
+    const font = await getStandardPreviewFont();
+
+    const backgroundColour =
+      design.bases?.[0] || "#F55A74";
+
+    const nameColour =
+      design.letters?.[0] || "#FFFFFF";
+
+    const textGeometryForWidth =
+      createStandardTextGeometry(cleanName, font, 1.2);
+
+    textGeometryForWidth.computeBoundingBox();
+
+    const textWidth =
+      textGeometryForWidth.boundingBox
+        ? textGeometryForWidth.boundingBox.max.x -
+          textGeometryForWidth.boundingBox.min.x
+        : cleanName.length * selectedStandardSize * 0.6;
+
+    const textSourceCentreY = Number(
+      textGeometryForWidth.userData.sourceCentreY || 0
+    );
+
+    textGeometryForWidth.dispose();
+
+    const backgroundGroup = createStandardBackground(
+      cleanName,
+      font,
+      backgroundColour
+    );
+
+    const nameGeometry =
+      createStandardTextGeometry(cleanName, font, 1.2);
+
+    const nameMesh = new THREE.Mesh(
+      nameGeometry,
+      createMat(nameColour)
+    );
+
+    // The STL has a 3 mm backing and a 1.2 mm raised name.
+    // Both geometries are centred, so 2.1 mm places the name
+    // directly on the backing's top face (1.5 + 0.6).
+    nameMesh.position.z = 2.1;
+
+    const standardGroup = new THREE.Group();
+
+    standardGroup.add(backgroundGroup);
+    standardGroup.add(nameMesh);
+
+    addStandardKeyringLoop(
+      standardGroup,
+      textWidth,
+      textSourceCentreY,
+      backgroundColour
+    );
+
+    const standardBounds = new THREE.Box3().setFromObject(
+      standardGroup
+    );
+    const standardCentre = new THREE.Vector3();
+    const standardSize = new THREE.Vector3();
+
+    standardBounds.getCenter(standardCentre);
+    standardBounds.getSize(standardSize);
+    standardGroup.position.sub(standardCentre);
+
+    if (thisBuildNumber !== previewBuildNumber) {
+      disposePreviewObject(standardGroup);
+      return;
+    }
+
+    keychain.add(standardGroup);
+
+    keychain.position.set(0, 0, 0);
+    keychain.rotation.set(-0.35, 0.15, 0);
+
+    controls.target.set(0, 0, 0);
+
+    const cameraDistance = Math.max(
+      90,
+      standardSize.x * 1.75
+    );
+
+    camera.position.set(
+      0,
+      10,
+      cameraDistance
+    );
+
+    controls.update();
+  } catch (error) {
+    console.error(
+      "Unable to build normal keychain preview:",
+      error
+    );
+  } finally {
+    if (thisBuildNumber === previewBuildNumber) {
+      previewLoading?.classList.add("hidden");
+    }
+  }
+}
 
 async function buildKeychain(name, design) {
   const thisBuildNumber = ++previewBuildNumber;
@@ -3827,6 +4724,7 @@ function updateNames() {
     names = [
       {
         name: value,
+        quantity: normalizeItemQuantity(singleQuantity?.value || previousItem?.quantity),
 
         // Keep the existing colours/design even when
         // the name or icon changes.
@@ -3868,6 +4766,7 @@ function updateNames() {
 
       return {
         name: value,
+        quantity: getItemQuantity(previousItem),
 
         custom: previousItem?.custom
           ? {
@@ -4017,6 +4916,26 @@ horizontalLetterBtn.onclick = () => {
 };
 
 function createMiniPreview(name, design) {
+  if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
+    const backgroundColour = design.bases?.[0] || "#F55A74";
+    const nameColour = design.letters?.[0] || "#FFFFFF";
+    const cleanName = String(name || "Name").trim() || "Name";
+
+    return `
+      <div
+        class="mini-standard-keychain"
+        style="--mini-background:${backgroundColour}; --mini-name:${nameColour}"
+        aria-label="${escapePresetText(cleanName)} name keychain preview"
+      >
+        <span class="mini-standard-loop" aria-hidden="true"></span>
+        <span class="mini-standard-bridge" aria-hidden="true"></span>
+        <span class="mini-standard-name">
+          ${escapePresetText(cleanName)}
+        </span>
+      </div>
+    `;
+  }
+
   return Array.from(sanitizeName(name))
     .map((letter, i) => {
       const base = design.bases[i % design.bases.length];
@@ -4034,6 +4953,20 @@ function createMiniPreview(name, design) {
       `;
     })
     .join("");
+}
+
+function getDesignDescription(design) {
+  if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
+    return "Flat background · Raised name";
+  }
+
+  return `${
+    design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"
+  } · ${
+    design.letterOrientation === "horizontal"
+      ? "Sideways letters"
+      : "Upright letters"
+  }`;
 }
 
 function renderNameCards() {
@@ -4054,10 +4987,7 @@ function renderNameCards() {
         <span class="price-tag">$${price.toFixed(2)}</span>
       </div>
 
-      <p class="hint">
-        ${design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
-        · ${design.letterOrientation === "horizontal" ? "Sideways letters" : "Upright letters"}
-      </p>
+      <p class="hint">${getDesignDescription(design)}</p>
 
       <div class="mini-chain">
         ${createMiniPreview(item.name, design)}
@@ -4111,6 +5041,55 @@ function updateEditModeText() {
       : "none";
 }
 
+function updatePreviewColourLegend() {
+  if (!previewColourLegend) return;
+
+  const selectedItem = names[selectedIndex];
+  const design = selectedItem ? getDesign(selectedItem) : globalDesign;
+const parts =
+  activeProduct.product_key === STANDARD_PRODUCT_KEY
+    ? [
+        {
+          label: "Background",
+          colours: design.bases?.slice(0, 1) || []
+        },
+        {
+          label: "Name",
+          colours: design.letters?.slice(0, 1) || []
+        }
+      ]
+    : [
+        {
+          label: "Base strip",
+          colours: design.bases || []
+        },
+        {
+          label: "Top caps",
+          colours: design.caps || []
+        },
+        {
+          label: "Raised letters",
+          colours: design.letters || []
+        }
+      ];
+
+  previewColourLegend.innerHTML = parts.map(part => {
+    const uniqueColours = part.colours.filter(
+      (colour, index, list) => list.indexOf(colour) === index
+    );
+    return `
+      <div>
+        <strong>${part.label}</strong>
+        <span>
+          ${uniqueColours.map(colour => `
+            <i style="background:${colour}"></i>${getColourName(colour)}
+          `).join(" · ")}
+        </span>
+      </div>
+    `;
+  }).join("");
+}
+
 function autoSave(){
 
     saveDraft();
@@ -4121,13 +5100,16 @@ setInterval(autoSave,3000);
 
 function renderReviewOrder() {
   let total = 0;
+  const totalKeychains = getTotalKeychainQuantity();
 
-  reviewCount.innerText = names.length;
+  reviewCount.innerText = totalKeychains;
   reviewList.innerHTML = "";
 
   names.forEach((item, index) => {
     const design = getDesign(item);
-    const price = calculatePrice(design, item.name);
+    const unitPrice = calculatePrice(design, item.name);
+    const itemQuantity = getItemQuantity(item);
+    const price = roundMoney(unitPrice * itemQuantity);
 
     total += price;
 
@@ -4137,25 +5119,24 @@ function renderReviewOrder() {
     row.innerHTML = `
       <div class="review-item-heading">
         <div>
-          <strong>${item.name}</strong>
+          <strong>${item.name}${itemQuantity > 1 ? ` × ${itemQuantity}` : ""}</strong>
 
-          <p class="hint">
-            ${
-              design.baseShape === "bubbly"
-                ? "Bubbly Base"
-                : "Ribbed Base"
-            }
-            · ${design.letterOrientation === "horizontal" ? "Sideways letters" : "Upright letters"}
-          </p>
+          <p class="hint">${getDesignDescription(design)}</p>
 
           <p class="item-dimension-note">
             📏 ${getApproximateSizeText(item.name)}
           </p>
         </div>
 
-        <span class="price-tag">
-          $${price.toFixed(2)}
-        </span>
+        <div class="review-line-price">
+          <strong>S$${price.toFixed(2)}</strong>
+          <small>
+            ${itemQuantity > 1
+              ? `Total · S$${unitPrice.toFixed(2)} each`
+              : "Total"
+            }
+          </small>
+        </div>
       </div>
 
       <div class="mini-chain">
@@ -4239,8 +5220,30 @@ function renderReviewOrder() {
       });
     });
 
+  const keychainTotal = roundMoney(total);
+  const giftingBagTotal = calculateGiftingBagTotal(
+    giftingBagQuantity,
+    GIFTING_BAG_PRICE
+  );
+  total = roundMoney(keychainTotal + giftingBagTotal);
+
+  if (giftingBagQuantity > 0) {
+    reviewList.insertAdjacentHTML("beforeend", `
+      <div class="review-item gifting-bag-review-item">
+        <div class="review-item-heading">
+          <div>
+            <strong>🎁 Gifting bag × ${giftingBagQuantity}</strong>
+            <p class="hint">Fits 2 keychains up to 6 characters each; longer names will protrude</p>
+          </div>
+          <span class="price-tag">+$${giftingBagTotal.toFixed(2)}</span>
+        </div>
+      </div>
+    `);
+  }
+
   const deliveryFee =
     collectionMethod.value === "delivery" &&
+    !hasVerifiedLinkedOrder() &&
     total < freeDeliveryThreshold
       ? deliveryFeeSetting
       : 0;
@@ -4253,7 +5256,7 @@ function renderReviewOrder() {
 
   if (checkoutStickyCount) {
     checkoutStickyCount.textContent =
-      `${names.length} keychain${names.length === 1 ? "" : "s"}`;
+      `${totalKeychains} keychain${totalKeychains === 1 ? "" : "s"}`;
   }
 
   if (checkoutStickyTotal) {
@@ -4261,6 +5264,14 @@ function renderReviewOrder() {
   }
 
   reviewPrice.innerHTML = `
+    <span>Keychains</span>
+    <strong>$${keychainTotal.toFixed(2)}</strong>
+
+    ${giftingBagQuantity > 0 ? `
+      <span>Gifting bags (${giftingBagQuantity})</span>
+      <strong>+$${giftingBagTotal.toFixed(2)}</strong>
+    ` : ""}
+
     <span>Subtotal</span>
     <strong>$${total.toFixed(2)}</strong>
 
@@ -4341,6 +5352,11 @@ async function saveOrderToDatabase(order) {
 async function submitOrder() {
   submitStatus.innerText = "Submitting order...";
 
+  if (linkExistingOrderToggle.checked && !hasVerifiedLinkedOrder()) {
+    submitStatus.innerText = "Please verify the original order ID before continuing.";
+    return;
+  }
+
   const unavailableSelections = names.reduce((allNames, item) => {
     getUnavailableDesignColours(getDesign(item)).forEach(name => {
       if (!allNames.includes(name)) allNames.push(name);
@@ -4356,11 +5372,39 @@ async function submitOrder() {
     return;
   }
 
+  if (giftingBagQuantity > 0) {
+    submitStatus.innerText = "Checking gifting bag stock…";
+    await refreshGiftingBagStock();
+
+    if (
+      !giftingBagStockConfirmed ||
+      giftingBagQuantity > getMaxGiftingBagQuantity()
+    ) {
+      submitStatus.innerText = giftingBagStockConfirmed
+        ? `Only ${giftingBagStock} gifting bag${giftingBagStock === 1 ? " is" : "s are"} currently available. Please update the quantity.`
+        : "Gifting bag stock cannot be confirmed right now. Please remove the bag add-on or try again shortly.";
+      return;
+    }
+  }
+
   const orderRef = generateOrderRef();
   const checkoutOrderType = getCheckoutOrderType();
+
+  if (checkoutOrderType === "bulk" && collectionMethod.value !== "delivery") {
+    submitStatus.innerText = "Event orders are available by delivery only.";
+    collectionMethod.value = "delivery";
+    deliveryAddressSection.classList.remove("hidden");
+    refreshUI();
+    return;
+  }
+
   const turnaround = getTurnaroundInfo();
-  const estimatedReadyFrom = addWorkingDays(new Date(), turnaround.minDays);
-  const estimatedReadyTo = addWorkingDays(new Date(), turnaround.maxDays);
+  const estimatedReadyFrom = alignToProductionDay(
+    addWorkingDays(new Date(), turnaround.minDays)
+  );
+  const estimatedReadyTo = alignToProductionDay(
+    addWorkingDays(new Date(), turnaround.maxDays)
+  );
 
   if (["rush", "bulk"].includes(checkoutOrderType) && !requestedCompletionDate.value) {
     submitStatus.innerText = "Please choose a completion date.";
@@ -4390,13 +5434,10 @@ async function submitOrder() {
   const rushAutoApproved =
     checkoutOrderType === "rush" &&
     confirmedRushAssessment?.status === "available";
-  const bulkAutoApproved =
-    checkoutOrderType === "bulk" &&
-    confirmedBulkAssessment?.status === "available";
   const isReviewRequest =
     !isManualOrder &&
-    checkoutOrderType === "rush" &&
-    !rushAutoApproved;
+    (checkoutOrderType === "bulk" ||
+      (checkoutOrderType === "rush" && !rushAutoApproved));
 
   const assignedNeededBy = ["rush", "bulk"].includes(checkoutOrderType)
     ? requestedCompletionDate.value
@@ -4404,17 +5445,14 @@ async function submitOrder() {
 
   neededBy.value = assignedNeededBy;
 
-  const originalSubtotal = names.reduce(
-    (sum, item) =>
-      sum + calculatePrice(getDesign(item), item.name),
-    0
-  );
+  const originalSubtotal = getOrderSubtotal();
 
   const discountAmount = getPromoDiscount(originalSubtotal);
   const subtotal = roundMoney(originalSubtotal - discountAmount);
 
   const delivery =
     collectionMethod.value === "delivery" &&
+    !hasVerifiedLinkedOrder() &&
     originalSubtotal < freeDeliveryThreshold
       ? deliveryFeeSetting
       : 0;
@@ -4424,8 +5462,54 @@ async function submitOrder() {
     : 0;
   const total = roundMoney(subtotal + delivery + rushFee);
 
+  let expandedItemIndex = 0;
+  const orderData = names.flatMap(item => {
+    const design = getDesign(item);
+
+    return Array.from({ length: getItemQuantity(item) }, () => {
+      const includesGiftingBag = expandedItemIndex < giftingBagQuantity;
+      expandedItemIndex += 1;
+
+      return {
+        product_key: activeProduct.product_key,
+        product_name: activeProduct.name,
+        name: item.name,
+        clean_name: sanitizeName(item.name),
+        price: roundMoney(
+          calculatePrice(design, item.name) +
+          (includesGiftingBag ? GIFTING_BAG_PRICE : 0)
+        ),
+        gifting_bag: includesGiftingBag,
+
+        design: {
+          letter_orientation: design.letterOrientation || "vertical",
+          base_shape: {
+            key: design.baseShape || "ribbed",
+            label: BASE_SHAPES[design.baseShape || "ribbed"].label
+          },
+          bases: design.bases.map(hex => ({
+            name: getColourName(hex),
+            hex
+          })),
+          caps: design.caps.map(hex => ({
+            name: getColourName(hex),
+            hex
+          })),
+          letters: design.letters.map(hex => ({
+            name: getColourName(hex),
+            hex
+          }))
+        }
+      };
+    });
+  });
+
   const order = {
     order_ref: orderRef,
+    product_key: activeProduct.product_key,
+    linked_order_ref: hasVerifiedLinkedOrder()
+      ? verifiedLinkedOrder.orderRef
+      : null,
 
     customer_name: customerName.value.trim(),
     customer_email: customerEmail.value.trim(),
@@ -4433,8 +5517,17 @@ async function submitOrder() {
 
     collection_method: collectionMethod.value,
 
+    pickup_scheduled_date:
+      collectionMethod.value !== "delivery" && !hasVerifiedLinkedOrder()
+        ? checkoutPickupDate.value
+        : null,
+    pickup_time_range:
+      collectionMethod.value !== "delivery" && !hasVerifiedLinkedOrder()
+        ? checkoutPickupTime.value
+        : null,
+
     delivery_address:
-      collectionMethod.value === "delivery"
+      collectionMethod.value === "delivery" && !hasVerifiedLinkedOrder()
         ? getDeliveryAddress()
         : "",
 
@@ -4451,7 +5544,7 @@ async function submitOrder() {
       : assignedNeededBy,
     review_status: isReviewRequest
       ? "Pending Review"
-      : rushAutoApproved || bulkAutoApproved
+      : rushAutoApproved
         ? "Auto Approved"
         : null,
 
@@ -4474,47 +5567,10 @@ async function submitOrder() {
       : checkoutOrderType === "rush"
         ? rushAutoApproved ? "Pending Payment" : "Rush Review"
         : checkoutOrderType === "bulk"
-          ? "Pending Payment"
+          ? "Bulk Review"
           : "Pending Payment",
 
-    order_data: names.map(item => {
-      const design = getDesign(item);
-
-      return {
-        name: item.name,
-        clean_name: sanitizeName(item.name),
-        price: calculatePrice(design, item.name),
-
-        design: {
-          letter_orientation:
-            design.letterOrientation || "vertical",
-
-          base_shape: {
-            key: design.baseShape || "ribbed",
-
-            label:
-              BASE_SHAPES[
-                design.baseShape || "ribbed"
-              ].label
-          },
-
-          bases: design.bases.map(hex => ({
-            name: getColourName(hex),
-            hex
-          })),
-
-          caps: design.caps.map(hex => ({
-            name: getColourName(hex),
-            hex
-          })),
-
-          letters: design.letters.map(hex => ({
-            name: getColourName(hex),
-            hex
-          }))
-        }
-      };
-    })
+    order_data: orderData
   };
 
   // First save the order.
@@ -4545,7 +5601,23 @@ async function submitOrder() {
     // Wait for the small reference email request to finish before continuing.
     // This prevents mobile browsers from cancelling it during navigation.
     if (!isReviewRequest) {
-      await requestOrderSavedEmail(orderRef, order.customer_email);
+      await requestOrderSavedEmail(
+        orderRef,
+        order.customer_email,
+        order.linked_order_ref
+      );
+      if (order.linked_order_ref) {
+        const sharedLatestDate = [
+          verifiedLinkedOrder?.latestDate,
+          assignedNeededBy
+        ].filter(Boolean).sort().at(-1) || assignedNeededBy;
+        await sendLinkedOrderConfirmationEmail(
+          order,
+          orderRef,
+          order.linked_order_ref,
+          sharedLatestDate
+        );
+      }
     }
   }
 
@@ -4560,7 +5632,7 @@ async function submitOrder() {
     }
     if (modalParagraphs[2]) {
       modalParagraphs[2].textContent =
-        "Please do not make payment yet. Your timing and final amount must be confirmed first.";
+        "Please do not make payment yet. We’ll confirm the timing and final quote first.";
     }
     if (modalParagraphs[3]) {
       modalParagraphs[3].textContent =
@@ -4576,6 +5648,13 @@ async function submitOrder() {
   // The customer-facing website does not contain the Telegram bot token.
   paymentOrderRef.innerText = orderRef;
   paymentTotal.innerText = `$${total.toFixed(2)}`;
+  if (order.linked_order_ref) {
+    paymentLinkedOrderNote.textContent =
+      `Linked under ${order.linked_order_ref}. Use ${orderRef} for this add-on payment; production and collection will be grouped under ${order.linked_order_ref}.`;
+    paymentLinkedOrderNote.classList.remove("hidden");
+  } else {
+    paymentLinkedOrderNote.classList.add("hidden");
+  }
 
   checkoutScreen.classList.add("hidden");
   paymentScreen.classList.remove("hidden");
@@ -4590,9 +5669,20 @@ async function submitOrder() {
 function updateCollectionNote() {
 
     const subtotal = names.reduce(
-        (sum, item) => sum + calculatePrice(getDesign(item), item.name),
+        (sum, item) =>
+          sum + calculatePrice(getDesign(item), item.name) * getItemQuantity(item),
         0
     );
+
+    if (hasVerifiedLinkedOrder()) {
+        deliveryAddressSection.classList.add("hidden");
+        checkoutPickupSection.classList.add("hidden");
+        deliveryNote.innerHTML = `
+          🔗 <strong>Linked to ${verifiedLinkedOrder.orderRef}.</strong><br><br>
+          This add-on uses the original order’s ${collectionMethod.value === "delivery" ? "delivery address" : "pickup method"}, so there is no second delivery fee. Both parts follow whichever pickup or dispatch date is later.
+        `;
+        return;
+    }
 
     if (collectionMethod.value !== "delivery") {
         const pickupLocation = collectionMethod.value === "pickup_marsiling"
@@ -4600,14 +5690,8 @@ function updateCollectionNote() {
           : "Woodlands MRT";
 
         deliveryNote.innerHTML = `
-            📍 <strong>Pickup Location:</strong> ${pickupLocation}.<br><br>
-
-            Weekdays: <strong>After 7:00 PM</strong><br>
-            Weekends: Selected time ranges will be available.<br><br>
-
-            Once production is ready, we’ll email you. Return to
-            <strong>Check Order</strong> to choose an available pickup
-            date and time range. You can also reschedule there.
+            📍 <strong>${pickupLocation}</strong><br>
+            Choose a Wednesday or Friday slot after 7pm, or a weekend slot.
         `;
 
     } else {
@@ -4617,11 +5701,7 @@ function updateCollectionNote() {
           : displaySettingMoney(deliveryFeeSetting);
 
         deliveryNote.innerHTML = `
-            🚚 <strong>Your selected date is the estimated dispatch date.</strong><br><br>
-            Once your order is on its way, delivery usually takes
-            <strong>2–3 days</strong>, depending on the courier.
-            We’ll share tracking details whenever they’re available.<br><br>
-            Please enter any delivery instructions below.
+            🚚 Tracking details are emailed unless your order is hand delivered.
         `;
 
     }
@@ -4632,8 +5712,10 @@ function refreshUI() {
   renderNameCards();
   renderColourSlots();
   updateEditModeText();
+  updatePreviewColourLegend();
   updateBaseShapeButtons();
   updateLetterOrientationButtons();
+  updateGiftingBagOptions();
   updateCartDisplay();
   updateTurnaroundMessaging();
   renderReviewOrder();
@@ -4642,13 +5724,30 @@ function refreshUI() {
 function buildSelectedPreview() {
   if (!names.length) {
     previewBuildNumber += 1;
-    keychain.clear();
+    clearKeychainPreview();
     previewLoading?.classList.add("hidden");
     return;
   }
 
   const item = names[selectedIndex];
-  buildKeychain(item.name, getDesign(item));
+  const design = getDesign(item);
+
+  if (
+    activeProduct.product_key ===
+    STANDARD_PRODUCT_KEY
+  ) {
+    buildStandardKeychain(
+      item.name,
+      design
+    );
+
+    return;
+  }
+
+  buildKeychain(
+    item.name,
+    design
+  );
 }
 
 function resize() {
@@ -4751,18 +5850,18 @@ function renderCartDrawer() {
   cartDrawerItems.innerHTML = names
     .map((item, index) => {
       const design = getDesign(item);
-      const price = calculatePrice(design, item.name);
-      const baseShape =
-        design.baseShape === "bubbly"
-          ? "Bubbly Base"
-          : "Ribbed Base";
+      const unitPrice = calculatePrice(design, item.name);
+      const itemQuantity = getItemQuantity(item);
+      const price = roundMoney(unitPrice * itemQuantity);
+      const designDescription = getDesignDescription(design);
 
       return `
         <div class="cart-drawer-item">
           <div class="cart-item-top">
             <div>
-              <strong>${item.name}</strong>
-              <p>${baseShape}</p>
+              <strong>${item.name}${itemQuantity > 1 ? ` × ${itemQuantity}` : ""}</strong>
+              <p>${designDescription}</p>
+              ${itemQuantity > 1 ? `<p>${displaySettingMoney(unitPrice)} each</p>` : ""}
               <p class="item-dimension-note">
                 📏 ${getApproximateSizeText(item.name)}
               </p>
@@ -4797,6 +5896,22 @@ function renderCartDrawer() {
       `;
     })
     .join("");
+
+  if (giftingBagQuantity > 0) {
+    cartDrawerItems.insertAdjacentHTML("beforeend", `
+      <div class="cart-drawer-item gifting-bag-cart-item">
+        <div class="cart-item-top">
+          <div>
+            <strong>🎁 Gifting bag × ${giftingBagQuantity}</strong>
+            <p>S$0.50 each</p>
+          </div>
+          <strong class="cart-item-price">
+            $${calculateGiftingBagTotal(giftingBagQuantity, GIFTING_BAG_PRICE).toFixed(2)}
+          </strong>
+        </div>
+      </div>
+    `);
+  }
 }
 
 window.editCartItem = function(index) {
@@ -4955,11 +6070,90 @@ function setStorefrontView(view, options = {}) {
   });
 }
 
+function updateProductCustomiser() {
+  const isNormalKeychain =
+    activeProduct.product_key === STANDARD_PRODUCT_KEY;
+
+    if (designInspiration) {
+  designInspiration.style.display =
+    isNormalKeychain ? "none" : "";
+}
+
+    if (dimensionEstimate) {
+  dimensionEstimate.style.display =
+    isNormalKeychain ? "none" : "";
+}
+
+  document.body.classList.toggle(
+    "standard-product-selected",
+    isNormalKeychain
+  );
+
+  const standardOptions =
+    document.getElementById("standardKeychainOptions");
+
+  if (standardOptions) {
+    standardOptions.style.display =
+      isNormalKeychain ? "block" : "none";
+  }
+
+  document
+    .querySelectorAll(".clicky-only-option")
+    .forEach(section => {
+      section.style.display =
+        isNormalKeychain ? "none" : "";
+    });
+
+  const baseHeading = document.querySelector(
+    '[data-colour-accordion="base"] h3'
+  );
+
+  const letterHeading = document.querySelector(
+    '[data-colour-accordion="letter"] h3'
+  );
+
+  if (baseHeading) {
+    baseHeading.textContent =
+      isNormalKeychain
+        ? "Background Colour"
+        : "Base Colours";
+  }
+
+  if (letterHeading) {
+    letterHeading.textContent =
+      isNormalKeychain
+        ? "Name Colour"
+        : "Letter Colours";
+  }
+
+  const nameLimit = Math.max(
+    1,
+    Number(activeProduct.maximum_characters) || 10
+  );
+
+  singleName.maxLength = nameLimit;
+  nameList.maxLength = nameLimit * 250;
+
+  updateNames();
+}
+
 document
   .querySelectorAll("[data-view-target]")
   .forEach(button => {
     button.addEventListener("click", event => {
       event.preventDefault();
+
+      const productKey = button.dataset.productKey;
+
+      if (productKey) {
+        activeProduct = getProductByKey(
+          productCatalog,
+          productKey
+        );
+
+        updateProductCustomiser();
+      }
+
       setStorefrontView(button.dataset.viewTarget, {
         scrollTo: button.dataset.viewScroll || null
       });
@@ -5020,7 +6214,7 @@ function renderPendingOrderBanner() {
   const needsReview = ["rush", "bulk"].includes(saved.orderType) && !saved.approved;
   pendingOrderBannerRef.textContent = saved.orderRef;
   pendingOrderBannerText.textContent = needsReview
-    ? "Your request is saved. View it here for approval and payment updates."
+    ? "Your request is saved. View it here for quote and payment updates."
     : "Your order is saved, but payment is not complete.";
   resumePendingOrderBtn.textContent = needsReview ? "View Request" : "Continue Payment";
   pendingOrderBanner.classList.remove("hidden");
@@ -5045,10 +6239,14 @@ dismissPendingOrderBtn?.addEventListener("click", () => {
   pendingOrderBanner.classList.add("hidden");
 });
 
-async function requestOrderSavedEmail(orderRef, email) {
+async function requestOrderSavedEmail(orderRef, email, linkedOrderRef = null) {
   try {
     const { data, error } = await supabase.functions.invoke("send-order-saved-email", {
-      body: { order_ref: orderRef, email }
+      body: {
+        order_ref: orderRef,
+        email,
+        linked_order_ref: linkedOrderRef
+      }
     });
 
     if (error) throw error;
@@ -5057,6 +6255,36 @@ async function requestOrderSavedEmail(orderRef, email) {
     return data?.ok === true;
   } catch (error) {
     console.warn("Order reference email was not sent:", error);
+    return false;
+  }
+}
+
+async function sendLinkedOrderConfirmationEmail(order, internalRef, rootRef, latestDate) {
+  if (!shopSettings.status_emails_enabled) return false;
+  const templateId = String(shopSettings.status_email_template_id || "").trim();
+  if (!templateId || !order.customer_email) return false;
+
+  try {
+    await emailjs.send(EMAILJS_SERVICE, templateId, {
+      to_email: order.customer_email,
+      customer_name: order.customer_name || "Customer",
+      order_ref: rootRef,
+      update_title: "Your add-on has been linked! 🩷",
+      update_message: `Your new add-on (${internalRef}) is now linked to ${rootRef}.`,
+      action_title: "One combined order",
+      action_details: `Both parts will follow the later pickup or dispatch date: ${formatEstimateDate(latestDate)}.`,
+      action_button_label: "View Your Order",
+      action_url: `https://little-keeps.vercel.app/?resume_order=${encodeURIComponent(rootRef)}#orderStatusSection`,
+      has_tracking: false,
+      tracking_number: "",
+      tracking_url: "",
+      courier_name: "",
+      collection_method: collectionMethod.options[collectionMethod.selectedIndex]?.text || collectionMethod.value,
+      needed_by: formatEstimateDate(latestDate)
+    });
+    return true;
+  } catch (error) {
+    console.warn("Linked-order confirmation email was not sent:", error);
     return false;
   }
 }
@@ -5071,22 +6299,29 @@ async function retryRememberedOrderEmail() {
 }
 
 startDesignBtn.onclick = () => {
-  setStorefrontView("design", {
-    scrollTo: "designArea"
+  setStorefrontView("shop", {
+    scrollTo: "productsSection"
   });
 };
 
 singleName.addEventListener("input", updateNames);
+singleQuantity?.addEventListener("input", () => {
+  singleQuantity.value = String(normalizeItemQuantity(singleQuantity.value));
+  updateNames();
+});
 
 customerName.addEventListener(
     "input",
     validateForm
 );
 
-customerEmail.addEventListener(
-    "input",
-    validateForm
-);
+customerEmail.addEventListener("input", () => {
+  if (verifiedLinkedOrder &&
+      verifiedLinkedOrder.email !== customerEmail.value.trim().toLowerCase()) {
+    resetLinkedOrderVerification("Email changed — verify the original order again.");
+  }
+  validateForm();
+});
 
 customerPhone.addEventListener(
     "input",
@@ -5116,8 +6351,60 @@ collectionMethod.addEventListener("change", () => {
   validateForm();
 });
 
+checkoutPickupTime?.addEventListener("change", () => {
+  checkoutPickupStatus.textContent = checkoutPickupTime.value
+    ? "Pickup slot selected ✓"
+    : "Please choose a pickup time.";
+  draftHasMeaningfulChanges = true;
+  validateForm();
+});
+
+function setGiftingBagQuantity(value) {
+  giftingBagQuantity = Math.min(
+    Math.max(0, Math.floor(Number(value) || 0)),
+    getMaxGiftingBagQuantity()
+  );
+  draftHasMeaningfulChanges = true;
+  updateGiftingBagOptions();
+  updateCartDisplay();
+  renderReviewOrder();
+  saveDraft();
+}
+
+giftingBagQuantityInput?.addEventListener("change", () => {
+  setGiftingBagQuantity(giftingBagQuantityInput.value);
+});
+
+giftingBagDecrease?.addEventListener("click", () => {
+  setGiftingBagQuantity(giftingBagQuantity - 1);
+});
+
+giftingBagIncrease?.addEventListener("click", () => {
+  setGiftingBagQuantity(giftingBagQuantity + 1);
+});
+
+linkExistingOrderToggle.addEventListener("change", () => {
+  linkExistingOrderPanel.classList.toggle("hidden", !linkExistingOrderToggle.checked);
+  if (!linkExistingOrderToggle.checked) {
+    resetLinkedOrderVerification();
+    collectionMethod.dispatchEvent(new Event("change"));
+  }
+  draftHasMeaningfulChanges = true;
+  validateForm();
+});
+
+verifyExistingOrderBtn.addEventListener("click", verifyExistingOrderLink);
+existingOrderRef.addEventListener("input", () => {
+  existingOrderRef.value = existingOrderRef.value.toUpperCase();
+  if (verifiedLinkedOrder && verifiedLinkedOrder.orderRef !== existingOrderRef.value.trim()) {
+    resetLinkedOrderVerification("Order ID changed — verify it again.");
+  }
+  draftHasMeaningfulChanges = true;
+  validateForm();
+});
+
 rushOrderToggle.addEventListener("change", () => {
-  if (!rushOrderToggle.checked && names.length < bulkOrderQuantity) {
+  if (!rushOrderToggle.checked && getTotalKeychainQuantity() < bulkOrderQuantity) {
     requestedCompletionDate.value = "";
     specialDateCalendar?.clear();
   }
@@ -5280,6 +6567,32 @@ function validateForm() {
     }
 
     else if (
+      linkExistingOrderToggle.checked &&
+      !hasVerifiedLinkedOrder()
+    ) {
+      valid = false;
+      message = "Please verify the original order ID before continuing.";
+    }
+
+    else if (
+      collectionMethod.value !== "delivery" &&
+      !hasVerifiedLinkedOrder() &&
+      (!checkoutPickupDate.value || !isCheckoutPickupDateAvailable(checkoutPickupDate.value))
+    ) {
+      valid = false;
+      message = "Please choose an available pickup date.";
+    }
+
+    else if (
+      collectionMethod.value !== "delivery" &&
+      !hasVerifiedLinkedOrder() &&
+      !checkoutPickupTime.value
+    ) {
+      valid = false;
+      message = "Please choose a pickup time.";
+    }
+
+    else if (
       ["rush", "bulk"].includes(getCheckoutOrderType()) &&
       !requestedCompletionDate.value
     ) {
@@ -5320,7 +6633,7 @@ function validateForm() {
     }
 
 else if (
-  collectionMethod.value === "delivery" &&
+  collectionMethod.value === "delivery" && !hasVerifiedLinkedOrder() &&
   !/^\d{6}$/.test(deliveryPostalCode.value.trim())
 ) {
   valid = false;
@@ -5328,7 +6641,7 @@ else if (
 }
 
 else if (
-  collectionMethod.value === "delivery" &&
+  collectionMethod.value === "delivery" && !hasVerifiedLinkedOrder() &&
   deliveryAddressVerifiedPostal !== deliveryPostalCode.value.trim() &&
   !deliveryAddressManualOverride
 ) {
@@ -5337,7 +6650,7 @@ else if (
 }
 
 else if (
-  collectionMethod.value === "delivery" &&
+  collectionMethod.value === "delivery" && !hasVerifiedLinkedOrder() &&
   !deliveryAddressLine1.value.trim()
 ) {
   valid = false;
@@ -5345,7 +6658,7 @@ else if (
 }
 
 else if (
-  collectionMethod.value === "delivery" &&
+  collectionMethod.value === "delivery" && !hasVerifiedLinkedOrder() &&
   !deliveryAddressLine2.value.trim()
 ) {
   valid = false;
@@ -5353,7 +6666,7 @@ else if (
 }
 
 else if (
-  collectionMethod.value === "delivery" &&
+  collectionMethod.value === "delivery" && !hasVerifiedLinkedOrder() &&
   !confirmDeliveryAddress.checked
 ) {
   valid = false;
@@ -5390,11 +6703,16 @@ function saveDraft() {
     customerName: customerName.value,
     customerEmail: customerEmail.value,
     customerPhone: customerPhone.value,
+    linkExistingOrderRequested: linkExistingOrderToggle.checked,
+    existingOrderRef: existingOrderRef.value,
 
     neededBy: neededBy.value,
     rushOrderRequested: rushOrderToggle.checked,
     requestedCompletionDate: requestedCompletionDate.value,
     collectionMethod: collectionMethod.value,
+    giftingBagQuantity,
+    checkoutPickupDate: checkoutPickupDate.value,
+    checkoutPickupTime: checkoutPickupTime.value,
     deliveryAddressLine1:
       deliveryAddressLine1.value,
 
@@ -5440,6 +6758,10 @@ continueDraftBtn.onclick = () => {
     Array.isArray(draftData.names)
       ? draftData.names
       : [];
+
+  names.forEach(item => {
+    item.quantity = getItemQuantity(item);
+  });
 
   selectedIndex =
     Number.isInteger(draftData.selectedIndex)
@@ -5502,6 +6824,18 @@ continueDraftBtn.onclick = () => {
   customerPhone.value =
     draftData.customerPhone || "";
 
+  linkExistingOrderToggle.checked =
+    Boolean(draftData.linkExistingOrderRequested);
+  existingOrderRef.value =
+    String(draftData.existingOrderRef || "").toUpperCase();
+  linkExistingOrderPanel.classList.toggle(
+    "hidden",
+    !linkExistingOrderToggle.checked
+  );
+  if (linkExistingOrderToggle.checked) {
+    resetLinkedOrderVerification("For security, please verify the original order again.");
+  }
+
   neededBy.value =
     draftData.neededBy || "";
 
@@ -5513,6 +6847,19 @@ continueDraftBtn.onclick = () => {
 
   collectionMethod.value =
     draftData.collectionMethod || "pickup";
+
+  giftingBagQuantity = Math.min(
+    Math.max(0, Number(draftData.giftingBagQuantity) || 0),
+    giftingBagStockConfirmed
+      ? getMaxGiftingBagQuantity()
+      : Math.ceil(getTotalKeychainQuantity() / 2)
+  );
+
+  checkoutPickupDate.value =
+    draftData.checkoutPickupDate || "";
+
+  checkoutPickupTime.dataset.draftValue =
+    draftData.checkoutPickupTime || "";
 
   deliveryAddressLine1.value =
     draftData.deliveryAddressLine1 || "";
@@ -5553,6 +6900,8 @@ continueDraftBtn.onclick = () => {
   singleName.value =
     draftData.singleName || "Alicia";
 
+  singleQuantity.value = String(getItemQuantity(names[0]));
+
   nameList.value =
     draftData.nameList || "Alicia\nBen\nChloe";
 
@@ -5566,6 +6915,11 @@ continueDraftBtn.onclick = () => {
   draftHasMeaningfulChanges = true;
 
   refreshUI();
+  if (checkoutPickupCalendar && checkoutPickupDate.value) {
+    checkoutPickupCalendar.setDate(checkoutPickupDate.value, false);
+  }
+  updateCheckoutPickupTimeOptions(checkoutPickupTime.dataset.draftValue || "");
+  delete checkoutPickupTime.dataset.draftValue;
   buildSelectedPreview();
   validateForm();
 };
@@ -5754,6 +7108,7 @@ function getCustomerStatusStep(status) {
   if (status === "Completed") return 5;
   if (status === "Out for Delivery") return 4;
   if (status === "Ready for Pickup/Delivery") return 3;
+  if (status === "Assembly Complete") return 2;
   if (status === "Printing") return 2;
   if (status === "Payment Verified") return 1;
   return 0;
@@ -5768,6 +7123,7 @@ function formatCustomerStatus(status) {
     "Payment Verification": "Payment being checked",
     "Payment Verified": "Payment verified",
     "Printing": "In production",
+    "Assembly Complete": "Assembly complete - preparing your handoff",
     "Ready for Pickup/Delivery": "Ready for pickup or delivery",
     "Out for Delivery": "Ready and out for delivery",
     "Completed": "Completed"
@@ -5815,27 +7171,6 @@ function formatPreferredDate(value) {
     month: "short",
     year: "numeric"
   });
-}
-
-function getPickupTimeRanges(dateValue) {
-  if (!dateValue) return [];
-
-  const date = new Date(`${dateValue}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return [];
-
-  const day = date.getDay();
-
-  return day === 0 || day === 6
-    ? [
-        "10:00 AM - 12:00 PM",
-        "2:00 PM - 4:00 PM",
-        "7:00 PM - 8:00 PM"
-      ]
-    : [
-        "7:00 PM - 7:30 PM",
-        "7:30 PM - 8:00 PM",
-        "8:00 PM - 8:30 PM"
-      ];
 }
 
 function getPickupDateBounds() {
@@ -5927,6 +7262,7 @@ window.scheduleTrackedPickup = async function(
 };
 
 function renderCustomerOrderStatus(order) {
+  const sharedOrderRef = order.linked_order_ref || order.order_ref;
   const paymentExpired =
     order.payment_type !== "Paid" &&
     (order.status === "Payment Expired" ||
@@ -5955,7 +7291,11 @@ function renderCustomerOrderStatus(order) {
   const timingValue = isSpecialRequest
     ? formatPreferredDate(order.requested_completion_date || order.needed_by)
     : order.estimated_ready_from && order.estimated_ready_to
-      ? `${formatPreferredDate(order.estimated_ready_from)}–${formatPreferredDate(order.estimated_ready_to)}`
+      ? formatDateRange(
+          order.estimated_ready_from,
+          order.estimated_ready_to,
+          formatPreferredDate
+        )
       : formatPreferredDate(order.needed_by);
   const trackingUrl = (() => {
     try {
@@ -5970,15 +7310,14 @@ function renderCustomerOrderStatus(order) {
     order.pickup_scheduled_date || pickupDateBounds.minimum;
   const pickupTimeRange = order.pickup_time_range || "";
   const pickupRanges = getPickupTimeRanges(pickupDate);
-  const canSchedulePickup =
-    !methodIsDelivery &&
-    effectiveStatus === "Ready for Pickup/Delivery";
+  const canSchedulePickup = false;
 
   orderStatusResult.innerHTML = `
     <div class="order-status-result-heading">
       <div>
         <small>Order reference</small>
-        <strong>${escapePresetText(order.order_ref)}</strong>
+        <strong>${escapePresetText(sharedOrderRef)}</strong>
+        ${order.linked_order_ref ? `<small>Add-on payment reference: ${escapePresetText(order.order_ref)}</small>` : ""}
       </div>
       <span>${escapePresetText(formatCustomerStatus(effectiveStatus))}</span>
     </div>
@@ -6010,7 +7349,7 @@ function renderCustomerOrderStatus(order) {
       ${methodIsDelivery ? `
         <p>
           <span>Delivery timing</span>
-          <strong>Usually arrives within 2–3 days after dispatch</strong>
+          <strong>Allow 1–3 days after dispatch</strong>
         </p>
       ` : ""}
       ${!methodIsDelivery && order.pickup_scheduled_date ? `
@@ -6074,7 +7413,7 @@ function renderCustomerOrderStatus(order) {
           class="submit-btn"
           type="button"
           onclick='window.scheduleTrackedPickup(
-            ${JSON.stringify(order.order_ref)},
+            ${JSON.stringify(sharedOrderRef)},
             ${JSON.stringify(statusCustomerEmail.value.trim())},
             this
           )'
@@ -6082,12 +7421,11 @@ function renderCustomerOrderStatus(order) {
           ${order.pickup_scheduled_date ? "Reschedule Pickup" : "Confirm Pickup Time"}
         </button>
       </div>
-    ` : !methodIsDelivery && activeStep < 3 ? `
+    ` : !methodIsDelivery && !order.pickup_scheduled_date ? `
       <div class="pickup-scheduling-note">
-        <strong>Pickup timing comes later</strong>
+        <strong>Pickup slot not set</strong>
         <p>
-          Once production is ready, this page will unlock available
-          pickup dates and time ranges.
+          Please contact Little Keeps to arrange your pickup timing.
         </p>
       </div>
     ` : ""}
@@ -6241,6 +7579,7 @@ mobilePreviewToggle?.addEventListener("click", () => {
 });
 
 setOrderType("single");
+void refreshGiftingBagStock();
 cartHasItems = false;
 draftHasMeaningfulChanges = false;
 
