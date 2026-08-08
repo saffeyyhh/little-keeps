@@ -20,7 +20,9 @@ import {
   formatProductionMinutes,
   getBulkApprovalPolicy,
   getFreeAmsPrinters,
-  getShippingLabelData,
+  getInternalBasketLabelData,
+  groupLinkedOrdersForAdmin,
+  normalizePickupTimeOptions,
   getDeliveryRouteGroup,
   getOperationalBuckets,
   getProductionPreviewOrders,
@@ -186,9 +188,6 @@ document.querySelector("#app").innerHTML = `
             <option value="Payment Expired">Expired checkouts</option>
             <option value="Payment Verified">Ready to print</option>
             <option value="Printing">Printing</option>
-            <option value="Assembly Complete">Assembly complete</option>
-            <option value="Ready for Pickup/Delivery">Ready</option>
-            <option value="Out for Delivery">Out for Delivery</option>
             <option value="Completed">Completed</option>
             <option value="Refunded">Refunded</option>
           </select>
@@ -348,7 +347,11 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   status_email_template_id: "",
   review_url: "https://www.instagram.com/madebylittlekeeps/",
   stripe_enabled: false,
-  unavailable_colours: []
+  unavailable_colours: [],
+  pickup_time_options: {
+    weekday: ["7:00 PM", "7:30 PM", "8:00 PM"],
+    weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
+  }
 };
 
 let adminShopSettings = { ...DEFAULT_ADMIN_SHOP_SETTINGS };
@@ -393,7 +396,15 @@ const ACTIVE_ORDER_STATUSES = [
   "Payment Verified",
   "Printing",
   "Assembly Complete",
-  "Ready for Pickup/Delivery",
+  "Pending Pickup",
+  "Pending Delivery",
+  "Out for Delivery"
+];
+
+const FULFILMENT_STATUSES = [
+  "Assembly Complete",
+  "Pending Pickup",
+  "Pending Delivery",
   "Out for Delivery"
 ];
 
@@ -620,7 +631,8 @@ const ORDER_PROGRESS = {
   "Payment Verified": { percent: 30, label: "Ready for production" },
   "Printing": { percent: 58, label: "Printing parts" },
   "Assembly Complete": { percent: 76, label: "Assembly complete - ready to notify" },
-  "Ready for Pickup/Delivery": { percent: 84, label: "Ready to fulfil" },
+  "Pending Pickup": { percent: 88, label: "Pending pickup" },
+  "Pending Delivery": { percent: 88, label: "Pending delivery" },
   "Out for Delivery": { percent: 94, label: "Out for delivery" },
   "Completed": { percent: 100, label: "Completed" }
   ,"Refunded": { percent: 100, label: "Refunded" }
@@ -923,9 +935,7 @@ function renderTodayWorkspace(orders) {
   const production = priority.filter(order =>
     ["Payment Verified", "Printing"].includes(order.status)
   );
-  const fulfilment = priority.filter(order =>
-    ["Assembly Complete", "Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
-  );
+  const fulfilment = priority.filter(order => FULFILMENT_STATUSES.includes(order.status));
   const reprints = productionJobs.filter(job =>
     ["failed", "reprint_needed"].includes(job.quality_status)
   );
@@ -1066,6 +1076,7 @@ function formatPromoDate(value) {
 function renderSettingsWorkspace() {
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
+  const pickupTimes = normalizePickupTimeOptions(adminShopSettings.pickup_time_options);
   const productNumberField = (product, field, label, step = "0.01") => `
     <label class="settings-field">
       <span>${label}</span>
@@ -1181,6 +1192,19 @@ function renderSettingsWorkspace() {
             ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
           </div>
           <p class="hint">Product prices are managed separately above.</p>
+        </section>
+
+        <section class="settings-card">
+          <h3>Exact pickup times</h3>
+          <p class="hint">Enter one selectable time per line. Customers choose an exact appointment, not a time range.</p>
+          <label class="settings-field">
+            <span>Wednesday & Friday</span>
+            <textarea name="pickup_times_weekday" rows="4">${escapeAdminHtml(pickupTimes.weekday.join("\n"))}</textarea>
+          </label>
+          <label class="settings-field">
+            <span>Saturday & Sunday</span>
+            <textarea name="pickup_times_weekend" rows="4">${escapeAdminHtml(pickupTimes.weekend.join("\n"))}</textarea>
+          </label>
         </section>
 
         <section class="settings-card">
@@ -1492,6 +1516,14 @@ async function saveShopSettings(event) {
     .getAll("unavailable_colours")
     .map(name => String(name).trim())
     .filter(Boolean);
+  const parsePickupTimes = name => String(form.get(name) || "")
+    .split(/[\n,]+/)
+    .map(value => value.trim())
+    .filter(Boolean);
+  updates.pickup_time_options = normalizePickupTimeOptions({
+    weekday: parsePickupTimes("pickup_times_weekday"),
+    weekend: parsePickupTimes("pickup_times_weekend")
+  });
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase.from("shop_settings").upsert(updates).select().single();
@@ -1546,7 +1578,10 @@ async function saveShopSettings(event) {
     adminProductCatalog = normalizeProductCatalog(savedProducts);
   }
 
-  adminShopSettings = data;
+  adminShopSettings = {
+    ...data,
+    pickup_time_options: normalizePickupTimeOptions(data.pickup_time_options)
+  };
   alert("Shop settings saved ✓");
   renderSettingsWorkspace();
 }
@@ -1938,8 +1973,21 @@ window.moveAssemblyToFulfilment = async function(id) {
   await loadOrders();
 };
 
+function getOrderFamily(order) {
+  const rootRef = String(order?.linked_order_ref || order?.order_ref || "").trim().toLowerCase();
+  return latestOrders.filter(item =>
+    String(item?.linked_order_ref || item?.order_ref || "").trim().toLowerCase() === rootRef
+  );
+}
+
+async function updateOrderFamily(order, updateData) {
+  const ids = getOrderFamily(order).map(item => item.id);
+  if (!ids.length) return { error: new Error("Order family could not be found.") };
+  return supabase.from("orders").update(updateData).in("id", ids);
+}
+
 window.markReady = async function(id) {
-  const order = latestOrders.find(
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(
     order => String(order.id) === String(id)
   );
 
@@ -1978,38 +2026,13 @@ window.markReady = async function(id) {
   }
 
   const isDelivery = order.collection_method === "delivery";
-  const dispatchDetails = {};
-
-  if (isDelivery) {
-    const courierName = prompt(
-      "Courier name (for example SingPost, Ninja Van or GrabExpress):",
-      order.courier_name || ""
-    );
-    if (courierName === null) return;
-
-    const trackingNumber = prompt(
-      "Tracking number (optional):",
-      order.tracking_number || ""
-    );
-    if (trackingNumber === null) return;
-
-    const trackingUrl = prompt(
-      "Tracking link (optional):",
-      order.tracking_url || ""
-    );
-    if (trackingUrl === null) return;
-
-    dispatchDetails.courier_name = courierName.trim();
-    dispatchDetails.tracking_number = trackingNumber.trim();
-    dispatchDetails.tracking_url = trackingUrl.trim();
-  }
 
   const ok = confirm(
     isDelivery
-      ? `Finish ${order.order_ref} and start delivery?\n\n` +
-        `This will deduct any remaining parts, mark it ready and out for delivery, then send one delivery email.`
+      ? `Move ${order.order_ref} to Pending Delivery?\n\n` +
+        `This deducts any remaining parts and keeps delivery completion inside Fulfilment.`
       : `Mark ${order.order_ref} as ready for pickup?\n\n` +
-        `This will deduct any remaining parts and send the pickup scheduling email.`
+        `Pickup is already booked for ${formatDate(order.pickup_scheduled_date)} at ${order.pickup_time_range || "the selected time"}.`
   );
 
   if (!ok) return;
@@ -2029,33 +2052,22 @@ window.markReady = async function(id) {
   }
 
   const finalStatus = isDelivery
-    ? "Out for Delivery"
-    : "Ready for Pickup/Delivery";
+    ? "Pending Delivery"
+    : "Pending Pickup";
   const updatedOrder = {
     ...order,
-    ...dispatchDetails,
     status: finalStatus
   };
 
-  if (isDelivery) {
-    const { error: dispatchError } = await supabase
-      .from("orders")
-      .update({
-        ...dispatchDetails,
-        status: finalStatus,
-        status_updated_at: new Date().toISOString()
-      })
-      .eq("id", id);
-
-    if (dispatchError) {
-      console.error("Unable to start delivery:", dispatchError);
-      alert(
-        "The order was completed and stock was deducted, but delivery could not be started.\n\n" +
-        "Open the order and set its status to Ready / Out for delivery."
-      );
-      await loadOrders();
-      return;
-    }
+  const familyIds = getOrderFamily(order).map(item => item.id);
+  const { error: readyError } = await supabase
+    .from("orders")
+    .update({ status: finalStatus, status_updated_at: new Date().toISOString() })
+    .in("id", familyIds);
+  if (readyError) {
+    alert("Stock was deducted, but the fulfilment status could not be updated.");
+    await loadOrders();
+    return;
   }
 
   try {
@@ -2067,8 +2079,8 @@ window.markReady = async function(id) {
     if (emailResult.sent) {
       alert(
         isDelivery
-          ? `Order finished, delivery started and one delivery email was sent to ${order.customer_email}.`
-          : `Order finished and the pickup scheduling email was sent to ${order.customer_email}.`
+          ? `Order is pending delivery and an update was sent to ${order.customer_email}.`
+          : `Order is pending pickup on ${formatDate(order.pickup_scheduled_date)} at ${order.pickup_time_range}, and an update was sent to ${order.customer_email}.`
       );
     } else {
       alert(
@@ -2079,7 +2091,7 @@ window.markReady = async function(id) {
   } catch (error) {
     console.error("Ready email failed:", error);
     alert(
-      `${isDelivery ? "Delivery started" : "Order is ready"} and stock was deducted, but the customer email failed to send.\n\n` +
+      `${isDelivery ? "Order is pending delivery" : "Order is pending pickup"} and stock was deducted, but the customer email failed to send.\n\n` +
       (error?.text || error?.message || "Unknown EmailJS error")
     );
   }
@@ -2441,8 +2453,16 @@ function getOrderKeychainCount(order) {
   return (order.order_data || []).length;
 }
 
+function getItemGiftingBagQuantity(item) {
+  const storedQuantity = Math.max(0, Math.floor(Number(item?.gifting_bag_quantity) || 0));
+  return storedQuantity || (item?.gifting_bag === true ? 1 : 0);
+}
+
 function getOrderGiftingBagCount(order) {
-  return (order.order_data || []).filter(item => item.gifting_bag === true).length;
+  return (order.order_data || []).reduce(
+    (sum, item) => sum + getItemGiftingBagQuantity(item),
+    0
+  );
 }
 
 function getWhatsAppHref(phoneValue) {
@@ -2538,7 +2558,7 @@ function renderStats(orders) {
   );
 
   const readyOrders = activeOrders.filter(
-    order => ["Assembly Complete", "Ready for Pickup/Delivery"].includes(order.status)
+    order => ["Assembly Complete", "Pending Pickup", "Pending Delivery"].includes(order.status)
   ).length;
 
   statsContainer.innerHTML = `
@@ -2596,7 +2616,7 @@ function renderOperationsSummary(orders) {
     ["Rush Review", "Bulk Review"].includes(order.status)
   ).length;
   const ready = visibleOrders.filter(
-    order => ["Assembly Complete", "Ready for Pickup/Delivery"].includes(order.status)
+    order => ["Assembly Complete", "Pending Pickup", "Pending Delivery"].includes(order.status)
   ).length;
   const delivery = visibleOrders.filter(order =>
     ACTIVE_ORDER_STATUSES.includes(order.status) &&
@@ -3318,7 +3338,11 @@ function renderOrders(orders) {
   const fulfilmentValue = fulfilmentFilter.value;
   const dateSortValue = orderDateSort.value;
 
-  const filteredOrders = orders.filter(order => {
+  const groupedOrders = groupLinkedOrdersForAdmin(orders);
+  const filteredOrders = groupedOrders.filter(order => {
+    if (!order.archived_at && FULFILMENT_STATUSES.includes(order.status)) {
+      return false;
+    }
     const matchesSearch =
       (order.order_ref || "").toLowerCase().includes(searchText) ||
       (order.customer_name || "").toLowerCase().includes(searchText) ||
@@ -3487,6 +3511,9 @@ function renderOrders(orders) {
             <span>Select for production preview</span>
           </label>
           <p class="order-ref-label">${orderRef}</p>
+          ${order.linked_children?.length ? `
+            <span class="linked-order-badge">${order.linked_children.length} add-on${order.linked_children.length === 1 ? "" : "s"} combined under this ID</span>
+          ` : ""}
           <h3>${customerName}</h3>
           <div class="order-summary-badges">
             <span class="order-status-badge">${escapeAdminHtml(order.status || "-")}</span>
@@ -3641,7 +3668,8 @@ function renderOrders(orders) {
         ` : ""}
 
         ${order.customer_email && [
-          "Ready for Pickup/Delivery",
+          "Pending Pickup",
+          "Pending Delivery",
           "Out for Delivery",
           "Completed"
         ].includes(order.status) ? `
@@ -3662,7 +3690,7 @@ function renderOrders(orders) {
 
         ${whatsappHref &&
           order.collection_method !== "delivery" &&
-          order.status === "Ready for Pickup/Delivery" ? `
+          order.status === "Pending Pickup" ? `
           <button
             type="button"
             class="approve-request-action"
@@ -3674,6 +3702,10 @@ function renderOrders(orders) {
 
         <button type="button" onclick='window.downloadOrderPdf(${JSON.stringify(orderId)}, this)'>
           Download PDF
+        </button>
+
+        <button type="button" class="shipping-label-action" onclick='window.printBasketLabel(${JSON.stringify(orderId)})'>
+          Print Basket Label
         </button>
 
         ${!order.archived_at && !["Completed", "Refunded"].includes(order.status) ? `
@@ -3709,20 +3741,6 @@ function renderOrders(orders) {
       <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid - ready to print</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
       <option value="Assembly Complete" ${order.status === "Assembly Complete" ? "selected" : ""}>Assembly complete - ready to notify</option>
-      ${order.collection_method === "delivery"
-        ? `
-          <option
-            value="Out for Delivery"
-            ${["Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status) ? "selected" : ""}
-          >
-            Ready / Out for delivery
-          </option>
-        `
-        : `
-          <option value="Ready for Pickup/Delivery" ${order.status === "Ready for Pickup/Delivery" ? "selected" : ""}>Ready for pickup</option>
-        `
-      }
-      <option value="Completed" ${order.status === "Completed" ? "selected" : ""}>Completed</option>
       <option value="Refunded" ${order.status === "Refunded" ? "selected" : ""}>Refunded</option>
     </select>
   </div>
@@ -3761,7 +3779,7 @@ function renderOrders(orders) {
             ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
           </span>
 
-          ${item.gifting_bag ? `<span class="assembly-tag">🎁 Gifting Bag</span>` : ""}
+          ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
         </div>
 
         <div class="mini-chain">
@@ -3777,9 +3795,9 @@ function renderOrders(orders) {
 }
 
 function renderFulfilmentWorkspace(orders) {
-  const ready = orders.filter(order =>
+  const ready = groupLinkedOrdersForAdmin(orders).filter(order =>
     !order.archived_at &&
-    ["Assembly Complete", "Ready for Pickup/Delivery", "Out for Delivery"].includes(order.status)
+    FULFILMENT_STATUSES.includes(order.status)
   );
   const deliveries = ready
     .filter(order => order.collection_method === "delivery")
@@ -3794,39 +3812,51 @@ function renderFulfilmentWorkspace(orders) {
   const fulfilmentCard = order => `
     <article class="fulfilment-card">
       <label class="route-stop-select">
-        ${order.collection_method === "delivery" ? `
-          <input
-            type="checkbox"
-            data-route-address="${escapeAdminHtml(order.delivery_address || "")}"
-            data-label-order-id="${escapeAdminHtml(String(order.id))}"
-          >
-        ` : ""}
-        <span>${order.collection_method === "delivery" ? "Route stop" : "Pickup"}</span>
+        <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
+        <span>Basket label</span>
       </label>
       <div>
         <strong>${escapeAdminHtml(order.order_ref || "-")} · ${escapeAdminHtml(order.customer_name || "Customer")}</strong>
-        <p>${escapeAdminHtml(
-          order.collection_method === "delivery"
-            ? order.delivery_address || "Address missing"
-            : `${getPickupLocation(order.collection_method)} · ${order.pickup_scheduled_date ? formatDate(order.pickup_scheduled_date) : "Timing not selected"}`
-        )}</p>
+        <p><span class="order-status-badge">${escapeAdminHtml(order.status || "-")}</span></p>
+        ${order.collection_method === "delivery" ? `
+          <p>${escapeAdminHtml(order.delivery_address || "Address missing")}</p>
+          <label class="route-stop-select">
+            <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
+            <span>Include as route stop</span>
+          </label>
+        ` : `
+          <p><strong>${escapeAdminHtml(getPickupLocation(order.collection_method))}</strong><br>
+          ${order.pickup_scheduled_date
+            ? `${formatDate(order.pickup_scheduled_date)} at ${escapeAdminHtml(order.pickup_time_range || "time not selected")}`
+            : "Pickup appointment not selected"}</p>
+        `}
+        ${order.linked_children?.length ? `<p class="hint">Includes ${order.linked_children.length} linked add-on${order.linked_children.length === 1 ? "" : "s"} under this order ID.</p>` : ""}
         ${renderOrderAlerts(order, true)}
         ${renderProductionNote(order, true)}
         ${renderAssemblyChecklist(order, true)}
       </div>
       <div class="fulfilment-card-actions">
-        ${order.collection_method === "delivery" ? `
-          <button type="button" class="shipping-label-action" onclick='window.printShippingLabel(${JSON.stringify(String(order.id))})'>
-            Print Shipping Label
-          </button>
-        ` : ""}
+        <button type="button" class="shipping-label-action" onclick='window.printBasketLabel(${JSON.stringify(String(order.id))})'>
+          Print Basket Label
+        </button>
         ${order.status === "Assembly Complete" ? `
           <button type="button" class="ready-btn" onclick='window.markReady(${JSON.stringify(String(order.id))})'>
             ${order.collection_method === "delivery"
-              ? "Dispatch & Send Delivery Email"
-              : "Send Pickup-Ready Email"}
+              ? "Set Pending Delivery"
+              : "Set Pending Pickup"}
           </button>
-        ` : order.customer_email ? `
+        ` : ""}
+        ${order.status === "Pending Delivery" ? `
+          <button type="button" class="ready-btn" onclick='window.startDelivery(${JSON.stringify(String(order.id))})'>Start Delivery</button>
+        ` : ""}
+        ${order.status === "Pending Pickup" ? `
+          <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Complete Pickup</button>
+        ` : ""}
+        ${order.status === "Out for Delivery" ? `
+          <button type="button" class="approve-request-action" onclick='window.copyHandDeliveredWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Delivered</button>
+          <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Complete Delivery</button>
+        ` : ""}
+        ${order.status !== "Assembly Complete" && order.customer_email ? `
           <button type="button" class="approve-request-action" onclick='window.resendCurrentStatusEmail(${JSON.stringify(String(order.id))}, this)'>
             Resend Customer Email
           </button>
@@ -3863,8 +3893,8 @@ function renderFulfilmentWorkspace(orders) {
         <span>Choose delivery stops, then open them in Maps. This helps plan the route but is not guaranteed live optimisation.</span>
       </div>
       <div class="route-assistance-actions">
-        <button type="button" class="shipping-label-action" onclick="window.printSelectedShippingLabels()">Print Selected Labels</button>
-        <button type="button" class="shipping-label-secondary" onclick="window.printAllShippingLabels()">Print All ${deliveries.length || ""} Labels</button>
+        <button type="button" class="shipping-label-action" onclick="window.printSelectedBasketLabels()">Print Selected Basket Labels</button>
+        <button type="button" class="shipping-label-secondary" onclick="window.printAllBasketLabels()">Print All ${ready.length || ""} Basket Labels</button>
         <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
       </div>
     </div>
@@ -4905,7 +4935,7 @@ function getOrderInventoryNeeds(order) {
   add("Metal Large D Ring", (order.order_data || []).length);
   add(
     "Gifting Bag",
-    (order.order_data || []).filter(item => item.gifting_bag === true).length
+    getOrderGiftingBagCount(order)
   );
 
   return needs;
@@ -6461,7 +6491,7 @@ async function renderAssemblyQueue() {
               ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
             </span>
 
-            ${item.gifting_bag ? `<span class="assembly-tag">🎁 Gifting Bag</span>` : ""}
+            ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
           </div>
         </div>
 
@@ -9277,8 +9307,11 @@ async function generateCompactOrderPdfAttachment(order, items) {
             contentWidth - 12
           )
         : []),
-      ...(item.gifting_bag
-        ? pdf.splitTextToSize("Packaging: Gifting bag included", contentWidth - 12)
+      ...(getItemGiftingBagQuantity(item)
+        ? pdf.splitTextToSize(
+            `Packaging: ${getItemGiftingBagQuantity(item)} gifting bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"} supplied separately`,
+            contentWidth - 12
+          )
         : [])
     ];
     const cardHeight = 34 + colourLines.length * 3.8;
@@ -9979,14 +10012,10 @@ window.copyPickupWhatsAppReminder = async function(id, button) {
     return;
   }
 
-  const manageUrl =
-    `https://little-keeps.vercel.app/?resume_order=${encodeURIComponent(order.order_ref || "")}` +
-    "#orderStatusSection";
   const customerName = String(order.customer_name || "there").trim();
   const message =
     `Hi ${customerName}! Your Little Keeps order ${order.order_ref || ""} is ready for pickup at ${getPickupLocation(order.collection_method)} 🩷\n\n` +
-    `Please choose an available pickup date and time here:\n${manageUrl}\n\n` +
-    `Enter the email used for your order. If you cannot find our ready email, please check your spam or junk folder too. Thank you!`;
+    `Your pickup is booked for ${formatDate(order.pickup_scheduled_date)} at ${order.pickup_time_range || "the selected time"}. See you then, thank you!`;
 
   try {
     await navigator.clipboard.writeText(message);
@@ -10015,22 +10044,80 @@ window.copyPickupWhatsAppReminder = async function(id, button) {
   }
 };
 
+window.startDelivery = async function(id) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order) return;
+  const courierName = prompt(
+    "Courier name (leave blank if Little Keeps is delivering):",
+    order.courier_name || ""
+  );
+  if (courierName === null) return;
+  const trackingNumber = prompt("Tracking number (optional):", order.tracking_number || "");
+  if (trackingNumber === null) return;
+  const trackingUrl = prompt("Tracking link (optional):", order.tracking_url || "");
+  if (trackingUrl === null) return;
+
+  const updateData = {
+    status: "Out for Delivery",
+    status_updated_at: new Date().toISOString(),
+    courier_name: courierName.trim(),
+    tracking_number: trackingNumber.trim(),
+    tracking_url: trackingUrl.trim()
+  };
+  const { error } = await updateOrderFamily(order, updateData);
+  if (error) return alert("Unable to start delivery.");
+  await sendOrderStatusEmail({ ...order, ...updateData }, "Out for Delivery");
+  await loadOrders();
+};
+
+window.completeFulfilment = async function(id) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order || !confirm(`Complete ${order.order_ref}?`)) return;
+  const updateData = { status: "Completed", status_updated_at: new Date().toISOString() };
+  const { error } = await updateOrderFamily(order, updateData);
+  if (error) return alert("Unable to complete this order.");
+  await sendOrderStatusEmail({ ...order, ...updateData }, "Completed");
+  await loadOrders();
+};
+
+window.copyHandDeliveredWhatsApp = async function(id, button) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order) return;
+  const handoffNote = prompt("Optional delivery note (for example: handed to guard / left at door):", "");
+  if (handoffNote === null) return;
+  const customerName = String(order.customer_name || "there").trim();
+  const message =
+    `Hi ${customerName}! Your Little Keeps order ${order.order_ref || ""} has been delivered by Little Keeps 🩷` +
+    `${handoffNote.trim() ? `\n\nDelivery note: ${handoffNote.trim()}` : ""}` +
+    `\n\nThank you so much for supporting Little Keeps!`;
+  try {
+    await navigator.clipboard.writeText(message);
+    if (button) button.textContent = "Copied ✓";
+  } catch {
+    window.prompt("Copy this WhatsApp message:", message);
+  }
+  const whatsappHref = getWhatsAppHref(order.customer_phone);
+  if (whatsappHref && confirm("Delivered message copied. Open WhatsApp now?")) {
+    window.open(`${whatsappHref}?text=${encodeURIComponent(message)}`, "_blank", "noopener");
+  }
+};
+
 function getStatusEmailContent(order, status) {
   const isDelivery = order.collection_method === "delivery";
 
-  if (status === "Ready for Pickup/Delivery") {
+  if (["Pending Pickup", "Pending Delivery", "Ready for Pickup/Delivery"].includes(status)) {
     return isDelivery
       ? {
-          title: "Your order is ready for delivery!",
+          title: "Your order is pending delivery!",
           message: "Your Little Keeps order has finished production and is packed safely. We’ll arrange its delivery shortly.",
           actionTitle: "What happens next",
           actionDetails: "Watch for another update when your order is handed to the courier or begins delivery."
         }
       : {
-          title: "Your order is ready - choose your pickup time! 🩷",
+          title: "Your order is ready for pickup! 🩷",
           message: "Your personalised Little Keeps order has finished production, passed its quality check and is ready for collection.",
-          actionTitle: `Book your ${getPickupLocation(order.collection_method)} pickup`,
-          actionDetails: "Tap the pink button below, enter your order email, then choose an available pickup date and time range. Need to change it later? Use the same link to reschedule."
+          actionTitle: `${getPickupLocation(order.collection_method)} pickup`,
+          actionDetails: `Your pickup is booked for ${formatDate(order.pickup_scheduled_date)} at ${order.pickup_time_range || "the selected time"}.`
         };
   }
 
@@ -10098,9 +10185,9 @@ async function sendOrderStatusEmail(order, status) {
     action_title: content.actionTitle,
     action_details: content.actionDetails,
     action_button_label:
-      status === "Ready for Pickup/Delivery" &&
+      ["Pending Pickup", "Ready for Pickup/Delivery"].includes(status) &&
       order.collection_method !== "delivery"
-        ? "Choose Pickup Date & Time"
+        ? "View Pickup Details"
         : status === "Completed"
           ? "Share Your Review"
           : "View or Manage Your Order",
@@ -10181,7 +10268,8 @@ window.resendCurrentStatusEmail = async function(id, button) {
   }
 
   if (![
-    "Ready for Pickup/Delivery",
+    "Pending Pickup",
+    "Pending Delivery",
     "Out for Delivery",
     "Completed"
   ].includes(order.status)) {
@@ -10267,10 +10355,7 @@ async function updateOrderStatus(id, status) {
     updateData.payment_type = "Paid";
   }
 
-  const { error } = await supabase
-    .from("orders")
-    .update(updateData)
-    .eq("id", id);
+  const { error } = await updateOrderFamily(order, updateData);
 
   if (error) {
     console.error("Unable to update status:", error);
@@ -10301,7 +10386,7 @@ async function updateOrderStatus(id, status) {
 
   const shouldSendStatusUpdate =
     previousStatus !== status &&
-    ["Ready for Pickup/Delivery", "Out for Delivery", "Completed"].includes(status);
+    ["Pending Pickup", "Pending Delivery", "Out for Delivery", "Completed"].includes(status);
 
   if (shouldSendStatusUpdate) {
     try {
@@ -10438,6 +10523,9 @@ async function loadAdminSettings() {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
     ...(settingsError ? {} : (settings || {}))
   };
+  adminShopSettings.pickup_time_options = normalizePickupTimeOptions(
+    adminShopSettings.pickup_time_options
+  );
   adminPromoCodes = promos || [];
   adminCustomerReviews = reviews || [];
   adminProductCatalog = normalizeProductCatalog(productsError ? [] : products);
@@ -10484,7 +10572,7 @@ async function loadOrders() {
         customer_name: "Nur Syafiqah",
         payment_type: "Paid",
         total: 28.8,
-        status: "Ready for Pickup/Delivery",
+        status: "Pending Pickup",
         collection_method: "delivery",
         delivery_address: "20 Marsiling Lane #02-01, Singapore 739111",
         needed_by: tomorrow,
@@ -10890,8 +10978,8 @@ window.unlinkOrderAddOn = async function(orderId, button) {
   await loadOrders();
 };
 
-function buildShippingLabelPdf(orders) {
-  const labels = orders.map(getShippingLabelData);
+function buildBasketLabelPdf(orders) {
+  const labels = orders.map(getInternalBasketLabelData);
   const pdf = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -10917,7 +11005,7 @@ function buildShippingLabelPdf(orders) {
     pdf.text("Little Keeps", margin, 10);
     pdf.setTextColor(...muted);
     pdf.setFontSize(8);
-    pdf.text("SHIPPING LABEL", margin, 16);
+    pdf.text("INTERNAL BASKET LABEL", margin, 16);
     pdf.setTextColor(...dark);
     pdf.setFontSize(10);
     pdf.text(getCompactPdfText(label.orderRef), pageWidth - margin, 11, {
@@ -10927,67 +11015,57 @@ function buildShippingLabelPdf(orders) {
     let y = 30;
     pdf.setTextColor(...pink);
     pdf.setFontSize(8);
-    pdf.text("DELIVER TO", margin, y);
+    pdf.text(label.method.toUpperCase(), margin, y);
     y += 7;
 
     pdf.setTextColor(...dark);
     pdf.setFontSize(17);
     const recipientLines = pdf.splitTextToSize(
-      getCompactPdfText(label.recipient),
+      getCompactPdfText(label.customer),
       contentWidth
     ).slice(0, 2);
     pdf.text(recipientLines, margin, y);
     y += recipientLines.length * 7 + 1;
 
-    if (label.phone) {
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(11);
-      pdf.text(getCompactPdfText(label.phone), margin, y);
-      y += 7;
-    }
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    const appointment = label.method === "Pickup"
+      ? `Pickup: ${label.pickupDate ? formatDate(label.pickupDate) : "Date not set"}${label.pickupTime ? ` at ${label.pickupTime}` : ""}`
+      : `Ready by: ${label.neededBy ? formatDate(label.neededBy) : "Not set"}`;
+    pdf.text(getCompactPdfText(appointment), margin, y);
+    y += 8;
 
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(15);
-    const addressLines = pdf.splitTextToSize(
-      getCompactPdfText(label.address),
-      contentWidth
-    ).slice(0, 7);
-    pdf.text(addressLines, margin, y);
-    y += addressLines.length * 6.5;
+    pdf.setFontSize(9);
+    pdf.text("ITEMS", margin, y);
+    y += 6;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    label.items.slice(0, 8).forEach(item => {
+      const line = `${item.quantity} x ${item.name}${item.summary ? ` - ${item.summary}` : ""}`;
+      const lines = pdf.splitTextToSize(getCompactPdfText(line), contentWidth).slice(0, 2);
+      pdf.text(lines, margin, y);
+      y += lines.length * 4.6 + 1;
+    });
 
-    const detailsY = Math.max(103, Math.min(119, y + 5));
+    const detailsY = Math.max(108, Math.min(124, y + 4));
     pdf.setDrawColor(220, 207, 213);
     pdf.line(margin, detailsY, pageWidth - margin, detailsY);
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(...muted);
     pdf.setFontSize(8.5);
 
-    const dispatchLabel = label.dispatchBy
-      ? `Dispatch by: ${formatDate(label.dispatchBy)}`
-      : "Dispatch date: -";
-    pdf.text(getCompactPdfText(dispatchLabel), margin, detailsY + 7);
-
-    if (label.courier) {
-      pdf.text(
-        getCompactPdfText(`Courier: ${label.courier}`),
-        margin,
-        detailsY + 13
-      );
-    }
-    if (label.trackingNumber) {
-      pdf.setFont("helvetica", "bold");
-      pdf.text(
-        getCompactPdfText(`Tracking: ${label.trackingNumber}`),
-        margin,
-        detailsY + 19
-      );
-    }
+    const noteLines = pdf.splitTextToSize(
+      getCompactPdfText(label.notes ? `Notes: ${label.notes}` : "Notes: -"),
+      contentWidth
+    ).slice(0, 3);
+    pdf.text(noteLines, margin, detailsY + 7);
 
     pdf.setFont("helvetica", "bold");
     pdf.setTextColor(...dark);
     pdf.setFontSize(8);
     pdf.text(
-      "PERSONALISED KEYCHAINS · HANDLE WITH CARE",
+      "WORKSHOP USE ONLY · KEEP ORDER TOGETHER",
       pageWidth / 2,
       143,
       { align: "center" }
@@ -10996,72 +11074,58 @@ function buildShippingLabelPdf(orders) {
 
   pdf.setProperties({
     title: labels.length === 1
-      ? `${labels[0].orderRef} Shipping Label`
-      : `Little Keeps Shipping Labels (${labels.length})`,
-    subject: "100 x 150 mm shipping labels",
+      ? `${labels[0].orderRef} Basket Label`
+      : `Little Keeps Basket Labels (${labels.length})`,
+    subject: "Internal workshop basket labels",
     author: "Little Keeps"
   });
   if (typeof pdf.autoPrint === "function") pdf.autoPrint();
   return pdf;
 }
 
-function printShippingLabels(orderIds) {
+function printBasketLabels(orderIds) {
   const requestedIds = new Set(orderIds.map(String));
-  const orders = latestOrders.filter(order =>
-    requestedIds.has(String(order.id)) &&
-    order.collection_method === "delivery"
+  const orders = groupLinkedOrdersForAdmin(latestOrders).filter(order =>
+    requestedIds.has(String(order.id))
   );
 
   if (!orders.length) {
-    alert("Select at least one delivery order.");
+    alert("Select at least one order for a basket label.");
     return;
   }
 
-  const missingAddressOrders = orders.filter(
-    order => !String(order.delivery_address || "").trim()
-  );
-  if (missingAddressOrders.length) {
-    alert(
-      "Add a delivery address before printing:\n\n" +
-      missingAddressOrders.map(order => order.order_ref || "Unknown order").join("\n")
-    );
-    return;
-  }
-
-  const pdf = buildShippingLabelPdf(orders);
+  const pdf = buildBasketLabelPdf(orders);
   const pdfUrl = pdf.output("bloburl");
   const printWindow = window.open(pdfUrl, "_blank");
 
   if (!printWindow) {
     const filename = orders.length === 1
-      ? `${safeProductionFileName(orders[0].order_ref, "shipping")}-shipping-label.pdf`
-      : `little-keeps-${orders.length}-shipping-labels.pdf`;
+      ? `${safeProductionFileName(orders[0].order_ref, "basket")}-basket-label.pdf`
+      : `little-keeps-${orders.length}-basket-labels.pdf`;
     pdf.save(filename);
     alert("The printable label PDF was downloaded because the print window was blocked.");
   }
 }
 
-window.printShippingLabel = function(orderId) {
-  printShippingLabels([orderId]);
+window.printBasketLabel = function(orderId) {
+  printBasketLabels([orderId]);
 };
 
-window.printSelectedShippingLabels = function() {
+window.printSelectedBasketLabels = function() {
   const orderIds = Array.from(
     document.querySelectorAll("[data-label-order-id]:checked")
   ).map(input => input.dataset.labelOrderId);
-  printShippingLabels(orderIds);
+  printBasketLabels(orderIds);
 };
 
-window.printAllShippingLabels = function() {
-  const orderIds = latestOrders
+window.printAllBasketLabels = function() {
+  const orderIds = groupLinkedOrdersForAdmin(latestOrders)
     .filter(order =>
       !order.archived_at &&
-      order.collection_method === "delivery" &&
-      ["Assembly Complete", "Ready for Pickup/Delivery", "Out for Delivery"]
-        .includes(order.status)
+      FULFILMENT_STATUSES.includes(order.status)
     )
     .map(order => order.id);
-  printShippingLabels(orderIds);
+  printBasketLabels(orderIds);
 };
 
 window.openSelectedDeliveryRoute = function() {

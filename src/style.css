@@ -2069,6 +2069,13 @@ label {
   font-size: 11px;
 }
 
+.gifting-bag-copy .gifting-bag-disclaimer {
+  margin-top: 7px;
+  color: #80536a;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
 .gifting-bag-quantity-label {
   display: block;
   margin-bottom: 6px;
@@ -4841,6 +4848,60 @@ body {
 
 #paymentLinkedOrderNote.hidden {
   display: none;
+}
+
+.random-colour-card {
+  margin: 10px 0 18px;
+  padding: 14px;
+  border: 1px solid rgba(245, 90, 116, 0.24);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fff8fa, #f7f0ff);
+}
+
+.random-colour-card > div {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.random-colour-card span {
+  color: #695f6e;
+  font-size: 0.88rem;
+}
+
+.randomise-colours-btn {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 14px;
+  background: #7d4d8d;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.random-colour-card .hint {
+  margin: 8px 0 0;
+}
+
+.manual-payment-request {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid rgba(74, 139, 105, 0.28);
+  border-radius: 16px;
+  background: #f2fbf6;
+}
+
+.manual-payment-request.hidden { display: none; }
+.manual-payment-request h3,
+.manual-payment-request p { margin: 0; }
+.manual-payment-request > a:first-of-type {
+  overflow-wrap: anywhere;
+  color: #46667a;
+  font-size: 0.82rem;
 }
 
 @media (max-width: 600px) {

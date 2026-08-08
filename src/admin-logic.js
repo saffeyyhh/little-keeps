@@ -74,10 +74,9 @@ export function calculateGiftingBagTotal(quantity = 0, unitPrice = 0.5) {
 }
 
 export function getGiftingBagSelectionLimit(keychainQuantity = 0, stockQuantity = 0) {
-  const keychains = Math.max(0, Math.floor(Number(keychainQuantity) || 0));
   const stock = Math.max(0, Math.floor(Number(stockQuantity) || 0));
 
-  return Math.min(Math.ceil(keychains / 2), stock);
+  return stock;
 }
 
 export function getBulkApprovalPolicy(quantity = 1) {
@@ -265,6 +264,8 @@ const ADD_ON_BLOCKED_STATUSES = new Set([
   "Printing",
   "Assembly Complete",
   "Ready for Pickup/Delivery",
+  "Pending Pickup",
+  "Pending Delivery",
   "Out for Delivery",
   "Completed",
   "Refunded",
@@ -355,9 +356,20 @@ export function getOperationalBuckets(orders = [], now = new Date()) {
 
 export function getProductionPreviewOrders(orders = [], selectedIds = []) {
   const selected = new Set(Array.from(selectedIds, id => String(id)));
+  const selectedRootRefs = new Set(
+    orders
+      .filter(order => selected.has(String(order?.id)))
+      .map(order => String(order?.linked_order_ref || order?.order_ref || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
 
   return orders.filter(order =>
-    selected.has(String(order?.id)) &&
+    (
+      selected.has(String(order?.id)) ||
+      selectedRootRefs.has(
+        String(order?.linked_order_ref || order?.order_ref || "").trim().toLowerCase()
+      )
+    ) &&
     !order?.archived_at &&
     !["Completed", "Refunded", "Payment Expired"].includes(order?.status)
   );
@@ -409,23 +421,85 @@ export function isPickupDay(dateValue) {
   return [0, 3, 5, 6].includes(date.getDay());
 }
 
-export function getPickupTimeRanges(dateValue) {
+export const DEFAULT_PICKUP_TIME_OPTIONS = Object.freeze({
+  weekday: Object.freeze(["7:00 PM", "7:30 PM", "8:00 PM"]),
+  weekend: Object.freeze(["10:00 AM", "2:00 PM", "7:00 PM"])
+});
+
+export function normalizePickupTimeOptions(options = {}) {
+  const normalizeList = (value, fallback) => {
+    const source = Array.isArray(value) ? value : [];
+    const cleaned = Array.from(new Set(source
+      .map(item => String(item || "").trim())
+      .filter(Boolean)));
+    return cleaned.length ? cleaned : [...fallback];
+  };
+
+  return {
+    weekday: normalizeList(options?.weekday, DEFAULT_PICKUP_TIME_OPTIONS.weekday),
+    weekend: normalizeList(options?.weekend, DEFAULT_PICKUP_TIME_OPTIONS.weekend)
+  };
+}
+
+export function getPickupTimeRanges(
+  dateValue,
+  configuredOptions = DEFAULT_PICKUP_TIME_OPTIONS
+) {
   if (!isPickupDay(dateValue)) return [];
 
   const date = new Date(`${String(dateValue).slice(0, 10)}T12:00:00`);
   const day = date.getDay();
+  const options = normalizePickupTimeOptions(configuredOptions);
 
   return day === 0 || day === 6
-    ? [
-        "10:00 AM - 12:00 PM",
-        "2:00 PM - 4:00 PM",
-        "7:00 PM - 8:00 PM"
-      ]
-    : [
-        "7:00 PM - 7:30 PM",
-        "7:30 PM - 8:00 PM",
-        "8:00 PM - 8:30 PM"
-      ];
+    ? options.weekend
+    : options.weekday;
+}
+
+export function pickRandomDesignColours({
+  baseColours = [],
+  capColours = [],
+  letterColours = [],
+  random = Math.random
+} = {}) {
+  const choose = (list, avoid = []) => {
+    const usable = list.filter(item => item && !avoid.includes(item));
+    const pool = usable.length ? usable : list.filter(Boolean);
+    if (!pool.length) return "#FFFFFF";
+    const index = Math.min(pool.length - 1, Math.floor(Math.max(0, random()) * pool.length));
+    return pool[index];
+  };
+  const base = choose(baseColours);
+  const cap = choose(capColours, [base]);
+  const letter = choose(letterColours, [base, cap]);
+
+  return { base, cap, letter };
+}
+
+export function groupLinkedOrdersForAdmin(orders = []) {
+  const key = value => String(value || "").trim().toLowerCase();
+  const roots = new Map();
+  const children = [];
+
+  orders.forEach(order => {
+    if (order?.linked_order_ref) children.push(order);
+    else roots.set(key(order?.order_ref), { ...order, linked_children: [] });
+  });
+
+  children.forEach(child => {
+    const root = roots.get(key(child.linked_order_ref));
+    if (!root) return;
+    root.linked_children.push(child);
+    root.order_data = [
+      ...(Array.isArray(root.order_data) ? root.order_data : []),
+      ...(Array.isArray(child.order_data) ? child.order_data : [])
+    ];
+    root.subtotal = Number(root.subtotal || 0) + Number(child.subtotal || 0);
+    root.total = Number(root.total || 0) + Number(child.total || 0);
+  });
+
+  const orphanChildren = children.filter(child => !roots.has(key(child.linked_order_ref)));
+  return [...roots.values(), ...orphanChildren];
 }
 
 export function assessRushDateCapacity(orderCount = 0, rushOrderCount = 0) {
@@ -630,18 +704,24 @@ export function getFreeAmsPrinters(printers = [], basePrinterId = null) {
   );
 }
 
-export function getShippingLabelData(order = {}) {
+export function getInternalBasketLabelData(order = {}) {
   const text = value => String(value || "").trim();
+  const items = (Array.isArray(order.order_data) ? order.order_data : []).map(item => ({
+    name: text(item?.name || item?.product_name) || "Custom keychain",
+    quantity: Math.max(1, Number(item?.quantity) || 1),
+    summary: text(item?.summary || item?.design_summary || item?.custom_name)
+  }));
 
   return {
     orderId: text(order.id),
     orderRef: text(order.order_ref) || "No order reference",
-    recipient: text(order.customer_name) || "Customer",
-    phone: text(order.customer_phone),
-    address: text(order.delivery_address),
-    courier: text(order.courier_name),
-    trackingNumber: text(order.tracking_number),
-    dispatchBy: text(order.needed_by)
+    customer: text(order.customer_name) || "Customer",
+    method: order.collection_method === "delivery" ? "Delivery" : "Pickup",
+    pickupDate: text(order.pickup_scheduled_date),
+    pickupTime: text(order.pickup_time_range),
+    neededBy: text(order.requested_completion_date || order.needed_by),
+    items,
+    notes: text(order.order_notes || order.production_note || order.notes)
   };
 }
 

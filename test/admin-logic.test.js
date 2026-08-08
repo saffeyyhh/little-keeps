@@ -15,7 +15,8 @@ import {
   getFreeAmsPrinters,
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
-  getShippingLabelData,
+  getInternalBasketLabelData,
+  groupLinkedOrdersForAdmin,
   getDeliveryRouteGroup,
   getPickupTimeRanges,
   getKeychainTurnaround,
@@ -30,6 +31,7 @@ import {
   isAlternatingProductionDay,
   isPickupDay,
   optimizeAmsPlateSequence,
+  pickRandomDesignColours,
   partitionAmsCombinationsByBusyColours,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
@@ -84,10 +86,14 @@ test("offers pickup only on Wednesdays, Fridays, and weekends", () => {
   assert.equal(isPickupDay("2026-08-09"), true);
   assert.equal(isPickupDay("2026-08-06"), false);
   assert.deepEqual(getPickupTimeRanges("2026-08-05"), [
-    "7:00 PM - 7:30 PM",
-    "7:30 PM - 8:00 PM",
-    "8:00 PM - 8:30 PM"
+    "7:00 PM",
+    "7:30 PM",
+    "8:00 PM"
   ]);
+  assert.deepEqual(getPickupTimeRanges("2026-08-08", {
+    weekday: ["6:45 PM"],
+    weekend: ["11:15 AM", "4:00 PM"]
+  }), ["11:15 AM", "4:00 PM"]);
   assert.equal(getPickupTimeRanges("2026-08-06").length, 0);
 });
 
@@ -152,9 +158,9 @@ test("prices gifting bags at fifty cents each", () => {
   assert.equal(calculateGiftingBagTotal(-2), 0);
 });
 
-test("limits gifting bags by capacity and live stock", () => {
-  assert.equal(getGiftingBagSelectionLimit(1, 10), 1);
-  assert.equal(getGiftingBagSelectionLimit(4, 10), 2);
+test("allows any gifting bag quantity up to live stock", () => {
+  assert.equal(getGiftingBagSelectionLimit(1, 10), 10);
+  assert.equal(getGiftingBagSelectionLimit(4, 10), 10);
   assert.equal(getGiftingBagSelectionLimit(7, 3), 3);
   assert.equal(getGiftingBagSelectionLimit(7, 0), 0);
 });
@@ -342,6 +348,41 @@ test("keeps only selected active orders in a production preview", () => {
   assert.deepEqual(result.map(order => order.id), [1]);
 });
 
+test("includes linked add-ons when their root order is selected", () => {
+  const result = getProductionPreviewOrders([
+    { id: 1, order_ref: "LK-100", status: "Printing" },
+    { id: 2, order_ref: "LK-101", linked_order_ref: "LK-100", status: "Printing" },
+    { id: 3, order_ref: "LK-102", status: "Printing" }
+  ], ["1"]);
+
+  assert.deepEqual(result.map(order => order.id), [1, 2]);
+});
+
+test("groups linked add-ons beneath one public order reference", () => {
+  const result = groupLinkedOrdersForAdmin([
+    { id: 1, order_ref: "LK-100", subtotal: 10, total: 12.5, order_data: [{ name: "A" }] },
+    { id: 2, order_ref: "LK-101", linked_order_ref: "lk-100", subtotal: 4, total: 4, order_data: [{ name: "B" }] }
+  ]);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].order_ref, "LK-100");
+  assert.equal(result[0].linked_children.length, 1);
+  assert.equal(result[0].order_data.length, 2);
+  assert.equal(result[0].total, 16.5);
+});
+
+test("chooses a complete contrasting random colour set", () => {
+  const values = [0, 0, 0];
+  const result = pickRandomDesignColours({
+    baseColours: ["pink", "blue"],
+    capColours: ["pink", "white"],
+    letterColours: ["pink", "white", "gold"],
+    random: () => values.shift()
+  });
+
+  assert.deepEqual(result, { base: "pink", cap: "white", letter: "gold" });
+});
+
 test("orders AMS plates to preserve colours and keeps shared colours in their slots", () => {
   const plates = optimizeAmsPlateSequence([
     {
@@ -497,27 +538,29 @@ test("reserves the base printer and leaves the other online A1 for AMS", () => {
   );
 });
 
-test("prepares only delivery-safe details for a shipping label", () => {
-  assert.deepEqual(getShippingLabelData({
+test("prepares an internal basket label without courier details", () => {
+  assert.deepEqual(getInternalBasketLabelData({
     id: 42,
     order_ref: " LK-1042 ",
     customer_name: " Alicia Tan ",
     customer_phone: " 9123 4567 ",
     customer_email: "private@example.com",
-    delivery_address: " 10 Woodlands Street 12, Singapore 738000 ",
-    courier_name: " SingPost ",
-    tracking_number: " SP123 ",
+    collection_method: "pickup",
+    pickup_scheduled_date: "2026-08-08",
+    pickup_time_range: "2:00 PM",
     needed_by: "2026-08-03",
-    production_note: "Do not expose this"
+    production_note: "Basket 3",
+    order_data: [{ name: "Articulated Keychain", quantity: 2, custom_name: "CAT" }]
   }), {
     orderId: "42",
     orderRef: "LK-1042",
-    recipient: "Alicia Tan",
-    phone: "9123 4567",
-    address: "10 Woodlands Street 12, Singapore 738000",
-    courier: "SingPost",
-    trackingNumber: "SP123",
-    dispatchBy: "2026-08-03"
+    customer: "Alicia Tan",
+    method: "Pickup",
+    pickupDate: "2026-08-08",
+    pickupTime: "2:00 PM",
+    neededBy: "2026-08-03",
+    items: [{ name: "Articulated Keychain", quantity: 2, summary: "CAT" }],
+    notes: "Basket 3"
   });
 });
 

@@ -18,7 +18,9 @@ import {
   getPickupTimeRanges,
   getKeychainTurnaround,
   isPickupDay,
-  isAlternatingProductionDay
+  isAlternatingProductionDay,
+  normalizePickupTimeOptions,
+  pickRandomDesignColours
 } from "./admin-logic.js";
 import {
   DEFAULT_PRODUCT_CATALOG,
@@ -71,7 +73,11 @@ const DEFAULT_SHOP_SETTINGS = {
   unavailable_colours: [],
   promo_code: "CHILDRENSDAY",
   promo_percent_off: 10,
-  promo_enabled: true
+  promo_enabled: true,
+  pickup_time_options: {
+    weekday: ["7:00 PM", "7:30 PM", "8:00 PM"],
+    weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
+  }
 };
 
 let shopSettings = { ...DEFAULT_SHOP_SETTINGS };
@@ -219,6 +225,9 @@ try {
 
   if (error) throw error;
   if (data) shopSettings = { ...shopSettings, ...data };
+  shopSettings.pickup_time_options = normalizePickupTimeOptions(
+    shopSettings.pickup_time_options
+  );
 } catch (error) {
   console.warn("Using default shop pricing settings:", error);
 }
@@ -1197,6 +1206,17 @@ Chloe</textarea>
           <h2>Choose Your Style</h2>
         </div>
 
+        <div class="random-colour-card clicky-only-option">
+          <div>
+            <strong>Too many lovely choices? ✨</strong>
+            <span>Let Little Keeps choose a complete colour combination for you.</span>
+          </div>
+          <button id="randomiseColoursBtn" type="button" class="randomise-colours-btn">
+            Surprise Me
+          </button>
+          <p id="randomiseColoursStatus" class="hint" aria-live="polite"></p>
+        </div>
+
 <div
   id="clickyBaseShapeSection"
   class="customisation-section clicky-only-option"
@@ -1590,6 +1610,7 @@ Chloe</textarea>
             <div>
               <strong>Add gifting bags?</strong>
               <small>S$0.50 each · fits 2 keychains up to 6 characters each; longer names will protrude</small>
+              <small class="gifting-bag-disclaimer">Bags will be provided separately. Keychains will not be packed inside them.</small>
             </div>
           </div>
           <div class="gifting-bag-quantity-control">
@@ -1708,6 +1729,15 @@ Chloe</textarea>
           <strong>Order saved ✓</strong>
           <span>Keep this reference: <span id="paymentOrderRef"></span></span>
           <span id="paymentLinkedOrderNote" class="hidden"></span>
+        </div>
+
+        <div id="manualPaymentRequestPanel" class="manual-payment-request hidden">
+          <h3>Customer order ready to send</h3>
+          <p>The confirmation email has been requested. Send this secure return link to the customer so they can pay.</p>
+          <a id="manualPaymentLink" href="#" target="_blank" rel="noopener"></a>
+          <button id="copyManualPaymentLinkBtn" type="button" class="secondary-btn">Copy payment-request link</button>
+          <a class="secondary-btn" href="./admin.html">Return to Admin</a>
+          <p id="manualPaymentLinkStatus" class="hint" aria-live="polite"></p>
         </div>
 
         <h2>Secure Payment</h2>
@@ -1990,6 +2020,8 @@ const editModeText = document.getElementById("editModeText");
 const dimensionEstimate = document.getElementById("dimensionEstimate");
 const previewColourLegend = document.getElementById("previewColourLegend");
 const inspirationStatus = document.getElementById("inspirationStatus");
+const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
+const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
 
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
@@ -2149,6 +2181,10 @@ const paymentTotal =
 document.getElementById("paymentTotal");
 const paymentLinkedOrderNote =
 document.getElementById("paymentLinkedOrderNote");
+const manualPaymentRequestPanel = document.getElementById("manualPaymentRequestPanel");
+const manualPaymentLink = document.getElementById("manualPaymentLink");
+const copyManualPaymentLinkBtn = document.getElementById("copyManualPaymentLinkBtn");
+const manualPaymentLinkStatus = document.getElementById("manualPaymentLinkStatus");
 const paymentDoneBtn =
 document.getElementById("paymentDoneBtn");
 const stripeCheckoutBtn =
@@ -2647,7 +2683,10 @@ function getFirstCheckoutPickupDate() {
 }
 
 function updateCheckoutPickupTimeOptions(selectedValue = "") {
-  const ranges = getPickupTimeRanges(checkoutPickupDate?.value);
+  const ranges = getPickupTimeRanges(
+    checkoutPickupDate?.value,
+    shopSettings.pickup_time_options
+  );
   if (!checkoutPickupTime) return;
 
   checkoutPickupTime.innerHTML = ranges.length
@@ -3430,6 +3469,35 @@ function applyDesignPreset(presetKey) {
   saveDraft();
 }
 
+function randomiseArticulatedColours() {
+  if (activeProduct.product_key === STANDARD_PRODUCT_KEY) return;
+  const availableHexes = colours.filter(item => item.available).map(item => item.colour);
+  const selected = pickRandomDesignColours({
+    baseColours: availableHexes,
+    capColours: availableHexes,
+    letterColours: availableHexes
+  });
+  const design = getActiveDesign();
+  design.bases = [selected.base];
+  design.caps = [selected.cap];
+  design.letters = [selected.letter];
+
+  if (applyAllToggle.checked) {
+    globalDesign.bases = [selected.base];
+    globalDesign.caps = [selected.cap];
+    globalDesign.letters = [selected.letter];
+    names.forEach(item => { item.custom = null; });
+  }
+
+  draftHasMeaningfulChanges = true;
+  if (randomiseColoursStatus) {
+    randomiseColoursStatus.textContent = `Chosen: ${getColourName(selected.base)}, ${getColourName(selected.cap)} and ${getColourName(selected.letter)} ♡`;
+  }
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+}
+
 function makeSwatches(containerId, colourOptions, type) {
   const container = document.getElementById(containerId);
   const hint = document.getElementById(`${type}ColourHint`);
@@ -3512,17 +3580,13 @@ function getOrderSubtotal() {
 
 function getMaxGiftingBagQuantity() {
   if (!giftingBagStockConfirmed) return 0;
-  return getGiftingBagSelectionLimit(
-    getTotalKeychainQuantity(),
-    giftingBagStock
-  );
+  return getGiftingBagSelectionLimit(0, giftingBagStock);
 }
 
 function updateGiftingBagOptions() {
   if (!giftingBagQuantityInput) return;
 
   const maxGiftingBagQuantity = getMaxGiftingBagQuantity();
-  const bagCapacityLimit = Math.ceil(getTotalKeychainQuantity() / 2);
 
   giftingBagQuantity = Math.min(
     Math.max(0, Math.floor(Number(giftingBagQuantity) || 0)),
@@ -3541,9 +3605,7 @@ function updateGiftingBagOptions() {
       ? "Stock unavailable"
       : giftingBagStock <= 0
         ? "Currently out of stock"
-        : giftingBagStock < bagCapacityLimit
-          ? `Only ${giftingBagStock} left`
-          : `${giftingBagStock} available`;
+        : `${giftingBagStock} available`;
   }
 }
 
@@ -3638,7 +3700,7 @@ async function verifyExistingOrderLink() {
   deliveryAddressSection.classList.add("hidden");
   existingOrderLinkStatus.className = "hint is-success";
   existingOrderLinkStatus.textContent =
-    `Linked to ${verifiedLinkedOrder.orderRef} ✓ No second delivery fee. Both orders will use whichever pickup/dispatch date is later.`;
+    `Linked to ${verifiedLinkedOrder.orderRef} ✓ Same collection method and no second delivery fee. Admin will see everything together under this order ID.`;
   updateCollectionNote();
   renderReviewOrder();
   validateForm();
@@ -5467,7 +5529,7 @@ async function submitOrder() {
     const design = getDesign(item);
 
     return Array.from({ length: getItemQuantity(item) }, () => {
-      const includesGiftingBag = expandedItemIndex < giftingBagQuantity;
+      const includesGiftingBag = expandedItemIndex === 0 && giftingBagQuantity > 0;
       expandedItemIndex += 1;
 
       return {
@@ -5477,9 +5539,10 @@ async function submitOrder() {
         clean_name: sanitizeName(item.name),
         price: roundMoney(
           calculatePrice(design, item.name) +
-          (includesGiftingBag ? GIFTING_BAG_PRICE : 0)
+          (includesGiftingBag ? giftingBagQuantity * GIFTING_BAG_PRICE : 0)
         ),
         gifting_bag: includesGiftingBag,
+        gifting_bag_quantity: includesGiftingBag ? giftingBagQuantity : 0,
 
         design: {
           letter_orientation: design.letterOrientation || "vertical",
@@ -5563,7 +5626,7 @@ async function submitOrder() {
       : "Website",
 
     status: isManualOrder
-      ? "Payment Verified"
+      ? "Pending Payment"
       : checkoutOrderType === "rush"
         ? rushAutoApproved ? "Pending Payment" : "Rush Review"
         : checkoutOrderType === "bulk"
@@ -5619,6 +5682,12 @@ async function submitOrder() {
         );
       }
     }
+  } else if (!isReviewRequest) {
+    await requestOrderSavedEmail(
+      orderRef,
+      order.customer_email,
+      order.linked_order_ref
+    );
   }
 
   if (isReviewRequest) {
@@ -5646,14 +5715,24 @@ async function submitOrder() {
 
   // Supabase sends the Telegram alert only after payment is verified.
   // The customer-facing website does not contain the Telegram bot token.
-  paymentOrderRef.innerText = orderRef;
+  paymentOrderRef.innerText = order.linked_order_ref || orderRef;
+  paymentOrderRef.dataset.paymentRef = orderRef;
   paymentTotal.innerText = `$${total.toFixed(2)}`;
   if (order.linked_order_ref) {
     paymentLinkedOrderNote.textContent =
-      `Linked under ${order.linked_order_ref}. Use ${orderRef} for this add-on payment; production and collection will be grouped under ${order.linked_order_ref}.`;
+      `Added to order ${order.linked_order_ref}. It keeps the same collection method and there is no second delivery fee.`;
     paymentLinkedOrderNote.classList.remove("hidden");
   } else {
     paymentLinkedOrderNote.classList.add("hidden");
+  }
+
+  if (isManualOrder && manualPaymentRequestPanel && manualPaymentLink) {
+    const paymentRequestUrl = new URL(window.location.origin);
+    paymentRequestUrl.searchParams.set("resume_order", orderRef);
+    paymentRequestUrl.hash = "orderStatusSection";
+    manualPaymentLink.href = paymentRequestUrl.toString();
+    manualPaymentLink.textContent = paymentRequestUrl.toString();
+    manualPaymentRequestPanel.classList.remove("hidden");
   }
 
   checkoutScreen.classList.add("hidden");
@@ -6463,6 +6542,19 @@ resetSelected.onclick = () => {
   }
 };
 
+randomiseColoursBtn?.addEventListener("click", randomiseArticulatedColours);
+
+copyManualPaymentLinkBtn?.addEventListener("click", async () => {
+  const url = manualPaymentLink?.href || "";
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    manualPaymentLinkStatus.textContent = "Payment-request link copied ✓";
+  } catch {
+    window.prompt("Copy this payment-request link:", url);
+  }
+});
+
 submitOrderBtn.onclick = submitOrder;
 
 applyPromoBtn.onclick = applyPromoCode;
@@ -6502,7 +6594,7 @@ async function getCheckoutErrorMessage(error, fallback) {
 }
 
 stripeCheckoutBtn?.addEventListener("click", async () => {
-  const orderRef = paymentOrderRef.innerText.trim();
+  const orderRef = paymentOrderRef.dataset.paymentRef || paymentOrderRef.innerText.trim();
   const email = customerEmail.value.trim();
   if (!orderRef || !email) return;
 
@@ -7107,6 +7199,7 @@ const CUSTOMER_STATUS_STEPS = [
 function getCustomerStatusStep(status) {
   if (status === "Completed") return 5;
   if (status === "Out for Delivery") return 4;
+  if (["Pending Pickup", "Pending Delivery"].includes(status)) return 3;
   if (status === "Ready for Pickup/Delivery") return 3;
   if (status === "Assembly Complete") return 2;
   if (status === "Printing") return 2;
@@ -7124,6 +7217,8 @@ function formatCustomerStatus(status) {
     "Payment Verified": "Payment verified",
     "Printing": "In production",
     "Assembly Complete": "Assembly complete - preparing your handoff",
+    "Pending Pickup": "Pending pickup",
+    "Pending Delivery": "Pending delivery",
     "Ready for Pickup/Delivery": "Ready for pickup or delivery",
     "Out for Delivery": "Ready and out for delivery",
     "Completed": "Completed"
@@ -7189,11 +7284,14 @@ window.updatePickupTimeOptions = function(selectedValue = "") {
   const timeSelect = document.getElementById("pickupScheduleTime");
   if (!dateInput || !timeSelect) return;
 
-  const ranges = getPickupTimeRanges(dateInput.value);
+  const ranges = getPickupTimeRanges(
+    dateInput.value,
+    shopSettings.pickup_time_options
+  );
 
   timeSelect.innerHTML = ranges.length
     ? `
-      <option value="">Choose a time range</option>
+      <option value="">Choose a time</option>
       ${ranges.map(range => `
         <option
           value="${escapePresetText(range)}"
@@ -7217,7 +7315,7 @@ window.scheduleTrackedPickup = async function(
   const pickupTimeRange = timeSelect?.value || "";
 
   if (!pickupDate || !pickupTimeRange) {
-    alert("Please choose both a pickup date and time range.");
+    alert("Please choose both a pickup date and exact time.");
     return;
   }
 
@@ -7251,7 +7349,7 @@ window.scheduleTrackedPickup = async function(
     console.error("Unable to schedule pickup:", error);
     alert(
       error?.message ||
-      "Unable to save this pickup time. Please choose another range."
+      "Unable to save this pickup time. Please choose another time."
     );
   } finally {
     if (button) {
@@ -7309,7 +7407,10 @@ function renderCustomerOrderStatus(order) {
   const pickupDate =
     order.pickup_scheduled_date || pickupDateBounds.minimum;
   const pickupTimeRange = order.pickup_time_range || "";
-  const pickupRanges = getPickupTimeRanges(pickupDate);
+  const pickupRanges = getPickupTimeRanges(
+    pickupDate,
+    shopSettings.pickup_time_options
+  );
   const canSchedulePickup = false;
 
   orderStatusResult.innerHTML = `
@@ -7317,7 +7418,7 @@ function renderCustomerOrderStatus(order) {
       <div>
         <small>Order reference</small>
         <strong>${escapePresetText(sharedOrderRef)}</strong>
-        ${order.linked_order_ref ? `<small>Add-on payment reference: ${escapePresetText(order.order_ref)}</small>` : ""}
+        ${order.linked_order_ref ? `<small>Linked add-on included under this order ID</small>` : ""}
       </div>
       <span>${escapePresetText(formatCustomerStatus(effectiveStatus))}</span>
     </div>
@@ -7376,8 +7477,8 @@ function renderCustomerOrderStatus(order) {
           ${order.pickup_scheduled_date ? "Need another timing?" : "Your order is ready for collection!"}
         </h3>
         <p>
-          Select an available date and time range for ${escapePresetText(pickupLocation)}.
-          Each range has limited availability.
+          Select an available date and exact time for ${escapePresetText(pickupLocation)}.
+          Each exact time has limited availability.
         </p>
 
         <div class="pickup-scheduler-fields">
@@ -7394,9 +7495,9 @@ function renderCustomerOrderStatus(order) {
           </label>
 
           <label>
-            <span>Time range</span>
+            <span>Exact time</span>
             <select id="pickupScheduleTime">
-              <option value="">Choose a time range</option>
+              <option value="">Choose a time</option>
               ${pickupRanges.map(range => `
                 <option
                   value="${escapePresetText(range)}"
@@ -7682,6 +7783,7 @@ if (
   hideStorefrontViews();
 
   paymentOrderRef.innerText = "LK-PREVIEW-1234";
+  paymentOrderRef.dataset.paymentRef = "LK-PREVIEW-1234";
   paymentTotal.innerText = "$5.70";
 
   const paymentBox = paymentScreen.querySelector(".payment-box");
