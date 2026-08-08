@@ -1344,7 +1344,7 @@ Chloe</textarea>
             <strong>Need another colour?</strong>
 
             <a
-              href="https://wa.me/6589915507"
+              href="https://wa.me/6585121915"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -1905,7 +1905,7 @@ Chloe</textarea>
 
   <div class="contact-links">
     <a
-      href="https://wa.me/6589915507"
+      href="https://wa.me/6585121915"
       target="_blank"
       rel="noopener noreferrer"
       class="contact-link-card"
