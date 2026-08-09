@@ -724,6 +724,25 @@ export function assignPrintedKeycapsToOwners(owners = [], rows = []) {
   })).filter(owner => owner.characters.length > 0);
 }
 
+export function flattenSharedGroupContributions(contributions = []) {
+  return (Array.isArray(contributions) ? contributions : []).flatMap(contribution =>
+    (Array.isArray(contribution?.items) ? contribution.items : [])
+      .filter(item => item?.name)
+      .map(item => ({
+        name: item.name,
+        quantity: Math.min(250, Math.max(1, Math.floor(Number(item.quantity) || 1))),
+        groupContributorName: contribution.contributor_name || "Group member",
+        custom: {
+          baseShape: item.design?.base_shape || "ribbed",
+          letterOrientation: item.design?.letter_orientation || "vertical",
+          bases: Array.isArray(item.design?.bases) ? item.design.bases : [],
+          caps: Array.isArray(item.design?.caps) ? item.design.caps : [],
+          letters: Array.isArray(item.design?.letters) ? item.design.letters : []
+        }
+      }))
+  );
+}
+
 export function getInternalBasketLabelData(order = {}) {
   const text = value => String(value || "").trim();
   const items = (Array.isArray(order.order_data) ? order.order_data : []).map(item => ({

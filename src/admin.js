@@ -3443,6 +3443,7 @@ function renderOrders(orders) {
       (order.customer_name || "").toLowerCase().includes(searchText) ||
       (order.customer_email || "").toLowerCase().includes(searchText) ||
       (order.customer_phone || "").toLowerCase().includes(searchText) ||
+      (order.group_order_code || "").toLowerCase().includes(searchText) ||
       designSearchText.includes(searchText) ||
       getOrderInstructions(order).join(" ").toLowerCase().includes(searchText) ||
       (order.handoff_name || "").toLowerCase().includes(searchText);
@@ -3628,6 +3629,9 @@ function renderOrders(orders) {
           <p class="order-ref-label">${orderRef}</p>
           ${order.linked_children?.length ? `
             <span class="linked-order-badge">${order.linked_children.length} add-on${order.linked_children.length === 1 ? "" : "s"} combined under this ID</span>
+          ` : ""}
+          ${order.group_order_code ? `
+            <span class="linked-order-badge">Shared group · ${escapeAdminHtml(order.group_order_code)}</span>
           ` : ""}
           <h3>${customerName}</h3>
           <div class="order-summary-badges">
@@ -3896,6 +3900,12 @@ function renderOrders(orders) {
       <div class="order-preview-item">
         <div class="assembly-item-top">
           <strong>${escapeAdminHtml(item.name || "Personalised keychain")}</strong>
+
+          ${item.group_contributor_name ? `
+            <span class="assembly-tag group-contributor-tag">
+              For ${escapeAdminHtml(item.group_contributor_name)}
+            </span>
+          ` : ""}
 
           <span class="assembly-tag">
             ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
@@ -4947,7 +4957,8 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
           keycapGroups[groupKey].owners[ownerKey] = {
             orderId: String(order.id || ""),
             orderRef: order.order_ref || "No reference",
-            customerName: order.customer_name || "Customer",
+            customerName:
+              item.group_contributor_name || order.customer_name || "Customer",
             keychainName: item.name || item.clean_name || "Personalised keychain",
             characters: []
           };
@@ -6815,6 +6826,11 @@ async function renderAssemblyQueue() {
           <strong>${escapeAdminHtml(item.name || "-")}</strong>
 
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${item.group_contributor_name ? `
+              <span class="assembly-tag group-contributor-tag">
+                For ${escapeAdminHtml(item.group_contributor_name)}
+              </span>
+            ` : ""}
             ${
               completed
                 ? `<span class="assembly-tag assembly-complete-tag">Completed ✓</span>`
@@ -9794,6 +9810,12 @@ async function generateCustomerOrderPdf(order, items) {
     );
     const iconLegend = getPdfIconLegend(item);
     const colourLines = [
+      ...(item.group_contributor_name
+        ? pdf.splitTextToSize(
+            `Group member: ${getCompactPdfText(item.group_contributor_name)}`,
+            contentWidth - 12
+          )
+        : []),
       ...pdf.splitTextToSize(
         `Base colours: ${getCompactPdfText(baseNames)}`,
         contentWidth - 12

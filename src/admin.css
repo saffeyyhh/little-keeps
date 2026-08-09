@@ -2819,6 +2819,12 @@ body {
 
 }
 
+.assembly-tag.group-contributor-tag {
+    color:#65428f;
+    border:1px solid #d5c8e8;
+    background:#f8f3ff;
+}
+
 .mini-chain{
 
     display:flex;

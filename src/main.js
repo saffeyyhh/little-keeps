@@ -19,6 +19,7 @@ import {
   getKeychainTurnaround,
   isPickupDay,
   isAlternatingProductionDay,
+  flattenSharedGroupContributions,
   normalizePickupTimeOptions,
   pickRandomDesignColours
 } from "./admin-logic.js";
@@ -596,6 +597,15 @@ document.querySelector("#app").innerHTML = `
   </div>
 </section>
 
+<section id="sharedGroupBanner" class="shared-group-banner hidden" aria-live="polite">
+  <div>
+    <small>Shared group order</small>
+    <strong id="sharedGroupBannerTitle">Loading…</strong>
+    <span id="sharedGroupBannerText">Design your keychain, then add your basket to the group.</span>
+  </div>
+  <button id="sharedGroupBannerAction" type="button">View Group</button>
+</section>
+
 <div id="menuOverlay" class="menu-overlay hidden"></div>
 
 <aside id="sideMenu" class="side-menu">
@@ -726,6 +736,14 @@ document.querySelector("#app").innerHTML = `
       class="cart-secondary-btn"
     >
       Continue Designing
+    </button>
+
+    <button
+      id="sharedGroupCartBtn"
+      type="button"
+      class="shared-group-cart-btn"
+    >
+      Start a Shared Group Order
     </button>
 
     <button
@@ -1817,6 +1835,72 @@ Chloe</textarea>
       </div>
     </div>
 
+    <div id="sharedGroupStartModal" class="modal hidden">
+      <form id="sharedGroupStartForm" class="modal-card shared-group-modal-card">
+        <span class="shared-group-modal-icon">♡</span>
+        <h2>Start a Shared Order</h2>
+        <p>We’ll create one private link. Friends add their own designs, then you review and pay once.</p>
+
+        <label for="sharedGroupTitle">Group name</label>
+        <input id="sharedGroupTitle" maxlength="80" placeholder="e.g. Sarah’s birthday gifts" required>
+
+        <label for="sharedGroupOrganiserName">Your name</label>
+        <input id="sharedGroupOrganiserName" maxlength="100" autocomplete="name" required>
+
+        <label for="sharedGroupOrganiserEmail">Your email</label>
+        <input id="sharedGroupOrganiserEmail" type="email" autocomplete="email" required>
+
+        <p id="sharedGroupStartStatus" class="hint" aria-live="polite"></p>
+        <button type="submit" class="submit-btn">Create Share Link</button>
+        <button id="cancelSharedGroupStartBtn" type="button" class="secondary-btn">Cancel</button>
+      </form>
+    </div>
+
+    <div id="sharedGroupContributeModal" class="modal hidden">
+      <form id="sharedGroupContributeForm" class="modal-card shared-group-modal-card">
+        <span class="shared-group-modal-icon">✿</span>
+        <h2>Add Your Designs</h2>
+        <p id="sharedGroupContributeIntro">Your basket will be sent to the organiser. You won’t need to pay here.</p>
+
+        <label for="sharedGroupContributorName">Your name</label>
+        <input id="sharedGroupContributorName" maxlength="100" autocomplete="name" required>
+
+        <p id="sharedGroupContributeStatus" class="hint" aria-live="polite"></p>
+        <button type="submit" class="submit-btn">Add My Basket to the Group</button>
+        <button id="cancelSharedGroupContributeBtn" type="button" class="secondary-btn">Cancel</button>
+      </form>
+    </div>
+
+    <div id="sharedGroupOwnerModal" class="modal hidden">
+      <div class="modal-card shared-group-owner-card">
+        <div class="shared-group-owner-heading">
+          <div>
+            <small>Shared group order</small>
+            <h2 id="sharedGroupOwnerTitle">Your Group</h2>
+            <p id="sharedGroupOwnerSummary"></p>
+          </div>
+          <button id="closeSharedGroupOwnerBtn" type="button" class="shared-group-close" aria-label="Close">×</button>
+        </div>
+
+        <div class="shared-group-link-box">
+          <label for="sharedGroupInviteLink">Private invite link</label>
+          <div>
+            <input id="sharedGroupInviteLink" readonly>
+            <button id="copySharedGroupLinkBtn" type="button">Copy Link</button>
+          </div>
+          <small>Anyone with this link can add designs. Only your organiser link can review them.</small>
+        </div>
+
+        <div id="sharedGroupContributionList" class="shared-group-contribution-list"></div>
+        <p id="sharedGroupOwnerStatus" class="hint" aria-live="polite"></p>
+
+        <div class="shared-group-owner-actions">
+          <button id="refreshSharedGroupBtn" type="button" class="secondary-btn">Refresh</button>
+          <button id="checkoutSharedGroupBtn" type="button" class="submit-btn">Review Combined Basket</button>
+        </div>
+      </div>
+    </div>
+
 <section id="orderStatusSection" class="order-status-section" data-store-view="track">
   <div class="order-status-copy">
     <p class="section-eyebrow">Already ordered?</p>
@@ -2153,6 +2237,7 @@ const continueShoppingBtn =
 
 const checkoutFromCartBtn =
   document.getElementById("checkoutFromCartBtn");
+const sharedGroupCartBtn = document.getElementById("sharedGroupCartBtn");
 
 const orderStatusForm =
   document.getElementById("orderStatusForm");
@@ -2176,6 +2261,10 @@ const resumePendingOrderBtn =
   document.getElementById("resumePendingOrderBtn");
 const dismissPendingOrderBtn =
   document.getElementById("dismissPendingOrderBtn");
+const sharedGroupBanner = document.getElementById("sharedGroupBanner");
+const sharedGroupBannerTitle = document.getElementById("sharedGroupBannerTitle");
+const sharedGroupBannerText = document.getElementById("sharedGroupBannerText");
+const sharedGroupBannerAction = document.getElementById("sharedGroupBannerAction");
 
 const designScreen = document.getElementById("designScreen");
 const checkoutScreen = document.getElementById("checkoutScreen");
@@ -2211,6 +2300,35 @@ document.getElementById("continueDraftBtn");
 
 const discardDraftBtn =
 document.getElementById("discardDraftBtn");
+const sharedGroupStartModal = document.getElementById("sharedGroupStartModal");
+const sharedGroupStartForm = document.getElementById("sharedGroupStartForm");
+const sharedGroupTitle = document.getElementById("sharedGroupTitle");
+const sharedGroupOrganiserName = document.getElementById("sharedGroupOrganiserName");
+const sharedGroupOrganiserEmail = document.getElementById("sharedGroupOrganiserEmail");
+const sharedGroupStartStatus = document.getElementById("sharedGroupStartStatus");
+const cancelSharedGroupStartBtn = document.getElementById("cancelSharedGroupStartBtn");
+const sharedGroupContributeModal = document.getElementById("sharedGroupContributeModal");
+const sharedGroupContributeForm = document.getElementById("sharedGroupContributeForm");
+const sharedGroupContributeIntro = document.getElementById("sharedGroupContributeIntro");
+const sharedGroupContributorName = document.getElementById("sharedGroupContributorName");
+const sharedGroupContributeStatus = document.getElementById("sharedGroupContributeStatus");
+const cancelSharedGroupContributeBtn = document.getElementById("cancelSharedGroupContributeBtn");
+const sharedGroupOwnerModal = document.getElementById("sharedGroupOwnerModal");
+const sharedGroupOwnerTitle = document.getElementById("sharedGroupOwnerTitle");
+const sharedGroupOwnerSummary = document.getElementById("sharedGroupOwnerSummary");
+const sharedGroupInviteLink = document.getElementById("sharedGroupInviteLink");
+const copySharedGroupLinkBtn = document.getElementById("copySharedGroupLinkBtn");
+const sharedGroupContributionList = document.getElementById("sharedGroupContributionList");
+const sharedGroupOwnerStatus = document.getElementById("sharedGroupOwnerStatus");
+const refreshSharedGroupBtn = document.getElementById("refreshSharedGroupBtn");
+const checkoutSharedGroupBtn = document.getElementById("checkoutSharedGroupBtn");
+const closeSharedGroupOwnerBtn = document.getElementById("closeSharedGroupOwnerBtn");
+
+const sharedGroupUrlParams = new URLSearchParams(window.location.search);
+let activeSharedGroupShareToken = sharedGroupUrlParams.get("group") || "";
+let activeSharedGroupOwnerToken = sharedGroupUrlParams.get("group_owner") || "";
+let activeSharedGroup = null;
+let finalisingSharedGroupOwnerToken = "";
 
 const addCartArea =
   document.querySelector(".add-cart-area");
@@ -4798,6 +4916,7 @@ function updateNames() {
       {
         name: value,
         quantity: normalizeItemQuantity(singleQuantity?.value || previousItem?.quantity),
+        groupContributorName: previousItem?.groupContributorName || null,
 
         // Keep the existing colours/design even when
         // the name or icon changes.
@@ -4840,6 +4959,7 @@ function updateNames() {
       return {
         name: value,
         quantity: getItemQuantity(previousItem),
+        groupContributorName: previousItem?.groupContributorName || null,
 
         custom: previousItem?.custom
           ? {
@@ -5548,6 +5668,7 @@ async function submitOrder() {
         product_name: activeProduct.name,
         name: item.name,
         clean_name: sanitizeName(item.name),
+        group_contributor_name: item.groupContributorName || null,
         price: roundMoney(
           calculatePrice(design, item.name) +
           (includesGiftingBag ? giftingBagQuantity * GIFTING_BAG_PRICE : 0)
@@ -5581,6 +5702,10 @@ async function submitOrder() {
   const order = {
     order_ref: orderRef,
     product_key: activeProduct.product_key,
+    group_order_code:
+      finalisingSharedGroupOwnerToken && activeSharedGroup?.public_code
+        ? activeSharedGroup.public_code
+        : null,
     linked_order_ref: hasVerifiedLinkedOrder()
       ? verifiedLinkedOrder.orderRef
       : null,
@@ -5657,6 +5782,25 @@ async function submitOrder() {
       "Unable to save your order. Please try again.";
 
     return;
+  }
+
+  if (order.group_order_code && finalisingSharedGroupOwnerToken) {
+    try {
+      const { error } = await supabase.rpc("finalise_shared_group_order", {
+        p_owner_token: finalisingSharedGroupOwnerToken,
+        p_order_ref: orderRef,
+        p_email: order.customer_email
+      });
+      if (error) throw error;
+      activeSharedGroup = {
+        ...activeSharedGroup,
+        status: "finalised",
+        final_order_ref: orderRef
+      };
+      renderSharedGroupBanner();
+    } catch (error) {
+      console.error("Unable to close the shared group after checkout:", error);
+    }
   }
 
   // The order is now safely saved.
@@ -5915,6 +6059,317 @@ groupBtn.onclick = () => {
   setOrderType("group");
 };
 
+function createPrivateGroupToken() {
+  return crypto.randomUUID();
+}
+
+function serializeSharedGroupBasket() {
+  return names.map(item => {
+    const design = getDesign(item);
+    return {
+      product_key: activeProduct.product_key,
+      name: item.name,
+      quantity: getItemQuantity(item),
+      design: {
+        base_shape: design.baseShape || "ribbed",
+        letter_orientation: design.letterOrientation || "vertical",
+        bases: [...design.bases],
+        caps: [...design.caps],
+        letters: [...design.letters]
+      }
+    };
+  });
+}
+
+function restoreSharedGroupItems(contributions = []) {
+  return flattenSharedGroupContributions(contributions).map(item => ({
+    ...item,
+    custom: {
+      ...item.custom,
+      bases: item.custom.bases.length ? item.custom.bases : [...globalDesign.bases],
+      caps: item.custom.caps.length ? item.custom.caps : [...globalDesign.caps],
+      letters: item.custom.letters.length ? item.custom.letters : [...globalDesign.letters]
+    }
+  }));
+}
+
+function getSharedGroupInviteUrl(shareToken) {
+  const url = new URL(window.location.origin);
+  url.searchParams.set("group", shareToken);
+  url.hash = "designArea";
+  return url.toString();
+}
+
+function getSharedGroupContributionToken(groupCode) {
+  const key = `littleKeepsGroupContribution:${groupCode}`;
+  let token = localStorage.getItem(key);
+  if (!token) {
+    token = createPrivateGroupToken();
+    localStorage.setItem(key, token);
+  }
+  return token;
+}
+
+function renderSharedGroupBanner() {
+  if (!activeSharedGroup) {
+    sharedGroupBanner.classList.add("hidden");
+    return;
+  }
+
+  sharedGroupBannerTitle.textContent = activeSharedGroup.title;
+  if (activeSharedGroup.is_owner) {
+    sharedGroupBannerText.textContent =
+      `${activeSharedGroup.contribution_count} contributor${Number(activeSharedGroup.contribution_count) === 1 ? "" : "s"} · ${activeSharedGroup.item_count} design${Number(activeSharedGroup.item_count) === 1 ? "" : "s"}`;
+    sharedGroupBannerAction.textContent = "Review Group";
+  } else if (activeSharedGroup.status === "open") {
+    sharedGroupBannerText.textContent =
+      `Design your keychain for ${activeSharedGroup.organiser_name}, then add your basket to the group.`;
+    sharedGroupBannerAction.textContent = "How It Works";
+  } else {
+    sharedGroupBannerText.textContent = activeSharedGroup.final_order_ref
+      ? `The organiser has checked out as order ${activeSharedGroup.final_order_ref}.`
+      : "This shared order is now closed.";
+    sharedGroupBannerAction.textContent = "Closed";
+  }
+  sharedGroupBanner.classList.remove("hidden");
+}
+
+function renderSharedGroupOwner() {
+  if (!activeSharedGroup?.is_owner) return;
+  const contributions = activeSharedGroup.contributions || [];
+  const totalItems = contributions.reduce(
+    (sum, contribution) => sum + (contribution.items || []).reduce(
+      (itemSum, item) => itemSum + normalizeItemQuantity(item.quantity),
+      0
+    ),
+    0
+  );
+
+  sharedGroupOwnerTitle.textContent = activeSharedGroup.title;
+  sharedGroupOwnerSummary.textContent =
+    `${contributions.length} contributor${contributions.length === 1 ? "" : "s"} · ${totalItems} keychain${totalItems === 1 ? "" : "s"}`;
+  sharedGroupInviteLink.value = getSharedGroupInviteUrl(activeSharedGroup.share_token);
+  sharedGroupContributionList.innerHTML = contributions.length
+    ? contributions.map(contribution => {
+        const quantity = (contribution.items || []).reduce(
+          (sum, item) => sum + normalizeItemQuantity(item.quantity),
+          0
+        );
+        const namesList = (contribution.items || [])
+          .map(item => `${escapePresetText(item.name)}${normalizeItemQuantity(item.quantity) > 1 ? ` × ${normalizeItemQuantity(item.quantity)}` : ""}`)
+          .join(", ");
+        return `
+          <article>
+            <div>
+              <strong>${escapePresetText(contribution.contributor_name)}</strong>
+              <span>${namesList}</span>
+              <small>${quantity} keychain${quantity === 1 ? "" : "s"}</small>
+            </div>
+            <button type="button" onclick='window.removeSharedGroupContribution(${JSON.stringify(contribution.id)})'>Remove</button>
+          </article>
+        `;
+      }).join("")
+    : `<div class="shared-group-empty"><strong>No designs yet</strong><span>Share the invite link with your friends.</span></div>`;
+  checkoutSharedGroupBtn.disabled = !contributions.length || activeSharedGroup.status !== "open";
+  checkoutSharedGroupBtn.textContent = activeSharedGroup.status === "open"
+    ? "Review Combined Basket"
+    : `Checked Out${activeSharedGroup.final_order_ref ? ` · ${activeSharedGroup.final_order_ref}` : ""}`;
+  sharedGroupOwnerModal.classList.remove("hidden");
+}
+
+async function loadSharedGroup(token, { openOwner = false } = {}) {
+  if (!token) return null;
+  try {
+    const { data, error } = await supabase.rpc("get_shared_group_order", {
+      p_token: token
+    });
+    if (error) throw error;
+    if (!data) throw new Error("This shared order link is invalid or expired.");
+    activeSharedGroup = data;
+    if (
+      !data.is_owner &&
+      !cartHasItems &&
+      data.product_key &&
+      activeProduct.product_key !== data.product_key
+    ) {
+      activeProduct = getProductByKey(productCatalog, data.product_key);
+      updateProductCustomiser();
+    }
+    renderSharedGroupBanner();
+    renderCartDrawer();
+    if (data.is_owner && openOwner) renderSharedGroupOwner();
+    return data;
+  } catch (error) {
+    console.error("Unable to load shared group order:", error);
+    sharedGroupBannerTitle.textContent = "Shared order unavailable";
+    sharedGroupBannerText.textContent = "Ask the organiser for a new private link.";
+    sharedGroupBannerAction.textContent = "Unavailable";
+    sharedGroupBanner.classList.remove("hidden");
+    return null;
+  }
+}
+
+function openSharedGroupCartAction() {
+  if (activeSharedGroup?.is_owner) {
+    closeCartDrawer();
+    renderSharedGroupOwner();
+    return;
+  }
+  if (!cartHasItems || !names.length) return;
+  closeCartDrawer();
+
+  if (activeSharedGroup && !activeSharedGroup.is_owner) {
+    if (activeSharedGroup.status !== "open") {
+      alert("This shared order is no longer accepting designs.");
+      return;
+    }
+    if (activeProduct.product_key !== activeSharedGroup.product_key) {
+      alert("This group is collecting a different Little Keeps product. Open the invite link again and design the matching product.");
+      return;
+    }
+    sharedGroupContributeIntro.textContent =
+      `Your ${getTotalKeychainQuantity()} keychain${getTotalKeychainQuantity() === 1 ? "" : "s"} will be sent to ${activeSharedGroup.organiser_name}. You won’t need to pay here.`;
+    sharedGroupContributeModal.classList.remove("hidden");
+    sharedGroupContributorName.focus();
+    return;
+  }
+
+  sharedGroupOrganiserName.value ||= customerName.value.trim();
+  sharedGroupOrganiserEmail.value ||= customerEmail.value.trim();
+  sharedGroupStartModal.classList.remove("hidden");
+  sharedGroupTitle.focus();
+}
+
+sharedGroupStartForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!cartHasItems || !names.length) return;
+  const submitButton = sharedGroupStartForm.querySelector('[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = "Creating…";
+  sharedGroupStartStatus.textContent = "Creating your private group link…";
+
+  const shareToken = createPrivateGroupToken();
+  const ownerToken = createPrivateGroupToken();
+  const contributionToken = createPrivateGroupToken();
+  try {
+    const { data, error } = await supabase.rpc("create_shared_group_order", {
+      p_title: sharedGroupTitle.value.trim(),
+      p_organiser_name: sharedGroupOrganiserName.value.trim(),
+      p_organiser_email: sharedGroupOrganiserEmail.value.trim(),
+      p_product_key: activeProduct.product_key,
+      p_share_token: shareToken,
+      p_owner_token: ownerToken,
+      p_contribution_token: contributionToken,
+      p_items: serializeSharedGroupBasket()
+    });
+    if (error) throw error;
+    localStorage.setItem(`littleKeepsGroupOwner:${data.public_code}`, ownerToken);
+    activeSharedGroupOwnerToken = ownerToken;
+    activeSharedGroupShareToken = "";
+    window.history.replaceState({}, "", `?group_owner=${encodeURIComponent(ownerToken)}`);
+    sharedGroupStartModal.classList.add("hidden");
+    await loadSharedGroup(ownerToken, { openOwner: true });
+  } catch (error) {
+    console.error("Unable to create shared group order:", error);
+    sharedGroupStartStatus.textContent =
+      "Shared orders are not ready yet. Please apply the shared group SQL update, then try again.";
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Create Share Link";
+  }
+});
+
+sharedGroupContributeForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!activeSharedGroup || !cartHasItems || !names.length) return;
+  const submitButton = sharedGroupContributeForm.querySelector('[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = "Adding…";
+  sharedGroupContributeStatus.textContent = "Sending your designs to the organiser…";
+
+  try {
+    const { data, error } = await supabase.rpc("save_shared_group_contribution", {
+      p_share_token: activeSharedGroupShareToken,
+      p_contributor_name: sharedGroupContributorName.value.trim(),
+      p_contribution_token: getSharedGroupContributionToken(activeSharedGroup.public_code),
+      p_items: serializeSharedGroupBasket()
+    });
+    if (error) throw error;
+    sharedGroupContributeStatus.textContent =
+      `Added ✓ ${activeSharedGroup.organiser_name} can now see your designs.`;
+    sharedGroupBannerText.textContent =
+      `Your designs are saved. You can update them before the organiser checks out.`;
+    submitButton.textContent = "Update My Group Designs";
+    setTimeout(() => sharedGroupContributeModal.classList.add("hidden"), 1100);
+    activeSharedGroup.contribution_count = data.contribution_count;
+  } catch (error) {
+    console.error("Unable to save group designs:", error);
+    sharedGroupContributeStatus.textContent =
+      error?.message || "Unable to add your designs. Please try again.";
+  } finally {
+    submitButton.disabled = false;
+    if (!submitButton.textContent.includes("Update")) {
+      submitButton.textContent = "Add My Basket to the Group";
+    }
+  }
+});
+
+window.removeSharedGroupContribution = async function(contributionId) {
+  if (!activeSharedGroup?.is_owner || !confirm("Remove this person’s designs from the group?")) return;
+  sharedGroupOwnerStatus.textContent = "Removing designs…";
+  const { error } = await supabase.rpc("remove_shared_group_contribution", {
+    p_owner_token: activeSharedGroupOwnerToken,
+    p_contribution_id: contributionId
+  });
+  if (error) {
+    sharedGroupOwnerStatus.textContent = "Unable to remove these designs.";
+    return;
+  }
+  await loadSharedGroup(activeSharedGroupOwnerToken, { openOwner: true });
+};
+
+function checkoutSharedGroup() {
+  if (!activeSharedGroup?.is_owner || activeSharedGroup.status !== "open") return;
+  const restored = restoreSharedGroupItems(activeSharedGroup.contributions || []);
+  if (!restored.length) return;
+  activeProduct = getProductByKey(productCatalog, activeSharedGroup.product_key);
+  updateProductCustomiser();
+  names = restored;
+  orderType = restored.length > 1 ? "group" : "single";
+  selectedIndex = 0;
+  giftingBagQuantity = 0;
+  cartHasItems = true;
+  finalisingSharedGroupOwnerToken = activeSharedGroupOwnerToken;
+  customerName.value = activeSharedGroup.organiser_name || "";
+  customerEmail.value = activeSharedGroup.organiser_email || "";
+  if (orderType === "single") {
+    singleName.value = restored[0].name;
+    singleQuantity.value = String(restored[0].quantity);
+  } else {
+    nameList.value = restored.map(item => item.name).join("\n");
+  }
+  sharedGroupOwnerModal.classList.add("hidden");
+  refreshUI();
+  buildSelectedPreview();
+  openCartDrawer();
+}
+
+sharedGroupCartBtn.addEventListener("click", openSharedGroupCartAction);
+sharedGroupBannerAction.addEventListener("click", () => {
+  if (activeSharedGroup?.is_owner) renderSharedGroupOwner();
+  else setStorefrontView("design", { scrollTo: "designArea" });
+});
+cancelSharedGroupStartBtn.addEventListener("click", () => sharedGroupStartModal.classList.add("hidden"));
+cancelSharedGroupContributeBtn.addEventListener("click", () => sharedGroupContributeModal.classList.add("hidden"));
+closeSharedGroupOwnerBtn.addEventListener("click", () => sharedGroupOwnerModal.classList.add("hidden"));
+refreshSharedGroupBtn.addEventListener("click", () => loadSharedGroup(activeSharedGroupOwnerToken, { openOwner: true }));
+checkoutSharedGroupBtn.addEventListener("click", checkoutSharedGroup);
+copySharedGroupLinkBtn.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(sharedGroupInviteLink.value);
+  copySharedGroupLinkBtn.textContent = "Copied ✓";
+  setTimeout(() => { copySharedGroupLinkBtn.textContent = "Copy Link"; }, 1400);
+});
+
 function openCartDrawer() {
   closeSideMenu();
   renderCartDrawer();
@@ -5948,12 +6403,31 @@ function renderCartDrawer() {
 
     checkoutFromCartBtn.disabled = true;
     checkoutFromCartBtn.textContent = "Add a keychain first";
+    sharedGroupCartBtn.classList.remove("hidden");
+    sharedGroupCartBtn.disabled = !activeSharedGroup?.is_owner;
+    sharedGroupCartBtn.textContent = activeSharedGroup?.is_owner
+      ? "Review Shared Group"
+      : activeSharedGroup
+        ? "Design a keychain first"
+        : "Start a Shared Group Order";
     continueShoppingBtn.textContent = "Start Designing";
     return;
   }
 
   checkoutFromCartBtn.disabled = false;
-  checkoutFromCartBtn.textContent = "Checkout";
+  checkoutFromCartBtn.textContent = activeSharedGroup && !activeSharedGroup.is_owner
+    ? `Add to ${activeSharedGroup.title}`
+    : "Checkout";
+  sharedGroupCartBtn.classList.toggle(
+    "hidden",
+    Boolean(activeSharedGroup && !activeSharedGroup.is_owner)
+  );
+  sharedGroupCartBtn.disabled = false;
+  sharedGroupCartBtn.textContent = activeSharedGroup?.is_owner
+    ? "Review Shared Group"
+    : activeSharedGroup
+      ? `Add Basket to ${activeSharedGroup.title}`
+      : "Start a Shared Group Order";
   continueShoppingBtn.textContent = "Continue Designing";
 
   cartDrawerItems.innerHTML = names
@@ -6106,7 +6580,13 @@ sideCartBtn.onclick = openCartDrawer;
 cartCloseBtn.onclick = closeCartDrawer;
 cartOverlay.onclick = closeCartDrawer;
 continueShoppingBtn.onclick = closeCartDrawer;
-checkoutFromCartBtn.onclick = proceedToCheckout;
+checkoutFromCartBtn.onclick = () => {
+  if (activeSharedGroup && !activeSharedGroup.is_owner) {
+    openSharedGroupCartAction();
+    return;
+  }
+  proceedToCheckout();
+};
 
 function openSideMenu() {
   sideMenu.classList.add("open");
@@ -7516,6 +7996,12 @@ function renderCustomerOrderStatus(order) {
     </div>
 
     <div class="order-status-details">
+      ${order.group_order_code ? `
+        <p>
+          <span>Shared group</span>
+          <strong>${escapePresetText(order.group_order_code)}</strong>
+        </p>
+      ` : ""}
       <p>
         <span>Method</span>
         <strong>${methodIsDelivery ? "Islandwide delivery" : `Pickup at ${pickupLocation}`}</strong>
@@ -7922,6 +8408,12 @@ if (resumeOrderRef && !paymentReturnState) {
 
 renderPendingOrderBanner();
 void retryRememberedOrderEmail();
+
+if (activeSharedGroupOwnerToken) {
+  void loadSharedGroup(activeSharedGroupOwnerToken, { openOwner: true });
+} else if (activeSharedGroupShareToken) {
+  void loadSharedGroup(activeSharedGroupShareToken);
+}
 
 // Payment-page preview for layout testing only.
 // This does not create, save or update an order.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   assignPrintedKeycapsToOwners,
+  flattenSharedGroupContributions,
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
   calculateGiftingBagTotal,
@@ -597,6 +598,54 @@ test("prepares an internal basket label without courier details", () => {
     items: [{ name: "Articulated Keychain", quantity: 2, summary: "CAT" }],
     notes: "Basket 3"
   });
+});
+
+test("combines shared group designs while preserving each contributor", () => {
+  assert.deepEqual(flattenSharedGroupContributions([
+    {
+      contributor_name: "Alicia",
+      items: [{
+        name: "NUR",
+        quantity: 2,
+        design: {
+          base_shape: "bubbly",
+          letter_orientation: "horizontal",
+          bases: ["#ffffff"],
+          caps: ["#f55a74"],
+          letters: ["#332d30"]
+        }
+      }]
+    },
+    {
+      contributor_name: "Mei",
+      items: [{ name: "KAI", quantity: 1, design: {} }]
+    }
+  ]), [
+    {
+      name: "NUR",
+      quantity: 2,
+      groupContributorName: "Alicia",
+      custom: {
+        baseShape: "bubbly",
+        letterOrientation: "horizontal",
+        bases: ["#ffffff"],
+        caps: ["#f55a74"],
+        letters: ["#332d30"]
+      }
+    },
+    {
+      name: "KAI",
+      quantity: 1,
+      groupContributorName: "Mei",
+      custom: {
+        baseShape: "ribbed",
+        letterOrientation: "vertical",
+        bases: [],
+        caps: [],
+        letters: []
+      }
+    }
+  ]);
 });
 
 test("prepares a hand-delivery label with recipient and delivery details", () => {
