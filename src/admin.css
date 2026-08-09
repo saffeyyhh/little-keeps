@@ -524,6 +524,15 @@
   background: #eff8fe;
 }
 
+.route-assistance-bar {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.route-assistance-bar > div:first-child {
+  min-width: 0;
+}
+
 .route-assistance-bar div {
   display: grid;
   gap: 4px;
@@ -532,8 +541,10 @@
 .route-assistance-bar .route-assistance-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 8px;
+  width: 100%;
 }
 
 .route-assistance-bar span,
