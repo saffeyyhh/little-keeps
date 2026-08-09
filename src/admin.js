@@ -2187,6 +2187,93 @@ window.markKeychainComplete = async function(orderId, itemIndex) {
   await loadOrders();
 };
 
+window.markBaseAssemblyComplete = async function(orderId, itemIndex) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const index = Number(itemIndex);
+  const keychain = order?.order_data?.[index];
+  if (!order || !keychain || keychain.base_assembled || keychain.assembly_completed) return;
+
+  await loadInventoryItems();
+  const needs = getKeychainBaseAssemblyNeeds(keychain);
+  const missingItems = Object.entries(needs).filter(
+    ([itemName, qtyNeeded]) => getInventoryQty(itemName) < qtyNeeded
+  );
+  if (missingItems.length) {
+    alert("Some base parts or hardware are no longer available. Refresh Production and try again.");
+    await renderAssemblyQueue();
+    return;
+  }
+  if (!confirm(`Mark the ${keychain.name || "keychain"} base as assembled and set aside?\n\nIts base parts and hardware will be deducted now.`)) return;
+
+  if (IS_ADMIN_PREVIEW) {
+    keychain.base_assembled = true;
+    keychain.base_assembled_at = new Date().toISOString();
+    renderCurrentView();
+    return;
+  }
+
+  const { error } = await supabase.rpc("complete_keychain_base_assembly", {
+    p_order_id: String(orderId),
+    p_item_index: index,
+    p_needs: needs
+  });
+  if (error) {
+    console.error("Unable to save base assembly:", error);
+    alert("Unable to mark this base assembled. Run the latest assembly workflow SQL once, then try again.");
+    return;
+  }
+  await loadOrders();
+};
+
+window.sendSelectedPrintedPartsToReprint = async function(
+  orderId,
+  itemIndex,
+  keepForClearance = true
+) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const index = Number(itemIndex);
+  const keychain = order?.order_data?.[index];
+  if (!order || !keychain) return;
+
+  const selected = Array.from(document.querySelectorAll(
+    `[data-reprint-part][data-order-id="${CSS.escape(String(orderId))}"][data-item-index="${index}"]:checked`
+  ));
+  if (!selected.length) {
+    alert("Tick the bases and keycaps that need reprinting first.");
+    return;
+  }
+
+  const needs = {};
+  selected.forEach(input => {
+    const partNeeds = getKeychainPrintablePartNeeds(
+      keychain,
+      input.dataset.partType,
+      Number(input.dataset.characterIndex)
+    );
+    Object.entries(partNeeds).forEach(([itemName, quantity]) => {
+      needs[itemName] = (needs[itemName] || 0) + quantity;
+    });
+  });
+
+  if (!confirm(
+    `Send ${selected.length} checked printed part${selected.length === 1 ? "" : "s"} back to Production?\n\n` +
+    "All checked parts will be processed together before Assembly refreshes."
+  )) return;
+
+  const { error } = await supabase.rpc("mark_inventory_for_reprint", {
+    p_needs: needs,
+    p_keep_for_clearance: Boolean(keepForClearance),
+    p_order_ref: order.order_ref || null,
+    p_reason: "Failed quality check"
+  });
+  if (error) {
+    console.error("Unable to batch reprint parts:", error);
+    alert("Unable to send the checked parts back to Production. Run the latest reprint SQL once, then try again.");
+    return;
+  }
+  await loadOrders();
+};
+
 window.sendPrintedPartToReprint = async function(
   orderId,
   itemIndex,
@@ -3340,9 +3427,6 @@ function renderOrders(orders) {
 
   const groupedOrders = groupLinkedOrdersForAdmin(orders);
   const filteredOrders = groupedOrders.filter(order => {
-    if (!order.archived_at && FULFILMENT_STATUSES.includes(order.status)) {
-      return false;
-    }
     const matchesSearch =
       (order.order_ref || "").toLowerCase().includes(searchText) ||
       (order.customer_name || "").toLowerCase().includes(searchText) ||
@@ -3731,8 +3815,13 @@ function renderOrders(orders) {
     <span>Status</span>
     <select
       class="status-select"
+      ${FULFILMENT_STATUSES.includes(order.status) || order.status === "Completed" ? "disabled" : ""}
       onchange="window.updateOrderStatus('${order.id}', this.value)"
     >
+      ${FULFILMENT_STATUSES.includes(order.status) ? `
+        <option selected>${escapeAdminHtml(order.status)} · manage in Fulfilment</option>
+      ` : ""}
+      ${order.status === "Completed" ? `<option selected>Completed</option>` : ""}
       ${order.status === "Rush Review" ? `<option value="Rush Review" selected>Rush request - review</option>` : ""}
       ${order.status === "Bulk Review" ? `<option value="Bulk Review" selected>Bulk request - review</option>` : ""}
       ${order.status === "Payment Verification" ? `<option value="Payment Verification" selected>Manual payment - check</option>` : ""}
@@ -4902,13 +4991,12 @@ function getOrderInventoryNeeds(order) {
 
         "ribbed";
 
-      add(
-
-        getBaseInventoryName(baseName, baseShape),
-
-        1
-
-      );
+      if (!item.base_assembled) {
+        add(
+          getBaseInventoryName(baseName, baseShape),
+          1
+        );
+      }
 
       add(
 
@@ -4926,18 +5014,26 @@ function getOrderInventoryNeeds(order) {
 
       );
     });
+
+    if (!item.base_assembled) {
+      add("Mechanical Switch", letters.length);
+      add("Metal Large D Ring", 1);
+    }
   });
-
-  add("Mechanical Switch", (order.order_data || []).reduce((sum, item) => {
-    return sum + (item.clean_name || item.name || "").length;
-  }, 0));
-
-  add("Metal Large D Ring", (order.order_data || []).length);
   add(
     "Gifting Bag",
     getOrderGiftingBagCount(order)
   );
 
+  return needs;
+}
+
+function getKeychainBaseAssemblyNeeds(item) {
+  if (item?.base_assembled) return {};
+  const needs = getKeychainPrintablePartNeeds(item, "base");
+  const characterCount = Array.from(item?.clean_name || item?.name || "").length;
+  if (characterCount > 0) needs["Mechanical Switch"] = characterCount;
+  needs["Metal Large D Ring"] = 1;
   return needs;
 }
 
@@ -6402,6 +6498,7 @@ async function renderAssemblyQueue() {
   const assemblyOrders = candidateOrders
     .map(order => {
       const readyItems = [];
+      const baseReadyItems = [];
       const waitingItems = [];
       const completedItems = [];
 
@@ -6422,6 +6519,25 @@ async function renderAssemblyQueue() {
         );
 
         if (!hasAllParts) {
+          const baseNeeds = getKeychainBaseAssemblyNeeds(item);
+          const basesCanBeAssembled = item.base_assembled || (
+            Object.keys(baseNeeds).length > 0 &&
+            Object.entries(baseNeeds).every(
+              ([itemName, qtyNeeded]) =>
+                Number(remainingStock[itemName] || 0) >= qtyNeeded
+            )
+          );
+
+          if (basesCanBeAssembled) {
+            if (!item.base_assembled) {
+              Object.entries(baseNeeds).forEach(([itemName, qtyNeeded]) => {
+                remainingStock[itemName] =
+                  Number(remainingStock[itemName] || 0) - qtyNeeded;
+              });
+            }
+            baseReadyItems.push({ item, itemIndex });
+            return;
+          }
           waitingItems.push({ item, itemIndex });
           return;
         }
@@ -6437,6 +6553,7 @@ async function renderAssemblyQueue() {
       return {
         order,
         readyItems,
+        baseReadyItems,
         waitingItems,
         completedItems,
         allCompleted:
@@ -6446,6 +6563,7 @@ async function renderAssemblyQueue() {
     })
     .filter(entry =>
       entry.readyItems.length > 0 ||
+      entry.baseReadyItems.length > 0 ||
       entry.completedItems.length > 0
     );
 
@@ -6457,8 +6575,14 @@ async function renderAssemblyQueue() {
     (sum, entry) => sum + entry.completedItems.length,
     0
   );
+  const baseReadyKeychainCount = assemblyOrders.reduce(
+    (sum, entry) => sum + entry.baseReadyItems.length,
+    0
+  );
 
-  function renderAssemblyItem(order, item, itemIndex, completed = false) {
+  function renderAssemblyItem(order, item, itemIndex, mode = "ready") {
+    const completed = mode === "completed";
+    const baseOnly = mode === "base-only";
     const baseShape =
       item.design?.base_shape?.key ||
       item.design?.baseShape ||
@@ -6492,6 +6616,7 @@ async function renderAssemblyQueue() {
             </span>
 
             ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
+            ${baseOnly ? `<span class="assembly-tag">${item.base_assembled ? "Base assembled & set aside" : "Base parts ready"}</span>` : ""}
           </div>
         </div>
 
@@ -6516,7 +6641,22 @@ async function renderAssemblyQueue() {
                 Not happy with it? Send back to rework
               </button>
             `
-            : `
+            : baseOnly ? `
+              <p class="hint">
+                ${item.base_assembled
+                  ? "The base is already assembled and set aside. This keychain is waiting for its keycaps."
+                  : "All base parts and hardware are ready. You can assemble the base now and set it aside while the keycaps print."}
+              </p>
+              ${item.base_assembled ? "" : `
+                <button
+                  class="keychain-complete-btn"
+                  type="button"
+                  onclick="window.markBaseAssemblyComplete('${order.id}', ${itemIndex})"
+                >
+                  Mark Base Assembled & Set Aside
+                </button>
+              `}
+            ` : `
               <details class="assembly-reprint-controls">
                 <summary>Bad print? Send a part back to Production</summary>
 
@@ -6541,6 +6681,16 @@ async function renderAssemblyQueue() {
                     <div class="reprint-character-group">
                       <strong>Position ${characterIndex + 1} - ${displayIcon(character)}</strong>
 
+                      <label class="reprint-checkbox-option">
+                        <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="base" data-character-index="${characterIndex}">
+                        <span>Base</span>
+                      </label>
+
+                      <label class="reprint-checkbox-option">
+                        <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="keycap" data-character-index="${characterIndex}">
+                        <span>Keycap</span>
+                      </label>
+
                       <button
                         type="button"
                         class="reprint-part-btn"
@@ -6559,6 +6709,14 @@ async function renderAssemblyQueue() {
                     </div>
                   `).join("")}
                 </div>
+
+                <button
+                  type="button"
+                  class="reprint-all-btn"
+                  onclick="window.sendSelectedPrintedPartsToReprint('${order.id}', ${itemIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
+                >
+                  Send Checked Parts to Production
+                </button>
 
                 <button
                   type="button"
@@ -6585,8 +6743,8 @@ async function renderAssemblyQueue() {
   const emptyAssemblyMessage = candidateOrders.length
     ? `
       <div class="empty-card">
-        <h3>No complete keychains ready yet</h3>
-        <p>Some parts are printed, but every keychain is still missing at least one piece.</p>
+        <h3>No keychains or complete base sets ready yet</h3>
+        <p>Every keychain is still missing either base parts, hardware, or keycaps.</p>
         <p>Use <strong>Add Printed</strong> in Production after each print finishes.</p>
       </div>
     `
@@ -6598,7 +6756,7 @@ async function renderAssemblyQueue() {
     `;
 
   const assemblyCards = assemblyOrders
-    .map(({ order, readyItems, waitingItems, completedItems, allCompleted }, index) => {
+    .map(({ order, readyItems, baseReadyItems, waitingItems, completedItems, allCompleted }, index) => {
       const totalItems = (order.order_data || []).length;
 
       return `
@@ -6612,6 +6770,7 @@ async function renderAssemblyQueue() {
             <div class="assembly-meta">
               <span>${completedItems.length}/${totalItems} completed</span>
               ${readyItems.length ? `<span>${readyItems.length} ready now</span>` : ""}
+              ${baseReadyItems.length ? `<span>${baseReadyItems.length} base-only ready</span>` : ""}
               <span>${getMethodLabel(order.collection_method)}</span>
               <span>${formatDate(order.needed_by)}</span>
             </div>
@@ -6636,6 +6795,15 @@ async function renderAssemblyQueue() {
                 : ""
             }
 
+            ${baseReadyItems.length ? `
+              <div class="assembly-base-ready-section">
+                <h4>Bases ready to assemble & set aside</h4>
+                ${baseReadyItems.map(({ item, itemIndex }) =>
+                  renderAssemblyItem(order, item, itemIndex, "base-only")
+                ).join("")}
+              </div>
+            ` : ""}
+
             ${
               completedItems.length
                 ? `
@@ -6643,7 +6811,7 @@ async function renderAssemblyQueue() {
                     <h4>Completed keychains</h4>
                     ${completedItems
                       .map(({ item, itemIndex }) =>
-                        renderAssemblyItem(order, item, itemIndex, true)
+                        renderAssemblyItem(order, item, itemIndex, "completed")
                       )
                       .join("")}
                   </div>
@@ -6695,7 +6863,7 @@ async function renderAssemblyQueue() {
         </div>
 
         <p class="active-count">
-          ${readyKeychainCount} ready · ${completedKeychainCount} completed
+          ${readyKeychainCount} ready · ${baseReadyKeychainCount} base-only · ${completedKeychainCount} completed
         </p>
       </div>
 

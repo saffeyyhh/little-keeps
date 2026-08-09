@@ -17,6 +17,7 @@ type OrderRecord = {
   needed_by?: string;
   total?: number | string;
   order_data?: OrderItem[];
+  telegram_review_notified_at?: string | null;
 };
 
 type NotificationPayload = {
@@ -24,7 +25,24 @@ type NotificationPayload = {
   record?: OrderRecord;
   old_record?: OrderRecord | null;
   order?: OrderRecord;
+  order_ref?: string;
+  email?: string;
+  source?: string;
 };
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret"
+};
+
+function jsonResponse(body: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  Object.entries(corsHeaders).forEach(([name, value]) => headers.set(name, value));
+  return Response.json(body, {
+    ...init,
+    headers
+  });
+}
 
 function getOrder(payload: NotificationPayload): OrderRecord {
   return payload.record || payload.order || payload as OrderRecord;
@@ -117,20 +135,13 @@ function buildMessage(
 }
 
 Deno.serve(async request => {
+  if (request.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (request.method !== "POST") {
-    return Response.json(
+    return jsonResponse(
       { ok: false, error: "Method not allowed" },
       { status: 405 }
-    );
-  }
-
-  const webhookSecret = Deno.env.get("ORDER_WEBHOOK_SECRET");
-  const suppliedSecret = request.headers.get("x-webhook-secret");
-
-  if (webhookSecret && suppliedSecret !== webhookSecret) {
-    return Response.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 }
     );
   }
 
@@ -138,7 +149,7 @@ Deno.serve(async request => {
   const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
 
   if (!botToken || !chatId) {
-    return Response.json(
+    return jsonResponse(
       { ok: false, error: "Telegram secrets are missing" },
       { status: 500 }
     );
@@ -149,17 +160,63 @@ Deno.serve(async request => {
   try {
     payload = await request.json();
   } catch {
-    return Response.json(
+    return jsonResponse(
       { ok: false, error: "Invalid JSON body" },
       { status: 400 }
     );
   }
 
-  const order = getOrder(payload);
+  const isDirectReviewRequest = Boolean(payload.order_ref && payload.email);
+  const webhookSecret = Deno.env.get("ORDER_WEBHOOK_SECRET");
+  const suppliedSecret = request.headers.get("x-webhook-secret");
+
+  if (!isDirectReviewRequest && webhookSecret && suppliedSecret !== webhookSecret) {
+    return jsonResponse(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  let order = getOrder(payload);
+  if (isDirectReviewRequest) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse(
+        { ok: false, error: "Order verification is unavailable" },
+        { status: 500 }
+      );
+    }
+
+    const query = new URL(`${supabaseUrl}/rest/v1/orders`);
+    query.searchParams.set("select", "*");
+    query.searchParams.set("order_ref", `eq.${String(payload.order_ref).trim()}`);
+    query.searchParams.set("customer_email", `eq.${String(payload.email).trim()}`);
+    query.searchParams.set("limit", "1");
+    const orderResponse = await fetch(query, {
+      headers: {
+        apikey: serviceRoleKey,
+        authorization: `Bearer ${serviceRoleKey}`
+      }
+    });
+    const rows = orderResponse.ok ? await orderResponse.json() : [];
+    order = rows[0];
+    if (!order || !needsReview(order)) {
+      return jsonResponse(
+        { ok: false, error: "Bulk or rush review order was not found" },
+        { status: 404 }
+      );
+    }
+    if (order.telegram_review_notified_at) {
+      return jsonResponse({ ok: true, skipped: true, reason: "Review alert already sent." });
+    }
+  }
+
   const oldOrder = payload.old_record || null;
   const reviewStarted =
     needsReview(order) &&
-    oldOrder?.status !== order.status;
+    oldOrder?.status !== order.status &&
+    !order.telegram_review_notified_at;
   const paymentCompleted =
     isPaid(order) &&
     !isPaid(oldOrder);
@@ -171,11 +228,37 @@ Deno.serve(async request => {
       : null;
 
   if (!notificationKind) {
-    return Response.json({
+    return jsonResponse({
       ok: true,
       skipped: true,
       reason: "No Telegram alert is needed for this order event."
     });
+  }
+
+  let reviewClaimed = false;
+  if (notificationKind === "review" && order.id) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl && serviceRoleKey) {
+      const claimUrl = new URL(`${supabaseUrl}/rest/v1/orders`);
+      claimUrl.searchParams.set("id", `eq.${order.id}`);
+      claimUrl.searchParams.set("telegram_review_notified_at", "is.null");
+      const claimResponse = await fetch(claimUrl, {
+        method: "PATCH",
+        headers: {
+          apikey: serviceRoleKey,
+          authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify({ telegram_review_notified_at: new Date().toISOString() })
+      });
+      const claimedRows = claimResponse.ok ? await claimResponse.json() : [];
+      if (!claimedRows.length) {
+        return jsonResponse({ ok: true, skipped: true, reason: "Review alert already sent." });
+      }
+      reviewClaimed = true;
+    }
   }
 
   const telegramResponse = await fetch(
@@ -197,10 +280,27 @@ Deno.serve(async request => {
 
   if (!telegramResponse.ok || !telegramResult.ok) {
     console.error("Telegram rejected the message:", telegramResult);
-    return Response.json(telegramResult, { status: 502 });
+    if (reviewClaimed && order.id) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (supabaseUrl && serviceRoleKey) {
+        const resetUrl = new URL(`${supabaseUrl}/rest/v1/orders`);
+        resetUrl.searchParams.set("id", `eq.${order.id}`);
+        await fetch(resetUrl, {
+          method: "PATCH",
+          headers: {
+            apikey: serviceRoleKey,
+            authorization: `Bearer ${serviceRoleKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ telegram_review_notified_at: null })
+        });
+      }
+    }
+    return jsonResponse(telegramResult, { status: 502 });
   }
 
-  return Response.json({
+  return jsonResponse({
     ok: true,
     notification_kind: notificationKind
   });

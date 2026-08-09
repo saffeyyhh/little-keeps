@@ -5652,6 +5652,13 @@ async function submitOrder() {
   orderSubmitted = true;
   localStorage.removeItem("littleKeepsDraft");
 
+  if (isReviewRequest) {
+    await requestSpecialOrderTelegramAlert(
+      orderRef,
+      order.customer_email
+    );
+  }
+
   if (!isManualOrder) {
     rememberPendingOrder({
       orderRef,
@@ -6334,6 +6341,24 @@ async function requestOrderSavedEmail(orderRef, email, linkedOrderRef = null) {
     return data?.ok === true;
   } catch (error) {
     console.warn("Order reference email was not sent:", error);
+    return false;
+  }
+}
+
+async function requestSpecialOrderTelegramAlert(orderRef, email) {
+  try {
+    const { data, error } = await supabase.functions.invoke("telegram-new-order", {
+      body: {
+        order_ref: orderRef,
+        email,
+        source: "website-review-request"
+      }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data?.ok === true;
+  } catch (error) {
+    console.warn("Special-order Telegram alert was not sent:", error);
     return false;
   }
 }

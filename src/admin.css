@@ -7802,3 +7802,30 @@ body::before {
     font-size: 23px;
   }
 }
+.assembly-base-ready-section {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #d9d1ec;
+  border-radius: 16px;
+  background: #faf8ff;
+}
+
+.assembly-base-ready-section > h4 {
+  margin: 0 0 10px;
+  color: #674f82;
+}
+
+.reprint-checkbox-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 8px 6px 0;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.reprint-checkbox-option input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+}
