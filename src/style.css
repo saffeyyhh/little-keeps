@@ -1238,6 +1238,52 @@ label {
   margin: 0;
 }
 
+.friends-family-share-card {
+  margin-bottom: 18px;
+  padding: 15px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid #cdbdea;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #f7f2ff, #fff8fc);
+}
+
+.friends-family-share-card > span {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #fff;
+  background: #7651a8;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.friends-family-share-card h3 {
+  margin: 0 0 4px;
+  color: #543b70;
+}
+
+.friends-family-share-card p {
+  margin: 0;
+  color: #706278;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.friends-family-share-card button {
+  width: fit-content;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #7651a8;
+  font-weight: 850;
+  cursor: pointer;
+}
+
 .toggle-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

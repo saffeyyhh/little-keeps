@@ -599,7 +599,7 @@ document.querySelector("#app").innerHTML = `
 
 <section id="sharedGroupBanner" class="shared-group-banner hidden" aria-live="polite">
   <div>
-    <small>Shared group order</small>
+    <small>Friends / family order</small>
     <strong id="sharedGroupBannerTitle">Loading…</strong>
     <span id="sharedGroupBannerText">Design your keychain, then add your basket to the group.</span>
   </div>
@@ -743,7 +743,7 @@ document.querySelector("#app").innerHTML = `
       type="button"
       class="shared-group-cart-btn"
     >
-      Start a Shared Group Order
+      Start a Friends / Family Order
     </button>
 
     <button
@@ -1083,7 +1083,7 @@ document.querySelector("#app").innerHTML = `
             type="button"
             class="toggle"
           >
-            Group Order
+            Friends / Family
           </button>
         </div>
       </div>
@@ -1118,7 +1118,16 @@ document.querySelector("#app").innerHTML = `
         </div>
 
         <div id="groupSection" class="hidden">
-          <h3>Enter Names</h3>
+          <div class="friends-family-share-card">
+            <span>Recommended</span>
+            <div>
+              <h3>Let everyone choose their own colours</h3>
+              <p>Enter your own name below and choose your colours. Then create a private link for everyone else; you review and pay once.</p>
+            </div>
+            <button id="friendsFamilyStartBtn" type="button">Create Invite Link</button>
+          </div>
+
+          <h3>Or enter everyone yourself</h3>
 
           <textarea
             id="nameList"
@@ -1838,7 +1847,7 @@ Chloe</textarea>
     <div id="sharedGroupStartModal" class="modal hidden">
       <form id="sharedGroupStartForm" class="modal-card shared-group-modal-card">
         <span class="shared-group-modal-icon">♡</span>
-        <h2>Start a Shared Order</h2>
+        <h2>Start a Friends / Family Order</h2>
         <p>We’ll create one private link. Friends add their own designs, then you review and pay once.</p>
 
         <label for="sharedGroupTitle">Group name</label>
@@ -1875,7 +1884,7 @@ Chloe</textarea>
       <div class="modal-card shared-group-owner-card">
         <div class="shared-group-owner-heading">
           <div>
-            <small>Shared group order</small>
+            <small>Friends / family order</small>
             <h2 id="sharedGroupOwnerTitle">Your Group</h2>
             <p id="sharedGroupOwnerSummary"></p>
           </div>
@@ -1988,7 +1997,7 @@ Chloe</textarea>
     <h2>Need a little help?</h2>
 
     <p>
-      Colour request, group order or custom idea? Message us.
+      Colour request, friends/family order or custom idea? Message us.
     </p>
   </div>
 
@@ -2098,6 +2107,7 @@ const singleBtn = document.getElementById("singleBtn");
 const groupBtn = document.getElementById("groupBtn");
 const singleSection = document.getElementById("singleSection");
 const groupSection = document.getElementById("groupSection");
+const friendsFamilyStartBtn = document.getElementById("friendsFamilyStartBtn");
 const singleName = document.getElementById("singleName");
 const singleQuantity = document.getElementById("singleQuantity");
 const nameList = document.getElementById("nameList");
@@ -6059,6 +6069,18 @@ groupBtn.onclick = () => {
   setOrderType("group");
 };
 
+friendsFamilyStartBtn.addEventListener("click", () => {
+  if (!names.length) {
+    alert("Enter your name first, then choose your colours.");
+    nameList.focus();
+    return;
+  }
+  cartHasItems = true;
+  draftHasMeaningfulChanges = true;
+  updateCartDisplay();
+  openSharedGroupCartAction();
+});
+
 function createPrivateGroupToken() {
   return crypto.randomUUID();
 }
@@ -6128,7 +6150,7 @@ function renderSharedGroupBanner() {
   } else {
     sharedGroupBannerText.textContent = activeSharedGroup.final_order_ref
       ? `The organiser has checked out as order ${activeSharedGroup.final_order_ref}.`
-      : "This shared order is now closed.";
+      : "This friends/family order is now closed.";
     sharedGroupBannerAction.textContent = "Closed";
   }
   sharedGroupBanner.classList.remove("hidden");
@@ -6184,7 +6206,7 @@ async function loadSharedGroup(token, { openOwner = false } = {}) {
       p_token: token
     });
     if (error) throw error;
-    if (!data) throw new Error("This shared order link is invalid or expired.");
+    if (!data) throw new Error("This friends/family order link is invalid or expired.");
     activeSharedGroup = data;
     if (
       !data.is_owner &&
@@ -6220,7 +6242,7 @@ function openSharedGroupCartAction() {
 
   if (activeSharedGroup && !activeSharedGroup.is_owner) {
     if (activeSharedGroup.status !== "open") {
-      alert("This shared order is no longer accepting designs.");
+      alert("This friends/family order is no longer accepting designs.");
       return;
     }
     if (activeProduct.product_key !== activeSharedGroup.product_key) {
@@ -6272,7 +6294,7 @@ sharedGroupStartForm.addEventListener("submit", async event => {
   } catch (error) {
     console.error("Unable to create shared group order:", error);
     sharedGroupStartStatus.textContent =
-      "Shared orders are not ready yet. Please apply the shared group SQL update, then try again.";
+      "Friends/family orders are not ready yet. Please apply the supplied Supabase update, then try again.";
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Create Share Link";
@@ -6406,10 +6428,10 @@ function renderCartDrawer() {
     sharedGroupCartBtn.classList.remove("hidden");
     sharedGroupCartBtn.disabled = !activeSharedGroup?.is_owner;
     sharedGroupCartBtn.textContent = activeSharedGroup?.is_owner
-      ? "Review Shared Group"
+      ? "Review Friends / Family Order"
       : activeSharedGroup
         ? "Design a keychain first"
-        : "Start a Shared Group Order";
+        : "Start a Friends / Family Order";
     continueShoppingBtn.textContent = "Start Designing";
     return;
   }
@@ -6424,10 +6446,10 @@ function renderCartDrawer() {
   );
   sharedGroupCartBtn.disabled = false;
   sharedGroupCartBtn.textContent = activeSharedGroup?.is_owner
-    ? "Review Shared Group"
+    ? "Review Friends / Family Order"
     : activeSharedGroup
       ? `Add Basket to ${activeSharedGroup.title}`
-      : "Start a Shared Group Order";
+      : "Start a Friends / Family Order";
   continueShoppingBtn.textContent = "Continue Designing";
 
   cartDrawerItems.innerHTML = names
@@ -7998,7 +8020,7 @@ function renderCustomerOrderStatus(order) {
     <div class="order-status-details">
       ${order.group_order_code ? `
         <p>
-          <span>Shared group</span>
+          <span>Friends / family order</span>
           <strong>${escapePresetText(order.group_order_code)}</strong>
         </p>
       ` : ""}

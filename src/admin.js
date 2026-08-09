@@ -3631,7 +3631,7 @@ function renderOrders(orders) {
             <span class="linked-order-badge">${order.linked_children.length} add-on${order.linked_children.length === 1 ? "" : "s"} combined under this ID</span>
           ` : ""}
           ${order.group_order_code ? `
-            <span class="linked-order-badge">Shared group · ${escapeAdminHtml(order.group_order_code)}</span>
+            <span class="linked-order-badge">Friends / family · ${escapeAdminHtml(order.group_order_code)}</span>
           ` : ""}
           <h3>${customerName}</h3>
           <div class="order-summary-badges">
