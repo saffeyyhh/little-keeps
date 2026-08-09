@@ -2720,6 +2720,87 @@ label {
   border-radius: 14px;
 }
 
+.shared-group-how-card,
+.shared-group-success-card {
+  text-align: center;
+}
+
+.shared-group-how-steps {
+  margin: 20px 0;
+  display: grid;
+  gap: 9px;
+  text-align: left;
+}
+
+.shared-group-how-steps > div {
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border-radius: 13px;
+  background: #faf7ff;
+}
+
+.shared-group-how-steps b {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #7651a8;
+  font-size: 12px;
+}
+
+.shared-group-how-steps span,
+.shared-group-how-steps strong,
+.shared-group-how-steps small {
+  display: block;
+}
+
+.shared-group-how-steps small {
+  margin-top: 2px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.shared-group-how-card .submit-btn,
+.shared-group-success-card .submit-btn {
+  width: 100%;
+  min-height: 49px;
+  border-radius: 14px;
+}
+
+.shared-group-success-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 12px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #55ae7c;
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.shared-group-success-note {
+  margin: 18px 0;
+  padding: 13px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #cce7d7;
+  border-radius: 13px;
+  color: #2f7350;
+  background: #f3fbf6;
+}
+
+.shared-group-success-note span {
+  color: #5c7566;
+  font-size: 12px;
+}
+
 .shared-group-owner-card {
   width: min(720px, 100%);
   max-height: min(820px, calc(100vh - 34px));
@@ -2842,6 +2923,23 @@ label {
   min-height: 49px;
   margin: 0 !important;
   border-radius: 14px;
+}
+
+.shared-group-cancel-btn {
+  width: 100%;
+  min-height: 43px;
+  margin-top: 10px;
+  border: 1px solid #efc1c1;
+  border-radius: 13px;
+  color: #a33d3d;
+  background: #fff7f7;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.shared-group-cancel-btn:disabled {
+  opacity: .6;
+  cursor: wait;
 }
 
 @media (max-width: 600px) {

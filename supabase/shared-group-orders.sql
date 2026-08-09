@@ -325,15 +325,48 @@ begin
 end;
 $$;
 
+create or replace function public.cancel_shared_group_order(p_owner_token uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_group public.shared_group_orders%rowtype;
+begin
+  select * into v_group
+  from public.shared_group_orders
+  where owner_token = p_owner_token
+  for update;
+
+  if not found then raise exception 'The group order could not be found.'; end if;
+  if v_group.status = 'finalised' then
+    raise exception 'This group has already been checked out and cannot be cancelled here.';
+  end if;
+
+  update public.shared_group_orders
+  set status = 'cancelled', updated_at = now()
+  where id = v_group.id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'public_code', v_group.public_code,
+    'status', 'cancelled'
+  );
+end;
+$$;
+
 revoke all on function public.validate_shared_group_items(jsonb) from public;
 revoke all on function public.create_shared_group_order(text, text, text, text, uuid, uuid, uuid, jsonb) from public;
 revoke all on function public.get_shared_group_order(uuid) from public;
 revoke all on function public.save_shared_group_contribution(uuid, text, uuid, jsonb) from public;
 revoke all on function public.remove_shared_group_contribution(uuid, uuid) from public;
 revoke all on function public.finalise_shared_group_order(uuid, text, text) from public;
+revoke all on function public.cancel_shared_group_order(uuid) from public;
 
 grant execute on function public.create_shared_group_order(text, text, text, text, uuid, uuid, uuid, jsonb) to anon, authenticated;
 grant execute on function public.get_shared_group_order(uuid) to anon, authenticated;
 grant execute on function public.save_shared_group_contribution(uuid, text, uuid, jsonb) to anon, authenticated;
 grant execute on function public.remove_shared_group_contribution(uuid, uuid) to anon, authenticated;
 grant execute on function public.finalise_shared_group_order(uuid, text, text) to anon, authenticated;
+grant execute on function public.cancel_shared_group_order(uuid) to anon, authenticated;

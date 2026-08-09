@@ -1880,6 +1880,33 @@ Chloe</textarea>
       </form>
     </div>
 
+    <div id="sharedGroupHowModal" class="modal hidden">
+      <div class="modal-card shared-group-how-card">
+        <span class="shared-group-modal-icon">?</span>
+        <h2>How Group Orders Work</h2>
+        <div class="shared-group-how-steps">
+          <div><b>1</b><span><strong>Create your design</strong><small>Choose your name, colours and style as usual.</small></span></div>
+          <div><b>2</b><span><strong>Add it to the group</strong><small>Enter your name so the organiser knows whose design it is.</small></span></div>
+          <div><b>3</b><span><strong>The organiser reviews everything</strong><small>You can update your submitted designs until the organiser checks out.</small></span></div>
+          <div><b>4</b><span><strong>One person pays</strong><small>Only the organiser checks out. Adding a design here does not create an order or charge you.</small></span></div>
+        </div>
+        <button id="closeSharedGroupHowBtn" type="button" class="submit-btn">Got It</button>
+      </div>
+    </div>
+
+    <div id="sharedGroupSuccessModal" class="modal hidden">
+      <div class="modal-card shared-group-success-card">
+        <span class="shared-group-success-icon">✓</span>
+        <h2>Designs Added Successfully!</h2>
+        <p id="sharedGroupSuccessText">The organiser can now see your designs.</p>
+        <div class="shared-group-success-note">
+          <strong>No payment needed from you</strong>
+          <span>The organiser will review the full group and pay once.</span>
+        </div>
+        <button id="closeSharedGroupSuccessBtn" type="button" class="submit-btn">Done</button>
+      </div>
+    </div>
+
     <div id="sharedGroupOwnerModal" class="modal hidden">
       <div class="modal-card shared-group-owner-card">
         <div class="shared-group-owner-heading">
@@ -1891,7 +1918,7 @@ Chloe</textarea>
           <button id="closeSharedGroupOwnerBtn" type="button" class="shared-group-close" aria-label="Close">×</button>
         </div>
 
-        <div class="shared-group-link-box">
+        <div id="sharedGroupLinkBox" class="shared-group-link-box">
           <label for="sharedGroupInviteLink">Private invite link</label>
           <div>
             <input id="sharedGroupInviteLink" readonly>
@@ -1907,6 +1934,7 @@ Chloe</textarea>
           <button id="refreshSharedGroupBtn" type="button" class="secondary-btn">Refresh</button>
           <button id="checkoutSharedGroupBtn" type="button" class="submit-btn">Review Combined Basket</button>
         </div>
+        <button id="cancelSharedGroupOrderBtn" type="button" class="shared-group-cancel-btn">Cancel Group Order</button>
       </div>
     </div>
 
@@ -2323,16 +2351,23 @@ const sharedGroupContributeIntro = document.getElementById("sharedGroupContribut
 const sharedGroupContributorName = document.getElementById("sharedGroupContributorName");
 const sharedGroupContributeStatus = document.getElementById("sharedGroupContributeStatus");
 const cancelSharedGroupContributeBtn = document.getElementById("cancelSharedGroupContributeBtn");
+const sharedGroupHowModal = document.getElementById("sharedGroupHowModal");
+const closeSharedGroupHowBtn = document.getElementById("closeSharedGroupHowBtn");
+const sharedGroupSuccessModal = document.getElementById("sharedGroupSuccessModal");
+const sharedGroupSuccessText = document.getElementById("sharedGroupSuccessText");
+const closeSharedGroupSuccessBtn = document.getElementById("closeSharedGroupSuccessBtn");
 const sharedGroupOwnerModal = document.getElementById("sharedGroupOwnerModal");
 const sharedGroupOwnerTitle = document.getElementById("sharedGroupOwnerTitle");
 const sharedGroupOwnerSummary = document.getElementById("sharedGroupOwnerSummary");
 const sharedGroupInviteLink = document.getElementById("sharedGroupInviteLink");
+const sharedGroupLinkBox = document.getElementById("sharedGroupLinkBox");
 const copySharedGroupLinkBtn = document.getElementById("copySharedGroupLinkBtn");
 const sharedGroupContributionList = document.getElementById("sharedGroupContributionList");
 const sharedGroupOwnerStatus = document.getElementById("sharedGroupOwnerStatus");
 const refreshSharedGroupBtn = document.getElementById("refreshSharedGroupBtn");
 const checkoutSharedGroupBtn = document.getElementById("checkoutSharedGroupBtn");
 const closeSharedGroupOwnerBtn = document.getElementById("closeSharedGroupOwnerBtn");
+const cancelSharedGroupOrderBtn = document.getElementById("cancelSharedGroupOrderBtn");
 
 const sharedGroupUrlParams = new URLSearchParams(window.location.search);
 let activeSharedGroupShareToken = sharedGroupUrlParams.get("group") || "";
@@ -6171,6 +6206,7 @@ function renderSharedGroupOwner() {
   sharedGroupOwnerSummary.textContent =
     `${contributions.length} contributor${contributions.length === 1 ? "" : "s"} · ${totalItems} keychain${totalItems === 1 ? "" : "s"}`;
   sharedGroupInviteLink.value = getSharedGroupInviteUrl(activeSharedGroup.share_token);
+  sharedGroupLinkBox.classList.toggle("hidden", activeSharedGroup.status !== "open");
   sharedGroupContributionList.innerHTML = contributions.length
     ? contributions.map(contribution => {
         const quantity = (contribution.items || []).reduce(
@@ -6187,7 +6223,9 @@ function renderSharedGroupOwner() {
               <span>${namesList}</span>
               <small>${quantity} keychain${quantity === 1 ? "" : "s"}</small>
             </div>
-            <button type="button" onclick='window.removeSharedGroupContribution(${JSON.stringify(contribution.id)})'>Remove</button>
+            ${activeSharedGroup.status === "open" ? `
+              <button type="button" onclick='window.removeSharedGroupContribution(${JSON.stringify(contribution.id)})'>Remove</button>
+            ` : ""}
           </article>
         `;
       }).join("")
@@ -6195,7 +6233,10 @@ function renderSharedGroupOwner() {
   checkoutSharedGroupBtn.disabled = !contributions.length || activeSharedGroup.status !== "open";
   checkoutSharedGroupBtn.textContent = activeSharedGroup.status === "open"
     ? "Review Combined Basket"
-    : `Checked Out${activeSharedGroup.final_order_ref ? ` · ${activeSharedGroup.final_order_ref}` : ""}`;
+    : activeSharedGroup.status === "cancelled"
+      ? "Group Order Cancelled"
+      : `Checked Out${activeSharedGroup.final_order_ref ? ` · ${activeSharedGroup.final_order_ref}` : ""}`;
+  cancelSharedGroupOrderBtn.classList.toggle("hidden", activeSharedGroup.status !== "open");
   sharedGroupOwnerModal.classList.remove("hidden");
 }
 
@@ -6322,8 +6363,11 @@ sharedGroupContributeForm.addEventListener("submit", async event => {
     sharedGroupBannerText.textContent =
       `Your designs are saved. You can update them before the organiser checks out.`;
     submitButton.textContent = "Update My Group Designs";
-    setTimeout(() => sharedGroupContributeModal.classList.add("hidden"), 1100);
     activeSharedGroup.contribution_count = data.contribution_count;
+    sharedGroupSuccessText.textContent =
+      `${sharedGroupContributorName.value.trim()}, your ${getTotalKeychainQuantity()} keychain${getTotalKeychainQuantity() === 1 ? " is" : "s are"} saved in “${activeSharedGroup.title}”.`;
+    sharedGroupContributeModal.classList.add("hidden");
+    sharedGroupSuccessModal.classList.remove("hidden");
   } catch (error) {
     console.error("Unable to save group designs:", error);
     sharedGroupContributeStatus.textContent =
@@ -6379,13 +6423,48 @@ function checkoutSharedGroup() {
 sharedGroupCartBtn.addEventListener("click", openSharedGroupCartAction);
 sharedGroupBannerAction.addEventListener("click", () => {
   if (activeSharedGroup?.is_owner) renderSharedGroupOwner();
-  else setStorefrontView("design", { scrollTo: "designArea" });
+  else if (activeSharedGroup?.status === "open") sharedGroupHowModal.classList.remove("hidden");
 });
 cancelSharedGroupStartBtn.addEventListener("click", () => sharedGroupStartModal.classList.add("hidden"));
 cancelSharedGroupContributeBtn.addEventListener("click", () => sharedGroupContributeModal.classList.add("hidden"));
 closeSharedGroupOwnerBtn.addEventListener("click", () => sharedGroupOwnerModal.classList.add("hidden"));
+closeSharedGroupHowBtn.addEventListener("click", () => sharedGroupHowModal.classList.add("hidden"));
+closeSharedGroupSuccessBtn.addEventListener("click", () => sharedGroupSuccessModal.classList.add("hidden"));
 refreshSharedGroupBtn.addEventListener("click", () => loadSharedGroup(activeSharedGroupOwnerToken, { openOwner: true }));
 checkoutSharedGroupBtn.addEventListener("click", checkoutSharedGroup);
+cancelSharedGroupOrderBtn.addEventListener("click", async () => {
+  if (!activeSharedGroup?.is_owner || activeSharedGroup.status !== "open") return;
+  const confirmed = confirm(
+    `Cancel “${activeSharedGroup.title}”?\n\nThe invite link will close immediately. No order or payment will be created.`
+  );
+  if (!confirmed) return;
+
+  cancelSharedGroupOrderBtn.disabled = true;
+  cancelSharedGroupOrderBtn.textContent = "Cancelling…";
+  sharedGroupOwnerStatus.textContent = "Closing this group order…";
+  try {
+    const { error } = await supabase.rpc("cancel_shared_group_order", {
+      p_owner_token: activeSharedGroupOwnerToken
+    });
+    if (error) throw error;
+    localStorage.removeItem(`littleKeepsGroupOwner:${activeSharedGroup.public_code}`);
+    activeSharedGroup = null;
+    activeSharedGroupOwnerToken = "";
+    finalisingSharedGroupOwnerToken = "";
+    sharedGroupOwnerModal.classList.add("hidden");
+    sharedGroupBanner.classList.add("hidden");
+    window.history.replaceState({}, "", window.location.pathname);
+    alert("Group order cancelled. No order or payment was created.");
+    renderCartDrawer();
+  } catch (error) {
+    console.error("Unable to cancel group order:", error);
+    sharedGroupOwnerStatus.textContent =
+      "Unable to cancel this group order. Please try again.";
+  } finally {
+    cancelSharedGroupOrderBtn.disabled = false;
+    cancelSharedGroupOrderBtn.textContent = "Cancel Group Order";
+  }
+});
 copySharedGroupLinkBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(sharedGroupInviteLink.value);
   copySharedGroupLinkBtn.textContent = "Copied ✓";
