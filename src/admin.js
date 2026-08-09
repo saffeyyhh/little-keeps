@@ -9,6 +9,7 @@ import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import {
   ASSEMBLY_STAGES,
+  assignPrintedKeycapsToOwners,
   buildGoogleMapsRouteUrl,
   canOrderAcceptAddOn,
   calculateProductionTimeEstimate,
@@ -20,6 +21,7 @@ import {
   formatProductionMinutes,
   getBulkApprovalPolicy,
   getFreeAmsPrinters,
+  getHandDeliveryLabelData,
   getInternalBasketLabelData,
   groupLinkedOrdersForAdmin,
   normalizePickupTimeOptions,
@@ -3427,10 +3429,21 @@ function renderOrders(orders) {
 
   const groupedOrders = groupLinkedOrdersForAdmin(orders);
   const filteredOrders = groupedOrders.filter(order => {
+    const designSearchText = (order.order_data || []).flatMap(item => {
+      const design = item.design || {};
+      return [
+        item.name,
+        ...(design.bases || []).map(colour => colour?.name || colour?.hex || colour),
+        ...(design.caps || []).map(colour => colour?.name || colour?.hex || colour),
+        ...(design.letters || []).map(colour => colour?.name || colour?.hex || colour)
+      ];
+    }).join(" ").toLowerCase();
     const matchesSearch =
       (order.order_ref || "").toLowerCase().includes(searchText) ||
       (order.customer_name || "").toLowerCase().includes(searchText) ||
       (order.customer_email || "").toLowerCase().includes(searchText) ||
+      (order.customer_phone || "").toLowerCase().includes(searchText) ||
+      designSearchText.includes(searchText) ||
       getOrderInstructions(order).join(" ").toLowerCase().includes(searchText) ||
       (order.handoff_name || "").toLowerCase().includes(searchText);
 
@@ -3528,6 +3541,24 @@ function renderOrders(orders) {
           Preview Production & AMS
         </button>
         <button
+          id="printSelectedInternalLabelsBtn"
+          type="button"
+          class="shipping-label-action"
+          ${selectedOrderIds.size ? "" : "disabled"}
+          onclick="window.printSelectedOrderBasketLabels()"
+        >
+          Print Internal Labels
+        </button>
+        <button
+          id="printSelectedDeliveryLabelsBtn"
+          type="button"
+          class="hand-delivery-label-action"
+          ${selectedOrderIds.size ? "" : "disabled"}
+          onclick="window.printSelectedOrderHandDeliveryLabels()"
+        >
+          Print Hand-Delivery Labels
+        </button>
+        <button
           id="clearOrderSelectionBtn"
           type="button"
           class="batch-clear-action"
@@ -3592,7 +3623,7 @@ function renderOrders(orders) {
               ${selectedOrderIds.has(orderId) ? "checked" : ""}
               onchange='window.toggleOrderSelection(${JSON.stringify(orderId)}, this.checked)'
             >
-            <span>Select for production preview</span>
+            <span>Select for batch actions</span>
           </label>
           <p class="order-ref-label">${orderRef}</p>
           ${order.linked_children?.length ? `
@@ -3792,6 +3823,12 @@ function renderOrders(orders) {
           Print Basket Label
         </button>
 
+        ${order.collection_method === "delivery" ? `
+          <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(orderId)})'>
+            Print Hand-Delivery Label
+          </button>
+        ` : ""}
+
         ${!order.archived_at && !["Completed", "Refunded"].includes(order.status) ? `
           <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(orderId)})'>
             Send Keychain Back to Rework
@@ -3902,7 +3939,7 @@ function renderFulfilmentWorkspace(orders) {
     <article class="fulfilment-card">
       <label class="route-stop-select">
         <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
-        <span>Basket label</span>
+        <span>Select labels</span>
       </label>
       <div>
         <strong>${escapeAdminHtml(order.order_ref || "-")} · ${escapeAdminHtml(order.customer_name || "Customer")}</strong>
@@ -3928,6 +3965,11 @@ function renderFulfilmentWorkspace(orders) {
         <button type="button" class="shipping-label-action" onclick='window.printBasketLabel(${JSON.stringify(String(order.id))})'>
           Print Basket Label
         </button>
+        ${order.collection_method === "delivery" ? `
+          <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>
+            Print Hand-Delivery Label
+          </button>
+        ` : ""}
         ${order.status === "Assembly Complete" ? `
           <button type="button" class="ready-btn" onclick='window.markReady(${JSON.stringify(String(order.id))})'>
             ${order.collection_method === "delivery"
@@ -3984,6 +4026,8 @@ function renderFulfilmentWorkspace(orders) {
       <div class="route-assistance-actions">
         <button type="button" class="shipping-label-action" onclick="window.printSelectedBasketLabels()">Print Selected Basket Labels</button>
         <button type="button" class="shipping-label-secondary" onclick="window.printAllBasketLabels()">Print All ${ready.length || ""} Basket Labels</button>
+        <button type="button" class="hand-delivery-label-action" onclick="window.printSelectedHandDeliveryLabels()">Print Selected Hand-Delivery Labels</button>
+        <button type="button" class="hand-delivery-label-secondary" onclick="window.printAllHandDeliveryLabels()">Print All ${deliveries.length || ""} Hand-Delivery Labels</button>
         <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
       </div>
     </div>
@@ -4705,6 +4749,74 @@ window.addSelectedProductionJobsToInventory = async function(button) {
   await renderProductionPlanner(latestOrders);
 };
 
+window.markProductionPlatePicked = async function(jobIds, button) {
+  const ids = (jobIds || []).map(String);
+  if (!ids.length) return;
+  const previousLabel = button?.textContent || "Mark Whole Plate Picked";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Moving plate…";
+  }
+
+  if (IS_ADMIN_PREVIEW) {
+    const pickedAt = new Date().toISOString();
+    productionJobs.forEach(job => {
+      if (ids.includes(String(job.id))) {
+        job.stage = "picked";
+        job.picked_at = pickedAt;
+        job.updated_at = pickedAt;
+      }
+    });
+  } else {
+    const { error } = await supabase
+      .from("production_jobs")
+      .update({
+        stage: "picked",
+        picked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .in("id", ids);
+    if (error) {
+      alert("Unable to mark this plate as picked.");
+      if (button) {
+        button.disabled = false;
+        button.textContent = previousLabel;
+      }
+      return;
+    }
+    await loadProductionJobs();
+  }
+  await renderProductionPlanner(latestOrders);
+};
+
+window.completeProductionPlate = async function(jobIds, button) {
+  const ids = (jobIds || []).map(Number).filter(Number.isFinite);
+  if (!ids.length) return;
+  const previousLabel = button?.textContent || "Add Whole Plate to Inventory";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Adding plate…";
+  }
+
+  if (IS_ADMIN_PREVIEW) {
+    productionJobs = productionJobs.filter(job => !ids.includes(Number(job.id)));
+  } else {
+    const { error } = await supabase.rpc("complete_production_jobs", {
+      p_job_ids: ids
+    });
+    if (error) {
+      alert("Unable to add this whole plate to inventory.");
+      if (button) {
+        button.disabled = false;
+        button.textContent = previousLabel;
+      }
+      return;
+    }
+    await Promise.all([loadInventoryItems(), loadProductionJobs()]);
+  }
+  await renderProductionPlanner(latestOrders);
+};
+
 window.cancelProductionJob = async function(jobId) {
   const job = productionJobs.find(
     item => String(item.id) === String(jobId)
@@ -4775,7 +4887,7 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
       item => !item.assembly_completed
     );
 
-    items.forEach(item => {
+    items.forEach((item, itemIndex) => {
       const cleanName = item.clean_name || item.name || "";
       const letters = Array.from(cleanName);
       const design = item.design;
@@ -4823,14 +4935,32 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
             capHex,
             letterName,
             letterHex,
-            letters: {}
+            letters: {},
+            owners: {}
           };
         }
 
         keycapGroups[groupKey].letters[letter] =
           (keycapGroups[groupKey].letters[letter] || 0) + 1;
+        const ownerKey = `${String(order.id)}:${itemIndex}`;
+        if (!keycapGroups[groupKey].owners[ownerKey]) {
+          keycapGroups[groupKey].owners[ownerKey] = {
+            orderId: String(order.id || ""),
+            orderRef: order.order_ref || "No reference",
+            customerName: order.customer_name || "Customer",
+            keychainName: item.name || item.clean_name || "Personalised keychain",
+            characters: []
+          };
+        }
+        keycapGroups[groupKey].owners[ownerKey].characters.push({
+          character: letter
+        });
       });
     });
+  });
+
+  Object.values(keycapGroups).forEach(group => {
+    group.owners = Object.values(group.owners || {});
   });
 
   return { baseTotals, keycapGroups, count: activeOrders.length };
@@ -5766,6 +5896,7 @@ window.startKeycapCombination = async function(jobId, button, printerId = null) 
   }
 
   const jobs = [];
+  const startedAt = new Date().toISOString();
 
   for (const row of combination.rows || []) {
     const input = document.getElementById(row.inputId);
@@ -5785,6 +5916,7 @@ window.startKeycapCombination = async function(jobId, button, printerId = null) 
         quantity,
         stage: "printing",
         printer_id: printerId || null,
+        started_at: startedAt,
         updated_at: new Date().toISOString()
       });
     }
@@ -5842,10 +5974,18 @@ window.startSelectedKeycapCombinations = async function(button) {
   }
 
   const jobs = [];
+  const plateStartedAt = new Map();
 
   for (const checkbox of selected) {
     const combination = productionStlJobs.get(checkbox.value);
     if (!combination) continue;
+    const plateKey = checkbox.dataset.plateId || checkbox.value;
+    if (!plateStartedAt.has(plateKey)) {
+      plateStartedAt.set(
+        plateKey,
+        new Date(Date.now() + plateStartedAt.size).toISOString()
+      );
+    }
 
     for (const row of combination.rows || []) {
       const input = document.getElementById(row.inputId);
@@ -5863,6 +6003,7 @@ window.startSelectedKeycapCombinations = async function(button) {
           quantity,
           stage: "printing",
           printer_id: checkbox.dataset.printerId || null,
+          started_at: plateStartedAt.get(plateKey),
           updated_at: new Date().toISOString()
         });
       }
@@ -5886,11 +6027,9 @@ window.startSelectedKeycapCombinations = async function(button) {
   }
 
   if (IS_ADMIN_PREVIEW) {
-    const startedAt = new Date().toISOString();
     jobs.forEach((job, index) => productionJobs.push({
       ...job,
-      id: `preview-selected-combination-${Date.now()}-${index}`,
-      started_at: startedAt
+      id: `preview-selected-combination-${Date.now()}-${index}`
     }));
   } else {
     const { error } = await supabase.from("production_jobs").insert(jobs);
@@ -5926,6 +6065,7 @@ window.startAmsLitePlate = async function(plateId, button) {
   }
 
   const jobs = [];
+  const startedAt = new Date().toISOString();
 
   for (const item of plate.items || []) {
     const input = document.getElementById(item.inputId);
@@ -5943,6 +6083,7 @@ window.startAmsLitePlate = async function(plateId, button) {
         quantity,
         stage: "printing",
         printer_id: plate.printerId || null,
+        started_at: startedAt,
         updated_at: new Date().toISOString()
       });
     }
@@ -6473,6 +6614,82 @@ function createAssemblyMiniPreview(name, design) {
     .join("");
 }
 
+function getAssemblyColourDetails(value, fallbackName) {
+  const hex = value?.hex || value;
+  const savedName = String(value?.name || "").trim();
+  const matchedColour = ADMIN_COLOUR_OPTIONS.find(colour =>
+    String(colour.hex).toLowerCase() === String(hex || "").toLowerCase()
+  );
+
+  return {
+    name: savedName || matchedColour?.name || String(hex || fallbackName),
+    hex: getSafePdfColour(value, "#d9d9d9")
+  };
+}
+
+function createAssemblyColourGuide(name, design = {}) {
+  const characters = Array.from(sanitizeName(name));
+  const bases = Array.isArray(design.bases) && design.bases.length
+    ? design.bases
+    : ["#d9d9d9"];
+  const caps = Array.isArray(design.caps) && design.caps.length
+    ? design.caps
+    : ["#d9d9d9"];
+  const letters = Array.isArray(design.letters) && design.letters.length
+    ? design.letters
+    : ["#d9d9d9"];
+  const selectedColourNames = [...bases, ...caps, ...letters]
+    .map(colour => getAssemblyColourDetails(colour, "").name.toLowerCase());
+  const confusingColourWarnings = [
+    ["purple", "indigo purple"],
+    ["sunflower yellow", "gold"],
+    ["jade white", "white"],
+    ["pink", "maroon red"]
+  ].filter(pair => pair.some(colour => selectedColourNames.includes(colour)));
+
+  return `
+    <div class="assembly-colour-guide">
+      <div class="assembly-colour-guide-heading">
+        <strong>Exact colours by position</strong>
+        <span>Use the names—not just the swatches—to tell similar colours apart.</span>
+      </div>
+      ${confusingColourWarnings.length ? `
+        <div class="assembly-colour-warnings">
+          ${confusingColourWarnings.map(([first, second]) => `
+            <span>Double-check: ${escapeAdminHtml(first)} vs ${escapeAdminHtml(second)}</span>
+          `).join("")}
+        </div>
+      ` : ""}
+      <div class="assembly-colour-guide-rows">
+        ${characters.map((character, index) => {
+          const base = getAssemblyColourDetails(
+            bases[index % bases.length],
+            "Base colour"
+          );
+          const cap = getAssemblyColourDetails(
+            caps[index % caps.length],
+            "Cap colour"
+          );
+          const letter = getAssemblyColourDetails(
+            letters[index % letters.length],
+            "Letter colour"
+          );
+
+          return `
+            <div class="assembly-colour-row">
+              <b>${index + 1}</b>
+              <span class="assembly-colour-character">${displayIcon(character)}</span>
+              <span><i style="background:${base.hex}"></i><em>Base</em><strong>${escapeAdminHtml(base.name)}</strong></span>
+              <span><i style="background:${cap.hex}"></i><em>Cap</em><strong>${escapeAdminHtml(cap.name)}</strong></span>
+              <span><i style="background:${letter.hex}"></i><em>Letter</em><strong>${escapeAdminHtml(letter.name)}</strong></span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
 async function renderAssemblyQueue() {
   await loadInventoryItems();
 
@@ -6623,6 +6840,8 @@ async function renderAssemblyQueue() {
         <div class="mini-chain">
           ${createAssemblyMiniPreview(item.name, item.design)}
         </div>
+
+        ${createAssemblyColourGuide(item.name, item.design)}
 
         ${
           completed
@@ -7306,6 +7525,10 @@ async function renderProductionPlanner(orders) {
     planningOrders,
     selectedScopeActive
   );
+  const { keycapGroups: allKeycapOwnershipGroups } = getProductionSummary(
+    orders,
+    true
+  );
   const timeEstimateOrders = planningOrders.filter(order =>
     !order.archived_at &&
     (
@@ -7431,6 +7654,10 @@ async function renderProductionPlanner(orders) {
       });
 
     const rows = allRows.filter(row => row.toPrint > 0);
+    const printOwners = assignPrintedKeycapsToOwners(
+      group.owners || [],
+      rows
+    );
     const totalNeeded = allRows.reduce((sum, row) => sum + row.need, 0);
     const totalReady = allRows.reduce(
       (sum, row) => sum + Math.min(row.stock, row.need),
@@ -7449,6 +7676,7 @@ async function renderProductionPlanner(orders) {
       capName: group.capName,
       letterName: group.letterName,
       fileName: `${group.capName}-cap_${group.letterName}-letter`,
+      owners: printOwners,
       rows: rows.map(row => ({
         letter: row.letter,
         itemName: row.itemName,
@@ -7465,6 +7693,7 @@ async function renderProductionPlanner(orders) {
       letterName: group.letterName,
       letterHex: group.letterHex,
       stlJobId,
+      owners: printOwners,
       rows: rows.map(row => ({
         letter: row.letter,
         itemName: row.itemName,
@@ -7519,6 +7748,7 @@ async function renderProductionPlanner(orders) {
                   transition:width 0.25s ease;
                 "></div>
               </div>
+
             </div>
           </div>
         </summary>
@@ -7897,6 +8127,7 @@ async function renderProductionPlanner(orders) {
                           class="ams-combination-select"
                           value="${escapeAdminHtml(combination.stlJobId)}"
                           data-printer-id="${escapeAdminHtml(String(plate.assignedPrinterId || ""))}"
+                          data-plate-id="${escapeAdminHtml(plateId)}"
                           onchange="window.updateAmsCombinationSelection()"
                         >
                         <span>Select</span>
@@ -7937,6 +8168,7 @@ async function renderProductionPlanner(orders) {
                           Start Printing
                         </button>
                       </div>
+
                     </div>
                   `).join("")}
                 </div>
@@ -8364,10 +8596,25 @@ async function renderProductionPlanner(orders) {
     const groupedJobs = new Map();
 
     jobs.forEach(job => {
-      const group = getProductionJobGroup(
-        job.item_name,
-        job.category
+      const isKeycap = job.category === "Keycap";
+      const printer = printers.find(item =>
+        String(item.id) === String(job.printer_id)
       );
+      const startedAt = String(
+        job.started_at || job.updated_at || `job-${job.id}`
+      );
+      const group = isKeycap
+        ? {
+            key: `10-keycap-plate-${String(job.printer_id || "unassigned")}-${startedAt}`,
+            label: `${printer?.name || "Unassigned Printer"} · Keycap Plate`,
+            category: "Keycap",
+            startedAt,
+            printerName: printer?.name || "Unassigned Printer"
+          }
+        : {
+            ...getProductionJobGroup(job.item_name, job.category),
+            category: job.category
+          };
 
       if (!groupedJobs.has(group.key)) {
         groupedJobs.set(group.key, {
@@ -8380,7 +8627,12 @@ async function renderProductionPlanner(orders) {
     });
 
     const groups = Array.from(groupedJobs.values())
-      .sort((a, b) => a.key.localeCompare(b.key));
+      .sort((a, b) => {
+        if (a.category === "Keycap" && b.category === "Keycap") {
+          return String(b.startedAt).localeCompare(String(a.startedAt));
+        }
+        return a.key.localeCompare(b.key);
+      });
     const pieceCount = jobs.reduce(
       (sum, job) => sum + Number(job.quantity || 0),
       0
@@ -8433,15 +8685,104 @@ async function renderProductionPlanner(orders) {
                 (sum, job) => sum + Number(job.quantity || 0),
                 0
               );
+              const combinationLabels = Array.from(new Set(
+                group.jobs.map(job =>
+                  String(job.item_name || "").split(" - ")[0]
+                ).filter(Boolean)
+              ));
+              const plateOwnerMap = new Map();
+
+              if (group.category === "Keycap") {
+                combinationLabels.forEach(combinationLabel => {
+                  const ownershipGroup = allKeycapOwnershipGroups[combinationLabel];
+                  if (!ownershipGroup) return;
+
+                  const quantitiesByCharacter = new Map();
+                  group.jobs
+                    .filter(job =>
+                      String(job.item_name || "").split(" - ")[0] === combinationLabel
+                    )
+                    .forEach(job => {
+                      const character = String(job.item_name || "").split(" - ").slice(1).join(" - ");
+                      quantitiesByCharacter.set(
+                        character,
+                        (quantitiesByCharacter.get(character) || 0) + Number(job.quantity || 0)
+                      );
+                    });
+
+                  const owners = assignPrintedKeycapsToOwners(
+                    ownershipGroup.owners || [],
+                    Array.from(quantitiesByCharacter, ([letter, toPrint]) => ({
+                      letter,
+                      toPrint
+                    }))
+                  );
+
+                  owners.forEach(owner => {
+                    const ownerKey = `${owner.orderId}:${owner.keychainName}`;
+                    if (!plateOwnerMap.has(ownerKey)) {
+                      plateOwnerMap.set(ownerKey, {
+                        ...owner,
+                        characters: []
+                      });
+                    }
+                    plateOwnerMap.get(ownerKey).characters.push(...owner.characters);
+                  });
+                });
+              }
+
+              const plateOwners = Array.from(plateOwnerMap.values());
 
               return `
-                <section class="production-job-group">
-                  <div class="production-job-group-heading">
-                    <h4>${escapeAdminHtml(group.label)}</h4>
+                <details class="production-job-group ${group.category === "Keycap" ? "is-keycap-plate" : ""}" open>
+                  <summary class="production-job-group-heading">
+                    <div>
+                      <h4>${escapeAdminHtml(group.label)}</h4>
+                      ${group.category === "Keycap" ? `
+                        <small>
+                          ${stage === "printing" ? "Started" : "Picked"} ${formatDateTime(group.startedAt)}
+                          · ${combinationLabels.length} colour combination${combinationLabels.length === 1 ? "" : "s"}
+                        </small>
+                      ` : ""}
+                    </div>
                     <span>
                       ${groupPieces} piece${groupPieces === 1 ? "" : "s"}
                     </span>
-                  </div>
+                  </summary>
+
+                  ${group.category === "Keycap" ? `
+                    <div class="production-plate-actions">
+                      <button
+                        type="button"
+                        onclick='event.stopPropagation(); ${stage === "printing"
+                          ? `window.markProductionPlatePicked(${JSON.stringify(group.jobs.map(job => String(job.id)))}, this)`
+                          : `window.completeProductionPlate(${JSON.stringify(group.jobs.map(job => String(job.id)))}, this)`
+                        }'
+                      >
+                        ${stage === "printing" ? "Mark Whole Plate Picked" : "Add Whole Plate to Inventory"}
+                      </button>
+                    </div>
+                  ` : ""}
+
+                  ${group.category === "Keycap" ? `
+                    <div class="production-plate-combinations">
+                      ${combinationLabels.map(label => `<span>${escapeAdminHtml(label)}</span>`).join("")}
+                    </div>
+                  ` : ""}
+
+                  ${stage === "picked" && group.category === "Keycap" ? `
+                    <details class="keycap-owner-guide picked-owner-guide">
+                      <summary>Who this plate belongs to</summary>
+                      <div>
+                        ${plateOwners.map(owner => `
+                          <p>
+                            <strong>${escapeAdminHtml(owner.orderRef)} · ${escapeAdminHtml(owner.customerName)}</strong>
+                            <span>${escapeAdminHtml(owner.keychainName)} — ${owner.characters.map(entry => displayIcon(entry.character)).join(", ")}</span>
+                          </p>
+                        `).join("") || `<p><span>No order ownership details found.</span></p>`}
+                      </div>
+                    </details>
+                  ` : ""}
 
                   <div class="production-job-grid">
                     ${group.jobs.map(job => `
@@ -8548,7 +8889,7 @@ async function renderProductionPlanner(orders) {
                       </article>
                     `).join("")}
                   </div>
-                </section>
+                </details>
               `;
             }).join("")}
           </div>
@@ -8983,7 +9324,7 @@ function createPdfMiniPreview(item) {
   }).join("");
 }
 
-async function generateOrderPdfAttachment(order, items) {
+async function generateLegacyRenderedOrderPdf(order, items) {
   const wrapper = document.createElement("div");
   wrapper.style.cssText = `
     position:fixed;
@@ -9304,7 +9645,7 @@ function getCompactPdfIconImage(character) {
   return image;
 }
 
-async function generateCompactOrderPdfAttachment(order, items) {
+async function generateCustomerOrderPdf(order, items) {
   const pdf = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -9683,7 +10024,9 @@ async function sendPaymentVerifiedEmail(order) {
 
   console.log("Order list being emailed:", orderList);
 
-  const orderPdf = await generateCompactOrderPdfAttachment(order, items);
+  // This is intentionally the same generator used by Download PDF below.
+  // Keeping one source prevents the customer's attachment from drifting.
+  const orderPdf = await generateCustomerOrderPdf(order, items);
 
   const response = await emailjs.send(
     EMAILJS_SERVICE,
@@ -9770,7 +10113,7 @@ async function downloadOrderPdf(id, button) {
 
   try {
     const items = getEmailOrderItems(order);
-    const pdfBase64 = await generateCompactOrderPdfAttachment(order, items);
+    const pdfBase64 = await generateCustomerOrderPdf(order, items);
     const link = document.createElement("a");
     const safeReference = String(order.order_ref || "order")
       .replace(/[^a-z0-9_-]+/gi, "-");
@@ -10699,6 +11042,53 @@ async function loadAdminSettings() {
   adminProductCatalog = normalizeProductCatalog(productsError ? [] : products);
 }
 
+function getSingaporeDateValue(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+async function requestDueTomorrowTelegramAlerts(orders = []) {
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowValue = getSingaporeDateValue(tomorrow);
+  const finishedStatuses = new Set([
+    "Assembly Complete",
+    "Pending Pickup",
+    "Pending Delivery",
+    "Out for Delivery",
+    "Completed",
+    "Refunded"
+  ]);
+  const dueOrders = orders.filter(order => {
+    const dueDate = String(
+      order.requested_completion_date || order.needed_by || ""
+    ).slice(0, 10);
+    return (
+      !order.archived_at &&
+      dueDate === tomorrowValue &&
+      !finishedStatuses.has(order.status || "") &&
+      order.order_ref &&
+      order.customer_email
+    );
+  });
+
+  await Promise.allSettled(dueOrders.map(order =>
+    supabase.functions.invoke("telegram-new-order", {
+      body: {
+        order_ref: order.order_ref,
+        email: order.customer_email,
+        source: "due-tomorrow"
+      }
+    })
+  ));
+}
+
 async function loadOrders() {
   ordersContainer.innerHTML = `<p class="empty">Loading orders...</p>`;
 
@@ -10801,6 +11191,8 @@ latestOrders = (data || []).map(order =>
     : order
 );
 
+void requestDueTomorrowTelegramAlerts(latestOrders);
+
 await Promise.all([
   loadInventoryItems(),
   loadProductionJobs(),
@@ -10820,10 +11212,14 @@ function syncOrderSelectionToolbar() {
   const count = selectedOrderIds.size;
   const countLabel = document.getElementById("selectedOrderCount");
   const previewButton = document.getElementById("previewSelectedProductionBtn");
+  const internalLabelsButton = document.getElementById("printSelectedInternalLabelsBtn");
+  const deliveryLabelsButton = document.getElementById("printSelectedDeliveryLabelsBtn");
   const clearButton = document.getElementById("clearOrderSelectionBtn");
 
   if (countLabel) countLabel.textContent = `${count} selected`;
   if (previewButton) previewButton.disabled = count === 0;
+  if (internalLabelsButton) internalLabelsButton.disabled = count === 0;
+  if (deliveryLabelsButton) deliveryLabelsButton.disabled = count === 0;
   if (clearButton) clearButton.disabled = count === 0;
   const visibleInputs = Array.from(
     document.querySelectorAll("[data-order-batch-select]")
@@ -11251,6 +11647,128 @@ function buildBasketLabelPdf(orders) {
   return pdf;
 }
 
+function buildHandDeliveryLabelPdf(orders) {
+  const labels = orders.map(getHandDeliveryLabelData);
+  const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: [100, 150],
+    compress: true
+  });
+  const pageWidth = 100;
+  const margin = 7;
+  const contentWidth = pageWidth - margin * 2;
+  const navy = [29, 54, 72];
+  const muted = [91, 108, 119];
+  const pink = [239, 79, 136];
+  const paleBlue = [237, 248, 253];
+  const palePink = [255, 238, 244];
+
+  labels.forEach((label, index) => {
+    if (index > 0) pdf.addPage([100, 150], "portrait");
+
+    pdf.setFillColor(...paleBlue);
+    pdf.rect(0, 0, pageWidth, 25, "F");
+    pdf.setTextColor(...pink);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(15);
+    pdf.text("Little Keeps", margin, 10);
+    pdf.setTextColor(...navy);
+    pdf.setFontSize(10);
+    pdf.text("HAND DELIVERY", margin, 18);
+    pdf.setFontSize(10);
+    pdf.text(getCompactPdfText(label.orderRef), pageWidth - margin, 11, {
+      align: "right"
+    });
+
+    let y = 34;
+    pdf.setTextColor(...muted);
+    pdf.setFontSize(8);
+    pdf.text("DELIVER TO", margin, y);
+    y += 7;
+
+    pdf.setTextColor(...navy);
+    pdf.setFontSize(17);
+    const customerLines = pdf.splitTextToSize(
+      getCompactPdfText(label.customer),
+      contentWidth
+    ).slice(0, 2);
+    pdf.text(customerLines, margin, y);
+    y += customerLines.length * 7 + 2;
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.text(getCompactPdfText(`Tel: ${label.phone}`), margin, y);
+    y += 9;
+
+    pdf.setDrawColor(204, 221, 230);
+    pdf.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    pdf.setTextColor(...muted);
+    pdf.setFontSize(8);
+    pdf.text("DELIVERY ADDRESS", margin, y);
+    y += 7;
+    pdf.setTextColor(...navy);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(12);
+    const addressLines = pdf.splitTextToSize(
+      getCompactPdfText(label.address),
+      contentWidth
+    ).slice(0, 5);
+    pdf.text(addressLines, margin, y);
+    y += addressLines.length * 5.5 + 5;
+
+    if (label.handoffName) {
+      pdf.setFillColor(...paleBlue);
+      const handoffText = `Hand to: ${label.handoffName}${label.handoffPhone ? ` · ${label.handoffPhone}` : ""}`;
+      const handoffLines = pdf.splitTextToSize(
+        getCompactPdfText(handoffText),
+        contentWidth - 8
+      ).slice(0, 2);
+      const handoffHeight = 9 + handoffLines.length * 4.5;
+      pdf.roundedRect(margin, y, contentWidth, handoffHeight, 2, 2, "F");
+      pdf.setTextColor(...navy);
+      pdf.setFontSize(9);
+      pdf.text(handoffLines, margin + 4, y + 7);
+      y += handoffHeight + 5;
+    }
+
+    const notesY = Math.max(108, Math.min(119, y));
+    pdf.setFillColor(...palePink);
+    pdf.roundedRect(margin, notesY, contentWidth, 21, 2, 2, "F");
+    pdf.setTextColor(...pink);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.text("DELIVERY INSTRUCTIONS", margin + 4, notesY + 6);
+    pdf.setTextColor(...navy);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.5);
+    const noteLines = pdf.splitTextToSize(
+      getCompactPdfText(label.deliveryNotes || "No special instructions"),
+      contentWidth - 8
+    ).slice(0, 3);
+    pdf.text(noteLines, margin + 4, notesY + 12);
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(...navy);
+    pdf.setFontSize(8);
+    pdf.text("PERSONALISED ITEM · PLEASE HANDLE WITH CARE", pageWidth / 2, 143, {
+      align: "center"
+    });
+  });
+
+  pdf.setProperties({
+    title: labels.length === 1
+      ? `${labels[0].orderRef} Hand-Delivery Label`
+      : `Little Keeps Hand-Delivery Labels (${labels.length})`,
+    subject: "Little Keeps hand-delivery labels",
+    author: "Little Keeps"
+  });
+  if (typeof pdf.autoPrint === "function") pdf.autoPrint();
+  return pdf;
+}
+
 function printBasketLabels(orderIds) {
   const requestedIds = new Set(orderIds.map(String));
   const orders = groupLinkedOrdersForAdmin(latestOrders).filter(order =>
@@ -11279,6 +11797,10 @@ window.printBasketLabel = function(orderId) {
   printBasketLabels([orderId]);
 };
 
+window.printSelectedOrderBasketLabels = function() {
+  printBasketLabels(Array.from(selectedOrderIds));
+};
+
 window.printSelectedBasketLabels = function() {
   const orderIds = Array.from(
     document.querySelectorAll("[data-label-order-id]:checked")
@@ -11294,6 +11816,57 @@ window.printAllBasketLabels = function() {
     )
     .map(order => order.id);
   printBasketLabels(orderIds);
+};
+
+function printHandDeliveryLabels(orderIds) {
+  const requestedIds = new Set((orderIds || []).map(String));
+  const orders = groupLinkedOrdersForAdmin(latestOrders).filter(order =>
+    requestedIds.has(String(order.id)) &&
+    order.collection_method === "delivery"
+  );
+
+  if (!orders.length) {
+    alert("Select at least one delivery order for a hand-delivery label.");
+    return;
+  }
+
+  const pdf = buildHandDeliveryLabelPdf(orders);
+  const pdfUrl = pdf.output("bloburl");
+  const printWindow = window.open(pdfUrl, "_blank");
+
+  if (!printWindow) {
+    const filename = orders.length === 1
+      ? `${safeProductionFileName(orders[0].order_ref, "delivery")}-hand-delivery-label.pdf`
+      : `little-keeps-${orders.length}-hand-delivery-labels.pdf`;
+    pdf.save(filename);
+    alert("The printable hand-delivery label PDF was downloaded because the print window was blocked.");
+  }
+}
+
+window.printHandDeliveryLabel = function(orderId) {
+  printHandDeliveryLabels([orderId]);
+};
+
+window.printSelectedOrderHandDeliveryLabels = function() {
+  printHandDeliveryLabels(Array.from(selectedOrderIds));
+};
+
+window.printSelectedHandDeliveryLabels = function() {
+  const orderIds = Array.from(
+    document.querySelectorAll("[data-label-order-id]:checked")
+  ).map(input => input.dataset.labelOrderId);
+  printHandDeliveryLabels(orderIds);
+};
+
+window.printAllHandDeliveryLabels = function() {
+  const orderIds = groupLinkedOrdersForAdmin(latestOrders)
+    .filter(order =>
+      !order.archived_at &&
+      FULFILMENT_STATUSES.includes(order.status) &&
+      order.collection_method === "delivery"
+    )
+    .map(order => order.id);
+  printHandDeliveryLabels(orderIds);
 };
 
 window.openSelectedDeliveryRoute = function() {

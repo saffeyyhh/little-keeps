@@ -1702,6 +1702,11 @@ Chloe</textarea>
   </button>
 </div>
 
+<label class="final-order-confirmation" for="confirmFinalOrderDetails">
+  <input id="confirmFinalOrderDetails" type="checkbox">
+  <span>I checked every name, icon, colour, letter direction, and pickup or delivery detail.</span>
+</label>
+
       <p id="formStatus" class="hint"></p>
       <p id="submitStatus" class="hint"></p>
     </section>
@@ -2067,6 +2072,7 @@ const giftingBagIncrease = document.getElementById("giftingBagIncrease");
 const giftingBagStockStatus = document.getElementById("giftingBagStockStatus");
 const orderNotes = document.getElementById("orderNotes");
 const submitOrderBtn = document.getElementById("submitOrderBtn");
+const confirmFinalOrderDetails = document.getElementById("confirmFinalOrderDetails");
 const submitStatus = document.getElementById("submitStatus");
 const successModal = document.getElementById("successModal");
 const orderRefText = document.getElementById("orderRefText");
@@ -3509,6 +3515,8 @@ function makeSwatches(containerId, colourOptions, type) {
   }
 
   colourOptions.forEach(item => {
+    const option = document.createElement("div");
+    option.className = "swatch-option";
     const btn = document.createElement("button");
 
     btn.type = "button";
@@ -3556,7 +3564,10 @@ function makeSwatches(containerId, colourOptions, type) {
       };
     }
 
-    container.appendChild(btn);
+    const label = document.createElement("span");
+    label.textContent = item.name;
+    option.append(btn, label);
+    container.appendChild(option);
   });
 }
 
@@ -5652,6 +5663,18 @@ async function submitOrder() {
   orderSubmitted = true;
   localStorage.removeItem("littleKeepsDraft");
 
+  if (
+    order.collection_method !== "delivery" &&
+    !order.linked_order_ref &&
+    order.pickup_scheduled_date &&
+    order.pickup_time_range
+  ) {
+    await requestPickupTimingTelegramAlert(
+      orderRef,
+      order.customer_email
+    );
+  }
+
   if (isReviewRequest) {
     await requestSpecialOrderTelegramAlert(
       orderRef,
@@ -6363,6 +6386,24 @@ async function requestSpecialOrderTelegramAlert(orderRef, email) {
   }
 }
 
+async function requestPickupTimingTelegramAlert(orderRef, email) {
+  try {
+    const { data, error } = await supabase.functions.invoke("telegram-new-order", {
+      body: {
+        order_ref: orderRef,
+        email,
+        source: "pickup-timing-selected"
+      }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data?.ok === true;
+  } catch (error) {
+    console.warn("Pickup-timing Telegram alert was not sent:", error);
+    return false;
+  }
+}
+
 async function sendLinkedOrderConfirmationEmail(order, internalRef, rootRef, latestDate) {
   if (!shopSettings.status_emails_enabled) return false;
   const templateId = String(shopSettings.status_email_template_id || "").trim();
@@ -6551,6 +6592,7 @@ deliveryPostalCode.addEventListener(
 );
 
 confirmDeliveryAddress.addEventListener("change", validateForm);
+confirmFinalOrderDetails?.addEventListener("change", validateForm);
 
 nameList.addEventListener("input", updateNames);
 
@@ -6755,6 +6797,11 @@ else if (
 ) {
   valid = false;
   message = "Please enter a 6-digit postal code.";
+}
+
+else if (!confirmFinalOrderDetails?.checked) {
+  valid = false;
+  message = "Please confirm that you checked every personalised detail.";
 }
 
 else if (
@@ -7365,6 +7412,8 @@ window.scheduleTrackedPickup = async function(
     if (error) throw error;
     if (!data?.ok) throw new Error("Pickup timing could not be saved.");
 
+    await requestPickupTimingTelegramAlert(orderRef, email);
+
     alert(
       `Pickup confirmed for ${formatPreferredDate(pickupDate)}, ${pickupTimeRange}.`
     );
@@ -7436,7 +7485,16 @@ function renderCustomerOrderStatus(order) {
     pickupDate,
     shopSettings.pickup_time_options
   );
-  const canSchedulePickup = false;
+  const pickupCutoff = order.pickup_scheduled_date
+    ? new Date(`${order.pickup_scheduled_date}T00:00:00`).getTime() - 86400000
+    : Number.POSITIVE_INFINITY;
+  const canSchedulePickup =
+    !methodIsDelivery &&
+    !["Completed", "Refunded", "Out for Delivery"].includes(effectiveStatus) &&
+    Date.now() < pickupCutoff;
+  const reorderItems = Array.isArray(order.order_data)
+    ? order.order_data
+    : [];
 
   orderStatusResult.innerHTML = `
     <div class="order-status-result-heading">
@@ -7486,6 +7544,20 @@ function renderCustomerOrderStatus(order) {
             · ${escapePresetText(order.pickup_time_range || "Time to be selected")}
           </strong>
         </p>
+      ` : ""}
+    </div>
+
+    <div class="order-self-service-actions">
+      ${!methodIsDelivery && order.pickup_scheduled_date ? `
+        <button type="button" onclick='window.downloadPickupCalendar(${JSON.stringify({
+          orderRef: sharedOrderRef,
+          date: order.pickup_scheduled_date,
+          time: order.pickup_time_range,
+          location: pickupLocation
+        })})'>Add Pickup to Calendar</button>
+      ` : ""}
+      ${reorderItems.length ? `
+        <button type="button" onclick='window.reorderTrackedItems(${JSON.stringify(reorderItems)})'>Order These Designs Again</button>
       ` : ""}
     </div>
 
@@ -7589,6 +7661,62 @@ function renderCustomerOrderStatus(order) {
 window.copyTrackedOrderRef = async function(orderRef, button) {
   await navigator.clipboard.writeText(orderRef);
   if (button) button.textContent = "Copied ✓";
+};
+
+window.downloadPickupCalendar = function(details) {
+  const date = String(details?.date || "").replace(/-/g, "");
+  if (!date) return;
+  const eventText = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Little Keeps//Pickup//EN",
+    "BEGIN:VEVENT",
+    `UID:${String(details.orderRef || "order")}@little-keeps`,
+    `DTSTART;VALUE=DATE:${date}`,
+    `DTEND;VALUE=DATE:${date}`,
+    `SUMMARY:Little Keeps pickup · ${String(details.time || "Selected time")}`,
+    `LOCATION:${String(details.location || "Little Keeps pickup")}`,
+    `DESCRIPTION:Order ${String(details.orderRef || "")} · Pickup at ${String(details.time || "selected time")}`,
+    "END:VEVENT",
+    "END:VCALENDAR"
+  ].join("\r\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([eventText], { type: "text/calendar" }));
+  link.download = `Little-Keeps-${details.orderRef || "pickup"}.ics`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+};
+
+window.reorderTrackedItems = function(items) {
+  const restored = (items || []).map(item => {
+    const design = item.design || {};
+    return {
+      name: item.name || item.clean_name || "Alicia",
+      quantity: normalizeItemQuantity(item.quantity || 1),
+      custom: {
+        baseShape: design.base_shape?.key || design.baseShape || "ribbed",
+        letterOrientation: design.letter_orientation || design.letterOrientation || "vertical",
+        bases: (design.bases || []).map(colour => colour?.hex || colour),
+        caps: (design.caps || []).map(colour => colour?.hex || colour),
+        letters: (design.letters || []).map(colour => colour?.hex || colour)
+      }
+    };
+  }).filter(item => item.name);
+  if (!restored.length) return;
+  names = restored;
+  orderType = restored.length > 1 ? "group" : "single";
+  singleSection.classList.toggle("hidden", orderType !== "single");
+  groupSection.classList.toggle("hidden", orderType !== "group");
+  if (orderType === "single") {
+    singleName.value = restored[0].name;
+    if (singleQuantity) singleQuantity.value = String(restored[0].quantity);
+  } else {
+    nameList.value = restored.map(item => item.name).join("\n");
+  }
+  selectedIndex = 0;
+  refreshUI();
+  buildSelectedPreview();
+  setStorefrontView("design", { scrollTo: "designArea" });
 };
 
 window.payTrackedOrder = async function(orderRef, email, button) {

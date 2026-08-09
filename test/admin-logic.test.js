@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  assignPrintedKeycapsToOwners,
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
   calculateGiftingBagTotal,
@@ -15,6 +16,7 @@ import {
   getFreeAmsPrinters,
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
+  getHandDeliveryLabelData,
   getInternalBasketLabelData,
   groupLinkedOrdersForAdmin,
   getDeliveryRouteGroup,
@@ -538,6 +540,39 @@ test("reserves the base printer and leaves the other online A1 for AMS", () => {
   );
 });
 
+test("assigns only newly printed keycaps to order owners", () => {
+  const owners = [
+    {
+      orderRef: "LK-1",
+      characters: [
+        { character: "A" },
+        { character: "B" }
+      ]
+    },
+    {
+      orderRef: "LK-2",
+      characters: [
+        { character: "A" },
+        { character: "C" }
+      ]
+    }
+  ];
+
+  assert.deepEqual(assignPrintedKeycapsToOwners(owners, [
+    { letter: "A", toPrint: 1 },
+    { letter: "C", toPrint: 1 }
+  ]), [
+    {
+      orderRef: "LK-1",
+      characters: [{ character: "A" }]
+    },
+    {
+      orderRef: "LK-2",
+      characters: [{ character: "C" }]
+    }
+  ]);
+});
+
 test("prepares an internal basket label without courier details", () => {
   assert.deepEqual(getInternalBasketLabelData({
     id: 42,
@@ -561,6 +596,32 @@ test("prepares an internal basket label without courier details", () => {
     neededBy: "2026-08-03",
     items: [{ name: "Articulated Keychain", quantity: 2, summary: "CAT" }],
     notes: "Basket 3"
+  });
+});
+
+test("prepares a hand-delivery label with recipient and delivery details", () => {
+  assert.deepEqual(getHandDeliveryLabelData({
+    id: 43,
+    order_ref: " LK-1043 ",
+    customer_name: " Alicia Tan ",
+    customer_phone: " 9123 4567 ",
+    customer_email: "private@example.com",
+    collection_method: "delivery",
+    delivery_address: " 10 Woodlands Street 12, #03-04, Singapore 738000 ",
+    special_instructions: "Call before delivery",
+    handoff_name: "Mei Lin",
+    handoff_phone: "9000 1111",
+    handoff_notes: "Hand to the guard",
+    notes: "Call before delivery"
+  }), {
+    orderId: "43",
+    orderRef: "LK-1043",
+    customer: "Alicia Tan",
+    phone: "9123 4567",
+    address: "10 Woodlands Street 12, #03-04, Singapore 738000",
+    handoffName: "Mei Lin",
+    handoffPhone: "9000 1111",
+    deliveryNotes: "Call before delivery · Hand to the guard"
   });
 });
 

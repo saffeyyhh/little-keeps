@@ -704,6 +704,26 @@ export function getFreeAmsPrinters(printers = [], basePrinterId = null) {
   );
 }
 
+export function assignPrintedKeycapsToOwners(owners = [], rows = []) {
+  const remainingByCharacter = new Map(
+    rows.map(row => [
+      String(row?.letter || ""),
+      Math.max(0, Math.floor(Number(row?.toPrint) || 0))
+    ])
+  );
+
+  return owners.map(owner => ({
+    ...owner,
+    characters: (owner?.characters || []).filter(entry => {
+      const character = String(entry?.character || "");
+      const remaining = remainingByCharacter.get(character) || 0;
+      if (remaining <= 0) return false;
+      remainingByCharacter.set(character, remaining - 1);
+      return true;
+    })
+  })).filter(owner => owner.characters.length > 0);
+}
+
 export function getInternalBasketLabelData(order = {}) {
   const text = value => String(value || "").trim();
   const items = (Array.isArray(order.order_data) ? order.order_data : []).map(item => ({
@@ -722,6 +742,31 @@ export function getInternalBasketLabelData(order = {}) {
     neededBy: text(order.requested_completion_date || order.needed_by),
     items,
     notes: text(order.order_notes || order.production_note || order.notes)
+  };
+}
+
+export function getHandDeliveryLabelData(order = {}) {
+  const text = value => String(value || "").trim();
+  const deliveryNotes = [
+    order.special_instructions,
+    order.handoff_notes,
+    order.notes,
+    order.preferred_time
+  ]
+    .map(text)
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join(" · ");
+
+  return {
+    orderId: text(order.id),
+    orderRef: text(order.order_ref) || "No order reference",
+    customer: text(order.customer_name) || "Customer",
+    phone: text(order.customer_phone) || "No contact number",
+    address: text(order.delivery_address) || "Delivery address missing",
+    handoffName: text(order.handoff_name),
+    handoffPhone: text(order.handoff_phone),
+    deliveryNotes
   };
 }
 

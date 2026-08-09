@@ -18,6 +18,9 @@ type OrderRecord = {
   total?: number | string;
   order_data?: OrderItem[];
   telegram_review_notified_at?: string | null;
+  telegram_due_tomorrow_notified_at?: string | null;
+  pickup_scheduled_date?: string | null;
+  pickup_time_range?: string | null;
 };
 
 type NotificationPayload = {
@@ -88,7 +91,7 @@ function formatNames(order: OrderRecord) {
 
 function buildMessage(
   order: OrderRecord,
-  notificationKind: "review" | "paid"
+  notificationKind: "review" | "paid" | "pickup" | "due"
 ) {
   const typeLabel = getOrderTypeLabel(order);
   const date =
@@ -99,6 +102,36 @@ function buildMessage(
     order.collection_method === "delivery"
       ? "Delivery"
       : "Pickup";
+
+  if (notificationKind === "due") {
+    return [
+      "⏰ ORDER DUE TOMORROW",
+      "",
+      `Reference: ${order.order_ref || "No reference"}`,
+      `Customer: ${order.customer_name || "Customer"}`,
+      `Status: ${order.status || "Unknown"}`,
+      `Method: ${method}`,
+      `Names: ${formatNames(order)}`,
+      "",
+      "Check Printing and Assembly in Admin today."
+    ].join("\n");
+  }
+
+  if (notificationKind === "pickup") {
+    return [
+      "🗓 PICKUP TIMING CHOSEN",
+      "",
+      `Reference: ${order.order_ref || "No reference"}`,
+      `Customer: ${order.customer_name || "Customer"}`,
+      `Contact: ${order.customer_phone || "Not provided"}`,
+      `Pickup date: ${order.pickup_scheduled_date || "Not selected"}`,
+      `Pickup time: ${order.pickup_time_range || "Not selected"}`,
+      "",
+      `Names: ${formatNames(order)}`,
+      "",
+      "The pickup appointment is saved in Admin → Fulfilment."
+    ].join("\n");
+  }
 
   if (notificationKind === "review") {
     return [
@@ -166,11 +199,15 @@ Deno.serve(async request => {
     );
   }
 
-  const isDirectReviewRequest = Boolean(payload.order_ref && payload.email);
+  const isDirectOrderRequest = Boolean(payload.order_ref && payload.email);
+  const isDirectPickupRequest =
+    isDirectOrderRequest && payload.source === "pickup-timing-selected";
+  const isDirectDueRequest =
+    isDirectOrderRequest && payload.source === "due-tomorrow";
   const webhookSecret = Deno.env.get("ORDER_WEBHOOK_SECRET");
   const suppliedSecret = request.headers.get("x-webhook-secret");
 
-  if (!isDirectReviewRequest && webhookSecret && suppliedSecret !== webhookSecret) {
+  if (!isDirectOrderRequest && webhookSecret && suppliedSecret !== webhookSecret) {
     return jsonResponse(
       { ok: false, error: "Unauthorized" },
       { status: 401 }
@@ -178,7 +215,7 @@ Deno.serve(async request => {
   }
 
   let order = getOrder(payload);
-  if (isDirectReviewRequest) {
+  if (isDirectOrderRequest) {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRoleKey) {
@@ -201,14 +238,57 @@ Deno.serve(async request => {
     });
     const rows = orderResponse.ok ? await orderResponse.json() : [];
     order = rows[0];
-    if (!order || !needsReview(order)) {
+    if (!order) {
       return jsonResponse(
-        { ok: false, error: "Bulk or rush review order was not found" },
+        { ok: false, error: "Order was not found" },
         { status: 404 }
       );
     }
-    if (order.telegram_review_notified_at) {
-      return jsonResponse({ ok: true, skipped: true, reason: "Review alert already sent." });
+
+    if (isDirectPickupRequest) {
+      if (
+        order.collection_method === "delivery" ||
+        !order.pickup_scheduled_date ||
+        !order.pickup_time_range
+      ) {
+        return jsonResponse(
+          { ok: false, error: "A saved pickup appointment was not found" },
+          { status: 404 }
+        );
+      }
+    } else if (isDirectDueRequest) {
+      const tomorrow = new Date();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const dateParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Singapore",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).formatToParts(tomorrow);
+      const dateValues = Object.fromEntries(
+        dateParts.map(part => [part.type, part.value])
+      );
+      const singaporeTomorrow = `${dateValues.year}-${dateValues.month}-${dateValues.day}`;
+      const dueDate = String(order.requested_completion_date || order.needed_by || "").slice(0, 10);
+      if (
+        dueDate !== singaporeTomorrow ||
+        ["Assembly Complete", "Pending Pickup", "Pending Delivery", "Out for Delivery", "Completed", "Refunded"].includes(order.status || "")
+      ) {
+        return jsonResponse({ ok: true, skipped: true, reason: "Order does not need a due-tomorrow alert." });
+      }
+      if (order.telegram_due_tomorrow_notified_at) {
+        return jsonResponse({ ok: true, skipped: true, reason: "Due-tomorrow alert already sent." });
+      }
+    } else {
+      if (!needsReview(order)) {
+        return jsonResponse(
+          { ok: false, error: "Bulk or rush review order was not found" },
+          { status: 404 }
+        );
+      }
+      if (order.telegram_review_notified_at) {
+        return jsonResponse({ ok: true, skipped: true, reason: "Review alert already sent." });
+      }
     }
   }
 
@@ -221,11 +301,15 @@ Deno.serve(async request => {
     isPaid(order) &&
     !isPaid(oldOrder);
 
-  const notificationKind = reviewStarted
-    ? "review"
-    : paymentCompleted
-      ? "paid"
-      : null;
+  const notificationKind = isDirectPickupRequest
+    ? "pickup"
+    : isDirectDueRequest
+      ? "due"
+    : reviewStarted
+      ? "review"
+      : paymentCompleted
+        ? "paid"
+        : null;
 
   if (!notificationKind) {
     return jsonResponse({
@@ -258,6 +342,32 @@ Deno.serve(async request => {
         return jsonResponse({ ok: true, skipped: true, reason: "Review alert already sent." });
       }
       reviewClaimed = true;
+    }
+  }
+
+  let dueClaimed = false;
+  if (notificationKind === "due" && order.id) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl && serviceRoleKey) {
+      const claimUrl = new URL(`${supabaseUrl}/rest/v1/orders`);
+      claimUrl.searchParams.set("id", `eq.${order.id}`);
+      claimUrl.searchParams.set("telegram_due_tomorrow_notified_at", "is.null");
+      const claimResponse = await fetch(claimUrl, {
+        method: "PATCH",
+        headers: {
+          apikey: serviceRoleKey,
+          authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify({ telegram_due_tomorrow_notified_at: new Date().toISOString() })
+      });
+      const claimedRows = claimResponse.ok ? await claimResponse.json() : [];
+      if (!claimedRows.length) {
+        return jsonResponse({ ok: true, skipped: true, reason: "Due-tomorrow alert already sent." });
+      }
+      dueClaimed = true;
     }
   }
 
@@ -294,6 +404,23 @@ Deno.serve(async request => {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({ telegram_review_notified_at: null })
+        });
+      }
+    }
+    if (dueClaimed && order.id) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (supabaseUrl && serviceRoleKey) {
+        const resetUrl = new URL(`${supabaseUrl}/rest/v1/orders`);
+        resetUrl.searchParams.set("id", `eq.${order.id}`);
+        await fetch(resetUrl, {
+          method: "PATCH",
+          headers: {
+            apikey: serviceRoleKey,
+            authorization: `Bearer ${serviceRoleKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ telegram_due_tomorrow_notified_at: null })
         });
       }
     }
