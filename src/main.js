@@ -16,9 +16,7 @@ import {
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
   getPickupTimeRanges,
-  getKeychainTurnaround,
   isPickupDay,
-  isAlternatingProductionDay,
   isOrderReminderFinishedOrExpired,
   isSharedGroupCancelledOrExpired,
   flattenSharedGroupContributions,
@@ -62,11 +60,13 @@ const DEFAULT_SHOP_SETTINGS = {
   delivery_fee: 2.5,
   free_delivery_threshold: 50,
   max_orders_per_date: 2,
+  daily_keychain_capacity: 12,
+  bulk_buffer_days: 1,
   large_order_quantity: 7,
   standard_min_working_days: 2,
   standard_max_working_days: 3,
-  large_min_working_days: 3,
-  large_max_working_days: 4,
+  large_min_working_days: 4,
+  large_max_working_days: 5,
   bulk_order_quantity: 15,
   rush_fee_small: 5,
   rush_fee_large: 8,
@@ -228,12 +228,30 @@ try {
 
   if (error) throw error;
   if (data) shopSettings = { ...shopSettings, ...data };
+  shopSettings.daily_keychain_capacity = Math.max(1, Number(
+    shopSettings.pickup_time_options?.daily_keychain_capacity ||
+    shopSettings.daily_keychain_capacity ||
+    12
+  ));
+  shopSettings.bulk_buffer_days = Math.max(0, Number(
+    shopSettings.pickup_time_options?.bulk_buffer_days ??
+    shopSettings.bulk_buffer_days ??
+    1
+  ));
+  shopSettings.contact_whatsapp_number = String(
+    shopSettings.pickup_time_options?.contact_whatsapp_number || "6585121915"
+  ).replace(/\D/g, "") || "6585121915";
   shopSettings.pickup_time_options = normalizePickupTimeOptions(
     shopSettings.pickup_time_options
   );
 } catch (error) {
   console.warn("Using default shop pricing settings:", error);
 }
+
+const contactWhatsAppNumber = String(
+  shopSettings.contact_whatsapp_number || "6585121915"
+).replace(/\D/g, "") || "6585121915";
+const contactWhatsAppUrl = `https://wa.me/${contactWhatsAppNumber}`;
 
 try {
   const { data, error } = await supabase
@@ -522,7 +540,7 @@ document.querySelector("#app").innerHTML = `
     <span class="announcement-icon">▧</span>
 
     <span>
-      <strong>Holiday Notice:</strong>
+      <strong>Shop Notice:</strong>
       <span id="holidayNoticeText"></span>
     </span>
   </div>
@@ -748,6 +766,12 @@ document.querySelector("#app").innerHTML = `
       Start a Group Order
     </button>
 
+    <button id="copyDesignLinkBtn" type="button" class="cart-secondary-btn">
+      Copy Continue-Designing Link
+    </button>
+
+    <p id="copyDesignLinkStatus" class="cart-share-status" aria-live="polite"></p>
+
     <button
       id="checkoutFromCartBtn"
       type="button"
@@ -874,6 +898,24 @@ document.querySelector("#app").innerHTML = `
 
   <div class="hero-decoration hero-decoration-one"></div>
   <div class="hero-decoration hero-decoration-two"></div>
+</section>
+
+<section class="availability-preview" data-store-view="shop" aria-labelledby="availabilityPreviewHeading">
+  <button id="availabilityPreviewToggle" class="availability-preview-heading" type="button" aria-expanded="false" aria-controls="availabilityPreviewBody">
+    <div>
+      <p class="section-eyebrow">Plan before you design</p>
+      <h2 id="availabilityPreviewHeading">Check current availability</h2>
+    </div>
+    <span>Live estimate <b aria-hidden="true">⌄</b></span>
+  </button>
+  <div id="availabilityPreviewBody" class="availability-preview-body hidden">
+    <div class="availability-preview-grid">
+      <article><span>Standard orders</span><strong id="availabilityStandardDate">Checking…</strong><small>Estimated ready date</small></article>
+      <article><span>Pickup</span><strong id="availabilityPickupDate">Checking…</strong><small>First selectable appointment</small></article>
+      <article><span>Event orders</span><strong id="availabilityBulkDate">Checking…</strong><small>Earliest dispatch request</small></article>
+    </div>
+    <p id="availabilityPreviewNote">We accept up to ${Math.max(1, Number(shopSettings.max_orders_per_date || 2))} orders or ${Math.max(1, Number(shopSettings.daily_keychain_capacity || 12))} keychains per production day. Fully booked dates are hidden automatically.</p>
+  </div>
 </section>
 
 <section id="productsSection" class="products-section" data-store-view="shop" aria-labelledby="productsHeading">
@@ -1327,6 +1369,9 @@ Chloe</textarea>
           <div class="colour-accordion-content">
             <div id="baseSlots" class="slot-row"></div>
 
+            <button id="randomiseBaseColoursBtn" type="button" class="part-surprise-btn">Surprise me for bases ✨</button>
+            <p id="baseColourPriceNotice" class="colour-price-notice"></p>
+
             <p id="baseColourHint" class="colour-hint">
               Hover or tap a colour
             </p>
@@ -1349,6 +1394,9 @@ Chloe</textarea>
           <div class="colour-accordion-content">
             <div id="capSlots" class="slot-row"></div>
 
+            <button id="randomiseCapColoursBtn" type="button" class="part-surprise-btn">Surprise me for caps ✨</button>
+            <p id="capColourPriceNotice" class="colour-price-notice"></p>
+
             <p id="capColourHint" class="colour-hint">
               Hover or tap a colour
             </p>
@@ -1368,6 +1416,9 @@ Chloe</textarea>
           <div class="colour-accordion-content">
             <div id="letterSlots" class="slot-row"></div>
 
+            <button id="randomiseLetterColoursBtn" type="button" class="part-surprise-btn">Surprise me for letters ✨</button>
+            <p id="letterColourPriceNotice" class="colour-price-notice"></p>
+
             <p id="letterColourHint" class="colour-hint">
               Hover or tap a colour
             </p>
@@ -1383,7 +1434,7 @@ Chloe</textarea>
             <strong>Need another colour?</strong>
 
             <a
-              href="https://wa.me/6585121915"
+              href="${contactWhatsAppUrl}"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -1776,6 +1827,8 @@ Chloe</textarea>
           <span id="paymentLinkedOrderNote" class="hidden"></span>
         </div>
 
+        <p class="payment-edit-note">Need to correct a name, colour or delivery detail? Use Back within 30 minutes, make the change, then save again before paying.</p>
+
         <div id="manualPaymentRequestPanel" class="manual-payment-request hidden">
           <h3>Customer order ready to send</h3>
           <p>The confirmation email has been requested. Send this secure return link to the customer so they can pay.</p>
@@ -1821,6 +1874,19 @@ Chloe</textarea>
         <p class="hint">
           Check your email for your confirmation and return link.
         </p>
+
+        <div id="successNextSteps" class="success-next-steps">
+          <strong>What happens next?</strong>
+          <span>1. We confirm your order and payment</span>
+          <span>2. Your keychains move into production</span>
+          <span>3. Track updates using your order ID</span>
+        </div>
+
+        <div class="success-modal-actions">
+          <button id="copySubmittedOrderBtn" type="button" class="secondary-btn">Copy Order ID</button>
+          <button id="trackSubmittedOrderBtn" type="button" class="secondary-btn">Track This Order</button>
+          <a id="successWhatsAppLink" class="secondary-btn" href="${contactWhatsAppUrl}" target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a>
+        </div>
 
         <button
           id="closeModalBtn"
@@ -2046,7 +2112,7 @@ Chloe</textarea>
 
   <div class="contact-links">
     <a
-      href="https://wa.me/6585121915"
+      href="${contactWhatsAppUrl}"
       target="_blank"
       rel="noopener noreferrer"
       class="contact-link-card"
@@ -2168,6 +2234,9 @@ const inspirationStatus = document.getElementById("inspirationStatus");
 const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
 const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
 const randomiseMultipleColours = document.getElementById("randomiseMultipleColours");
+const randomiseBaseColoursBtn = document.getElementById("randomiseBaseColoursBtn");
+const randomiseCapColoursBtn = document.getElementById("randomiseCapColoursBtn");
+const randomiseLetterColoursBtn = document.getElementById("randomiseLetterColoursBtn");
 
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
@@ -2198,6 +2267,14 @@ const requestedCompletionDate = document.getElementById("requestedCompletionDate
 const specialOrderMessage = document.getElementById("specialOrderMessage");
 const rushAvailabilityResult = document.getElementById("rushAvailabilityResult");
 const bulkOrderNotice = document.getElementById("bulkOrderNotice");
+const availabilityPreviewToggle = document.getElementById("availabilityPreviewToggle");
+const availabilityPreviewBody = document.getElementById("availabilityPreviewBody");
+availabilityPreviewToggle?.addEventListener("click", () => {
+  const isOpen = availabilityPreviewToggle.getAttribute("aria-expanded") === "true";
+  availabilityPreviewToggle.setAttribute("aria-expanded", String(!isOpen));
+  availabilityPreviewBody?.classList.toggle("hidden", isOpen);
+});
+
 const turnaroundSummary =
   document.getElementById("turnaroundSummary");
 const collectionMethod = document.getElementById("collectionMethod");
@@ -2295,6 +2372,8 @@ const continueShoppingBtn =
 const checkoutFromCartBtn =
   document.getElementById("checkoutFromCartBtn");
 const sharedGroupCartBtn = document.getElementById("sharedGroupCartBtn");
+const copyDesignLinkBtn = document.getElementById("copyDesignLinkBtn");
+const copyDesignLinkStatus = document.getElementById("copyDesignLinkStatus");
 
 const orderStatusForm =
   document.getElementById("orderStatusForm");
@@ -2308,6 +2387,8 @@ const orderStatusMessage =
   document.getElementById("orderStatusMessage");
 const orderStatusResult =
   document.getElementById("orderStatusResult");
+const copySubmittedOrderBtn = document.getElementById("copySubmittedOrderBtn");
+const trackSubmittedOrderBtn = document.getElementById("trackSubmittedOrderBtn");
 const pendingOrderBanner =
   document.getElementById("pendingOrderBanner");
 const pendingOrderBannerRef =
@@ -2718,7 +2799,16 @@ let bulkAssessmentRequest = 0;
 let bulkAssessmentFingerprint = "";
 
 function getTurnaroundInfo(quantity = getTotalKeychainQuantity() || 1) {
-  const turnaround = getKeychainTurnaround(quantity);
+  const safeQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+  const standardMin = Math.max(1, Number(shopSettings.standard_min_working_days || 2));
+  const standardMax = Math.max(standardMin, Number(shopSettings.standard_max_working_days || 3));
+  const largeMin = Math.max(standardMax, Number(shopSettings.large_min_working_days || 4));
+  const largeMax = Math.max(largeMin, Number(shopSettings.large_max_working_days || 5));
+  const turnaround = safeQuantity <= 3
+    ? { quantity: safeQuantity, tier: "small", minDays: standardMin, maxDays: standardMax }
+    : safeQuantity <= 6
+      ? { quantity: safeQuantity, tier: "medium", minDays: standardMax, maxDays: largeMin }
+      : { quantity: safeQuantity, tier: "large", minDays: largeMin, maxDays: largeMax };
   return {
     ...turnaround,
     isLargeOrder: turnaround.tier === "large"
@@ -2730,21 +2820,6 @@ function isShopClosedDate(date) {
   return shopClosureRanges.some(range =>
     value >= range.start_date && value <= range.end_date
   );
-}
-
-function addWeekdaysOnly(startDate, workingDays) {
-  const date = new Date(startDate);
-  let daysAdded = 0;
-
-  while (daysAdded < workingDays) {
-    date.setDate(date.getDate() + 1);
-
-    const day = date.getDay();
-    if (day !== 0 && day !== 6) daysAdded += 1;
-  }
-
-  date.setHours(0, 0, 0, 0);
-  return date;
 }
 
 function addWorkingDays(startDate, workingDays) {
@@ -2770,7 +2845,6 @@ function getBulkMinimumDate(quantity = getTotalKeychainQuantity()) {
   );
 
   while (
-    !isAlternatingProductionDay(toLocalDateString(candidate)) ||
     bulkUnavailableDates.includes(toLocalDateString(candidate)) ||
     isShopClosedDate(candidate)
   ) {
@@ -2778,6 +2852,38 @@ function getBulkMinimumDate(quantity = getTotalKeychainQuantity()) {
   }
 
   return candidate;
+}
+
+function getFirstPickupDateAfter(readyDate) {
+  const candidate = new Date(readyDate);
+  const maximum = new Date(candidate);
+  maximum.setDate(maximum.getDate() + 30);
+
+  while (candidate <= maximum) {
+    if (isPickupDay(toLocalDateString(candidate)) && !isShopClosedDate(candidate)) {
+      return candidate;
+    }
+    candidate.setDate(candidate.getDate() + 1);
+  }
+
+  return readyDate;
+}
+
+function renderAvailabilityPreview() {
+  const standardDate = document.getElementById("availabilityStandardDate");
+  const pickupDate = document.getElementById("availabilityPickupDate");
+  const bulkDate = document.getElementById("availabilityBulkDate");
+  if (!standardDate || !pickupDate || !bulkDate) return;
+
+  const standardReady = alignToProductionDay(
+    addWorkingDays(new Date(), getTurnaroundInfo(1).maxDays)
+  );
+  const firstPickup = getFirstPickupDateAfter(standardReady);
+  const firstBulk = getBulkMinimumDate(bulkOrderQuantity);
+
+  standardDate.textContent = formatEstimateDate(standardReady);
+  pickupDate.textContent = formatEstimateDate(firstPickup);
+  bulkDate.textContent = formatEstimateDate(firstBulk);
 }
 
 function isCalendarDateUnavailable(date, mode) {
@@ -2790,8 +2896,6 @@ function isCalendarDateUnavailable(date, mode) {
         : normalUnavailableDates;
 
   if (unavailableDates.includes(dateValue)) return true;
-  if (["standard", "bulk"].includes(mode) && !isAlternatingProductionDay(dateValue)) return true;
-
   return calendarClosureDates.some(range => {
     const start = String(range.from || range.start_date || "").slice(0, 10);
     const end = String(range.to || range.end_date || "").slice(0, 10);
@@ -2827,7 +2931,6 @@ function getAutomaticReadyDate() {
 function alignToProductionDay(dateValue) {
   let candidate = new Date(dateValue);
   while (
-    !isAlternatingProductionDay(toLocalDateString(candidate)) ||
     normalUnavailableDates.includes(toLocalDateString(candidate)) ||
     isShopClosedDate(candidate)
   ) {
@@ -3134,7 +3237,8 @@ async function checkBulkAvailability() {
   validateForm();
 
   const { data, error } = await supabase.rpc("check_bulk_order_date", {
-    p_date: requestedCompletionDate.value
+    p_date: requestedCompletionDate.value,
+    p_quantity: getTotalKeychainQuantity()
   });
 
   if (requestNumber !== bulkAssessmentRequest) return bulkAssessment;
@@ -3185,8 +3289,6 @@ function updateTurnaroundMessaging() {
   const estimateEnd = alignToProductionDay(
     addWorkingDays(new Date(), turnaround.maxDays)
   );
-  const weekdayOnlyEnd = addWeekdaysOnly(new Date(), turnaround.maxDays);
-  const includesHolidayClosure = estimateEnd.getTime() > weekdayOnlyEnd.getTime();
   const bulkPolicy = getBulkApprovalPolicy(turnaround.quantity);
   const isRush = !isBulk && Boolean(rushOrderToggle?.checked);
 
@@ -3214,10 +3316,8 @@ function updateTurnaroundMessaging() {
     formatEstimateDate
   );
   automaticDateNote.textContent = methodIsDelivery
-    ? `This is the dispatch date. Allow 1–3 days for delivery.${includesHolidayClosure ? " Our holiday closure is already included." : ""}`
-    : includesHolidayClosure
-      ? "Our holiday closure is included. Choose a pickup slot below."
-      : "Choose an available pickup slot below.";
+    ? "This is the dispatch date. Allow 1–3 days for delivery."
+    : "Choose an available pickup slot below.";
 
   automaticDateCard.classList.toggle("hidden", isBulk || isRush);
   rushOrderOption.classList.toggle("hidden", isBulk);
@@ -3235,8 +3335,8 @@ function updateTurnaroundMessaging() {
       : "Choose your bulk completion date";
     const earliestBulkDate = getBulkMinimumDate(turnaround.quantity);
     specialOrderMessage.textContent = methodIsDelivery
-      ? `The earliest available dispatch date is ${formatEstimateDate(earliestBulkDate)}. This accounts for ${bulkPolicy.timeframeLabel}, production days, existing orders and closures. We’ll confirm it with your final quote. Allow 1–3 days for delivery.`
-      : `The earliest available completion date is ${formatEstimateDate(earliestBulkDate)}. This accounts for ${bulkPolicy.timeframeLabel}, production days, existing orders and closures. We’ll confirm it with your final quote.`;
+      ? `The earliest available dispatch date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. We’ll confirm it with your final quote. Allow 1–3 days for delivery.`
+      : `The earliest available completion date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. We’ll confirm it with your final quote.`;
     orderNotes.placeholder = "Customer notes for your bulk order...";
 
     if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
@@ -3288,9 +3388,6 @@ function updateTurnaroundMessaging() {
       maxDate: calendarMaxDate,
       disable: [
         ...calendarClosureDates,
-        ...(isBulk
-          ? [date => !isAlternatingProductionDay(toLocalDateString(date))]
-          : []),
         ...(isBulk
           ? bulkUnavailableDates
           : isRush
@@ -3388,18 +3485,15 @@ async function findAutomaticAvailableDate() {
 
   for (let attempt = 0; attempt < 45; attempt += 1) {
     const day = candidate.getDay();
-    if (
-      day === 0 ||
-      day === 6 ||
-      !isAlternatingProductionDay(toLocalDateString(candidate))
-    ) {
+    if (day === 0 || day === 6) {
       candidate = addWorkingDays(candidate, 1);
       continue;
     }
 
     const candidateValue = toLocalDateString(candidate);
     const { data, error } = await supabase.rpc("check_needed_by_date", {
-      p_date: candidateValue
+      p_date: candidateValue,
+      p_quantity: getTotalKeychainQuantity()
     });
 
     if (error) {
@@ -3482,6 +3576,8 @@ let giftingBagStockConfirmed = false;
 let selectedIndex = 0;
 let orderSubmitted = false;
 let orderSubmissionInProgress = false;
+let editingPendingOrder = false;
+let pendingOrderEditableUntil = 0;
 let currentSubmissionId = crypto.randomUUID();
 let currentSubmissionOrderRef = "";
 
@@ -3660,6 +3756,25 @@ function getUnitPriceBreakdown(design, name = "") {
   };
 }
 
+function renderColourChargeNotices() {
+  const design = getActiveDesign();
+  [
+    ["baseColourPriceNotice", design.bases, activeProduct.included_base_colours, activeProduct.extra_base_colour_price, "base"],
+    ["capColourPriceNotice", design.caps, activeProduct.included_cap_colours, activeProduct.extra_cap_colour_price, "cap"],
+    ["letterColourPriceNotice", design.letters, activeProduct.included_letter_colours, activeProduct.extra_letter_colour_price, "letter/icon"]
+  ].forEach(([id, selectedColours, includedCount, extraPrice, label]) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    const uniqueCount = getUniqueColourCount(selectedColours || []);
+    const extras = Math.max(0, uniqueCount - Number(includedCount || 0));
+    const unitPrice = Number(extraPrice || 0);
+    element.classList.toggle("has-charge", extras > 0);
+    element.textContent = extras > 0
+      ? `${extras} extra ${label} colour${extras === 1 ? "" : "s"}: +${displaySettingMoney(extras * unitPrice)}`
+      : `One ${label} colour is included. Each additional colour adds ${displaySettingMoney(unitPrice)}.`;
+  });
+}
+
 function getActiveDesign() {
   const item = names[selectedIndex];
 
@@ -3773,6 +3888,38 @@ function randomiseArticulatedColours() {
       : characterCount < 2 && randomiseMultipleColours?.checked
         ? "One character uses one colour per part, so a single palette was chosen ♡"
         : `Palette chosen: ${getColourName(selected.bases[0])}, ${getColourName(selected.caps[0])} and ${getColourName(selected.letters[0])} ♡`;
+  }
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+}
+
+function randomiseColourPart(part) {
+  if (activeProduct.product_key === STANDARD_PRODUCT_KEY && part === "caps") return;
+  const availableHexes = colours.filter(item => item.available).map(item => item.colour);
+  const characterCount = Array.from(
+    sanitizeName(names[selectedIndex]?.name || singleName?.value || "")
+  ).length;
+  const selected = pickRandomDesignColourSets({
+    baseColours: availableHexes,
+    capColours: availableHexes,
+    letterColours: availableHexes,
+    characterCount,
+    allowMultiple: Boolean(randomiseMultipleColours?.checked)
+  });
+  const property = part === "base" ? "bases" : part === "cap" ? "caps" : "letters";
+  const design = getActiveDesign();
+  design[property] = [...selected[property]];
+
+  if (applyAllToggle.checked) {
+    globalDesign[property] = [...selected[property]];
+    names.forEach(item => { item.custom = null; });
+  }
+
+  draftHasMeaningfulChanges = true;
+  if (randomiseColoursStatus) {
+    const label = part === "letter" ? "Letter/icon" : `${part[0].toUpperCase()}${part.slice(1)}`;
+    randomiseColoursStatus.textContent = `${label} colours refreshed ♡`;
   }
   refreshUI();
   buildSelectedPreview();
@@ -4219,7 +4366,7 @@ async function setupNeededByCalendar() {
     shopClosureRanges = (closureResult.data || []).map(item => ({
       start_date: item.start_date,
       end_date: item.end_date,
-      reason: item.reason || "Holiday closure"
+      reason: item.reason || "Shop closed"
     }));
   }
 
@@ -4283,6 +4430,7 @@ async function setupNeededByCalendar() {
 
   setupCheckoutPickupCalendar();
   updateTurnaroundMessaging();
+  renderAvailabilityPreview();
 }
 
 async function loadShopNotices() {
@@ -4302,10 +4450,11 @@ async function loadShopNotices() {
   shopClosureRanges = (data || []).map(item => ({
     start_date: item.start_date,
     end_date: item.end_date,
-    reason: item.reason || "Holiday closure"
+    reason: item.reason || "Shop closed"
   }));
 
   updateTurnaroundMessaging();
+  renderAvailabilityPreview();
 
   const holidayNotice = document.getElementById("holidayNotice");
   const holidayNoticeDivider = document.getElementById("holidayNoticeDivider");
@@ -5319,6 +5468,14 @@ function getDesignDescription(design) {
   }`;
 }
 
+function getDesignColourSummary(design) {
+  const uniqueNames = values => Array.from(new Set((values || []).map(getColourName))).join(", ");
+  if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
+    return `Background: ${uniqueNames(design.bases)} · Name: ${uniqueNames(design.letters)}`;
+  }
+  return `Bases: ${uniqueNames(design.bases)} · Caps: ${uniqueNames(design.caps)} · Letters: ${uniqueNames(design.letters)}`;
+}
+
 function renderNameCards() {
   nameCards.innerHTML = "";
 
@@ -5473,6 +5630,8 @@ function renderReviewOrder() {
           <strong>${item.name}${itemQuantity > 1 ? ` × ${itemQuantity}` : ""}</strong>
 
           <p class="hint">${getDesignDescription(design)}</p>
+
+          <p class="review-colour-summary">${getDesignColourSummary(design)}</p>
 
           <p class="item-dimension-note">
             📏 ${getApproximateSizeText(item.name)}
@@ -5747,8 +5906,24 @@ async function saveOrderToDatabase(order) {
 
 }
 
+async function updatePendingOrderInDatabase(order) {
+  const { order_ref: _orderRef, client_submission_id: _submissionId, ...changes } = order;
+  const { data, error } = await supabase
+    .from("orders")
+    .update(changes)
+    .eq("order_ref", order.order_ref)
+    .eq("client_submission_id", order.client_submission_id)
+    .eq("status", "Pending Payment")
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("This order can no longer be edited.");
+  return data;
+}
+
 async function submitOrder() {
-  if (orderSubmissionInProgress || orderSubmitted) return;
+  if (orderSubmissionInProgress || (orderSubmitted && !editingPendingOrder)) return;
   orderSubmissionInProgress = true;
   const previousSubmitLabel = submitOrderBtn.textContent;
   submitOrderBtn.disabled = true;
@@ -5806,6 +5981,7 @@ async function submitOrderOnce() {
 
   const orderRef = currentSubmissionOrderRef || generateOrderRef();
   currentSubmissionOrderRef = orderRef;
+  successModal.dataset.orderRef = orderRef;
   const checkoutOrderType = getCheckoutOrderType();
 
   if (checkoutOrderType === "bulk" && collectionMethod.value !== "delivery") {
@@ -5999,10 +6175,14 @@ async function submitOrderOnce() {
   };
 
   // First save the order.
-  let orderWasAlreadySaved = false;
+  let orderWasAlreadySaved = editingPendingOrder;
   try {
-    const saveResult = await saveOrderToDatabase(order);
-    orderWasAlreadySaved = saveResult.alreadySaved;
+    if (editingPendingOrder) {
+      await updatePendingOrderInDatabase(order);
+    } else {
+      const saveResult = await saveOrderToDatabase(order);
+      orderWasAlreadySaved = saveResult.alreadySaved;
+    }
   } catch (error) {
     console.error("Unable to save order:", error);
 
@@ -6012,7 +6192,7 @@ async function submitOrderOnce() {
     return;
   }
 
-  if (order.group_order_code && finalisingSharedGroupOwnerToken) {
+  if (!editingPendingOrder && order.group_order_code && finalisingSharedGroupOwnerToken) {
     try {
       const { error } = await supabase.rpc("finalise_shared_group_order", {
         p_owner_token: finalisingSharedGroupOwnerToken,
@@ -6033,6 +6213,10 @@ async function submitOrderOnce() {
 
   // The order is now safely saved.
   orderSubmitted = true;
+  editingPendingOrder = false;
+  if (!pendingOrderEditableUntil) {
+    pendingOrderEditableUntil = Date.now() + 30 * 60 * 1000;
+  }
   localStorage.removeItem("littleKeepsDraft");
 
   if (
@@ -6195,6 +6379,7 @@ function refreshUI() {
   renderColourSlots();
   updateEditModeText();
   updatePreviewColourLegend();
+  renderColourChargeNotices();
   updateBaseShapeButtons();
   updateLetterOrientationButtons();
   updateGiftingBagOptions();
@@ -6773,6 +6958,15 @@ function checkoutSharedGroup() {
 }
 
 sharedGroupCartBtn.addEventListener("click", openSharedGroupCartAction);
+copyDesignLinkBtn?.addEventListener("click", async () => {
+  if (!names.length) return;
+  try {
+    await navigator.clipboard.writeText(getShareableDesignUrl());
+    copyDesignLinkStatus.textContent = "Private continue-designing link copied ✓";
+  } catch {
+    copyDesignLinkStatus.textContent = "Unable to copy automatically. Please try again.";
+  }
+});
 sharedGroupBannerAction.addEventListener("click", () => {
   if (activeSharedGroup?.is_owner) renderSharedGroupOwner();
   else if (activeSharedGroup?.status === "open") sharedGroupHowModal.classList.remove("hidden");
@@ -6926,6 +7120,13 @@ function renderCartDrawer() {
 
             <button
               type="button"
+              onclick="window.duplicateCartItem(${index})"
+            >
+              Duplicate
+            </button>
+
+            <button
+              type="button"
               class="remove-cart-item"
               onclick="window.removeCartItem(${index})"
             >
@@ -6964,6 +7165,34 @@ window.editCartItem = function(index) {
   setStorefrontView("design", {
     scrollTo: "designArea"
   });
+};
+
+window.duplicateCartItem = async function(index) {
+  const original = names[index];
+  if (!original) return;
+  const newName = prompt("Name for the duplicated design:", original.name);
+  if (newName === null) return;
+  const cleanName = sanitizeName(newName);
+  if (!cleanName) {
+    alert("Please enter at least one supported letter, number or icon.");
+    return;
+  }
+
+  const duplicate = JSON.parse(JSON.stringify(original));
+  duplicate.name = cleanName;
+  names.splice(index + 1, 0, duplicate);
+  selectedIndex = index + 1;
+  orderType = "group";
+  nameList.value = names.map(item => item.name).join("\n");
+  setOrderType("group");
+  draftHasMeaningfulChanges = true;
+
+  closeCartDrawer();
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+  await syncSharedGroupOwnerBasket();
+  setStorefrontView("design", { scrollTo: "designArea" });
 };
 
 window.removeCartItem = async function(index) {
@@ -7609,6 +7838,9 @@ resetSelected.onclick = () => {
 };
 
 randomiseColoursBtn?.addEventListener("click", randomiseArticulatedColours);
+randomiseBaseColoursBtn?.addEventListener("click", () => randomiseColourPart("base"));
+randomiseCapColoursBtn?.addEventListener("click", () => randomiseColourPart("cap"));
+randomiseLetterColoursBtn?.addEventListener("click", () => randomiseColourPart("letter"));
 randomiseMultipleColours?.addEventListener("change", () => {
   draftHasMeaningfulChanges = true;
   if (randomiseColoursStatus) randomiseColoursStatus.textContent = "";
@@ -7641,9 +7873,19 @@ promoCodeInput.addEventListener("keydown", event => {
 });
 
 paymentBackBtn.onclick = () => {
+    if (!currentSubmissionOrderRef || Date.now() > pendingOrderEditableUntil) {
+      alert("The 30-minute editing window has ended. Please contact Little Keeps if you need a correction.");
+      return;
+    }
 
+    editingPendingOrder = true;
+    orderSubmitted = false;
+    cartHasItems = true;
     paymentScreen.classList.add("hidden");
     checkoutScreen.classList.remove("hidden");
+    submitOrderBtn.textContent = "Save Changes & Return to Payment";
+    submitStatus.textContent = "Your unpaid order is editable for 30 minutes after submission.";
+    validateForm();
 
 };
 
@@ -7854,6 +8096,95 @@ else if (
 closeModalBtn.onclick = () => {
   successModal.classList.add("hidden");
 };
+
+copySubmittedOrderBtn?.addEventListener("click", async () => {
+  const orderRef = successModal.dataset.orderRef || currentSubmissionOrderRef;
+  if (!orderRef) return;
+  await navigator.clipboard.writeText(orderRef);
+  copySubmittedOrderBtn.textContent = "Order ID Copied ✓";
+});
+
+trackSubmittedOrderBtn?.addEventListener("click", () => {
+  const orderRef = successModal.dataset.orderRef || currentSubmissionOrderRef;
+  successModal.classList.add("hidden");
+  if (orderRef) statusOrderRef.value = orderRef;
+  if (customerEmail?.value) statusCustomerEmail.value = customerEmail.value;
+  setStorefrontView("track", { scrollTo: "orderStatusSection" });
+  statusCustomerEmail.focus();
+});
+
+function encodeSharedDesign(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = "";
+  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function decodeSharedDesign(value) {
+  const normalized = String(value || "").replaceAll("-", "+").replaceAll("_", "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function getShareableDesignUrl() {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = new URLSearchParams({
+    design: encodeSharedDesign({
+      version: 1,
+      productKey: activeProduct.product_key,
+      orderType,
+      names,
+      selectedIndex,
+      globalDesign,
+      randomiseMultipleColours: Boolean(randomiseMultipleColours?.checked)
+    })
+  }).toString();
+  return url.toString();
+}
+
+function loadSharedDesignFromUrl() {
+  const encoded = new URLSearchParams(window.location.hash.slice(1)).get("design");
+  if (!encoded) return false;
+
+  try {
+    const shared = decodeSharedDesign(encoded);
+    if (!Array.isArray(shared.names) || !shared.names.length) return false;
+    activeProduct = getProductByKey(productCatalog, shared.productKey || MODULAR_PRODUCT_KEY);
+    names = shared.names.map(item => ({
+      ...item,
+      name: sanitizeName(item.name),
+      quantity: normalizeItemQuantity(item.quantity)
+    })).filter(item => item.name);
+    if (!names.length) return false;
+    globalDesign = { ...globalDesign, ...(shared.globalDesign || {}) };
+    selectedIndex = Math.min(
+      names.length - 1,
+      Math.max(0, Number(shared.selectedIndex) || 0)
+    );
+    orderType = names.length > 1 || shared.orderType === "group" ? "group" : "single";
+    cartHasItems = true;
+    singleName.value = names[0].name;
+    singleQuantity.value = String(getItemQuantity(names[0]));
+    nameList.value = names.map(item => item.name).join("\n");
+    if (randomiseMultipleColours) {
+      randomiseMultipleColours.checked = Boolean(shared.randomiseMultipleColours);
+    }
+    updateProductCustomiser();
+    setOrderType(orderType);
+    refreshUI();
+    buildSelectedPreview();
+    setStorefrontView("design", { scrollTo: "designArea" });
+    draftHasMeaningfulChanges = true;
+    saveDraft();
+    return true;
+  } catch (error) {
+    console.warn("Unable to open the shared design link:", error);
+    return false;
+  }
+}
 
 function saveDraft() {
   if (
@@ -8862,7 +9193,11 @@ updateCartDisplay();
 buildSelectedPreview();
 animate();
 
-loadDraft();
+if (!loadSharedDesignFromUrl()) {
+  loadDraft();
+} else {
+  draftModal.classList.add("hidden");
+}
 
 const paymentReturnParams = new URLSearchParams(window.location.search);
 const paymentReturnState = paymentReturnParams.get("payment");
@@ -8873,6 +9208,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
   const modalParagraphs = successModal.querySelectorAll(".modal-card > p");
 
   draftModal.classList.add("hidden");
+  successModal.dataset.orderRef = returnedOrderRef;
 
   if (paymentReturnState === "success") {
     clearRememberedPendingOrder(returnedOrderRef);

@@ -31,7 +31,6 @@ import {
   assessRushDateCapacity,
   formatDateRange,
   formatProductionMinutes,
-  isAlternatingProductionDay,
   isOrderReminderFinishedOrExpired,
   isPickupDay,
   isSharedGroupCancelledOrExpired,
@@ -71,13 +70,6 @@ test("uses the three promised keychain turnaround tiers", () => {
     minDays: 4,
     maxDays: 5
   });
-});
-
-test("alternates production days with protected buffer days", () => {
-  assert.equal(isAlternatingProductionDay("2026-08-03"), true);
-  assert.equal(isAlternatingProductionDay("2026-08-04"), false);
-  assert.equal(isAlternatingProductionDay("2026-08-05"), true);
-  assert.equal(isAlternatingProductionDay("not-a-date"), false);
 });
 
 test("shows a single estimate when both dates are the same", () => {

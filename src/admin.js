@@ -123,6 +123,9 @@ document.querySelector("#app").innerHTML = `
       <button id="ordersViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">▤</span> Orders
       </button>
+      <button id="scheduleViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">▦</span> Calendar
+      </button>
       <button id="productionViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">▦</span> Production
       </button>
@@ -248,6 +251,7 @@ const refreshBtn = document.getElementById("refreshBtn");
 const cleanupExpiredBtn = document.getElementById("cleanupExpiredBtn");
 const todayViewBtn = document.getElementById("todayViewBtn");
 const ordersViewBtn = document.getElementById("ordersViewBtn");
+const scheduleViewBtn = document.getElementById("scheduleViewBtn");
 const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
 const ordersActions = document.getElementById("ordersActions");
@@ -283,6 +287,8 @@ logoutBtn.onclick = async () => {
 
 let currentView = "today";
 let latestOrders = [];
+let scheduleMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let selectedScheduleDate = getSingaporeDateValue();
 let workshopNotesSaveTimer = null;
 let printers = [];
 const AMS_BASE_RESERVATION_KEY = "little-keeps-ams-base-reservation";
@@ -333,6 +339,8 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   delivery_fee: 2.50,
   free_delivery_threshold: 50,
   max_orders_per_date: 2,
+  daily_keychain_capacity: 12,
+  bulk_buffer_days: 1,
   large_order_quantity: 7,
   bulk_order_quantity: 15,
   standard_min_working_days: 2,
@@ -348,6 +356,7 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   status_emails_enabled: false,
   status_email_template_id: "",
   review_url: "https://www.instagram.com/madebylittlekeeps/",
+  contact_whatsapp_number: "6585121915",
   stripe_enabled: false,
   unavailable_colours: [],
   pickup_time_options: {
@@ -361,6 +370,7 @@ let adminSettingsLoaded = false;
 let adminSettingsLoadFailed = false;
 let adminPromoCodes = [];
 let adminCustomerReviews = [];
+let adminShopClosures = [];
 let adminReviewsLoadFailed = false;
 let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
@@ -585,6 +595,12 @@ function renderCurrentView() {
     ordersActions.style.display = "flex";
     renderStats(latestOrders);
     renderOrders(latestOrders);
+  }
+
+  if (currentView === "schedule") {
+    sectionTitle.innerText = "Order Calendar";
+    ordersActions.style.display = "none";
+    renderScheduleCalendar();
   }
 
   if (currentView === "production") {
@@ -1050,6 +1066,124 @@ function settingNumber(name, label, step = "1", min = "0") {
   `;
 }
 
+function settingSlider(name, label, min, max, suffix = "") {
+  const value = Number(adminShopSettings[name] ?? min);
+  return `
+    <label class="settings-slider">
+      <span><strong>${label}</strong><output id="${name}Output">${value}${suffix}</output></span>
+      <input name="${name}" type="range" min="${min}" max="${max}" step="1" value="${value}"
+        oninput="document.getElementById('${name}Output').value=this.value+'${suffix}'">
+    </label>
+  `;
+}
+
+function getScheduleDate(order) {
+  return String(order.requested_completion_date || order.needed_by || "").slice(0, 10);
+}
+
+function isScheduleOrderActive(order) {
+  return !order.archived_at && ![
+    "Cancelled", "Rejected", "Payment Failed", "Payment Expired", "Refunded"
+  ].includes(order.status || "");
+}
+
+function getScheduleOrdersForDate(dateValue) {
+  return latestOrders.filter(order =>
+    isScheduleOrderActive(order) && getScheduleDate(order) === dateValue
+  );
+}
+
+function renderScheduleCalendar() {
+  const year = scheduleMonth.getFullYear();
+  const month = scheduleMonth.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = scheduleMonth.toLocaleDateString("en-SG", { month: "long", year: "numeric" });
+  const maxOrders = Math.max(1, Number(adminShopSettings.max_orders_per_date || 2));
+  const maxKeychains = Math.max(1, Number(adminShopSettings.daily_keychain_capacity || 12));
+  const closedDates = new Set();
+  adminShopClosures.forEach(closure => {
+    const cursor = new Date(`${closure.start_date}T12:00:00`);
+    const end = new Date(`${closure.end_date}T12:00:00`);
+    while (cursor <= end) {
+      closedDates.add(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  });
+
+  const cells = [];
+  for (let blank = 0; blank < firstWeekday; blank += 1) cells.push(`<div class="schedule-day is-empty"></div>`);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateValue = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const due = getScheduleOrdersForDate(dateValue);
+    const pickups = latestOrders.filter(order => isScheduleOrderActive(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === dateValue);
+    const keychains = due.reduce((sum, order) => sum + (order.order_data || []).length, 0);
+    const isFull = due.length >= maxOrders || keychains >= maxKeychains;
+    const classes = [
+      "schedule-day",
+      dateValue === selectedScheduleDate ? "is-selected" : "",
+      dateValue === getSingaporeDateValue() ? "is-today" : "",
+      closedDates.has(dateValue) ? "is-closed" : "",
+      isFull ? "is-full" : ""
+    ].filter(Boolean).join(" ");
+    cells.push(`
+      <button class="${classes}" type="button" onclick="window.selectScheduleDate('${dateValue}')">
+        <span class="schedule-day-number">${day}</span>
+        ${closedDates.has(dateValue) ? `<small>Closed</small>` : ""}
+        ${due.length ? `<strong>${keychains} keychain${keychains === 1 ? "" : "s"}</strong><small>${due.length}/${maxOrders} orders</small>` : ""}
+        ${pickups.length ? `<em>${pickups.length} pickup${pickups.length === 1 ? "" : "s"}</em>` : ""}
+      </button>
+    `);
+  }
+
+  const selectedOrders = getScheduleOrdersForDate(selectedScheduleDate);
+  const selectedPickups = latestOrders.filter(order => isScheduleOrderActive(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === selectedScheduleDate);
+  const detailRows = [...new Map([...selectedOrders, ...selectedPickups].map(order => [String(order.id), order])).values()];
+  const selectedKeychains = selectedOrders.reduce((sum, order) => sum + (order.order_data || []).length, 0);
+
+  ordersContainer.innerHTML = `
+    <section class="schedule-workspace">
+      <div class="schedule-explainer">
+        <div><p class="section-kicker">Capacity-based planning</p><h2>${monthLabel}</h2></div>
+        <p>Normal orders take the first open working day after their production lead time. The ${adminShopSettings.bulk_buffer_days || 0}-day buffer is kept only around event orders.</p>
+      </div>
+      <div class="schedule-capacity-strip">
+        <span><strong>${maxOrders}</strong> orders / production day</span>
+        <span><strong>${maxKeychains}</strong> keychains / production day</span>
+        <span><strong>${adminShopSettings.bulk_buffer_days || 0}</strong> event buffer day${Number(adminShopSettings.bulk_buffer_days || 0) === 1 ? "" : "s"}</span>
+      </div>
+      <div class="schedule-toolbar">
+        <button type="button" onclick="window.changeScheduleMonth(-1)" aria-label="Previous month">←</button>
+        <strong>${monthLabel}</strong>
+        <button type="button" onclick="window.changeScheduleMonth(1)" aria-label="Next month">→</button>
+      </div>
+      <div class="schedule-weekdays">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(day => `<span>${day}</span>`).join("")}</div>
+      <div class="schedule-grid">${cells.join("")}</div>
+      <section class="schedule-date-detail">
+        <div><p class="section-kicker">Selected date</p><h3>${formatDate(selectedScheduleDate)}</h3><span>${selectedOrders.length}/${maxOrders} orders · ${selectedKeychains}/${maxKeychains} keychains due</span></div>
+        <div class="schedule-detail-list">
+          ${detailRows.map(order => `
+            <button type="button" onclick="window.focusOrder('${escapeAdminHtml(String(order.id))}')">
+              <span><strong>${escapeAdminHtml(order.order_ref || "Order")}</strong><small>${escapeAdminHtml(order.customer_name || "Customer")} · ${(order.order_data || []).length} keychain${(order.order_data || []).length === 1 ? "" : "s"}</small></span>
+              <em>${getScheduleDate(order) === selectedScheduleDate ? "Due" : "Pickup"} · ${escapeAdminHtml(order.status || "")}</em>
+            </button>
+          `).join("") || `<p class="today-empty">Nothing due or scheduled for pickup on this date.</p>`}
+        </div>
+      </section>
+    </section>
+  `;
+}
+
+window.changeScheduleMonth = function(offset) {
+  scheduleMonth = new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() + offset, 1);
+  renderScheduleCalendar();
+};
+
+window.selectScheduleDate = function(dateValue) {
+  selectedScheduleDate = dateValue;
+  renderScheduleCalendar();
+};
+
 function formatDateTimeLocal(value) {
   if (!value) return "";
 
@@ -1211,15 +1345,19 @@ function renderSettingsWorkspace() {
 
         <section class="settings-card">
           <h3>Capacity & turnaround</h3>
-          <p class="hint"><strong>Calm schedule:</strong> maximum 2 orders on a production day, then 1 protected rest/buffer day. Customer estimates are fixed at 1–3 items: 2–3 days; 4–6: 3–4 days; 7+: 4–5 days.</p>
+          <p class="hint">A date closes when either its order limit or keychain limit is reached. Buffer days are reserved around event orders only, so regular orders do not create weeks of unnecessary waiting.</p>
+          <div class="settings-slider-stack">
+            ${settingSlider("max_orders_per_date", "Orders accepted per production day", 1, 12)}
+            ${settingSlider("daily_keychain_capacity", "Keychains accepted per production day", 3, 60)}
+            ${settingSlider("bulk_buffer_days", "Protected days around event orders", 0, 4)}
+            ${settingSlider("standard_min_working_days", "Small order minimum lead time", 1, 10, " days")}
+            ${settingSlider("standard_max_working_days", "Small order maximum lead time", 1, 14, " days")}
+            ${settingSlider("large_min_working_days", "Large order minimum lead time", 1, 14, " days")}
+            ${settingSlider("large_max_working_days", "Large order maximum lead time", 1, 21, " days")}
+          </div>
           <div class="settings-fields two-columns">
-            ${settingNumber("max_orders_per_date", "Orders per production day")}
             ${settingNumber("large_order_quantity", "7+ tier starts at")}
             ${settingNumber("bulk_order_quantity", "Bulk request starts at")}
-            ${settingNumber("standard_min_working_days", "1–3 minimum days")}
-            ${settingNumber("standard_max_working_days", "1–3 maximum days")}
-            ${settingNumber("large_min_working_days", "7+ minimum days")}
-            ${settingNumber("large_max_working_days", "7+ maximum days")}
             ${settingNumber("rush_fee_small", "Rush fee: 1–4 items ($)", "0.50")}
             ${settingNumber("rush_fee_large", "Rush fee: 5–9 items ($)", "0.50")}
             ${settingNumber("rush_max_missing_parts", "Auto-approve up to missing parts")}
@@ -1275,6 +1413,11 @@ function renderSettingsWorkspace() {
 
         <section class="settings-card">
           <h3>Customer updates</h3>
+          <label class="settings-field">
+            <span>Shop WhatsApp number</span>
+            <input name="contact_whatsapp_number" inputmode="tel" value="${escapeAdminHtml(adminShopSettings.contact_whatsapp_number || "6585121915")}" placeholder="6585121915">
+          </label>
+          <p class="hint">Include the country code without + or spaces. This updates every customer-facing WhatsApp link.</p>
           <label class="settings-toggle"><input name="status_emails_enabled" type="checkbox" ${checked(adminShopSettings.status_emails_enabled)}> Automatically email important status changes</label>
           <label class="settings-field">
             <span>EmailJS status-template ID</span>
@@ -1285,6 +1428,30 @@ function renderSettingsWorkspace() {
             <input name="review_url" type="url" value="${escapeAdminHtml(adminShopSettings.review_url || "")}" placeholder="https://instagram.com/...">
           </label>
           <p class="hint">Use the supplied status email HTML in EmailJS, then paste that template ID here.</p>
+        </section>
+
+        <section class="settings-card settings-card-wide">
+          <div class="settings-card-heading">
+            <div>
+              <h3>Shop closures</h3>
+              <p class="hint">Use this for exams, personal breaks, maintenance or holidays. The notice and customer date estimates update automatically.</p>
+            </div>
+            <strong>${adminShopClosures.length} scheduled</strong>
+          </div>
+          <div class="closure-create-row">
+            <label class="settings-field"><span>From</span><input id="shopClosureStart" type="date"></label>
+            <label class="settings-field"><span>To</span><input id="shopClosureEnd" type="date"></label>
+            <label class="settings-field closure-reason-field"><span>Customer notice</span><input id="shopClosureReason" placeholder="Closed for exams — orders reopen on…"></label>
+            <button type="button" class="ready-btn" onclick="window.addShopClosure()">Add Closure</button>
+          </div>
+          <div class="closure-admin-list">
+            ${adminShopClosures.map(closure => `
+              <article>
+                <div><strong>${formatDate(closure.start_date)}–${formatDate(closure.end_date)}</strong><span>${escapeAdminHtml(closure.reason || "Shop closed")}</span></div>
+                <button type="button" class="archive-action" onclick="window.deleteShopClosure(${JSON.stringify(closure.id)})">Remove</button>
+              </article>
+            `).join("") || `<p class="today-empty">No shop closures scheduled.</p>`}
+          </div>
         </section>
 
         <section class="settings-card settings-card-wide">
@@ -1522,10 +1689,16 @@ async function saveShopSettings(event) {
     .split(/[\n,]+/)
     .map(value => value.trim())
     .filter(Boolean);
-  updates.pickup_time_options = normalizePickupTimeOptions({
+  updates.pickup_time_options = {
+    ...normalizePickupTimeOptions({
     weekday: parsePickupTimes("pickup_times_weekday"),
     weekend: parsePickupTimes("pickup_times_weekend")
-  });
+    }),
+    daily_keychain_capacity: Math.max(1, Number(form.get("daily_keychain_capacity") || 12)),
+    bulk_buffer_days: Math.max(0, Number(form.get("bulk_buffer_days") || 0)),
+    contact_whatsapp_number: String(form.get("contact_whatsapp_number") || "")
+      .replace(/\D/g, "") || "6585121915"
+  };
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase.from("shop_settings").upsert(updates).select().single();
@@ -1582,11 +1755,62 @@ async function saveShopSettings(event) {
 
   adminShopSettings = {
     ...data,
+    daily_keychain_capacity: Math.max(1, Number(
+      data.pickup_time_options?.daily_keychain_capacity || 12
+    )),
+    bulk_buffer_days: Math.max(0, Number(
+      data.pickup_time_options?.bulk_buffer_days ?? 1
+    )),
+    contact_whatsapp_number: String(
+      data.pickup_time_options?.contact_whatsapp_number || "6585121915"
+    ).replace(/\D/g, "") || "6585121915",
     pickup_time_options: normalizePickupTimeOptions(data.pickup_time_options)
   };
   alert("Shop settings saved ✓");
   renderSettingsWorkspace();
 }
+
+window.addShopClosure = async function() {
+  const startDate = document.getElementById("shopClosureStart")?.value || "";
+  const endDate = document.getElementById("shopClosureEnd")?.value || "";
+  const reason = document.getElementById("shopClosureReason")?.value.trim() || "Shop closed";
+
+  if (!startDate || !endDate) {
+    alert("Choose both the closure start and end dates.");
+    return;
+  }
+  if (endDate < startDate) {
+    alert("The reopening date cannot be before the closure starts.");
+    return;
+  }
+
+  const { error } = await supabase.from("shop_closures").insert({
+    start_date: startDate,
+    end_date: endDate,
+    reason
+  });
+  if (error) {
+    console.error("Unable to add shop closure:", error);
+    alert("Unable to add the shop closure.");
+    return;
+  }
+
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+};
+
+window.deleteShopClosure = async function(id) {
+  if (!confirm("Remove this shop closure? Customers will immediately see those dates as available again.")) return;
+  const { error } = await supabase.from("shop_closures").delete().eq("id", id);
+  if (error) {
+    console.error("Unable to remove shop closure:", error);
+    alert("Unable to remove the shop closure.");
+    return;
+  }
+
+  await loadAdminSettings();
+  renderSettingsWorkspace();
+};
 
 async function addPromoCode() {
   const code = document.getElementById("promoCodeInput").value.trim().toUpperCase();
@@ -11019,6 +11243,7 @@ async function loadAdminSettings() {
     adminShopSettings = { ...DEFAULT_ADMIN_SHOP_SETTINGS };
     adminPromoCodes = [];
     adminCustomerReviews = [];
+    adminShopClosures = [];
     adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
     adminProductsLoadFailed = false;
     return;
@@ -11028,7 +11253,8 @@ async function loadAdminSettings() {
     { data: settings, error: settingsError },
     { data: promos, error: promosError },
     { data: reviews, error: reviewsError },
-    { data: products, error: productsError }
+    { data: products, error: productsError },
+    { data: closures, error: closuresError }
   ] = await Promise.all([
     supabase.from("shop_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.from("promo_codes").select("*").order("created_at", { ascending: false }),
@@ -11040,13 +11266,19 @@ async function loadAdminSettings() {
     supabase
       .from("product_catalog")
       .select("*")
-      .order("sort_order", { ascending: true })
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("shop_closures")
+      .select("*")
+      .gte("end_date", getSingaporeDateValue())
+      .order("start_date", { ascending: true })
   ]);
 
   if (settingsError) console.warn("Using fallback admin settings:", settingsError);
   if (promosError) console.warn("Promo management is not ready yet:", promosError);
   if (reviewsError) console.warn("Customer review management is not ready yet:", reviewsError);
   if (productsError) console.warn("Product catalogue is not ready yet:", productsError);
+  if (closuresError) console.warn("Shop closures could not be loaded:", closuresError);
 
   adminSettingsLoaded = true;
   adminSettingsLoadFailed = Boolean(settingsError);
@@ -11056,11 +11288,27 @@ async function loadAdminSettings() {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
     ...(settingsError ? {} : (settings || {}))
   };
+  adminShopSettings.contact_whatsapp_number = String(
+    adminShopSettings.pickup_time_options?.contact_whatsapp_number ||
+    adminShopSettings.contact_whatsapp_number ||
+    "6585121915"
+  ).replace(/\D/g, "") || "6585121915";
+  adminShopSettings.daily_keychain_capacity = Math.max(1, Number(
+    adminShopSettings.pickup_time_options?.daily_keychain_capacity ||
+    adminShopSettings.daily_keychain_capacity ||
+    12
+  ));
+  adminShopSettings.bulk_buffer_days = Math.max(0, Number(
+    adminShopSettings.pickup_time_options?.bulk_buffer_days ??
+    adminShopSettings.bulk_buffer_days ??
+    1
+  ));
   adminShopSettings.pickup_time_options = normalizePickupTimeOptions(
     adminShopSettings.pickup_time_options
   );
   adminPromoCodes = promos || [];
   adminCustomerReviews = reviews || [];
+  adminShopClosures = closures || [];
   adminProductCatalog = normalizeProductCatalog(productsError ? [] : products);
 }
 
@@ -11973,6 +12221,7 @@ function setActiveTab(activeTab) {
 
     todayViewBtn.classList.remove("active");
     ordersViewBtn.classList.remove("active");
+    scheduleViewBtn.classList.remove("active");
     productionViewBtn.classList.remove("active");
     assemblyViewBtn.classList.remove("active");
     fulfilmentViewBtn.classList.remove("active");
@@ -11993,6 +12242,12 @@ todayViewBtn.onclick = () => {
 ordersViewBtn.onclick = () => {
   currentView = "orders";
   setActiveTab(ordersViewBtn);
+  renderCurrentView();
+};
+
+scheduleViewBtn.onclick = () => {
+  currentView = "schedule";
+  setActiveTab(scheduleViewBtn);
   renderCurrentView();
 };
 

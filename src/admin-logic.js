@@ -396,21 +396,6 @@ export function getKeychainTurnaround(quantity = 1) {
   return { quantity: safeQuantity, tier: "large", minDays: 4, maxDays: 5 };
 }
 
-export function isAlternatingProductionDay(
-  dateValue,
-  anchorValue = "2026-08-03"
-) {
-  const date = new Date(`${String(dateValue).slice(0, 10)}T00:00:00`);
-  const anchor = new Date(`${String(anchorValue).slice(0, 10)}T00:00:00`);
-
-  if (Number.isNaN(date.getTime()) || Number.isNaN(anchor.getTime())) {
-    return false;
-  }
-
-  const daysFromAnchor = Math.round((date - anchor) / 86400000);
-  return Math.abs(daysFromAnchor % 2) === 0;
-}
-
 export function formatDateRange(startValue, endValue, formatter) {
   const format = typeof formatter === "function"
     ? formatter
