@@ -7389,6 +7389,11 @@ startDesignBtn.onclick = () => {
 
 singleName.addEventListener("input", updateNames);
 singleQuantity?.addEventListener("input", () => {
+  if (singleQuantity.value === "") return;
+  singleQuantity.value = String(normalizeItemQuantity(singleQuantity.value));
+  updateNames();
+});
+singleQuantity?.addEventListener("change", () => {
   singleQuantity.value = String(normalizeItemQuantity(singleQuantity.value));
   updateNames();
 });
