@@ -1087,11 +1087,11 @@ document.querySelector("#app").innerHTML = `
           </button>
         </div>
 
-        <div id="sharedGroupStartCard" class="friends-family-share-card hidden">
+        <div id="sharedGroupStartCard" class="friends-family-share-card">
           <span>Recommended</span>
           <div>
-            <h3>Create a shared Group Order</h3>
-            <p>Add your own design first, then create a private link for everyone else to add theirs. You review everything and pay once.</p>
+            <h3 id="sharedGroupStartCardTitle">Create a shared Group Order</h3>
+            <p id="sharedGroupStartCardText">Add your own design first, then create a private link for everyone else to add theirs. You review everything and pay once.</p>
           </div>
           <button id="friendsFamilyStartBtn" type="button">Create Group Order</button>
         </div>
@@ -2137,6 +2137,8 @@ const groupBtn = document.getElementById("groupBtn");
 const singleSection = document.getElementById("singleSection");
 const groupSection = document.getElementById("groupSection");
 const sharedGroupStartCard = document.getElementById("sharedGroupStartCard");
+const sharedGroupStartCardTitle = document.getElementById("sharedGroupStartCardTitle");
+const sharedGroupStartCardText = document.getElementById("sharedGroupStartCardText");
 const friendsFamilyStartBtn = document.getElementById("friendsFamilyStartBtn");
 const singleName = document.getElementById("singleName");
 const singleQuantity = document.getElementById("singleQuantity");
@@ -6093,10 +6095,7 @@ function setOrderType(type) {
     !isGroupOrder
   );
 
-  sharedGroupStartCard.classList.toggle(
-    "hidden",
-    !isGroupOrder
-  );
+  renderSharedGroupStartCard();
 
   applyAllToggle.checked = false;
 
@@ -6112,9 +6111,13 @@ groupBtn.onclick = () => {
 };
 
 friendsFamilyStartBtn.addEventListener("click", () => {
+  if (activeSharedGroup?.is_owner) {
+    renderSharedGroupOwner();
+    return;
+  }
   if (!names.length) {
     alert("Enter your name first, then choose your colours.");
-    nameList.focus();
+    (orderType === "group" ? nameList : singleName).focus();
     return;
   }
   cartHasItems = true;
@@ -6175,6 +6178,7 @@ function getSharedGroupContributionToken(groupCode) {
 }
 
 function renderSharedGroupBanner() {
+  renderSharedGroupStartCard();
   if (!activeSharedGroup) {
     sharedGroupBanner.classList.add("hidden");
     return;
@@ -6196,6 +6200,25 @@ function renderSharedGroupBanner() {
     sharedGroupBannerAction.textContent = "Closed";
   }
   sharedGroupBanner.classList.remove("hidden");
+}
+
+function renderSharedGroupStartCard() {
+  const isInvitedContributor = Boolean(activeSharedGroup && !activeSharedGroup.is_owner);
+  sharedGroupStartCard.classList.toggle("hidden", isInvitedContributor);
+  if (isInvitedContributor) return;
+
+  if (activeSharedGroup?.is_owner) {
+    sharedGroupStartCardTitle.textContent = "Your shared Group Order";
+    sharedGroupStartCardText.textContent =
+      "Add or update your own designs in the cart. They will be saved into the Group Order automatically.";
+    friendsFamilyStartBtn.textContent = "Review Group Order";
+    return;
+  }
+
+  sharedGroupStartCardTitle.textContent = "Create a shared Group Order";
+  sharedGroupStartCardText.textContent =
+    "Add your own design first, then create a private link for everyone else to add theirs. You review everything and pay once.";
+  friendsFamilyStartBtn.textContent = "Create Group Order";
 }
 
 function renderSharedGroupOwner() {
@@ -6226,11 +6249,11 @@ function renderSharedGroupOwner() {
         return `
           <article>
             <div>
-              <strong>${escapePresetText(contribution.contributor_name)}</strong>
+              <strong>${escapePresetText(contribution.contributor_name)}${contribution.is_organiser ? " · You" : ""}</strong>
               <span>${namesList}</span>
               <small>${quantity} keychain${quantity === 1 ? "" : "s"}</small>
             </div>
-            ${activeSharedGroup.status === "open" ? `
+            ${activeSharedGroup.status === "open" && !contribution.is_organiser ? `
               <button type="button" onclick='window.removeSharedGroupContribution(${JSON.stringify(contribution.id)})'>Remove</button>
             ` : ""}
           </article>
@@ -6245,6 +6268,37 @@ function renderSharedGroupOwner() {
       : `Checked Out${activeSharedGroup.final_order_ref ? ` · ${activeSharedGroup.final_order_ref}` : ""}`;
   cancelSharedGroupOrderBtn.classList.toggle("hidden", activeSharedGroup.status !== "open");
   sharedGroupOwnerModal.classList.remove("hidden");
+}
+
+async function syncSharedGroupOwnerBasket({ openOwner = false } = {}) {
+  if (
+    !activeSharedGroup?.is_owner ||
+    activeSharedGroup.status !== "open" ||
+    finalisingSharedGroupOwnerToken
+  ) return true;
+
+  const ownerReviewWasOpen = !sharedGroupOwnerModal.classList.contains("hidden");
+  sharedGroupBannerText.textContent = "Saving your cart to the Group Order…";
+  sharedGroupCartBtn.disabled = true;
+  sharedGroupCartBtn.textContent = "Saving to Group Order…";
+  try {
+    const { error } = await supabase.rpc("save_shared_group_owner_contribution", {
+      p_owner_token: activeSharedGroupOwnerToken,
+      p_items: cartHasItems && names.length ? serializeSharedGroupBasket() : []
+    });
+    if (error) throw error;
+    await loadSharedGroup(activeSharedGroupOwnerToken, {
+      openOwner: openOwner || ownerReviewWasOpen
+    });
+    return true;
+  } catch (error) {
+    console.error("Unable to update organiser group designs:", error);
+    sharedGroupBannerText.textContent =
+      "Your cart changed, but the Group Order could not be updated. Please try again.";
+    renderCartDrawer();
+    alert("Your cart is saved on this device, but it could not update the Group Order. Please try again.");
+    return false;
+  }
 }
 
 async function loadSharedGroup(token, { openOwner = false } = {}) {
@@ -6460,6 +6514,7 @@ cancelSharedGroupOrderBtn.addEventListener("click", async () => {
     finalisingSharedGroupOwnerToken = "";
     sharedGroupOwnerModal.classList.add("hidden");
     sharedGroupBanner.classList.add("hidden");
+    renderSharedGroupStartCard();
     window.history.replaceState({}, "", window.location.pathname);
     alert("Group order cancelled. No order or payment was created.");
     renderCartDrawer();
@@ -6617,7 +6672,7 @@ window.editCartItem = function(index) {
   });
 };
 
-window.removeCartItem = function(index) {
+window.removeCartItem = async function(index) {
   if (!cartHasItems) return;
 
   const itemName =
@@ -6646,6 +6701,7 @@ window.removeCartItem = function(index) {
   refreshUI();
   buildSelectedPreview();
   renderCartDrawer();
+  await syncSharedGroupOwnerBasket();
 };
 
 function proceedToCheckout() {
@@ -6669,7 +6725,7 @@ function proceedToCheckout() {
   });
 }
 
-nextBtn.onclick = () => {
+nextBtn.onclick = async () => {
   if (!names.length) {
     alert("Please enter at least one name.");
     return;
@@ -6680,6 +6736,7 @@ nextBtn.onclick = () => {
 
   updateCartDisplay();
   openCartDrawer();
+  await syncSharedGroupOwnerBasket();
 };
 
 headerCartBtn.onclick = openCartDrawer;

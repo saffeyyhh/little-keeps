@@ -30,6 +30,31 @@ create table if not exists public.shared_group_contributions (
   updated_at timestamptz not null default now()
 );
 
+alter table public.shared_group_contributions
+  add column if not exists is_organiser boolean not null default false;
+
+-- Older group orders were created before organiser contributions were labelled.
+-- Their first contribution is the organiser's original basket.
+with first_contribution as (
+  select distinct on (group_id) id
+  from public.shared_group_contributions
+  order by group_id, created_at, id
+)
+update public.shared_group_contributions contribution
+set is_organiser = true
+from first_contribution
+where contribution.id = first_contribution.id
+  and not exists (
+    select 1
+    from public.shared_group_contributions existing
+    where existing.group_id = contribution.group_id
+      and existing.is_organiser
+  );
+
+create unique index if not exists shared_group_organiser_contribution_idx
+  on public.shared_group_contributions (group_id)
+  where is_organiser;
+
 create index if not exists shared_group_contributions_group_idx
   on public.shared_group_contributions (group_id, created_at);
 
@@ -118,12 +143,13 @@ begin
   ) returning * into v_group;
 
   insert into public.shared_group_contributions (
-    group_id, contributor_name, contribution_token, items
+    group_id, contributor_name, contribution_token, items, is_organiser
   ) values (
     v_group.id,
     left(trim(p_organiser_name), 100),
     p_contribution_token,
-    p_items
+    p_items,
+    true
   );
 
   return jsonb_build_object(
@@ -161,6 +187,7 @@ begin
     select coalesce(jsonb_agg(jsonb_build_object(
       'id', contribution.id,
       'contributor_name', contribution.contributor_name,
+      'is_organiser', contribution.is_organiser,
       'items', contribution.items,
       'created_at', contribution.created_at
     ) order by contribution.created_at), '[]'::jsonb)
@@ -190,6 +217,76 @@ begin
       where group_id = v_group.id
     ),
     'contributions', case when v_is_owner then v_contributions else null end
+  );
+end;
+$$;
+
+create or replace function public.save_shared_group_owner_contribution(
+  p_owner_token uuid,
+  p_items jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_group public.shared_group_orders%rowtype;
+begin
+  select * into v_group
+  from public.shared_group_orders
+  where owner_token = p_owner_token
+  for update;
+
+  if not found then raise exception 'This group order could not be found.'; end if;
+  if v_group.status <> 'open' or v_group.expires_at <= now() then
+    raise exception 'This group order can no longer be edited.';
+  end if;
+  if jsonb_typeof(p_items) is distinct from 'array' then
+    raise exception 'Please provide a valid basket.';
+  end if;
+
+  if jsonb_array_length(p_items) = 0 then
+    delete from public.shared_group_contributions
+    where group_id = v_group.id and is_organiser;
+  else
+    if not public.validate_shared_group_items(p_items)
+       or exists (
+         select 1 from jsonb_array_elements(p_items) item
+         where item->>'product_key' <> v_group.product_key
+       ) then
+      raise exception 'Please provide at least one valid design for this group.';
+    end if;
+
+    insert into public.shared_group_contributions (
+      group_id, contributor_name, contribution_token, items, is_organiser
+    ) values (
+      v_group.id,
+      v_group.organiser_name,
+      gen_random_uuid(),
+      p_items,
+      true
+    )
+    on conflict (group_id) where is_organiser do update
+    set contributor_name = excluded.contributor_name,
+        items = excluded.items,
+        updated_at = now();
+  end if;
+
+  update public.shared_group_orders
+  set updated_at = now()
+  where id = v_group.id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'public_code', v_group.public_code,
+    'contribution_count', (
+      select count(*) from public.shared_group_contributions where group_id = v_group.id
+    ),
+    'item_count', (
+      select coalesce(sum(jsonb_array_length(items)), 0)
+      from public.shared_group_contributions where group_id = v_group.id
+    )
   );
 end;
 $$;
@@ -360,6 +457,7 @@ revoke all on function public.validate_shared_group_items(jsonb) from public;
 revoke all on function public.create_shared_group_order(text, text, text, text, uuid, uuid, uuid, jsonb) from public;
 revoke all on function public.get_shared_group_order(uuid) from public;
 revoke all on function public.save_shared_group_contribution(uuid, text, uuid, jsonb) from public;
+revoke all on function public.save_shared_group_owner_contribution(uuid, jsonb) from public;
 revoke all on function public.remove_shared_group_contribution(uuid, uuid) from public;
 revoke all on function public.finalise_shared_group_order(uuid, text, text) from public;
 revoke all on function public.cancel_shared_group_order(uuid) from public;
@@ -367,6 +465,7 @@ revoke all on function public.cancel_shared_group_order(uuid) from public;
 grant execute on function public.create_shared_group_order(text, text, text, text, uuid, uuid, uuid, jsonb) to anon, authenticated;
 grant execute on function public.get_shared_group_order(uuid) to anon, authenticated;
 grant execute on function public.save_shared_group_contribution(uuid, text, uuid, jsonb) to anon, authenticated;
+grant execute on function public.save_shared_group_owner_contribution(uuid, jsonb) to anon, authenticated;
 grant execute on function public.remove_shared_group_contribution(uuid, uuid) to anon, authenticated;
 grant execute on function public.finalise_shared_group_order(uuid, text, text) to anon, authenticated;
 grant execute on function public.cancel_shared_group_order(uuid) to anon, authenticated;
