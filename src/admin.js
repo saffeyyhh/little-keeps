@@ -2786,6 +2786,10 @@ function getWhatsAppHref(phoneValue) {
   return `https://wa.me/${digits}`;
 }
 
+function getTrackPayUrl(orderRef) {
+  return `https://little-keeps.vercel.app/?resume_order=${encodeURIComponent(orderRef || "")}#orderStatusSection`;
+}
+
 function getDaysUntil(dateValue) {
   if (!dateValue) return null;
 
@@ -4025,6 +4029,18 @@ function renderOrders(orders) {
 
         ${whatsappHref &&
           order.collection_method !== "delivery" &&
+          !["Completed", "Refunded", "Cancelled", "Rejected"].includes(order.status) ? `
+          <button
+            type="button"
+            class="approve-request-action"
+            onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(orderId)}, this)'
+          >
+            WhatsApp: Offer Earlier Pickup
+          </button>
+        ` : ""}
+
+        ${whatsappHref &&
+          order.collection_method !== "delivery" &&
           order.status === "Pending Pickup" ? `
           <button
             type="button"
@@ -4208,6 +4224,11 @@ function renderFulfilmentWorkspace(orders) {
         ` : ""}
         ${order.status === "Pending Pickup" ? `
           <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Complete Pickup</button>
+        ` : ""}
+        ${order.collection_method !== "delivery" && getWhatsAppHref(order.customer_phone) ? `
+          <button type="button" class="approve-request-action" onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(String(order.id))}, this)'>
+            WhatsApp: Offer Earlier Pickup
+          </button>
         ` : ""}
         ${order.status === "Out for Delivery" ? `
           <button type="button" class="approve-request-action" onclick='window.copyHandDeliveredWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Delivered</button>
@@ -10751,6 +10772,50 @@ window.refundOrder = refundOrder;
 window.sendReviewRequest = sendReviewRequest;
 cleanupExpiredBtn.onclick = cleanupExpiredOrders;
 
+window.offerEarlierPickupWhatsApp = async function(id, button) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!order || order.collection_method === "delivery") {
+    alert("This earlier-pickup message is only available for pickup orders.");
+    return;
+  }
+
+  const whatsappHref = getWhatsAppHref(order.customer_phone);
+  if (!whatsappHref) {
+    alert("This order does not have a valid WhatsApp number.");
+    return;
+  }
+
+  const customerName = String(order.customer_name || "there").trim();
+  const orderRef = String(order.order_ref || "").trim();
+  const trackPayUrl = getTrackPayUrl(orderRef);
+  const message =
+    `Hi ${customerName}! Good news — your Little Keeps order ${orderRef} was completed earlier than expected 🥰\n\n` +
+    `If you’d like to collect it earlier, you can choose a new available pickup date and timing through the Track/Pay page here:\n${trackPayUrl}\n\n` +
+    `Your Little Keeps order number is *${orderRef}*. The link will fill it in for you; just enter the email used for your order.\n\n` +
+    `No worries if you prefer to keep your original pickup timing — it will remain unchanged ♡`;
+
+  try {
+    await navigator.clipboard.writeText(message);
+  } catch (error) {
+    console.warn("Unable to copy earlier-pickup message:", error);
+  }
+
+  if (button) {
+    const previousLabel = button.textContent;
+    button.textContent = "Opening WhatsApp…";
+    setTimeout(() => { button.textContent = previousLabel; }, 2200);
+  }
+
+  window.open(
+    `${whatsappHref}?text=${encodeURIComponent(message)}`,
+    "_blank",
+    "noopener"
+  );
+};
+
 window.copyPickupWhatsAppReminder = async function(id, button) {
   const order = latestOrders.find(
     item => String(item.id) === String(id)
@@ -11385,11 +11450,15 @@ async function loadOrders() {
         id: "preview-packed-order",
         order_ref: "LK-1040",
         customer_name: "Nur Syafiqah",
+        customer_email: "nur@example.com",
+        customer_phone: "90000002",
         payment_type: "Paid",
         total: 28.8,
         status: "Pending Pickup",
-        collection_method: "delivery",
-        delivery_address: "20 Marsiling Lane #02-01, Singapore 739111",
+        collection_method: "pickup_marsiling",
+        delivery_address: "",
+        pickup_scheduled_date: tomorrow,
+        pickup_time_range: "7:30 PM",
         needed_by: tomorrow,
         special_instructions: "Call before delivery; teacher will receive it.",
         production_notes: "Packed in the pink mailer. Inspect the left edge once more.",
