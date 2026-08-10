@@ -32,7 +32,9 @@ import {
   formatDateRange,
   formatProductionMinutes,
   isAlternatingProductionDay,
+  isOrderReminderFinishedOrExpired,
   isPickupDay,
+  isSharedGroupCancelledOrExpired,
   optimizeAmsPlateSequence,
   pickRandomDesignColours,
   partitionAmsCombinationsByBusyColours,
@@ -692,4 +694,33 @@ test("rejects zero, negative and fractional decrements", () => {
   assert.equal(validateInventoryDecrement(5, 0).valid, false);
   assert.equal(validateInventoryDecrement(5, -1).valid, false);
   assert.equal(validateInventoryDecrement(5, 1.5).valid, false);
+});
+
+test("clears finished and expired customer reminders", () => {
+  const now = new Date("2026-08-10T09:30:00+08:00").getTime();
+
+  assert.equal(isOrderReminderFinishedOrExpired({ status: "Payment Expired" }, now), true);
+  assert.equal(isOrderReminderFinishedOrExpired({ payment_type: "Paid" }, now), true);
+  assert.equal(isOrderReminderFinishedOrExpired({
+    status: "Pending Payment",
+    payment_expires_at: "2026-08-10T09:29:59+08:00"
+  }, now), true);
+  assert.equal(isOrderReminderFinishedOrExpired({
+    status: "Pending Payment",
+    payment_expires_at: "2026-08-10T09:31:00+08:00"
+  }, now), false);
+});
+
+test("clears cancelled and expired group links", () => {
+  const now = new Date("2026-08-10T09:30:00+08:00").getTime();
+
+  assert.equal(isSharedGroupCancelledOrExpired({ status: "cancelled" }, now), true);
+  assert.equal(isSharedGroupCancelledOrExpired({
+    status: "open",
+    expires_at: "2026-08-10T09:29:59+08:00"
+  }, now), true);
+  assert.equal(isSharedGroupCancelledOrExpired({
+    status: "open",
+    expires_at: "2026-08-10T09:31:00+08:00"
+  }, now), false);
 });

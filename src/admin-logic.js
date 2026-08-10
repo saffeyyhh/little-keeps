@@ -875,3 +875,22 @@ export function validateInventoryDecrement(currentQty, requestedQty) {
     newQty: available - requested
   };
 }
+
+export function isOrderReminderFinishedOrExpired(order, now = Date.now()) {
+  if (!order) return false;
+  if (
+    order.payment_type === "Paid" ||
+    order.online_payment_status === "completed" ||
+    ["Completed", "Cancelled", "Refunded", "Payment Expired"].includes(order.status)
+  ) return true;
+
+  const expiresAt = new Date(order.payment_expires_at || "").getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+export function isSharedGroupCancelledOrExpired(group, now = Date.now()) {
+  if (!group) return true;
+  if (group.status === "cancelled") return true;
+  const expiresAt = new Date(group.expires_at || "").getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}

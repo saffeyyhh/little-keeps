@@ -19,6 +19,8 @@ import {
   getKeychainTurnaround,
   isPickupDay,
   isAlternatingProductionDay,
+  isOrderReminderFinishedOrExpired,
+  isSharedGroupCancelledOrExpired,
   flattenSharedGroupContributions,
   normalizePickupTimeOptions,
   pickRandomDesignColours
@@ -2377,6 +2379,7 @@ const sharedGroupUrlParams = new URLSearchParams(window.location.search);
 let activeSharedGroupShareToken = sharedGroupUrlParams.get("group") || "";
 let activeSharedGroupOwnerToken = sharedGroupUrlParams.get("group_owner") || "";
 let activeSharedGroup = null;
+let sharedGroupExpiryTimer = null;
 let finalisingSharedGroupOwnerToken = "";
 
 const addCartArea =
@@ -6308,8 +6311,16 @@ async function loadSharedGroup(token, { openOwner = false } = {}) {
       p_token: token
     });
     if (error) throw error;
-    if (!data) throw new Error("This group order link is invalid or expired.");
+    if (!data) {
+      clearSharedGroupLink();
+      return null;
+    }
+    if (isSharedGroupCancelledOrExpired(data)) {
+      clearSharedGroupLink(data);
+      return null;
+    }
     activeSharedGroup = data;
+    scheduleSharedGroupExpiry(data);
     if (
       !data.is_owner &&
       !cartHasItems &&
@@ -6331,6 +6342,51 @@ async function loadSharedGroup(token, { openOwner = false } = {}) {
     sharedGroupBanner.classList.remove("hidden");
     return null;
   }
+}
+
+function scheduleSharedGroupExpiry(group) {
+  clearTimeout(sharedGroupExpiryTimer);
+  sharedGroupExpiryTimer = null;
+  if (group?.status !== "open" || !group.expires_at) return;
+
+  const remaining = new Date(group.expires_at).getTime() - Date.now();
+  if (!Number.isFinite(remaining)) return;
+  if (remaining <= 0) {
+    clearSharedGroupLink(group);
+    return;
+  }
+
+  sharedGroupExpiryTimer = setTimeout(() => {
+    if (new Date(group.expires_at).getTime() <= Date.now()) {
+      clearSharedGroupLink(group);
+    } else {
+      scheduleSharedGroupExpiry(group);
+    }
+  }, Math.min(remaining + 250, 2147483647));
+}
+
+function clearSharedGroupLink(group = activeSharedGroup) {
+  clearTimeout(sharedGroupExpiryTimer);
+  sharedGroupExpiryTimer = null;
+  if (group?.is_owner && group.public_code) {
+    localStorage.removeItem(`littleKeepsGroupOwner:${group.public_code}`);
+  }
+  activeSharedGroup = null;
+  activeSharedGroupOwnerToken = "";
+  activeSharedGroupShareToken = "";
+  finalisingSharedGroupOwnerToken = "";
+  sharedGroupBanner.classList.add("hidden");
+  sharedGroupOwnerModal.classList.add("hidden");
+  sharedGroupContributeModal.classList.add("hidden");
+  sharedGroupHowModal.classList.add("hidden");
+  sharedGroupSuccessModal.classList.add("hidden");
+  renderSharedGroupStartCard();
+  renderCartDrawer();
+
+  const cleanUrl = new URL(window.location.href);
+  cleanUrl.searchParams.delete("group");
+  cleanUrl.searchParams.delete("group_owner");
+  window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
 }
 
 function openSharedGroupCartAction() {
@@ -6509,15 +6565,8 @@ cancelSharedGroupOrderBtn.addEventListener("click", async () => {
     });
     if (error) throw error;
     localStorage.removeItem(`littleKeepsGroupOwner:${activeSharedGroup.public_code}`);
-    activeSharedGroup = null;
-    activeSharedGroupOwnerToken = "";
-    finalisingSharedGroupOwnerToken = "";
-    sharedGroupOwnerModal.classList.add("hidden");
-    sharedGroupBanner.classList.add("hidden");
-    renderSharedGroupStartCard();
-    window.history.replaceState({}, "", window.location.pathname);
+    clearSharedGroupLink(activeSharedGroup);
     alert("Group order cancelled. No order or payment was created.");
-    renderCartDrawer();
   } catch (error) {
     console.error("Unable to cancel group order:", error);
     sharedGroupOwnerStatus.textContent =
@@ -6920,6 +6969,7 @@ setStorefrontView("shop", {
 });
 
 const PENDING_ORDER_STORAGE_KEY = "littleKeepsPendingOrder";
+let pendingOrderExpiryTimer = null;
 
 function getRememberedPendingOrder() {
   try {
@@ -6950,10 +7000,64 @@ function rememberPendingOrder(details) {
 
 function clearRememberedPendingOrder(orderRef = "") {
   const saved = getRememberedPendingOrder();
-  if (!saved || (orderRef && saved.orderRef !== orderRef)) return;
+  if (orderRef && saved?.orderRef !== orderRef) return;
+  clearTimeout(pendingOrderExpiryTimer);
+  pendingOrderExpiryTimer = null;
   localStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
   sessionStorage.removeItem("littleKeepsPendingOrderDismissed");
   pendingOrderBanner?.classList.add("hidden");
+}
+
+function scheduleRememberedOrderExpiry(order, saved) {
+  clearTimeout(pendingOrderExpiryTimer);
+  pendingOrderExpiryTimer = null;
+  if (!order?.payment_expires_at) return;
+
+  const remaining = new Date(order.payment_expires_at).getTime() - Date.now();
+  if (!Number.isFinite(remaining)) return;
+  if (remaining <= 0) {
+    clearRememberedPendingOrder(saved.orderRef);
+    return;
+  }
+
+  pendingOrderExpiryTimer = setTimeout(
+    () => {
+      if (new Date(order.payment_expires_at).getTime() <= Date.now()) {
+        clearRememberedPendingOrder(saved.orderRef);
+      } else {
+        scheduleRememberedOrderExpiry(order, saved);
+      }
+    },
+    Math.min(remaining + 250, 2147483647)
+  );
+}
+
+async function refreshRememberedPendingOrderState() {
+  const saved = getRememberedPendingOrder();
+  if (!saved) {
+    pendingOrderBanner?.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("lookup_order_status", {
+      p_order_ref: saved.orderRef,
+      p_email: saved.email
+    });
+    if (error) throw error;
+    const order = Array.isArray(data) ? data[0] : data;
+    if (!order) return;
+
+    if (isOrderReminderFinishedOrExpired(order)) {
+      clearRememberedPendingOrder(saved.orderRef);
+      return;
+    }
+    scheduleRememberedOrderExpiry(order, saved);
+  } catch (error) {
+    // Keep the reminder during a temporary connection problem and try again
+    // when the customer returns to the tab.
+    console.warn("Unable to refresh unfinished order reminder:", error);
+  }
 }
 
 function renderPendingOrderBanner() {
@@ -8572,6 +8676,13 @@ if (resumeOrderRef && !paymentReturnState) {
 }
 
 renderPendingOrderBanner();
+void refreshRememberedPendingOrderState();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    renderPendingOrderBanner();
+    void refreshRememberedPendingOrderState();
+  }
+});
 void retryRememberedOrderEmail();
 
 if (activeSharedGroupOwnerToken) {
