@@ -1662,6 +1662,11 @@ Chloe</textarea>
           </div>
         </div>
 
+        <label class="final-order-confirmation" for="confirmFinalOrderDetails">
+          <input id="confirmFinalOrderDetails" type="checkbox">
+          <span>I checked every name, icon, colour, letter direction, and pickup or delivery detail.</span>
+        </label>
+
         <textarea
           id="orderNotes"
           placeholder="Additional order notes (optional)..."
@@ -1731,11 +1736,6 @@ Chloe</textarea>
     Submit Order & Continue to Payment
   </button>
 </div>
-
-<label class="final-order-confirmation" for="confirmFinalOrderDetails">
-  <input id="confirmFinalOrderDetails" type="checkbox">
-  <span>I checked every name, icon, colour, letter direction, and pickup or delivery detail.</span>
-</label>
 
       <p id="formStatus" class="hint"></p>
       <p id="submitStatus" class="hint"></p>
