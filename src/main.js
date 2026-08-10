@@ -8657,6 +8657,7 @@ function formatCustomerStatus(status) {
 }
 
 let paymentHoldCountdownTimer = null;
+let trackedPickupCalendar = null;
 
 function startPaymentHoldCountdown() {
   clearInterval(paymentHoldCountdownTimer);
@@ -8708,6 +8709,55 @@ function getPickupDateBounds() {
   };
 }
 
+function isTrackedPickupDateAvailable(dateValue) {
+  const date = dateValue instanceof Date
+    ? new Date(dateValue)
+    : dateFromLocalValue(dateValue);
+  if (!date) return false;
+
+  const dateString = toLocalDateString(date);
+  const bounds = getPickupDateBounds();
+  return (
+    dateString >= bounds.minimum &&
+    dateString <= bounds.maximum &&
+    isPickupDay(dateString) &&
+    !isShopClosedDate(date)
+  );
+}
+
+function getFirstTrackedPickupDate() {
+  const { minimum, maximum } = getPickupDateBounds();
+  const candidate = dateFromLocalValue(minimum);
+  const lastDate = dateFromLocalValue(maximum);
+
+  while (candidate && lastDate && candidate <= lastDate) {
+    if (isTrackedPickupDateAvailable(candidate)) return toLocalDateString(candidate);
+    candidate.setDate(candidate.getDate() + 1);
+  }
+
+  return "";
+}
+
+function setupTrackedPickupCalendar(selectedDate = "", selectedTime = "") {
+  const dateInput = document.getElementById("pickupScheduleDate");
+  if (!dateInput) return;
+
+  trackedPickupCalendar?.destroy();
+  const bounds = getPickupDateBounds();
+  trackedPickupCalendar = flatpickr(dateInput, {
+    dateFormat: "Y-m-d",
+    minDate: bounds.minimum,
+    maxDate: bounds.maximum,
+    defaultDate: isTrackedPickupDateAvailable(selectedDate)
+      ? selectedDate
+      : getFirstTrackedPickupDate(),
+    enable: [date => isTrackedPickupDateAvailable(date)],
+    onChange: () => window.updatePickupTimeOptions()
+  });
+
+  window.updatePickupTimeOptions(selectedTime);
+}
+
 window.updatePickupTimeOptions = function(selectedValue = "") {
   const dateInput = document.getElementById("pickupScheduleDate");
   const timeSelect = document.getElementById("pickupScheduleTime");
@@ -8717,11 +8767,14 @@ window.updatePickupTimeOptions = function(selectedValue = "") {
     dateInput.value,
     shopSettings.pickup_time_options
   );
+  const availableRanges = isTrackedPickupDateAvailable(dateInput.value)
+    ? ranges
+    : [];
 
-  timeSelect.innerHTML = ranges.length
+  timeSelect.innerHTML = availableRanges.length
     ? `
       <option value="">Choose a time</option>
-      ${ranges.map(range => `
+      ${availableRanges.map(range => `
         <option
           value="${escapePresetText(range)}"
           ${range === selectedValue ? "selected" : ""}
@@ -8745,6 +8798,21 @@ window.scheduleTrackedPickup = async function(
 
   if (!pickupDate || !pickupTimeRange) {
     alert("Please choose both a pickup date and exact time.");
+    return;
+  }
+
+  if (!isTrackedPickupDateAvailable(pickupDate)) {
+    alert("Please choose an available pickup date. Closed and unavailable days cannot be selected.");
+    return;
+  }
+
+  const configuredTimes = getPickupTimeRanges(
+    pickupDate,
+    shopSettings.pickup_time_options
+  );
+  if (!configuredTimes.includes(pickupTimeRange)) {
+    alert("Please choose one of the available pickup times.");
+    window.updatePickupTimeOptions();
     return;
   }
 
@@ -8834,9 +8902,9 @@ function renderCustomerOrderStatus(order) {
       return "";
     }
   })();
-  const pickupDateBounds = getPickupDateBounds();
-  const pickupDate =
-    order.pickup_scheduled_date || pickupDateBounds.minimum;
+  const pickupDate = isTrackedPickupDateAvailable(order.pickup_scheduled_date)
+    ? order.pickup_scheduled_date
+    : getFirstTrackedPickupDate();
   const pickupTimeRange = order.pickup_time_range || "";
   const pickupRanges = getPickupTimeRanges(
     pickupDate,
@@ -8946,11 +9014,10 @@ function renderCustomerOrderStatus(order) {
             <span>Pickup date</span>
             <input
               id="pickupScheduleDate"
-              type="date"
-              min="${pickupDateBounds.minimum}"
-              max="${pickupDateBounds.maximum}"
+              type="text"
+              placeholder="Choose an available date"
+              readonly
               value="${escapePresetText(pickupDate)}"
-              onchange="window.updatePickupTimeOptions()"
             >
           </label>
 
@@ -9018,6 +9085,7 @@ function renderCustomerOrderStatus(order) {
   `;
 
   orderStatusResult.classList.remove("hidden");
+  if (canSchedulePickup) setupTrackedPickupCalendar(pickupDate, pickupTimeRange);
   startPaymentHoldCountdown();
 }
 

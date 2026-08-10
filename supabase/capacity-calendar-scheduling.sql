@@ -246,3 +246,86 @@ grant execute on function public.check_needed_by_date(date, integer) to anon, au
 grant execute on function public.get_unavailable_needed_by_dates(date, date, integer) to anon, authenticated;
 grant execute on function public.check_bulk_order_date(date, integer) to anon, authenticated;
 grant execute on function public.get_unavailable_bulk_dates(date, date, integer) to anon, authenticated;
+
+create or replace function public.schedule_order_pickup(
+  p_order_ref text,
+  p_email text,
+  p_pickup_date date,
+  p_pickup_time_range text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_pickup_options jsonb;
+  v_slot_group text;
+  v_pickup_day integer;
+  v_updated integer := 0;
+begin
+  if p_pickup_date is null or nullif(trim(p_pickup_time_range), '') is null then
+    return jsonb_build_object('ok', false, 'reason', 'Choose a pickup date and exact time.');
+  end if;
+
+  if p_pickup_date < current_date or p_pickup_date > current_date + 30 then
+    return jsonb_build_object('ok', false, 'reason', 'Choose a pickup date within the next 30 days.');
+  end if;
+
+  v_pickup_day := extract(isodow from p_pickup_date);
+  if v_pickup_day not in (3, 5, 6, 7) then
+    return jsonb_build_object('ok', false, 'reason', 'Pickup is available on Wednesdays, Fridays, and weekends.');
+  end if;
+
+  if exists (
+    select 1 from public.shop_closures
+    where p_pickup_date between start_date and end_date
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'The shop is unavailable for pickup on this date.');
+  end if;
+
+  select pickup_time_options into v_pickup_options
+  from public.shop_settings where id = 1;
+  v_slot_group := case when v_pickup_day in (6, 7) then 'weekend' else 'weekday' end;
+
+  if not exists (
+    select 1
+    from jsonb_array_elements_text(coalesce(v_pickup_options -> v_slot_group, '[]'::jsonb)) slot
+    where slot = trim(p_pickup_time_range)
+  ) then
+    return jsonb_build_object('ok', false, 'reason', 'Choose one of the available pickup times.');
+  end if;
+
+  update public.orders
+  set
+    pickup_scheduled_date = p_pickup_date,
+    pickup_time_range = trim(p_pickup_time_range),
+    needed_by = case
+      when p_pickup_date > coalesce(estimated_ready_to, needed_by)::date then p_pickup_date
+      else needed_by
+    end
+  where archived_at is null
+    and lower(customer_email) = lower(trim(p_email))
+    and collection_method <> 'delivery'
+    and (
+      upper(order_ref) = upper(trim(p_order_ref))
+      or upper(coalesce(linked_order_ref, '')) = upper(trim(p_order_ref))
+    );
+
+  get diagnostics v_updated = row_count;
+  if v_updated = 0 then
+    return jsonb_build_object('ok', false, 'reason', 'This pickup order could not be found.');
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'pickup_date', p_pickup_date,
+    'pickup_time_range', trim(p_pickup_time_range)
+  );
+end;
+$$;
+
+grant execute on function public.schedule_order_pickup(text, text, date, text)
+to anon, authenticated;
+
+notify pgrst, 'reload schema';
