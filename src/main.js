@@ -1086,6 +1086,15 @@ document.querySelector("#app").innerHTML = `
             Group Order
           </button>
         </div>
+
+        <div id="sharedGroupStartCard" class="friends-family-share-card hidden">
+          <span>Recommended</span>
+          <div>
+            <h3>Create a shared Group Order</h3>
+            <p>Add your own design first, then create a private link for everyone else to add theirs. You review everything and pay once.</p>
+          </div>
+          <button id="friendsFamilyStartBtn" type="button">Create Group Order</button>
+        </div>
       </div>
 
       <div class="card names-card">
@@ -1118,15 +1127,6 @@ document.querySelector("#app").innerHTML = `
         </div>
 
         <div id="groupSection" class="hidden">
-          <div class="friends-family-share-card">
-            <span>Recommended</span>
-            <div>
-              <h3>Let everyone choose their own colours</h3>
-              <p>Enter your own name below and choose your colours. Then create a private link for everyone else; you review and pay once.</p>
-            </div>
-            <button id="friendsFamilyStartBtn" type="button">Create Invite Link</button>
-          </div>
-
           <h3>Or enter everyone yourself</h3>
 
           <textarea
@@ -2136,6 +2136,7 @@ const singleBtn = document.getElementById("singleBtn");
 const groupBtn = document.getElementById("groupBtn");
 const singleSection = document.getElementById("singleSection");
 const groupSection = document.getElementById("groupSection");
+const sharedGroupStartCard = document.getElementById("sharedGroupStartCard");
 const friendsFamilyStartBtn = document.getElementById("friendsFamilyStartBtn");
 const singleName = document.getElementById("singleName");
 const singleQuantity = document.getElementById("singleQuantity");
@@ -6088,6 +6089,11 @@ function setOrderType(type) {
   );
 
   groupSection.classList.toggle(
+    "hidden",
+    !isGroupOrder
+  );
+
+  sharedGroupStartCard.classList.toggle(
     "hidden",
     !isGroupOrder
   );
