@@ -2915,7 +2915,7 @@ label {
 .shared-group-owner-actions {
   margin-top: 16px;
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
 }
 

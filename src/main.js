@@ -1724,6 +1724,7 @@ Chloe</textarea>
 
   <button
     id="submitOrderBtn"
+    type="button"
     class="submit-btn"
     disabled
   >
@@ -1934,6 +1935,7 @@ Chloe</textarea>
         <p id="sharedGroupOwnerStatus" class="hint" aria-live="polite"></p>
 
         <div class="shared-group-owner-actions">
+          <button id="editSharedGroupOwnerDesignsBtn" type="button" class="secondary-btn">Add / Edit My Designs</button>
           <button id="refreshSharedGroupBtn" type="button" class="secondary-btn">Refresh</button>
           <button id="checkoutSharedGroupBtn" type="button" class="submit-btn">Review Combined Basket</button>
         </div>
@@ -2370,6 +2372,7 @@ const sharedGroupLinkBox = document.getElementById("sharedGroupLinkBox");
 const copySharedGroupLinkBtn = document.getElementById("copySharedGroupLinkBtn");
 const sharedGroupContributionList = document.getElementById("sharedGroupContributionList");
 const sharedGroupOwnerStatus = document.getElementById("sharedGroupOwnerStatus");
+const editSharedGroupOwnerDesignsBtn = document.getElementById("editSharedGroupOwnerDesignsBtn");
 const refreshSharedGroupBtn = document.getElementById("refreshSharedGroupBtn");
 const checkoutSharedGroupBtn = document.getElementById("checkoutSharedGroupBtn");
 const closeSharedGroupOwnerBtn = document.getElementById("closeSharedGroupOwnerBtn");
@@ -3433,6 +3436,9 @@ let giftingBagStock = 0;
 let giftingBagStockConfirmed = false;
 let selectedIndex = 0;
 let orderSubmitted = false;
+let orderSubmissionInProgress = false;
+let currentSubmissionId = crypto.randomUUID();
+let currentSubmissionOrderRef = "";
 
 let cartHasItems = false;
 let draftHasMeaningfulChanges = false;
@@ -5580,21 +5586,67 @@ function getColourName(hex) {
 }
 
 async function saveOrderToDatabase(order) {
+    let { data, error } = await supabase
+      .from("orders")
+      .insert([order]);
 
-    const { data, error } = await supabase
+    const idempotencySchemaUnavailable =
+      error && (
+        error.code === "PGRST204" ||
+        error.code === "42703" ||
+        String(error.message || "").includes("client_submission_id")
+      );
+
+    if (idempotencySchemaUnavailable) {
+      const { client_submission_id: _unused, ...legacyOrder } = order;
+      ({ data, error } = await supabase
         .from("orders")
-        .insert([order]);
-
-    if (error) {
-        console.error(error);
-        throw error;
+        .insert([legacyOrder]));
     }
 
-    return data;
+    if (error?.code === "23505") {
+      const { data: existingData, error: lookupError } = await supabase.rpc(
+        "lookup_order_status",
+        {
+          p_order_ref: order.order_ref,
+          p_email: order.customer_email
+        }
+      );
+      const existingOrder = Array.isArray(existingData) ? existingData[0] : existingData;
+      if (!lookupError && existingOrder) {
+        return { data: existingOrder, alreadySaved: true };
+      }
+    }
+
+    if (error) {
+      console.error(error);
+      throw error;
+    }
+
+    return { data, alreadySaved: false };
 
 }
 
 async function submitOrder() {
+  if (orderSubmissionInProgress || orderSubmitted) return;
+  orderSubmissionInProgress = true;
+  const previousSubmitLabel = submitOrderBtn.textContent;
+  submitOrderBtn.disabled = true;
+  submitOrderBtn.classList.add("disabled");
+  submitOrderBtn.textContent = "Submitting once…";
+
+  try {
+    await submitOrderOnce();
+  } finally {
+    orderSubmissionInProgress = false;
+    if (!orderSubmitted) {
+      submitOrderBtn.textContent = previousSubmitLabel;
+      validateForm();
+    }
+  }
+}
+
+async function submitOrderOnce() {
   submitStatus.innerText = "Submitting order...";
 
   if (linkExistingOrderToggle.checked && !hasVerifiedLinkedOrder()) {
@@ -5632,7 +5684,8 @@ async function submitOrder() {
     }
   }
 
-  const orderRef = generateOrderRef();
+  const orderRef = currentSubmissionOrderRef || generateOrderRef();
+  currentSubmissionOrderRef = orderRef;
   const checkoutOrderType = getCheckoutOrderType();
 
   if (checkoutOrderType === "bulk" && collectionMethod.value !== "delivery") {
@@ -5753,6 +5806,7 @@ async function submitOrder() {
 
   const order = {
     order_ref: orderRef,
+    client_submission_id: currentSubmissionId,
     product_key: activeProduct.product_key,
     group_order_code:
       finalisingSharedGroupOwnerToken && activeSharedGroup?.public_code
@@ -5825,8 +5879,10 @@ async function submitOrder() {
   };
 
   // First save the order.
+  let orderWasAlreadySaved = false;
   try {
-    await saveOrderToDatabase(order);
+    const saveResult = await saveOrderToDatabase(order);
+    orderWasAlreadySaved = saveResult.alreadySaved;
   } catch (error) {
     console.error("Unable to save order:", error);
 
@@ -5860,6 +5916,7 @@ async function submitOrder() {
   localStorage.removeItem("littleKeepsDraft");
 
   if (
+    !orderWasAlreadySaved &&
     order.collection_method !== "delivery" &&
     !order.linked_order_ref &&
     order.pickup_scheduled_date &&
@@ -5871,7 +5928,7 @@ async function submitOrder() {
     );
   }
 
-  if (isReviewRequest) {
+  if (isReviewRequest && !orderWasAlreadySaved) {
     await requestSpecialOrderTelegramAlert(
       orderRef,
       order.customer_email
@@ -5889,7 +5946,7 @@ async function submitOrder() {
 
     // Wait for the small reference email request to finish before continuing.
     // This prevents mobile browsers from cancelling it during navigation.
-    if (!isReviewRequest) {
+    if (!isReviewRequest && !orderWasAlreadySaved) {
       await requestOrderSavedEmail(
         orderRef,
         order.customer_email,
@@ -5908,7 +5965,7 @@ async function submitOrder() {
         );
       }
     }
-  } else if (!isReviewRequest) {
+  } else if (!isReviewRequest && !orderWasAlreadySaved) {
     await requestOrderSavedEmail(
       orderRef,
       order.customer_email,
@@ -6163,6 +6220,36 @@ function restoreSharedGroupItems(contributions = []) {
   }));
 }
 
+function getSharedGroupOwnerContribution(group = activeSharedGroup) {
+  const contributions = group?.contributions || [];
+  return contributions.find(contribution => contribution.is_organiser) || contributions[0] || null;
+}
+
+function restoreSharedGroupOwnerCart(group = activeSharedGroup, { force = false } = {}) {
+  if (!group?.is_owner || (cartHasItems && !force)) return false;
+  const ownerContribution = getSharedGroupOwnerContribution(group);
+  if (!ownerContribution) return false;
+  const restored = restoreSharedGroupItems([ownerContribution]);
+  if (!restored.length) return false;
+
+  activeProduct = getProductByKey(productCatalog, group.product_key);
+  updateProductCustomiser();
+  names = restored;
+  selectedIndex = 0;
+  cartHasItems = true;
+  orderType = restored.length > 1 ? "group" : "single";
+  singleBtn.classList.toggle("active", orderType === "single");
+  groupBtn.classList.toggle("active", orderType === "group");
+  singleSection.classList.toggle("hidden", orderType !== "single");
+  groupSection.classList.toggle("hidden", orderType !== "group");
+  singleName.value = restored[0].name;
+  singleQuantity.value = String(restored[0].quantity);
+  nameList.value = restored.map(item => item.name).join("\n");
+  refreshUI();
+  buildSelectedPreview();
+  return true;
+}
+
 function getSharedGroupInviteUrl(shareToken) {
   const url = new URL(window.location.origin);
   url.searchParams.set("group", shareToken);
@@ -6178,6 +6265,10 @@ function getSharedGroupContributionToken(groupCode) {
     localStorage.setItem(key, token);
   }
   return token;
+}
+
+function getSharedGroupOwnerContributionToken(groupCode) {
+  return localStorage.getItem(`littleKeepsGroupOwnerContribution:${groupCode}`) || "";
 }
 
 function renderSharedGroupBanner() {
@@ -6285,10 +6376,25 @@ async function syncSharedGroupOwnerBasket({ openOwner = false } = {}) {
   sharedGroupCartBtn.disabled = true;
   sharedGroupCartBtn.textContent = "Saving to Group Order…";
   try {
-    const { error } = await supabase.rpc("save_shared_group_owner_contribution", {
+    let { error } = await supabase.rpc("save_shared_group_owner_contribution", {
       p_owner_token: activeSharedGroupOwnerToken,
       p_items: cartHasItems && names.length ? serializeSharedGroupBasket() : []
     });
+    const ownerFunctionUnavailable = error && (
+      error.code === "PGRST202" ||
+      String(error.message || "").includes("save_shared_group_owner_contribution")
+    );
+    const ownerContributionToken = getSharedGroupOwnerContributionToken(
+      activeSharedGroup.public_code
+    );
+    if (ownerFunctionUnavailable && ownerContributionToken && cartHasItems && names.length) {
+      ({ error } = await supabase.rpc("save_shared_group_contribution", {
+        p_share_token: activeSharedGroup.share_token,
+        p_contributor_name: activeSharedGroup.organiser_name,
+        p_contribution_token: ownerContributionToken,
+        p_items: serializeSharedGroupBasket()
+      }));
+    }
     if (error) throw error;
     await loadSharedGroup(activeSharedGroupOwnerToken, {
       openOwner: openOwner || ownerReviewWasOpen
@@ -6320,6 +6426,7 @@ async function loadSharedGroup(token, { openOwner = false } = {}) {
       return null;
     }
     activeSharedGroup = data;
+    if (data.is_owner) restoreSharedGroupOwnerCart(data);
     scheduleSharedGroupExpiry(data);
     if (
       !data.is_owner &&
@@ -6392,7 +6499,11 @@ function clearSharedGroupLink(group = activeSharedGroup) {
 function openSharedGroupCartAction() {
   if (activeSharedGroup?.is_owner) {
     closeCartDrawer();
-    renderSharedGroupOwner();
+    if (cartHasItems && names.length) {
+      void syncSharedGroupOwnerBasket({ openOwner: true });
+    } else {
+      renderSharedGroupOwner();
+    }
     return;
   }
   if (!cartHasItems || !names.length) return;
@@ -6444,6 +6555,10 @@ sharedGroupStartForm.addEventListener("submit", async event => {
     });
     if (error) throw error;
     localStorage.setItem(`littleKeepsGroupOwner:${data.public_code}`, ownerToken);
+    localStorage.setItem(
+      `littleKeepsGroupOwnerContribution:${data.public_code}`,
+      contributionToken
+    );
     activeSharedGroupOwnerToken = ownerToken;
     activeSharedGroupShareToken = "";
     window.history.replaceState({}, "", `?group_owner=${encodeURIComponent(ownerToken)}`);
@@ -6548,6 +6663,16 @@ closeSharedGroupOwnerBtn.addEventListener("click", () => sharedGroupOwnerModal.c
 closeSharedGroupHowBtn.addEventListener("click", () => sharedGroupHowModal.classList.add("hidden"));
 closeSharedGroupSuccessBtn.addEventListener("click", () => sharedGroupSuccessModal.classList.add("hidden"));
 refreshSharedGroupBtn.addEventListener("click", () => loadSharedGroup(activeSharedGroupOwnerToken, { openOwner: true }));
+editSharedGroupOwnerDesignsBtn.addEventListener("click", () => {
+  if (!restoreSharedGroupOwnerCart(activeSharedGroup, { force: true })) return;
+  nameList.value = names.map(item => item.name).join("\n");
+  setOrderType("group");
+  sharedGroupOwnerModal.classList.add("hidden");
+  setStorefrontView("design", { scrollTo: "designArea" });
+  nameList.focus();
+  sharedGroupBannerText.textContent =
+    "Add another name on a new line, design it, then save your cart to the Group Order.";
+});
 checkoutSharedGroupBtn.addEventListener("click", checkoutSharedGroup);
 cancelSharedGroupOrderBtn.addEventListener("click", async () => {
   if (!activeSharedGroup?.is_owner || activeSharedGroup.status !== "open") return;
@@ -6636,7 +6761,7 @@ function renderCartDrawer() {
   );
   sharedGroupCartBtn.disabled = false;
   sharedGroupCartBtn.textContent = activeSharedGroup?.is_owner
-    ? "Review Group Order"
+    ? "Save My Cart to Group Order"
     : activeSharedGroup
       ? `Add Basket to ${activeSharedGroup.title}`
       : "Start a Group Order";
@@ -7371,7 +7496,10 @@ copyManualPaymentLinkBtn?.addEventListener("click", async () => {
   }
 });
 
-submitOrderBtn.onclick = submitOrder;
+submitOrderBtn.onclick = event => {
+  event.preventDefault();
+  void submitOrder();
+};
 
 applyPromoBtn.onclick = applyPromoCode;
 
@@ -7586,8 +7714,8 @@ else if (
   message = "Please confirm that your complete delivery address is correct.";
 }
 
-    submitOrderBtn.disabled = !valid;
-    submitOrderBtn.classList.toggle("disabled", !valid);
+    submitOrderBtn.disabled = orderSubmissionInProgress || !valid;
+    submitOrderBtn.classList.toggle("disabled", orderSubmissionInProgress || !valid);
 
     document.getElementById("formStatus").innerText = message;
 
