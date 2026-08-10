@@ -5386,6 +5386,39 @@ body {
   cursor: pointer;
 }
 
+.random-multi-colour-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin-top: 11px;
+  padding: 11px 12px;
+  border: 1px solid rgba(125, 77, 141, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.random-multi-colour-option input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: #7d4d8d;
+}
+
+.random-colour-card .random-multi-colour-option span {
+  color: #695f6e;
+  font-size: 0.78rem;
+  line-height: 1.42;
+}
+
+.random-multi-colour-option strong {
+  display: block;
+  margin-bottom: 2px;
+  color: #4c374f;
+  font-size: 0.88rem;
+}
+
 .random-colour-card .hint {
   margin: 8px 0 0;
 }

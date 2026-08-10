@@ -36,6 +36,7 @@ import {
   isPickupDay,
   isSharedGroupCancelledOrExpired,
   optimizeAmsPlateSequence,
+  pickRandomDesignColourSets,
   pickRandomDesignColours,
   partitionAmsCombinationsByBusyColours,
   validateInventoryDecrement
@@ -175,24 +176,28 @@ test("requires approval and longer lead time for event quantities", () => {
     quantity: 14,
     approvalRequired: false,
     minLeadDays: 0,
+    minWorkingDays: 0,
     timeframeLabel: ""
   });
   assert.deepEqual(getBulkApprovalPolicy(15), {
     quantity: 15,
     approvalRequired: true,
     minLeadDays: 7,
-    timeframeLabel: "at least 7 days"
+    minWorkingDays: 7,
+    timeframeLabel: "at least 7 working days"
   });
   assert.deepEqual(getBulkApprovalPolicy(30), {
     quantity: 30,
     approvalRequired: true,
     minLeadDays: 14,
+    minWorkingDays: 10,
     timeframeLabel: "at least 14 days"
   });
   assert.deepEqual(getBulkApprovalPolicy(51), {
     quantity: 51,
     approvalRequired: true,
     minLeadDays: 14,
+    minWorkingDays: 10,
     timeframeLabel: "approximately 1.5–2 weeks"
   });
   assert.equal(getBulkApprovalPolicy(75).timeframeLabel, "approximately 1.5–2 weeks");
@@ -200,18 +205,21 @@ test("requires approval and longer lead time for event quantities", () => {
     quantity: 100,
     approvalRequired: true,
     minLeadDays: 21,
+    minWorkingDays: 15,
     timeframeLabel: "approximately 2–3 weeks"
   });
   assert.deepEqual(getBulkApprovalPolicy(150), {
     quantity: 150,
     approvalRequired: true,
     minLeadDays: 28,
+    minWorkingDays: 20,
     timeframeLabel: "approximately 3–4 weeks"
   });
   assert.deepEqual(getBulkApprovalPolicy(151), {
     quantity: 151,
     approvalRequired: true,
     minLeadDays: 42,
+    minWorkingDays: 30,
     timeframeLabel: "approximately 4–6 weeks"
   });
 });
@@ -386,6 +394,36 @@ test("chooses a complete contrasting random colour set", () => {
   });
 
   assert.deepEqual(result, { base: "pink", cap: "white", letter: "gold" });
+});
+
+test("creates alternating surprise palettes only when the customer opts in", () => {
+  const single = pickRandomDesignColourSets({
+    baseColours: ["pink", "blue"],
+    capColours: ["white", "gold"],
+    letterColours: ["purple", "yellow"],
+    characterCount: 6,
+    allowMultiple: false,
+    random: () => 0
+  });
+  assert.deepEqual(single, {
+    bases: ["pink"],
+    caps: ["white"],
+    letters: ["purple"]
+  });
+
+  const mixed = pickRandomDesignColourSets({
+    baseColours: ["pink", "blue"],
+    capColours: ["white", "gold"],
+    letterColours: ["purple", "yellow"],
+    characterCount: 6,
+    allowMultiple: true,
+    random: () => 0
+  });
+  assert.deepEqual(mixed, {
+    bases: ["pink", "blue"],
+    caps: ["white", "gold"],
+    letters: ["purple", "yellow"]
+  });
 });
 
 test("orders AMS plates to preserve colours and keeps shared colours in their slots", () => {

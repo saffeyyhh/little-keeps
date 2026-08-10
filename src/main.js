@@ -23,7 +23,7 @@ import {
   isSharedGroupCancelledOrExpired,
   flattenSharedGroupContributions,
   normalizePickupTimeOptions,
-  pickRandomDesignColours
+  pickRandomDesignColourSets
 } from "./admin-logic.js";
 import {
   DEFAULT_PRODUCT_CATALOG,
@@ -1243,6 +1243,16 @@ Chloe</textarea>
           <button id="randomiseColoursBtn" type="button" class="randomise-colours-btn">
             Surprise Me
           </button>
+          <label class="random-multi-colour-option" for="randomiseMultipleColours">
+            <input id="randomiseMultipleColours" type="checkbox">
+            <span>
+              <strong>Allow a mix of colours</strong>
+              Surprise Me may alternate the base, cap and letter/icon colours.
+              Extra colour add-ons apply: +${displaySettingMoney(modularProduct.extra_base_colour_price)} per extra base colour,
+              +${displaySettingMoney(modularProduct.extra_cap_colour_price)} per extra cap colour and
+              +${displaySettingMoney(modularProduct.extra_letter_colour_price)} per extra letter/icon colour.
+            </span>
+          </label>
           <p id="randomiseColoursStatus" class="hint" aria-live="polite"></p>
         </div>
 
@@ -2157,6 +2167,7 @@ const previewColourLegend = document.getElementById("previewColourLegend");
 const inspirationStatus = document.getElementById("inspirationStatus");
 const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
 const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
+const randomiseMultipleColours = document.getElementById("randomiseMultipleColours");
 
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
@@ -2751,6 +2762,24 @@ function addWorkingDays(startDate, workingDays) {
   return date;
 }
 
+function getBulkMinimumDate(quantity = getTotalKeychainQuantity()) {
+  const policy = getBulkApprovalPolicy(quantity);
+  let candidate = addWorkingDays(
+    new Date(),
+    Math.max(getTurnaroundInfo(quantity).maxDays, policy.minWorkingDays || 0)
+  );
+
+  while (
+    !isAlternatingProductionDay(toLocalDateString(candidate)) ||
+    bulkUnavailableDates.includes(toLocalDateString(candidate)) ||
+    isShopClosedDate(candidate)
+  ) {
+    candidate = addWorkingDays(candidate, 1);
+  }
+
+  return candidate;
+}
+
 function isCalendarDateUnavailable(date, mode) {
   const dateValue = toLocalDateString(date);
   const unavailableDates =
@@ -2761,7 +2790,7 @@ function isCalendarDateUnavailable(date, mode) {
         : normalUnavailableDates;
 
   if (unavailableDates.includes(dateValue)) return true;
-  if (mode === "standard" && !isAlternatingProductionDay(dateValue)) return true;
+  if (["standard", "bulk"].includes(mode) && !isAlternatingProductionDay(dateValue)) return true;
 
   return calendarClosureDates.some(range => {
     const start = String(range.from || range.start_date || "").slice(0, 10);
@@ -3204,9 +3233,10 @@ function updateTurnaroundMessaging() {
     specialDateLabel.textContent = methodIsDelivery
       ? "Choose your bulk dispatch date"
       : "Choose your bulk completion date";
+    const earliestBulkDate = getBulkMinimumDate(turnaround.quantity);
     specialOrderMessage.textContent = methodIsDelivery
-      ? `Choose a preferred dispatch date ${bulkPolicy.timeframeLabel} away. We’ll confirm it with your final quote. Allow 1–3 days for delivery.`
-      : `Choose a preferred date ${bulkPolicy.timeframeLabel} away. We’ll confirm it with your final quote.`;
+      ? `The earliest available dispatch date is ${formatEstimateDate(earliestBulkDate)}. This accounts for ${bulkPolicy.timeframeLabel}, production days, existing orders and closures. We’ll confirm it with your final quote. Allow 1–3 days for delivery.`
+      : `The earliest available completion date is ${formatEstimateDate(earliestBulkDate)}. This accounts for ${bulkPolicy.timeframeLabel}, production days, existing orders and closures. We’ll confirm it with your final quote.`;
     orderNotes.placeholder = "Customer notes for your bulk order...";
 
     if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
@@ -3241,11 +3271,7 @@ function updateTurnaroundMessaging() {
 
   if (specialDateCalendar) {
     const tomorrow = addWorkingDays(new Date(), 1);
-    const bulkMinimumDate = new Date();
-    bulkMinimumDate.setHours(0, 0, 0, 0);
-    bulkMinimumDate.setDate(
-      bulkMinimumDate.getDate() + Math.max(7, bulkPolicy.minLeadDays)
-    );
+    const bulkMinimumDate = getBulkMinimumDate(turnaround.quantity);
     const calendarMode = isRush ? "rush" : isBulk ? "bulk" : "standard";
     let calendarMaxDate;
 
@@ -3263,12 +3289,31 @@ function updateTurnaroundMessaging() {
       disable: [
         ...calendarClosureDates,
         ...(isBulk
+          ? [date => !isAlternatingProductionDay(toLocalDateString(date))]
+          : []),
+        ...(isBulk
           ? bulkUnavailableDates
           : isRush
             ? []
             : normalUnavailableDates)
       ]
     });
+
+    if (isBulk && requestedCompletionDate.value) {
+      const selectedBulkDate = dateFromLocalValue(requestedCompletionDate.value);
+      if (
+        !selectedBulkDate ||
+        selectedBulkDate < bulkMinimumDate ||
+        isCalendarDateUnavailable(selectedBulkDate, "bulk")
+      ) {
+        specialDateCalendar.clear();
+        requestedCompletionDate.value = "";
+        neededBy.value = "";
+        bulkAssessment = null;
+        bulkAssessmentFingerprint = "";
+        rushAvailabilityResult.classList.add("hidden");
+      }
+    }
 
     // Flatpickr can remain parked on the old maximum month after its range
     // changes. Reset only when the order mode changes so month navigation
@@ -3697,26 +3742,37 @@ function applyDesignPreset(presetKey) {
 function randomiseArticulatedColours() {
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY) return;
   const availableHexes = colours.filter(item => item.available).map(item => item.colour);
-  const selected = pickRandomDesignColours({
+  const characterCount = Array.from(
+    sanitizeName(names[selectedIndex]?.name || singleName?.value || "")
+  ).length;
+  const selected = pickRandomDesignColourSets({
     baseColours: availableHexes,
     capColours: availableHexes,
-    letterColours: availableHexes
+    letterColours: availableHexes,
+    characterCount,
+    allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
   const design = getActiveDesign();
-  design.bases = [selected.base];
-  design.caps = [selected.cap];
-  design.letters = [selected.letter];
+  design.bases = selected.bases;
+  design.caps = selected.caps;
+  design.letters = selected.letters;
 
   if (applyAllToggle.checked) {
-    globalDesign.bases = [selected.base];
-    globalDesign.caps = [selected.cap];
-    globalDesign.letters = [selected.letter];
+    globalDesign.bases = [...selected.bases];
+    globalDesign.caps = [...selected.caps];
+    globalDesign.letters = [...selected.letters];
     names.forEach(item => { item.custom = null; });
   }
 
   draftHasMeaningfulChanges = true;
   if (randomiseColoursStatus) {
-    randomiseColoursStatus.textContent = `Chosen: ${getColourName(selected.base)}, ${getColourName(selected.cap)} and ${getColourName(selected.letter)} ♡`;
+    const isMixed = [selected.bases, selected.caps, selected.letters]
+      .some(selection => selection.length > 1);
+    randomiseColoursStatus.textContent = isMixed
+      ? "Mixed palette chosen ♡ Any extra colour add-ons are included in the price shown."
+      : characterCount < 2 && randomiseMultipleColours?.checked
+        ? "One character uses one colour per part, so a single palette was chosen ♡"
+        : `Palette chosen: ${getColourName(selected.bases[0])}, ${getColourName(selected.caps[0])} and ${getColourName(selected.letters[0])} ♡`;
   }
   refreshUI();
   buildSelectedPreview();
@@ -7553,6 +7609,11 @@ resetSelected.onclick = () => {
 };
 
 randomiseColoursBtn?.addEventListener("click", randomiseArticulatedColours);
+randomiseMultipleColours?.addEventListener("change", () => {
+  draftHasMeaningfulChanges = true;
+  if (randomiseColoursStatus) randomiseColoursStatus.textContent = "";
+  saveDraft();
+});
 
 copyManualPaymentLinkBtn?.addEventListener("click", async () => {
   const url = manualPaymentLink?.href || "";
@@ -7809,6 +7870,7 @@ function saveDraft() {
     globalDesign,
     cartHasItems,
     appliedPromoCode,
+    randomiseMultipleColours: Boolean(randomiseMultipleColours?.checked),
 
     customerName: customerName.value,
     customerEmail: customerEmail.value,
@@ -7908,6 +7970,10 @@ continueDraftBtn.onclick = () => {
     PROMO_CODES[draftData.appliedPromoCode]
       ? draftData.appliedPromoCode
       : "";
+
+  if (randomiseMultipleColours) {
+    randomiseMultipleColours.checked = Boolean(draftData.randomiseMultipleColours);
+  }
 
   promoCodeInput.value = appliedPromoCode;
 

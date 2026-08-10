@@ -87,6 +87,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
       quantity: safeQuantity,
       approvalRequired: true,
       minLeadDays: 42,
+      minWorkingDays: 30,
       timeframeLabel: "approximately 4–6 weeks"
     };
   }
@@ -96,6 +97,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
       quantity: safeQuantity,
       approvalRequired: true,
       minLeadDays: 28,
+      minWorkingDays: 20,
       timeframeLabel: "approximately 3–4 weeks"
     };
   }
@@ -105,6 +107,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
       quantity: safeQuantity,
       approvalRequired: true,
       minLeadDays: 21,
+      minWorkingDays: 15,
       timeframeLabel: "approximately 2–3 weeks"
     };
   }
@@ -114,6 +117,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
       quantity: safeQuantity,
       approvalRequired: true,
       minLeadDays: 14,
+      minWorkingDays: 10,
       timeframeLabel: "approximately 1.5–2 weeks"
     };
   }
@@ -123,6 +127,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
       quantity: safeQuantity,
       approvalRequired: true,
       minLeadDays: 14,
+      minWorkingDays: 10,
       timeframeLabel: "at least 14 days"
     };
   }
@@ -132,7 +137,8 @@ export function getBulkApprovalPolicy(quantity = 1) {
       quantity: safeQuantity,
       approvalRequired: true,
       minLeadDays: 7,
-      timeframeLabel: "at least 7 days"
+      minWorkingDays: 7,
+      timeframeLabel: "at least 7 working days"
     };
   }
 
@@ -140,6 +146,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
     quantity: safeQuantity,
     approvalRequired: false,
     minLeadDays: 0,
+    minWorkingDays: 0,
     timeframeLabel: ""
   };
 }
@@ -474,6 +481,41 @@ export function pickRandomDesignColours({
   const letter = choose(letterColours, [base, cap]);
 
   return { base, cap, letter };
+}
+
+export function pickRandomDesignColourSets({
+  baseColours = [],
+  capColours = [],
+  letterColours = [],
+  characterCount = 1,
+  allowMultiple = false,
+  random = Math.random
+} = {}) {
+  const primary = pickRandomDesignColours({
+    baseColours,
+    capColours,
+    letterColours,
+    random
+  });
+  const colourSlots = allowMultiple && Number(characterCount) > 1 ? 2 : 1;
+  const buildSet = (primaryColour, choices) => {
+    if (colourSlots === 1) return [primaryColour];
+    const alternatives = choices.filter(
+      colour => colour && colour.toLowerCase() !== primaryColour.toLowerCase()
+    );
+    if (!alternatives.length) return [primaryColour];
+    const index = Math.min(
+      alternatives.length - 1,
+      Math.floor(Math.max(0, random()) * alternatives.length)
+    );
+    return [primaryColour, alternatives[index]];
+  };
+
+  return {
+    bases: buildSet(primary.base, baseColours),
+    caps: buildSet(primary.cap, capColours),
+    letters: buildSet(primary.letter, letterColours)
+  };
 }
 
 export function groupLinkedOrdersForAdmin(orders = []) {
