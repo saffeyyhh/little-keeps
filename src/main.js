@@ -1886,9 +1886,10 @@ Chloe</textarea>
         <h2>How Group Orders Work</h2>
         <div class="shared-group-how-steps">
           <div><b>1</b><span><strong>Create your design</strong><small>Choose your name, colours and style as usual.</small></span></div>
-          <div><b>2</b><span><strong>Add it to the group</strong><small>Enter your name so the organiser knows whose design it is.</small></span></div>
-          <div><b>3</b><span><strong>The organiser reviews everything</strong><small>You can update your submitted designs until the organiser checks out.</small></span></div>
-          <div><b>4</b><span><strong>One person pays</strong><small>Only the organiser checks out. Adding a design here does not create an order or charge you.</small></span></div>
+          <div><b>2</b><span><strong>Add it to your cart</strong><small>Once you are happy with your design, add it to your cart as usual.</small></span></div>
+          <div><b>3</b><span><strong>Add your cart to the group</strong><small>Tap “Add to Group”, then enter your name so the organiser knows whose designs they are.</small></span></div>
+          <div><b>4</b><span><strong>The organiser reviews everything</strong><small>You can update your submitted designs until the organiser checks out.</small></span></div>
+          <div><b>5</b><span><strong>One person pays</strong><small>Only the organiser checks out. Adding designs here does not create an order or charge you.</small></span></div>
         </div>
         <button id="closeSharedGroupHowBtn" type="button" class="submit-btn">Got It</button>
       </div>
