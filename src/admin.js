@@ -339,7 +339,6 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   delivery_fee: 2.50,
   free_delivery_threshold: 50,
   max_orders_per_date: 2,
-  daily_keychain_capacity: 12,
   bulk_buffer_days: 1,
   large_order_quantity: 7,
   bulk_order_quantity: 15,
@@ -1100,7 +1099,6 @@ function renderScheduleCalendar() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthLabel = scheduleMonth.toLocaleDateString("en-SG", { month: "long", year: "numeric" });
   const maxOrders = Math.max(1, Number(adminShopSettings.max_orders_per_date || 2));
-  const maxKeychains = Math.max(1, Number(adminShopSettings.daily_keychain_capacity || 12));
   const closedDates = new Set();
   adminShopClosures.forEach(closure => {
     const cursor = new Date(`${closure.start_date}T12:00:00`);
@@ -1118,7 +1116,7 @@ function renderScheduleCalendar() {
     const due = getScheduleOrdersForDate(dateValue);
     const pickups = latestOrders.filter(order => isScheduleOrderActive(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === dateValue);
     const keychains = due.reduce((sum, order) => sum + (order.order_data || []).length, 0);
-    const isFull = due.length >= maxOrders || keychains >= maxKeychains;
+    const isFull = due.length >= maxOrders;
     const classes = [
       "schedule-day",
       dateValue === selectedScheduleDate ? "is-selected" : "",
@@ -1149,7 +1147,6 @@ function renderScheduleCalendar() {
       </div>
       <div class="schedule-capacity-strip">
         <span><strong>${maxOrders}</strong> orders / production day</span>
-        <span><strong>${maxKeychains}</strong> keychains / production day</span>
         <span><strong>${adminShopSettings.bulk_buffer_days || 0}</strong> event buffer day${Number(adminShopSettings.bulk_buffer_days || 0) === 1 ? "" : "s"}</span>
       </div>
       <div class="schedule-toolbar">
@@ -1160,7 +1157,7 @@ function renderScheduleCalendar() {
       <div class="schedule-weekdays">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(day => `<span>${day}</span>`).join("")}</div>
       <div class="schedule-grid">${cells.join("")}</div>
       <section class="schedule-date-detail">
-        <div><p class="section-kicker">Selected date</p><h3>${formatDate(selectedScheduleDate)}</h3><span>${selectedOrders.length}/${maxOrders} orders · ${selectedKeychains}/${maxKeychains} keychains due</span></div>
+        <div><p class="section-kicker">Selected date</p><h3>${formatDate(selectedScheduleDate)}</h3><span>${selectedOrders.length}/${maxOrders} orders · ${selectedKeychains} keychain${selectedKeychains === 1 ? "" : "s"} due</span></div>
         <div class="schedule-detail-list">
           ${detailRows.map(order => `
             <button type="button" onclick="window.focusOrder('${escapeAdminHtml(String(order.id))}')">
@@ -1345,10 +1342,9 @@ function renderSettingsWorkspace() {
 
         <section class="settings-card">
           <h3>Capacity & turnaround</h3>
-          <p class="hint">A date closes when either its order limit or keychain limit is reached. Buffer days are reserved around event orders only, so regular orders do not create weeks of unnecessary waiting.</p>
+          <p class="hint">A date closes when its order limit is reached. The number of keychains does not close a standard production day. Buffer days are reserved around event orders only.</p>
           <div class="settings-slider-stack">
             ${settingSlider("max_orders_per_date", "Orders accepted per production day", 1, 12)}
-            ${settingSlider("daily_keychain_capacity", "Keychains accepted per production day", 3, 60)}
             ${settingSlider("bulk_buffer_days", "Protected days around event orders", 0, 4)}
             ${settingSlider("standard_min_working_days", "Small order minimum lead time", 1, 10, " days")}
             ${settingSlider("standard_max_working_days", "Small order maximum lead time", 1, 14, " days")}
@@ -1694,7 +1690,6 @@ async function saveShopSettings(event) {
     weekday: parsePickupTimes("pickup_times_weekday"),
     weekend: parsePickupTimes("pickup_times_weekend")
     }),
-    daily_keychain_capacity: Math.max(1, Number(form.get("daily_keychain_capacity") || 12)),
     bulk_buffer_days: Math.max(0, Number(form.get("bulk_buffer_days") || 0)),
     contact_whatsapp_number: String(form.get("contact_whatsapp_number") || "")
       .replace(/\D/g, "") || "6585121915"
@@ -1755,9 +1750,6 @@ async function saveShopSettings(event) {
 
   adminShopSettings = {
     ...data,
-    daily_keychain_capacity: Math.max(1, Number(
-      data.pickup_time_options?.daily_keychain_capacity || 12
-    )),
     bulk_buffer_days: Math.max(0, Number(
       data.pickup_time_options?.bulk_buffer_days ?? 1
     )),
@@ -11293,11 +11285,6 @@ async function loadAdminSettings() {
     adminShopSettings.contact_whatsapp_number ||
     "6585121915"
   ).replace(/\D/g, "") || "6585121915";
-  adminShopSettings.daily_keychain_capacity = Math.max(1, Number(
-    adminShopSettings.pickup_time_options?.daily_keychain_capacity ||
-    adminShopSettings.daily_keychain_capacity ||
-    12
-  ));
   adminShopSettings.bulk_buffer_days = Math.max(0, Number(
     adminShopSettings.pickup_time_options?.bulk_buffer_days ??
     adminShopSettings.bulk_buffer_days ??

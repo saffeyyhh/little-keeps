@@ -406,6 +406,15 @@ export function formatDateRange(startValue, endValue, formatter) {
   return start === end ? start : `${start}–${end}`;
 }
 
+export function getCustomerDueDate(productionDate, pickupDate = "") {
+  const production = String(productionDate || "").slice(0, 10);
+  const pickup = String(pickupDate || "").slice(0, 10);
+
+  if (!production) return pickup;
+  if (!pickup) return production;
+  return pickup > production ? pickup : production;
+}
+
 export function isPickupDay(dateValue) {
   const date = new Date(`${String(dateValue).slice(0, 10)}T12:00:00`);
   if (Number.isNaN(date.getTime())) return false;

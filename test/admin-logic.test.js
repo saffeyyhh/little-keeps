@@ -30,6 +30,7 @@ import {
   normalizeAssemblyProgress,
   assessRushDateCapacity,
   formatDateRange,
+  getCustomerDueDate,
   formatProductionMinutes,
   isOrderReminderFinishedOrExpired,
   isPickupDay,
@@ -75,6 +76,12 @@ test("uses the three promised keychain turnaround tiers", () => {
 test("shows a single estimate when both dates are the same", () => {
   assert.equal(formatDateRange("11 Aug", "11 Aug"), "11 Aug");
   assert.equal(formatDateRange("11 Aug", "13 Aug"), "11 Aug–13 Aug");
+});
+
+test("uses a later pickup appointment as the customer due date", () => {
+  assert.equal(getCustomerDueDate("2026-08-14", "2026-08-16"), "2026-08-16");
+  assert.equal(getCustomerDueDate("2026-08-14", "2026-08-12"), "2026-08-14");
+  assert.equal(getCustomerDueDate("2026-08-14", ""), "2026-08-14");
 });
 
 test("offers pickup only on Wednesdays, Fridays, and weekends", () => {

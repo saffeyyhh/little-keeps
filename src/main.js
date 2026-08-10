@@ -13,6 +13,7 @@ import "flatpickr/dist/flatpickr.min.css";
 import {
   calculateGiftingBagTotal,
   formatDateRange,
+  getCustomerDueDate,
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
   getPickupTimeRanges,
@@ -60,7 +61,6 @@ const DEFAULT_SHOP_SETTINGS = {
   delivery_fee: 2.5,
   free_delivery_threshold: 50,
   max_orders_per_date: 2,
-  daily_keychain_capacity: 12,
   bulk_buffer_days: 1,
   large_order_quantity: 7,
   standard_min_working_days: 2,
@@ -228,11 +228,6 @@ try {
 
   if (error) throw error;
   if (data) shopSettings = { ...shopSettings, ...data };
-  shopSettings.daily_keychain_capacity = Math.max(1, Number(
-    shopSettings.pickup_time_options?.daily_keychain_capacity ||
-    shopSettings.daily_keychain_capacity ||
-    12
-  ));
   shopSettings.bulk_buffer_days = Math.max(0, Number(
     shopSettings.pickup_time_options?.bulk_buffer_days ??
     shopSettings.bulk_buffer_days ??
@@ -503,6 +498,10 @@ const bulkOrderQuantity = Math.max(
   largeOrderQuantity + 1,
   Math.round(getSettingNumber("bulk_order_quantity", 15))
 );
+const standardMinimumDays = Math.max(1, getSettingNumber("standard_min_working_days", 2));
+const standardMaximumDays = Math.max(standardMinimumDays, getSettingNumber("standard_max_working_days", 3));
+const largeMinimumDays = Math.max(standardMaximumDays, getSettingNumber("large_min_working_days", 4));
+const largeMaximumDays = Math.max(largeMinimumDays, getSettingNumber("large_max_working_days", 5));
 const rushFeeSmall = Math.max(0, getSettingNumber("rush_fee_small", 5));
 const rushFeeLarge = Math.max(rushFeeSmall, getSettingNumber("rush_fee_large", 8));
 
@@ -914,7 +913,7 @@ document.querySelector("#app").innerHTML = `
       <article><span>Pickup</span><strong id="availabilityPickupDate">Checking…</strong><small>First selectable appointment</small></article>
       <article><span>Event orders</span><strong id="availabilityBulkDate">Checking…</strong><small>Earliest dispatch request</small></article>
     </div>
-    <p id="availabilityPreviewNote">We accept up to ${Math.max(1, Number(shopSettings.max_orders_per_date || 2))} orders or ${Math.max(1, Number(shopSettings.daily_keychain_capacity || 12))} keychains per production day. Fully booked dates are hidden automatically.</p>
+    <p id="availabilityPreviewNote">We accept up to ${Math.max(1, Number(shopSettings.max_orders_per_date || 2))} orders per production day. Fully booked dates are hidden automatically.</p>
   </div>
 </section>
 
@@ -2059,23 +2058,29 @@ Chloe</textarea>
   </div>
 
   <div class="policy-grid">
-    <details>
+    <details class="production-policy">
       <summary>Production and timing</summary>
-      <ul>
-        <li>1–3 keychains usually require 2–3 working days.</li>
-        <li>4–6 keychains usually require 3–4 working days.</li>
-        <li>7–14 keychains usually require 4–5 working days.</li>
-        <li>The date shown at checkout includes current availability and closures.</li>
-        <li>For ${bulkOrderQuantity}–29 keychains, allow at least 7 days.</li>
-        <li>For 30–50 keychains, allow at least 14 days.</li>
-        <li>51–75 keychains take approximately 1.5–2 weeks.</li>
-        <li>76–100 keychains take approximately 2–3 weeks.</li>
-        <li>101–150 keychains take approximately 3–4 weeks.</li>
-        <li>More than 150 keychains take approximately 4–6 weeks.</li>
-        <li>Event orders are available by islandwide delivery only.</li>
-        <li>We’ll confirm the timing and final quote before payment.</li>
-        <li>Rush requests are subject to availability.</li>
-      </ul>
+      <div class="policy-timing-copy">
+        <p>Every Little Keep is made to order. Your checkout date updates automatically with our current bookings and scheduled shop closures.</p>
+        <div class="policy-timing-groups">
+          <article>
+            <strong>Standard orders</strong>
+            <span><b>1–3 keychains</b> · around ${standardMinimumDays}–${standardMaximumDays} working days</span>
+            <span><b>4–6 keychains</b> · around ${standardMaximumDays}–${largeMinimumDays} working days</span>
+            <span><b>7–14 keychains</b> · around ${largeMinimumDays}–${largeMaximumDays} working days</span>
+          </article>
+          <article>
+            <strong>Event orders</strong>
+            <span><b>${bulkOrderQuantity}–29 keychains</b> · at least 7 working days</span>
+            <span><b>30–50 keychains</b> · at least 14 days</span>
+            <span><b>51–75 keychains</b> · around 1.5–2 weeks</span>
+            <span><b>76–100 keychains</b> · around 2–3 weeks</span>
+            <span><b>101–150 keychains</b> · around 3–4 weeks</span>
+            <span><b>151+ keychains</b> · around 4–6 weeks</span>
+          </article>
+        </div>
+        <p class="policy-timing-note"><strong>Event orders:</strong> Islandwide delivery only. We’ll confirm the timing and final quote before payment. Need it sooner? Rush requests are available where production allows.</p>
+      </div>
     </details>
 
     <details>
@@ -6033,9 +6038,18 @@ async function submitOrderOnce() {
     (checkoutOrderType === "bulk" ||
       (checkoutOrderType === "rush" && !rushAutoApproved));
 
-  const assignedNeededBy = ["rush", "bulk"].includes(checkoutOrderType)
+  const productionNeededBy = ["rush", "bulk"].includes(checkoutOrderType)
     ? requestedCompletionDate.value
     : await findAutomaticAvailableDate();
+  const selectedPickupDate =
+    collectionMethod.value !== "delivery" &&
+    !hasVerifiedLinkedOrder()
+      ? checkoutPickupDate.value
+      : "";
+  const assignedNeededBy = getCustomerDueDate(
+    productionNeededBy,
+    selectedPickupDate
+  );
 
   neededBy.value = assignedNeededBy;
 
@@ -6142,7 +6156,7 @@ async function submitOrderOnce() {
     estimated_ready_from: toLocalDateString(estimatedReadyFrom),
     estimated_ready_to: isReviewRequest
       ? toLocalDateString(estimatedReadyTo)
-      : assignedNeededBy,
+      : productionNeededBy,
     review_status: isReviewRequest
       ? "Pending Review"
       : rushAutoApproved

@@ -1,6 +1,6 @@
 -- Little Keeps capacity-based scheduling
 -- Run this entire file once in the Supabase SQL Editor.
--- Normal orders use daily order + keychain capacity. The adjustable buffer is
+-- Normal orders use a daily order limit. The adjustable buffer is
 -- reserved around event orders only; there is no every-other-day restriction.
 
 drop trigger if exists validate_website_order_booking_trigger on public.orders;
@@ -25,7 +25,6 @@ set search_path = public
 as $$
 declare
   v_order_limit integer := 2;
-  v_keychain_limit integer := 12;
   v_bulk_buffer integer := 1;
   v_order_count integer := 0;
   v_keychain_count integer := 0;
@@ -40,9 +39,8 @@ begin
 
   select
     greatest(1, coalesce(max_orders_per_date, 2)),
-    greatest(1, coalesce((pickup_time_options ->> 'daily_keychain_capacity')::integer, 12)),
     greatest(0, coalesce((pickup_time_options ->> 'bulk_buffer_days')::integer, 1))
-  into v_order_limit, v_keychain_limit, v_bulk_buffer
+  into v_order_limit, v_bulk_buffer
   from public.shop_settings
   where id = 1;
 
@@ -73,21 +71,23 @@ begin
   from public.orders
   where archived_at is null
     and coalesce(status, '') not in ('Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded')
-    and coalesce(requested_completion_date, needed_by)::date = p_date;
+    and (
+      case
+        when order_type in ('rush', 'bulk') then coalesce(requested_completion_date, needed_by)::date
+        else coalesce(estimated_ready_to, needed_by)::date
+      end
+    ) = p_date;
 
   return jsonb_build_object(
     'allowed',
-      v_order_count + 1 <= v_order_limit
-      and v_keychain_count + greatest(1, coalesce(p_quantity, 1)) <= v_keychain_limit,
+      v_order_count + 1 <= v_order_limit,
     'reason', case
       when v_order_count + 1 > v_order_limit then 'The order slots for this date are full.'
-      when v_keychain_count + greatest(1, coalesce(p_quantity, 1)) > v_keychain_limit then 'This order would exceed the keychain capacity for this date.'
       else 'Production slot available.'
     end,
     'orders', v_order_count,
     'order_limit', v_order_limit,
-    'keychains', v_keychain_count,
-    'keychain_limit', v_keychain_limit
+    'keychains', v_keychain_count
   );
 end;
 $$;
@@ -160,8 +160,12 @@ begin
     select 1 from public.orders
     where archived_at is null
       and coalesce(status, '') not in ('Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded')
-      and coalesce(requested_completion_date, needed_by)::date
-        between p_date - v_buffer and p_date + v_buffer
+      and (
+        case
+          when order_type in ('rush', 'bulk') then coalesce(requested_completion_date, needed_by)::date
+          else coalesce(estimated_ready_to, needed_by)::date
+        end
+      ) between p_date - v_buffer and p_date + v_buffer
   ) then
     return jsonb_build_object('allowed', false, 'reason', 'This event production window already contains an order.');
   end if;
@@ -203,7 +207,12 @@ declare
 begin
   if coalesce(new.order_source, 'Website') <> 'Website' then return new; end if;
 
-  v_date := coalesce(new.requested_completion_date, new.needed_by)::date;
+  v_date := case
+    when new.order_type in ('rush', 'bulk') then
+      coalesce(new.requested_completion_date, new.needed_by)::date
+    else
+      coalesce(new.estimated_ready_to, new.needed_by)::date
+  end;
   v_quantity := greatest(1, jsonb_array_length(coalesce(new.order_data, '[]'::jsonb)));
 
   if new.order_type = 'bulk' then
