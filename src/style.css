@@ -1880,8 +1880,18 @@ label {
 }
 
 .final-order-confirmation input {
-  margin-top: 2px;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  margin: 1px 0 0;
+  padding: 0;
   accent-color: #ef4f88;
+}
+
+.final-order-confirmation span {
+  min-width: 0;
+  line-height: 1.5;
 }
 
 .order-self-service-actions {
@@ -2405,6 +2415,53 @@ label {
 
 .review-item-heading p {
   margin: 3px 0;
+}
+
+.review-price-breakdown {
+  margin-top: 12px;
+  padding: 11px 12px;
+  display: grid;
+  gap: 7px;
+  border: 1px solid #efdae3;
+  border-radius: 13px;
+  background: #fffafb;
+  font-size: 11px;
+}
+
+.review-price-breakdown > strong {
+  color: #72545f;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.review-price-breakdown > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.review-price-breakdown b {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.review-price-breakdown .is-add-on b {
+  color: #a64068;
+}
+
+.review-price-breakdown .review-unit-total,
+.review-price-breakdown .review-quantity-total {
+  padding-top: 7px;
+  border-top: 1px solid #ecd7df;
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.review-price-breakdown .review-quantity-total b {
+  color: var(--pink-dark);
 }
 
 .review-item-actions {

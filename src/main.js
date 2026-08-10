@@ -3572,6 +3572,49 @@ function calculatePrice(design, name = "") {
   });
 }
 
+function getUnitPriceBreakdown(design, name = "") {
+  const characterCount = Array.from(sanitizeName(name)).length;
+  const includedCharacters = Math.max(0, Number(activeProduct.included_characters) || 0);
+  const extraCharacters = Math.max(0, characterCount - includedCharacters);
+  const extraBaseColours = Math.max(
+    0,
+    getUniqueColourCount(design.bases) - Number(activeProduct.included_base_colours || 0)
+  );
+  const extraCapColours = Math.max(
+    0,
+    getUniqueColourCount(design.caps) - Number(activeProduct.included_cap_colours || 0)
+  );
+  const extraLetterColours = Math.max(
+    0,
+    getUniqueColourCount(design.letters) - Number(activeProduct.included_letter_colours || 0)
+  );
+  const basePrice = getProductDisplayPrice(activeProduct);
+  const rows = [{
+    label: `Base price · includes up to ${includedCharacters} character${includedCharacters === 1 ? "" : "s"}`,
+    amount: basePrice,
+    addOn: false
+  }];
+
+  [
+    ["Extra character", extraCharacters, Number(activeProduct.extra_character_price || 0)],
+    ["Extra base colour", extraBaseColours, Number(activeProduct.extra_base_colour_price || 0)],
+    ["Extra cap colour", extraCapColours, Number(activeProduct.extra_cap_colour_price || 0)],
+    ["Extra letter colour", extraLetterColours, Number(activeProduct.extra_letter_colour_price || 0)]
+  ].forEach(([label, quantity, unitAmount]) => {
+    if (!quantity || !unitAmount) return;
+    rows.push({
+      label: `${label}${quantity === 1 ? "" : "s"} · ${quantity} × S$${unitAmount.toFixed(2)}`,
+      amount: roundMoney(quantity * unitAmount),
+      addOn: true
+    });
+  });
+
+  return {
+    rows,
+    unitTotal: calculatePrice(design, name)
+  };
+}
+
 function getActiveDesign() {
   const item = names[selectedIndex];
 
@@ -5359,6 +5402,7 @@ function renderReviewOrder() {
   names.forEach((item, index) => {
     const design = getDesign(item);
     const unitPrice = calculatePrice(design, item.name);
+    const priceBreakdown = getUnitPriceBreakdown(design, item.name);
     const itemQuantity = getItemQuantity(item);
     const price = roundMoney(unitPrice * itemQuantity);
 
@@ -5392,6 +5436,26 @@ function renderReviewOrder() {
 
       <div class="mini-chain">
         ${createMiniPreview(item.name, design)}
+      </div>
+
+      <div class="review-price-breakdown">
+        <strong>Price per keychain</strong>
+        ${priceBreakdown.rows.map(part => `
+          <div${part.addOn ? ' class="is-add-on"' : ""}>
+            <span>${part.label}</span>
+            <b>${part.addOn ? "+" : ""}S$${part.amount.toFixed(2)}</b>
+          </div>
+        `).join("")}
+        <div class="review-unit-total">
+          <span>Price per keychain</span>
+          <b>S$${priceBreakdown.unitTotal.toFixed(2)}</b>
+        </div>
+        ${itemQuantity > 1 ? `
+          <div class="review-quantity-total">
+            <span>${itemQuantity} keychains × S$${priceBreakdown.unitTotal.toFixed(2)}</span>
+            <b>S$${price.toFixed(2)}</b>
+          </div>
+        ` : ""}
       </div>
 
       <div class="review-item-actions">
