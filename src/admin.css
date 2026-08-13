@@ -8301,3 +8301,106 @@ body::before {
   .schedule-day small { display: none; }
   .schedule-detail-list button { flex-direction: column; }
 }
+.admin-order-pipeline {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #dbe5f0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fff, #f6f9fe);
+}
+
+.admin-order-pipeline > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.admin-order-pipeline h3,
+.admin-order-pipeline p { margin: 0; }
+.admin-order-pipeline > header > span { color: #64748b; font-size: 12px; }
+.admin-order-pipeline-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.admin-order-pipeline-steps button {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  background: #fff;
+  color: #26364d;
+  text-align: left;
+}
+.admin-order-pipeline-steps button:hover { border-color: #8fb4e8; background: #f5f9ff; transform: translateY(-1px); }
+.admin-order-pipeline-steps i { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; color: #fff; background: #2563eb; font-style: normal; font-weight: 900; }
+.admin-order-pipeline-steps span { min-width: 0; display: grid; gap: 3px; }
+.admin-order-pipeline-steps strong { font-size: 12px; }
+.admin-order-pipeline-steps small { color: #718096; font-size: 10px; line-height: 1.35; }
+.admin-order-pipeline-steps b { min-width: 25px; padding: 4px 7px; border-radius: 999px; color: #1d4ed8; background: #eaf2ff; text-align: center; }
+
+.fulfilment-tools,
+.fulfilment-section {
+  border: 1px solid #dbe5f0;
+  border-radius: 15px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+.fulfilment-tools > summary,
+.fulfilment-section > summary,
+.fulfilment-card-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 17px;
+  cursor: pointer;
+  list-style: none;
+}
+.fulfilment-tools > summary::-webkit-details-marker,
+.fulfilment-section > summary::-webkit-details-marker,
+.fulfilment-card-summary::-webkit-details-marker { display: none; }
+.fulfilment-tools > summary span,
+.fulfilment-section > summary span,
+.fulfilment-card-summary > span:first-child { display: grid; gap: 3px; }
+.fulfilment-tools > summary small,
+.fulfilment-section > summary small,
+.fulfilment-card-summary small { color: #718096; font-size: 11px; }
+.fulfilment-tools > summary i,
+.fulfilment-section > summary i,
+.fulfilment-card-summary i { font-style: normal; transition: transform .2s ease; }
+.fulfilment-tools[open] > summary i,
+.fulfilment-section[open] > summary i,
+.fulfilment-card[open] > summary i { transform: rotate(180deg); }
+.fulfilment-tools .route-assistance-bar { border: 0; border-top: 1px solid #dbe5f0; border-radius: 0; }
+.fulfilment-section-body { display: grid; gap: 10px; padding: 0 14px 14px; }
+
+.fulfilment-card {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  background: #fff;
+}
+.fulfilment-card-summary { background: #fff; }
+.fulfilment-card[open] > .fulfilment-card-summary { border-bottom: 1px solid #e5edf0; background: #f9fbff; }
+.fulfilment-summary-status { display: flex; align-items: center; gap: 8px; }
+.fulfilment-summary-status em { padding: 4px 7px; border-radius: 999px; color: #65428f; background: #f1eafa; font-size: 10px; font-style: normal; font-weight: 900; }
+.fulfilment-card-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, 250px); gap: 16px; padding: 15px; }
+.fulfilment-card-info { min-width: 0; }
+.linked-fulfilment-family { display: grid; gap: 4px; margin: 10px 0; padding: 11px 12px; border: 1px solid #ddcff0; border-radius: 11px; background: #f8f4fc; }
+.linked-fulfilment-family strong { color: #65428f; }
+.linked-fulfilment-family span { color: #71647a; font-size: 11px; line-height: 1.45; }
+
+@media (max-width: 1000px) {
+  .admin-order-pipeline-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .admin-order-pipeline > header { align-items: start; flex-direction: column; }
+  .admin-order-pipeline-steps { grid-template-columns: 1fr; }
+  .fulfilment-card-body { grid-template-columns: 1fr; }
+  .fulfilment-summary-status em { display: none; }
+}

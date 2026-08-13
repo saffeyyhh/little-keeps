@@ -937,8 +937,9 @@ function renderTodayOrder(order) {
 }
 
 function renderTodayWorkspace(orders) {
-  const priority = getPriorityOrders(orders);
-  const operational = getOperationalBuckets(orders);
+  const groupedOrders = groupLinkedOrdersForAdmin(orders);
+  const priority = getPriorityOrders(groupedOrders);
+  const operational = getOperationalBuckets(groupedOrders);
   const dueNow = priority.filter(order => {
     const days = getDaysUntil(order.needed_by);
     return days !== null && days <= 1 && !["Rush Review", "Bulk Review"].includes(order.status);
@@ -953,6 +954,16 @@ function renderTodayWorkspace(orders) {
     ["Payment Verified", "Printing"].includes(order.status)
   );
   const fulfilment = priority.filter(order => FULFILMENT_STATUSES.includes(order.status));
+  const workflowOrders = groupedOrders.filter(order =>
+    !order.archived_at && ACTIVE_ORDER_STATUSES.includes(order.status)
+  );
+  const workflowReview = workflowOrders.filter(order =>
+    ["Rush Review", "Bulk Review", "Pending Payment", "Payment Verification"].includes(order.status)
+  );
+  const workflowPrintPlan = workflowOrders.filter(order => order.status === "Payment Verified");
+  const workflowPrinting = workflowOrders.filter(order => order.status === "Printing");
+  const workflowAssembly = operational.assemblyInProgress;
+  const workflowFulfilment = workflowOrders.filter(order => FULFILMENT_STATUSES.includes(order.status));
   const reprints = productionJobs.filter(job =>
     ["failed", "reprint_needed"].includes(job.quality_status)
   );
@@ -987,6 +998,30 @@ function renderTodayWorkspace(orders) {
       </div>
       <button class="ready-btn" type="button" onclick="window.openProductionView()">Open Production</button>
     </div>
+
+    <section class="admin-order-pipeline" aria-label="Order workflow">
+      <header>
+        <div><p class="section-kicker">Order workflow</p><h3>Move every order from left to right</h3></div>
+        <span>Linked orders stay together throughout</span>
+      </header>
+      <div class="admin-order-pipeline-steps">
+        <button type="button" onclick="window.openAdminWorkflow('orders')">
+          <i>1</i><span><strong>Review & payment</strong><small>Approve requests and verify payment</small></span><b>${workflowReview.length}</b>
+        </button>
+        <button type="button" onclick="window.openAdminWorkflow('production')">
+          <i>2</i><span><strong>Labels & print plan</strong><small>Print basket labels and optimise plates</small></span><b>${workflowPrintPlan.length}</b>
+        </button>
+        <button type="button" onclick="window.openAdminWorkflow('production')">
+          <i>3</i><span><strong>Printing</strong><small>Track plates, printers and picked parts</small></span><b>${workflowPrinting.length}</b>
+        </button>
+        <button type="button" onclick="window.openAdminWorkflow('assembly')">
+          <i>4</i><span><strong>Assembly & QC</strong><small>Assemble, check and pack once</small></span><b>${workflowAssembly.length}</b>
+        </button>
+        <button type="button" onclick="window.openAdminWorkflow('fulfilment')">
+          <i>5</i><span><strong>Fulfilment</strong><small>Pickup, dispatch and complete</small></span><b>${workflowFulfilment.length}</b>
+        </button>
+      </div>
+    </section>
 
     ${lowStock.length ? `
       <div class="stock-alert">
@@ -1031,6 +1066,18 @@ function renderTodayWorkspace(orders) {
     </div>
   `;
 }
+
+window.openAdminWorkflow = function(stage) {
+  const tabs = {
+    orders: ordersViewBtn,
+    production: productionViewBtn,
+    assembly: assemblyViewBtn,
+    fulfilment: fulfilmentViewBtn
+  };
+  currentView = tabs[stage] ? stage : "today";
+  setActiveTab(tabs[stage] || todayViewBtn);
+  renderCurrentView();
+};
 
 window.focusOrder = function(id) {
   currentView = "orders";
@@ -1414,7 +1461,7 @@ function renderSettingsWorkspace() {
             <input name="contact_whatsapp_number" inputmode="tel" value="${escapeAdminHtml(adminShopSettings.contact_whatsapp_number || "6585121915")}" placeholder="6585121915">
           </label>
           <p class="hint">Include the country code without + or spaces. This updates every customer-facing WhatsApp link.</p>
-          <label class="settings-toggle"><input name="status_emails_enabled" type="checkbox" ${checked(adminShopSettings.status_emails_enabled)}> Automatically email important status changes</label>
+          <label class="settings-toggle"><input name="status_emails_enabled" type="checkbox" ${checked(adminShopSettings.status_emails_enabled)}> Automatically email pickup-ready, out-for-delivery and completed updates</label>
           <label class="settings-field">
             <span>EmailJS status-template ID</span>
             <input name="status_email_template_id" value="${escapeAdminHtml(adminShopSettings.status_email_template_id || "")}" placeholder="template_xxxxxxx">
@@ -2171,13 +2218,10 @@ window.moveAssemblyToFulfilment = async function(id) {
   if (!order) return;
 
   if (!IS_ADMIN_PREVIEW) {
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        status: "Assembly Complete",
-        status_updated_at: new Date().toISOString()
-      })
-      .eq("id", id);
+    const { error } = await updateOrderFamily(order, {
+      status: "Assembly Complete",
+      status_updated_at: new Date().toISOString()
+    });
 
     if (error) {
       alert("Unable to move this completed order to Fulfilment.");
@@ -2284,6 +2328,12 @@ window.markReady = async function(id) {
     .in("id", familyIds);
   if (readyError) {
     alert("Stock was deducted, but the fulfilment status could not be updated.");
+    await loadOrders();
+    return;
+  }
+
+  if (isDelivery) {
+    alert("Order moved to Pending Delivery. This is an internal step, so no customer email was sent.");
     await loadOrders();
     return;
   }
@@ -4006,12 +4056,11 @@ function renderOrders(orders) {
           </button>
         ` : ""}
 
-        ${order.customer_email && [
-          "Pending Pickup",
-          "Pending Delivery",
-          "Out for Delivery",
-          "Completed"
-        ].includes(order.status) ? `
+        ${order.customer_email && (
+          order.collection_method === "delivery"
+            ? ["Out for Delivery", "Completed"].includes(order.status)
+            : ["Pending Pickup", "Completed"].includes(order.status)
+        ) ? `
           <button
             type="button"
             class="approve-request-action"
@@ -4178,14 +4227,24 @@ function renderFulfilmentWorkspace(orders) {
   const pickups = ready.filter(order => order.collection_method !== "delivery");
 
   const fulfilmentCard = order => `
-    <article class="fulfilment-card">
-      <label class="route-stop-select">
-        <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
-        <span>Select labels</span>
-      </label>
-      <div>
-        <strong>${escapeAdminHtml(order.order_ref || "-")} · ${escapeAdminHtml(order.customer_name || "Customer")}</strong>
-        <p><span class="order-status-badge">${escapeAdminHtml(order.status || "-")}</span></p>
+    <details class="fulfilment-card">
+      <summary class="fulfilment-card-summary">
+        <span>
+          <strong>${escapeAdminHtml(order.order_ref || "-")} · ${escapeAdminHtml(order.customer_name || "Customer")}</strong>
+          <small>${getOrderKeychainCount(order)} keychain${getOrderKeychainCount(order) === 1 ? "" : "s"} · ${escapeAdminHtml(getMethodLabel(order.collection_method))}</small>
+        </span>
+        <span class="fulfilment-summary-status">
+          ${order.linked_children?.length ? `<em>${order.linked_children.length + 1} linked parts</em>` : ""}
+          <b class="order-status-badge">${escapeAdminHtml(order.status || "-")}</b>
+          <i aria-hidden="true">⌄</i>
+        </span>
+      </summary>
+      <div class="fulfilment-card-body">
+      <div class="fulfilment-card-info">
+        <label class="route-stop-select">
+          <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
+          <span>Select for label printing</span>
+        </label>
         ${order.collection_method === "delivery" ? `
           <p>${escapeAdminHtml(order.delivery_address || "Address missing")}</p>
           <label class="route-stop-select">
@@ -4198,7 +4257,12 @@ function renderFulfilmentWorkspace(orders) {
             ? `${formatDate(order.pickup_scheduled_date)} at ${escapeAdminHtml(order.pickup_time_range || "time not selected")}`
             : "Pickup appointment not selected"}</p>
         `}
-        ${order.linked_children?.length ? `<p class="hint">Includes ${order.linked_children.length} linked add-on${order.linked_children.length === 1 ? "" : "s"} under this order ID.</p>` : ""}
+        ${order.linked_children?.length ? `
+          <div class="linked-fulfilment-family">
+            <strong>One linked order · update once</strong>
+            <span>${[order, ...order.linked_children].map(part => `${escapeAdminHtml(part.order_ref || "Part")} (${getOrderKeychainCount(part)} keychain${getOrderKeychainCount(part) === 1 ? "" : "s"})`).join(" · ")}</span>
+          </div>
+        ` : ""}
         ${renderOrderAlerts(order, true)}
         ${renderProductionNote(order, true)}
         ${renderAssemblyChecklist(order, true)}
@@ -4234,7 +4298,11 @@ function renderFulfilmentWorkspace(orders) {
           <button type="button" class="approve-request-action" onclick='window.copyHandDeliveredWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Delivered</button>
           <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Complete Delivery</button>
         ` : ""}
-        ${order.status !== "Assembly Complete" && order.customer_email ? `
+        ${order.customer_email && (
+          order.collection_method === "delivery"
+            ? ["Out for Delivery", "Completed"].includes(order.status)
+            : ["Pending Pickup", "Completed"].includes(order.status)
+        ) ? `
           <button type="button" class="approve-request-action" onclick='window.resendCurrentStatusEmail(${JSON.stringify(String(order.id))}, this)'>
             Resend Customer Email
           </button>
@@ -4244,7 +4312,8 @@ function renderFulfilmentWorkspace(orders) {
         </button>
         <button type="button" onclick='window.focusOrder(${JSON.stringify(String(order.id))})'>Open order</button>
       </div>
-    </article>
+      </div>
+    </details>
   `;
 
   let previousRoute = "";
@@ -4260,32 +4329,39 @@ function renderFulfilmentWorkspace(orders) {
   ordersContainer.innerHTML = `
     <div class="fulfilment-heading">
       <div>
-        <h2>Assembly complete → notify when ready</h2>
-        <p>Nothing is emailed automatically here. Pack and check the handoff details, then send the pickup or delivery email when you are ready.</p>
+        <h2>Pack → hand off → complete</h2>
+        <p>Delivery customers are emailed only when the order goes out for delivery and when it is delivered. Pending Delivery stays internal.</p>
       </div>
       <span>${pickups.length} pickup · ${deliveries.length} delivery</span>
     </div>
-    <div class="route-assistance-bar">
-      <div>
-        <strong>Google Maps route assistance</strong>
-        <span>Choose delivery stops, then open them in Maps. This helps plan the route but is not guaranteed live optimisation.</span>
-      </div>
-      <div class="route-assistance-actions">
+    <details class="fulfilment-tools">
+      <summary><span><strong>Labels & delivery tools</strong><small>Batch printing and route planning</small></span><i>⌄</i></summary>
+      <div class="route-assistance-bar">
+        <div>
+          <strong>Prepare handoffs in one go</strong>
+          <span>Select orders inside the cards, then print labels or open the selected delivery route.</span>
+        </div>
+        <div class="route-assistance-actions">
         <button type="button" class="shipping-label-action" onclick="window.printSelectedBasketLabels()">Print Selected Basket Labels</button>
         <button type="button" class="shipping-label-secondary" onclick="window.printAllBasketLabels()">Print All ${ready.length || ""} Basket Labels</button>
         <button type="button" class="hand-delivery-label-action" onclick="window.printSelectedHandDeliveryLabels()">Print Selected Hand-Delivery Labels</button>
         <button type="button" class="hand-delivery-label-secondary" onclick="window.printAllHandDeliveryLabels()">Print All ${deliveries.length || ""} Hand-Delivery Labels</button>
         <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
+        </div>
       </div>
-    </div>
-    <section class="fulfilment-section">
-      <h3>Deliveries</h3>
+    </details>
+    <details class="fulfilment-section" ${deliveries.length ? "open" : ""}>
+      <summary><span><strong>Deliveries</strong><small>Ready, pending and out for delivery</small></span><b>${deliveries.length}</b><i>⌄</i></summary>
+      <div class="fulfilment-section-body">
       ${deliveryHtml || `<p class="today-empty">No deliveries are ready.</p>`}
-    </section>
-    <section class="fulfilment-section">
-      <h3>Pickups</h3>
+      </div>
+    </details>
+    <details class="fulfilment-section" ${pickups.length ? "open" : ""}>
+      <summary><span><strong>Pickups</strong><small>Ready for collection and appointments</small></span><b>${pickups.length}</b><i>⌄</i></summary>
+      <div class="fulfilment-section-body">
       ${pickups.map(fulfilmentCard).join("") || `<p class="today-empty">No pickups are ready.</p>`}
-    </section>
+      </div>
+    </details>
   `;
 }
 
@@ -10919,15 +10995,8 @@ window.copyHandDeliveredWhatsApp = async function(id, button) {
 function getStatusEmailContent(order, status) {
   const isDelivery = order.collection_method === "delivery";
 
-  if (["Pending Pickup", "Pending Delivery", "Ready for Pickup/Delivery"].includes(status)) {
-    return isDelivery
-      ? {
-          title: "Your order is pending delivery!",
-          message: "Your Little Keeps order has finished production and is packed safely. We’ll arrange its delivery shortly.",
-          actionTitle: "What happens next",
-          actionDetails: "Watch for another update when your order is handed to the courier or begins delivery."
-        }
-      : {
+  if (["Pending Pickup", "Ready for Pickup/Delivery"].includes(status) && !isDelivery) {
+    return {
           title: "Your order is ready for pickup! 🩷",
           message: "Your personalised Little Keeps order has finished production, passed its quality check and is ready for collection.",
           actionTitle: `${getPickupLocation(order.collection_method)} pickup`,
@@ -11081,12 +11150,11 @@ window.resendCurrentStatusEmail = async function(id, button) {
     return;
   }
 
-  if (![
-    "Pending Pickup",
-    "Pending Delivery",
-    "Out for Delivery",
-    "Completed"
-  ].includes(order.status)) {
+  const canResend = order.collection_method === "delivery"
+    ? ["Out for Delivery", "Completed"].includes(order.status)
+    : ["Pending Pickup", "Completed"].includes(order.status);
+
+  if (!canResend) {
     alert("This order does not currently have a status email to resend.");
     return;
   }
@@ -11198,9 +11266,11 @@ async function updateOrderStatus(id, status) {
     }
   }
 
-  const shouldSendStatusUpdate =
-    previousStatus !== status &&
-    ["Pending Pickup", "Pending Delivery", "Out for Delivery", "Completed"].includes(status);
+  const shouldSendStatusUpdate = previousStatus !== status && (
+    status === "Completed" ||
+    (order.collection_method === "delivery" && status === "Out for Delivery") ||
+    (order.collection_method !== "delivery" && status === "Pending Pickup")
+  );
 
   if (shouldSendStatusUpdate) {
     try {
