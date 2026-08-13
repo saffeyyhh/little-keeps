@@ -4241,10 +4241,12 @@ function renderFulfilmentWorkspace(orders) {
       </summary>
       <div class="fulfilment-card-body">
       <div class="fulfilment-card-info">
-        <label class="route-stop-select">
-          <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
-          <span>Select for label printing</span>
-        </label>
+        ${order.collection_method === "delivery" ? `
+          <label class="route-stop-select">
+            <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
+            <span>Select hand-delivery label</span>
+          </label>
+        ` : ""}
         ${order.collection_method === "delivery" ? `
           <p>${escapeAdminHtml(order.delivery_address || "Address missing")}</p>
           <label class="route-stop-select">
@@ -4268,9 +4270,6 @@ function renderFulfilmentWorkspace(orders) {
         ${renderAssemblyChecklist(order, true)}
       </div>
       <div class="fulfilment-card-actions">
-        <button type="button" class="shipping-label-action" onclick='window.printBasketLabel(${JSON.stringify(String(order.id))})'>
-          Print Basket Label
-        </button>
         ${order.collection_method === "delivery" ? `
           <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>
             Print Hand-Delivery Label
@@ -4335,15 +4334,13 @@ function renderFulfilmentWorkspace(orders) {
       <span>${pickups.length} pickup · ${deliveries.length} delivery</span>
     </div>
     <details class="fulfilment-tools">
-      <summary><span><strong>Labels & delivery tools</strong><small>Batch printing and route planning</small></span><i>⌄</i></summary>
+      <summary><span><strong>Delivery tools</strong><small>Hand-delivery labels and route planning</small></span><i>⌄</i></summary>
       <div class="route-assistance-bar">
         <div>
-          <strong>Prepare handoffs in one go</strong>
-          <span>Select orders inside the cards, then print labels or open the selected delivery route.</span>
+          <strong>Prepare deliveries in one go</strong>
+          <span>Select delivery orders inside the cards, then print hand-delivery labels or open the selected route.</span>
         </div>
         <div class="route-assistance-actions">
-        <button type="button" class="shipping-label-action" onclick="window.printSelectedBasketLabels()">Print Selected Basket Labels</button>
-        <button type="button" class="shipping-label-secondary" onclick="window.printAllBasketLabels()">Print All ${ready.length || ""} Basket Labels</button>
         <button type="button" class="hand-delivery-label-action" onclick="window.printSelectedHandDeliveryLabels()">Print Selected Hand-Delivery Labels</button>
         <button type="button" class="hand-delivery-label-secondary" onclick="window.printAllHandDeliveryLabels()">Print All ${deliveries.length || ""} Hand-Delivery Labels</button>
         <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
