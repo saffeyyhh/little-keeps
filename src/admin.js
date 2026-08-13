@@ -4247,6 +4247,18 @@ function renderFulfilmentWorkspace(orders) {
             <span>Select hand-delivery label</span>
           </label>
         ` : ""}
+        <div class="fulfilment-contact-card">
+          <div>
+            <span>${order.collection_method === "delivery" ? "Courier contact" : "Customer contact"}</span>
+            <strong>${escapeAdminHtml(order.customer_phone || "Phone number missing")}</strong>
+            <small>${escapeAdminHtml(order.customer_email || "Email missing")}</small>
+          </div>
+          <div>
+            ${order.customer_phone ? `<button type="button" onclick='window.copyFulfilmentContact(${JSON.stringify(String(order.id))}, "phone", this)'>Copy Phone</button>` : ""}
+            ${order.customer_email ? `<button type="button" onclick='window.copyFulfilmentContact(${JSON.stringify(String(order.id))}, "email", this)'>Copy Email</button>` : ""}
+            ${order.customer_phone && order.customer_email ? `<button type="button" onclick='window.copyFulfilmentContact(${JSON.stringify(String(order.id))}, "both", this)'>Copy Both</button>` : ""}
+          </div>
+        </div>
         ${order.collection_method === "delivery" ? `
           <p>${escapeAdminHtml(order.delivery_address || "Address missing")}</p>
           <label class="route-stop-select">
@@ -4361,6 +4373,34 @@ function renderFulfilmentWorkspace(orders) {
     </details>
   `;
 }
+
+window.copyFulfilmentContact = async function(id, type, button) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(
+    item => String(item.id) === String(id)
+  );
+  if (!order) return;
+
+  const phone = String(order.customer_phone || "").trim();
+  const email = String(order.customer_email || "").trim();
+  const value = type === "phone"
+    ? phone
+    : type === "email"
+      ? email
+      : `Phone: ${phone}\nEmail: ${email}`;
+  if (!value) return;
+
+  try {
+    await navigator.clipboard.writeText(value);
+    if (button) {
+      const previousLabel = button.textContent;
+      button.textContent = "Copied ✓";
+      setTimeout(() => { button.textContent = previousLabel; }, 1800);
+    }
+  } catch (error) {
+    console.error("Unable to copy fulfilment contact:", error);
+    window.prompt("Copy contact details:", value);
+  }
+};
 
 function getBaseInventoryName(baseName, baseShape = "ribbed") {
   const shapeLabel =
