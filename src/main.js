@@ -1292,7 +1292,7 @@ Chloe</textarea>
               <span>We’ll create one complete colour combination for you.</span>
             </div>
             <button id="randomiseColoursBtn" type="button" class="randomise-colours-btn">
-              Surprise Me
+              Surprise Me — All Parts
             </button>
           </div>
           <details class="random-colour-options">
@@ -1388,6 +1388,7 @@ Chloe</textarea>
           <div class="colour-part-panel active" data-colour-part-panel="base" role="tabpanel">
             <div id="baseSlots" class="slot-row"></div>
 
+            <button id="randomiseBaseColoursBtn" type="button" class="part-surprise-btn">Surprise Me for Base Only ✨</button>
             <p id="baseColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="baseColourHint" class="colour-hint">
@@ -1400,6 +1401,7 @@ Chloe</textarea>
           <div id="clickyCapColourSection" class="colour-part-panel clicky-only-option" data-colour-part-panel="cap" role="tabpanel" hidden>
             <div id="capSlots" class="slot-row"></div>
 
+            <button id="randomiseCapColoursBtn" type="button" class="part-surprise-btn">Surprise Me for Cap Only ✨</button>
             <p id="capColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="capColourHint" class="colour-hint">
@@ -1412,6 +1414,7 @@ Chloe</textarea>
           <div class="colour-part-panel" data-colour-part-panel="letter" role="tabpanel" hidden>
             <div id="letterSlots" class="slot-row"></div>
 
+            <button id="randomiseLetterColoursBtn" type="button" class="part-surprise-btn">Surprise Me for Letter Only ✨</button>
             <p id="letterColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="letterColourHint" class="colour-hint">
@@ -7834,6 +7837,8 @@ applyAllToggle.addEventListener("change", () => {
 });
 
 resetSelected.onclick = () => {
+  if (randomiseMultipleColours) randomiseMultipleColours.checked = false;
+  if (randomiseColoursStatus) randomiseColoursStatus.textContent = "";
   if (names[selectedIndex]) {
     names[selectedIndex].custom = null;
     refreshUI();
@@ -8446,6 +8451,8 @@ discardDraftBtn.onclick = () => {
   promoCodeInput.value = "";
   showPromoStatus("");
   draftHasMeaningfulChanges = false;
+  if (randomiseMultipleColours) randomiseMultipleColours.checked = false;
+  if (randomiseColoursStatus) randomiseColoursStatus.textContent = "";
 
   draftModal.classList.add("hidden");
 
