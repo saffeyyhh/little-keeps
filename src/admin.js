@@ -1245,6 +1245,27 @@ function formatPromoDate(value) {
   });
 }
 
+function connectAdminColourInputs(row) {
+  const picker = row?.querySelector('[name="colour_hex_picker"]');
+  const hexInput = row?.querySelector('[name="colour_hex"]');
+  if (!picker || !hexInput) return;
+
+  picker.addEventListener("input", () => {
+    hexInput.value = picker.value.toUpperCase();
+  });
+  hexInput.addEventListener("input", () => {
+    let value = hexInput.value.trim().toUpperCase();
+    if (value && !value.startsWith("#")) value = `#${value}`;
+    hexInput.value = value;
+    if (/^#[0-9A-F]{6}$/.test(value)) picker.value = value;
+  });
+  hexInput.addEventListener("blur", () => {
+    if (!/^#[0-9A-F]{6}$/.test(hexInput.value)) {
+      hexInput.value = picker.value.toUpperCase();
+    }
+  });
+}
+
 function renderSettingsWorkspace() {
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
@@ -1420,10 +1441,14 @@ function renderSettingsWorkspace() {
           <div id="adminColourManager" class="admin-colour-manager">
             ${ADMIN_COLOUR_OPTIONS.map((colour, index) => `
               <article class="admin-colour-manager-row" data-colour-row>
-                <input class="admin-colour-picker" name="colour_hex" type="color" value="${escapeAdminHtml(colour.hex)}" aria-label="${escapeAdminHtml(colour.name)} colour">
+                <input class="admin-colour-picker" name="colour_hex_picker" type="color" value="${escapeAdminHtml(colour.hex)}" aria-label="${escapeAdminHtml(colour.name)} colour picker">
                 <label class="settings-field admin-colour-name">
                   <span>Colour name</span>
                   <input name="colour_name" maxlength="50" value="${escapeAdminHtml(colour.name)}" required>
+                </label>
+                <label class="settings-field admin-colour-hex">
+                  <span>Hex code</span>
+                  <input name="colour_hex" maxlength="7" value="${escapeAdminHtml(colour.hex)}" placeholder="#F6A6B8" pattern="#[0-9A-Fa-f]{6}" required>
                 </label>
                 <label class="admin-colour-visible">
                   <input name="colour_active" type="checkbox" ${checked(colour.active)}>
@@ -1678,8 +1703,9 @@ function renderSettingsWorkspace() {
     row.className = "admin-colour-manager-row";
     row.dataset.colourRow = "";
     row.innerHTML = `
-      <input class="admin-colour-picker" name="colour_hex" type="color" value="#F5A3C2" aria-label="New colour">
+      <input class="admin-colour-picker" name="colour_hex_picker" type="color" value="#F5A3C2" aria-label="New colour picker">
       <label class="settings-field admin-colour-name"><span>Colour name</span><input name="colour_name" maxlength="50" placeholder="e.g. Peach" required></label>
+      <label class="settings-field admin-colour-hex"><span>Hex code</span><input name="colour_hex" maxlength="7" value="#F5A3C2" placeholder="#F6A6B8" pattern="#[0-9A-Fa-f]{6}" required></label>
       <label class="admin-colour-visible"><input name="colour_active" type="checkbox" checked> Show to customers</label>
       <label class="admin-colour-visible admin-colour-oos"><input name="colour_unavailable" type="checkbox"> Out of stock</label>
       <div class="admin-colour-order-actions" aria-label="Reorder new colour">
@@ -1688,9 +1714,11 @@ function renderSettingsWorkspace() {
       </div>
     `;
     colourManager.append(row);
+    connectAdminColourInputs(row);
     refreshColourOrderButtons();
     row.querySelector('[name="colour_name"]').focus();
   });
+  colourManager?.querySelectorAll("[data-colour-row]").forEach(connectAdminColourInputs);
   const reviewImageInput = document.getElementById("reviewImageInput");
   reviewImageInput?.addEventListener("change", () => {
     const preview = document.getElementById("reviewImagePreview");

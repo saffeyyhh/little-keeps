@@ -5823,13 +5823,18 @@ a {
 
 .admin-colour-manager-row {
   display: grid;
-  grid-template-columns: 48px minmax(180px, 1fr) auto auto auto;
+  grid-template-columns: 48px minmax(160px, 1fr) 112px auto auto auto;
   align-items: end;
   gap: 12px;
   padding: 12px;
   border: 1px solid #e1e8f0;
   border-radius: 13px;
   background: #fff;
+}
+
+.admin-colour-hex input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-transform: uppercase;
 }
 
 .admin-colour-picker {
@@ -6433,6 +6438,7 @@ a {
   }
 
   .admin-colour-visible { grid-column: 1 / -1; }
+  .admin-colour-hex { grid-column: 1 / -1; }
   .admin-colour-order-actions { grid-column: 1 / -1; }
 
   .admin-page {
