@@ -39,6 +39,10 @@ import {
   DEFAULT_PRODUCT_CATALOG,
   normalizeProductCatalog
 } from "./product-catalog.js";
+import {
+  DEFAULT_COLOUR_OPTIONS,
+  normalizeColourOptions
+} from "./colour-catalog.js";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
@@ -358,6 +362,7 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   contact_whatsapp_number: "6585121915",
   stripe_enabled: false,
   unavailable_colours: [],
+  colour_options: DEFAULT_COLOUR_OPTIONS,
   pickup_time_options: {
     weekday: ["7:00 PM", "7:30 PM", "8:00 PM"],
     weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
@@ -375,20 +380,7 @@ let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 let adminProductsLoadFailed = false;
 
-const ADMIN_COLOUR_OPTIONS = [
-  { name: "Jade White", hex: "#FFFFFF" },
-  { name: "Sunflower Yellow", hex: "#FEC600" },
-  { name: "Gold", hex: "#E4BD68" },
-  { name: "Pink", hex: "#F55A74" },
-  { name: "Maroon Red", hex: "#9D2235" },
-  { name: "Turquoise", hex: "#00B1B7" },
-  { name: "Cyan", hex: "#0086D6" },
-  { name: "Mistletoe Green", hex: "#3F8E43" },
-  { name: "Dark Green", hex: "#68724D" },
-  { name: "Purple", hex: "#5E43B7" },
-  { name: "Indigo Purple", hex: "#482960" },
-  { name: "Black", hex: "#000000" }
-];
+let ADMIN_COLOUR_OPTIONS = normalizeColourOptions(DEFAULT_COLOUR_OPTIONS);
 
 function getUnavailableAdminColours() {
   return new Set(
@@ -1419,39 +1411,36 @@ function renderSettingsWorkspace() {
         <section class="settings-card settings-card-wide">
           <div class="settings-card-heading">
             <div>
-              <h3>Colour availability</h3>
-              <p class="hint">Tick a colour to mark it out of stock across bases, caps and letters.</p>
+              <h3>Colours</h3>
+              <p class="hint">Add new filament colours, rename them, arrange their customer-facing order, or hide discontinued colours.</p>
             </div>
-            <strong id="colourStockCount" class="colour-stock-count">
-              ${unavailableColours.size} out of stock
-            </strong>
+            <button id="addAdminColourBtn" class="ready-btn" type="button">+ Add Colour</button>
           </div>
 
-          <div class="admin-colour-grid">
-            ${ADMIN_COLOUR_OPTIONS.map(colour => {
-              const isUnavailable = unavailableColours.has(colour.name.toLowerCase());
-
-              return `
-                <label class="admin-colour-option ${isUnavailable ? "is-oos" : ""}">
-                  <input
-                    name="unavailable_colours"
-                    type="checkbox"
-                    value="${escapeAdminHtml(colour.name)}"
-                    ${checked(isUnavailable)}
-                  >
-                  <span
-                    class="admin-colour-dot"
-                    style="background:${colour.hex};"
-                    aria-hidden="true"
-                  ></span>
-                  <span class="admin-colour-copy">
-                    <strong>${escapeAdminHtml(colour.name)}</strong>
-                    <small>${isUnavailable ? "Out of stock" : "Available"}</small>
-                  </span>
+          <div id="adminColourManager" class="admin-colour-manager">
+            ${ADMIN_COLOUR_OPTIONS.map((colour, index) => `
+              <article class="admin-colour-manager-row" data-colour-row>
+                <input class="admin-colour-picker" name="colour_hex" type="color" value="${escapeAdminHtml(colour.hex)}" aria-label="${escapeAdminHtml(colour.name)} colour">
+                <label class="settings-field admin-colour-name">
+                  <span>Colour name</span>
+                  <input name="colour_name" maxlength="50" value="${escapeAdminHtml(colour.name)}" required>
                 </label>
-              `;
-            }).join("")}
+                <label class="admin-colour-visible">
+                  <input name="colour_active" type="checkbox" ${checked(colour.active)}>
+                  Show to customers
+                </label>
+                <label class="admin-colour-visible admin-colour-oos">
+                  <input name="colour_unavailable" type="checkbox" ${checked(unavailableColours.has(colour.name.toLowerCase()))}>
+                  Out of stock
+                </label>
+                <div class="admin-colour-order-actions" aria-label="Reorder ${escapeAdminHtml(colour.name)}">
+                  <button type="button" data-colour-move="up" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeAdminHtml(colour.name)} up">↑</button>
+                  <button type="button" data-colour-move="down" ${index === ADMIN_COLOUR_OPTIONS.length - 1 ? "disabled" : ""} aria-label="Move ${escapeAdminHtml(colour.name)} down">↓</button>
+                </div>
+              </article>
+            `).join("")}
           </div>
+          <p class="hint admin-colour-manager-note">Use “Out of stock” for a temporary pause. Turn off “Show to customers” for discontinued colours; existing orders still keep their original colour details.</p>
         </section>
 
         <section class="settings-card">
@@ -1664,23 +1653,44 @@ function renderSettingsWorkspace() {
   `;
 
   document.getElementById("shopSettingsForm").addEventListener("submit", saveShopSettings);
-  document
-    .querySelectorAll('.admin-colour-option input[name="unavailable_colours"]')
-    .forEach(input => {
-      input.addEventListener("change", () => {
-        const option = input.closest(".admin-colour-option");
-        option.classList.toggle("is-oos", input.checked);
-        option.querySelector("small").textContent =
-          input.checked ? "Out of stock" : "Available";
-
-        const count = document.querySelectorAll(
-          '.admin-colour-option input[name="unavailable_colours"]:checked'
-        ).length;
-        document.getElementById("colourStockCount").textContent =
-          `${count} out of stock`;
-      });
+  const colourManager = document.getElementById("adminColourManager");
+  const refreshColourOrderButtons = () => {
+    const rows = Array.from(colourManager?.querySelectorAll("[data-colour-row]") || []);
+    rows.forEach((row, index) => {
+      row.querySelector('[data-colour-move="up"]').disabled = index === 0;
+      row.querySelector('[data-colour-move="down"]').disabled = index === rows.length - 1;
     });
-
+  };
+  colourManager?.addEventListener("click", event => {
+    const button = event.target.closest("[data-colour-move]");
+    const row = button?.closest("[data-colour-row]");
+    if (!button || !row) return;
+    if (button.dataset.colourMove === "up" && row.previousElementSibling) {
+      colourManager.insertBefore(row, row.previousElementSibling);
+    }
+    if (button.dataset.colourMove === "down" && row.nextElementSibling) {
+      colourManager.insertBefore(row.nextElementSibling, row);
+    }
+    refreshColourOrderButtons();
+  });
+  document.getElementById("addAdminColourBtn")?.addEventListener("click", () => {
+    const row = document.createElement("article");
+    row.className = "admin-colour-manager-row";
+    row.dataset.colourRow = "";
+    row.innerHTML = `
+      <input class="admin-colour-picker" name="colour_hex" type="color" value="#F5A3C2" aria-label="New colour">
+      <label class="settings-field admin-colour-name"><span>Colour name</span><input name="colour_name" maxlength="50" placeholder="e.g. Peach" required></label>
+      <label class="admin-colour-visible"><input name="colour_active" type="checkbox" checked> Show to customers</label>
+      <label class="admin-colour-visible admin-colour-oos"><input name="colour_unavailable" type="checkbox"> Out of stock</label>
+      <div class="admin-colour-order-actions" aria-label="Reorder new colour">
+        <button type="button" data-colour-move="up" aria-label="Move new colour up">↑</button>
+        <button type="button" data-colour-move="down" aria-label="Move new colour down">↓</button>
+      </div>
+    `;
+    colourManager.append(row);
+    refreshColourOrderButtons();
+    row.querySelector('[name="colour_name"]').focus();
+  });
   const reviewImageInput = document.getElementById("reviewImageInput");
   reviewImageInput?.addEventListener("change", () => {
     const preview = document.getElementById("reviewImagePreview");
@@ -1724,10 +1734,34 @@ async function saveShopSettings(event) {
   updates.stripe_enabled = form.has("stripe_enabled");
   updates.status_email_template_id = String(form.get("status_email_template_id") || "").trim();
   updates.review_url = String(form.get("review_url") || "").trim();
-  updates.unavailable_colours = form
-    .getAll("unavailable_colours")
-    .map(name => String(name).trim())
-    .filter(Boolean);
+  const colourRows = Array.from(
+    event.currentTarget.querySelectorAll("[data-colour-row]")
+  );
+  const colourOptions = colourRows.map(row => ({
+    name: String(row.querySelector('[name="colour_name"]')?.value || "").trim(),
+    hex: String(row.querySelector('[name="colour_hex"]')?.value || "").toUpperCase(),
+    active: Boolean(row.querySelector('[name="colour_active"]')?.checked)
+  }));
+  const colourNameKeys = colourOptions.map(colour => colour.name.toLowerCase());
+  const colourHexKeys = colourOptions.map(colour => colour.hex.toLowerCase());
+  const coloursAreValid = colourOptions.every(colour =>
+    colour.name && /^#[0-9a-f]{6}$/i.test(colour.hex)
+  ) && new Set(colourNameKeys).size === colourOptions.length &&
+    new Set(colourHexKeys).size === colourOptions.length;
+  if (!coloursAreValid) {
+    alert("Every colour needs a unique name and colour value.");
+    return;
+  }
+  const normalizedColourOptions = normalizeColourOptions(colourOptions, []);
+  if (!normalizedColourOptions.some(colour => colour.active)) {
+    alert("Keep at least one colour visible to customers.");
+    return;
+  }
+  updates.unavailable_colours = colourRows.flatMap((row, index) =>
+    row.querySelector('[name="colour_unavailable"]')?.checked
+      ? [normalizedColourOptions[index].name]
+      : []
+  );
   const parsePickupTimes = name => String(form.get(name) || "")
     .split(/[\n,]+/)
     .map(value => value.trim())
@@ -1739,7 +1773,8 @@ async function saveShopSettings(event) {
     }),
     bulk_buffer_days: Math.max(0, Number(form.get("bulk_buffer_days") || 0)),
     contact_whatsapp_number: String(form.get("contact_whatsapp_number") || "")
-      .replace(/\D/g, "") || "6585121915"
+      .replace(/\D/g, "") || "6585121915",
+    colour_options: normalizedColourOptions
   };
   updates.updated_at = new Date().toISOString();
 
@@ -1805,6 +1840,10 @@ async function saveShopSettings(event) {
     ).replace(/\D/g, "") || "6585121915",
     pickup_time_options: normalizePickupTimeOptions(data.pickup_time_options)
   };
+  adminShopSettings.colour_options = normalizeColourOptions(
+    data.pickup_time_options?.colour_options || normalizedColourOptions
+  );
+  ADMIN_COLOUR_OPTIONS = adminShopSettings.colour_options;
   alert("Shop settings saved ✓");
   renderSettingsWorkspace();
 }
@@ -11405,6 +11444,7 @@ async function loadAdminSettings() {
     adminSettingsLoadFailed = false;
     adminReviewsLoadFailed = false;
     adminShopSettings = { ...DEFAULT_ADMIN_SHOP_SETTINGS };
+    ADMIN_COLOUR_OPTIONS = normalizeColourOptions(adminShopSettings.colour_options);
     adminPromoCodes = [];
     adminCustomerReviews = [];
     adminShopClosures = [];
@@ -11462,6 +11502,11 @@ async function loadAdminSettings() {
     adminShopSettings.bulk_buffer_days ??
     1
   ));
+  adminShopSettings.colour_options = normalizeColourOptions(
+    adminShopSettings.pickup_time_options?.colour_options ||
+    adminShopSettings.colour_options
+  );
+  ADMIN_COLOUR_OPTIONS = adminShopSettings.colour_options;
   adminShopSettings.pickup_time_options = normalizePickupTimeOptions(
     adminShopSettings.pickup_time_options
   );

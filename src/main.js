@@ -34,6 +34,10 @@ import {
   getProductDisplayPrice,
   normalizeProductCatalog
 } from "./product-catalog.js";
+import {
+  DEFAULT_COLOUR_OPTIONS,
+  normalizeColourOptions
+} from "./colour-catalog.js";
 
 const isManualOrder =
   new URLSearchParams(window.location.search).get("manual") === "true";
@@ -74,6 +78,7 @@ const DEFAULT_SHOP_SETTINGS = {
   status_emails_enabled: false,
   status_email_template_id: "",
   unavailable_colours: [],
+  colour_options: DEFAULT_COLOUR_OPTIONS,
   promo_code: "CHILDRENSDAY",
   promo_percent_off: 10,
   promo_enabled: true,
@@ -228,6 +233,9 @@ try {
 
   if (error) throw error;
   if (data) shopSettings = { ...shopSettings, ...data };
+  shopSettings.colour_options = normalizeColourOptions(
+    shopSettings.pickup_time_options?.colour_options || shopSettings.colour_options
+  );
   shopSettings.bulk_buffer_days = Math.max(0, Number(
     shopSettings.pickup_time_options?.bulk_buffer_days ??
     shopSettings.bulk_buffer_days ??
@@ -267,24 +275,21 @@ const unavailableColourNames = new Set(
   ).map(name => String(name).trim().toLowerCase())
 );
 
-const shopColourNameByHex = {
-  "#ffffff": "Jade White",
-  "#fec600": "Sunflower Yellow",
-  "#e4bd68": "Gold",
-  "#f55a74": "Pink",
-  "#9d2235": "Maroon Red",
-  "#00b1b7": "Turquoise",
-  "#0086d6": "Cyan",
-  "#3f8e43": "Mistletoe Green",
-  "#68724d": "Dark Green",
-  "#5e43b7": "Purple",
-  "#482960": "Indigo Purple",
-  "#000000": "Black"
-};
+const shopColourNameByHex = Object.fromEntries(
+  shopSettings.colour_options.map(colour => [colour.hex.toLowerCase(), colour.name])
+);
+const activeShopColourHexes = new Set(
+  shopSettings.colour_options
+    .filter(colour => colour.active)
+    .map(colour => colour.hex.toLowerCase())
+);
 
 function isShopColourAvailable(colour) {
-  const name = shopColourNameByHex[String(colour || "").toLowerCase()];
-  return !name || !unavailableColourNames.has(name.toLowerCase());
+  const hex = String(colour || "").toLowerCase();
+  const name = shopColourNameByHex[hex];
+  return activeShopColourHexes.has(hex) &&
+    Boolean(name) &&
+    !unavailableColourNames.has(name.toLowerCase());
 }
 
 try {
@@ -2631,81 +2636,14 @@ manualDeliveryAddressBtn.addEventListener("click", () => {
 const ribbedBaseBtn = document.getElementById("ribbedBaseBtn");
 const bubblyBaseBtn = document.getElementById("bubblyBaseBtn");
 
-const colours = [
-  {
-    name: "Jade White",
-    colour: "#FFFFFF",
-    available: !unavailableColourNames.has("jade white"),
+const colours = shopSettings.colour_options
+  .filter(item => item.active)
+  .map(item => ({
+    name: item.name,
+    colour: item.hex,
+    available: !unavailableColourNames.has(item.name.toLowerCase()),
     note: ""
-  },
-  {
-    name: "Sunflower Yellow",
-    colour: "#FEC600",
-    available: !unavailableColourNames.has("sunflower yellow"),
-    note: ""
-  },
-  {
-    name: "Gold",
-    colour: "#E4BD68",
-    available: !unavailableColourNames.has("gold"),
-    note: ""
-  },
-  {
-    name: "Pink",
-    colour: "#F55A74",
-    available: !unavailableColourNames.has("pink"),
-    note: ""
-  },
-  {
-    name: "Maroon Red",
-    colour: "#9D2235",
-    available: !unavailableColourNames.has("maroon red"),
-    note: ""
-  },
-  {
-    name: "Turquoise",
-    colour: "#00B1B7",
-    available: !unavailableColourNames.has("turquoise"),
-    note: ""
-  },
-  {
-    name: "Cyan",
-    colour: "#0086D6",
-    available: !unavailableColourNames.has("cyan"),
-    note: ""
-  },
-  {
-    name: "Mistletoe Green",
-    colour: "#3F8E43",
-    available: !unavailableColourNames.has("mistletoe green"),
-    note: ""
-  },
-  {
-    name: "Dark Green",
-    colour: "#68724D",
-    available: !unavailableColourNames.has("dark green"),
-    note: ""
-  },
-
-  {
-    name: "Purple",
-    colour: "#5E43B7",
-    available: !unavailableColourNames.has("purple"),
-    note: ""
-  },
-  {
-    name: "Indigo Purple",
-    colour: "#482960",
-    available: !unavailableColourNames.has("indigo purple"),
-    note: ""
-  },
-  {
-    name: "Black",
-    colour: "#000000",
-    available: !unavailableColourNames.has("black"),
-    note: ""
-  }
-];
+  }));
 const baseColours = colours;
 const capColours = colours;
 const letterColours = colours;
