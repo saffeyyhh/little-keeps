@@ -380,6 +380,7 @@ let adminReviewsLoadFailed = false;
 let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 let adminProductsLoadFailed = false;
+let adminSettingsTab = "products";
 
 let ADMIN_COLOUR_OPTIONS = normalizeColourOptions(DEFAULT_COLOUR_OPTIONS);
 
@@ -1302,14 +1303,21 @@ function renderSettingsWorkspace() {
       ` : ""}
       <div class="settings-intro">
         <div>
-          <h2>Run the shop without editing code</h2>
-          <p class="hint">Pricing, capacity, turnaround, email updates and stock reminders are controlled here.</p>
+          <h2>Shop settings</h2>
+          <p class="hint">Everything is grouped so you can find and update it quickly.</p>
         </div>
         <button class="ready-btn" type="submit" ${adminSettingsLoadFailed ? "disabled" : ""}>Save Settings</button>
       </div>
 
+      <nav class="settings-section-tabs" aria-label="Settings sections">
+        <button type="button" data-settings-tab="products">Products & pricing</button>
+        <button type="button" data-settings-tab="scheduling">Schedule & capacity</button>
+        <button type="button" data-settings-tab="stock">Stock & colours</button>
+        <button type="button" data-settings-tab="customer">Customer tools</button>
+      </nav>
+
       <div class="settings-grid">
-        <section class="settings-card settings-card-wide product-settings-section">
+        <section class="settings-card settings-card-wide product-settings-section" data-settings-group="products">
           <div class="settings-card-heading">
             <div>
               <h3>Products & pricing</h3>
@@ -1387,7 +1395,7 @@ function renderSettingsWorkspace() {
           </div>
         </section>
 
-        <section class="settings-card">
+        <section class="settings-card" data-settings-group="products">
           <h3>Checkout</h3>
           <div class="settings-fields two-columns">
             ${settingNumber("delivery_fee", "Delivery fee ($)", "0.10")}
@@ -1396,7 +1404,7 @@ function renderSettingsWorkspace() {
           <p class="hint">Product prices are managed separately above.</p>
         </section>
 
-        <section class="settings-card">
+        <section class="settings-card" data-settings-group="scheduling">
           <h3>Exact pickup times</h3>
           <p class="hint">Enter one selectable time per line. Customers choose an exact appointment, not a time range.</p>
           <label class="settings-field">
@@ -1409,7 +1417,7 @@ function renderSettingsWorkspace() {
           </label>
         </section>
 
-        <section class="settings-card">
+        <section class="settings-card" data-settings-group="scheduling">
           <h3>Capacity & turnaround</h3>
           <p class="hint">A date closes when its order limit is reached. The number of keychains does not close a standard production day. Buffer days are reserved around event orders only.</p>
           <div class="settings-slider-stack">
@@ -1430,7 +1438,7 @@ function renderSettingsWorkspace() {
           </div>
         </section>
 
-        <section class="settings-card">
+        <section class="settings-card" data-settings-group="stock">
           <h3>Stock reminders</h3>
           <div class="settings-fields">
             ${settingNumber("mechanical_switch_low_stock", "Warn when switches reach")}
@@ -1438,11 +1446,11 @@ function renderSettingsWorkspace() {
           </div>
         </section>
 
-        <section class="settings-card settings-card-wide">
+        <section class="settings-card settings-card-wide" data-settings-group="stock">
           <div class="settings-card-heading">
             <div>
               <h3>Colours</h3>
-              <p class="hint">Add new filament colours, rename them, arrange their customer-facing order, or hide discontinued colours.</p>
+              <p class="hint">Manage the customer palette and tell the print planner how many rolls of each colour can run at once.</p>
             </div>
             <button id="addAdminColourBtn" class="ready-btn" type="button">+ Add Colour</button>
           </div>
@@ -1465,6 +1473,10 @@ function renderSettingsWorkspace() {
                     ${COLOUR_MATERIAL_TYPES.map(material => `<option value="${material}" ${colour.material_type === material ? "selected" : ""}>${material}</option>`).join("")}
                   </select>
                 </label>
+                <label class="settings-field admin-colour-rolls">
+                  <span>Rolls available</span>
+                  <input name="colour_roll_count" type="number" min="1" max="20" step="1" value="${escapeAdminHtml(colour.roll_count || 1)}" required>
+                </label>
                 <label class="admin-colour-visible">
                   <input name="colour_active" type="checkbox" ${checked(colour.active)}>
                   Show to customers
@@ -1480,10 +1492,10 @@ function renderSettingsWorkspace() {
               </article>
             `).join("")}
           </div>
-          <p class="hint admin-colour-manager-note">Use “Out of stock” for a temporary pause. Turn off “Show to customers” for discontinued colours; existing orders still keep their original colour details.</p>
+          <p class="hint admin-colour-manager-note">One roll means that colour can run on only one printer per wave. Save two or more rolls to let both printers use it together. Use “Out of stock” for a temporary customer-facing pause.</p>
         </section>
 
-        <section class="settings-card">
+        <section class="settings-card" data-settings-group="customer">
           <h3>Customer updates</h3>
           <label class="settings-field">
             <span>Shop WhatsApp number</span>
@@ -1502,7 +1514,7 @@ function renderSettingsWorkspace() {
           <p class="hint">Use the supplied status email HTML in EmailJS, then paste that template ID here.</p>
         </section>
 
-        <section class="settings-card settings-card-wide">
+        <section class="settings-card settings-card-wide" data-settings-group="scheduling">
           <div class="settings-card-heading">
             <div>
               <h3>Shop closures</h3>
@@ -1526,7 +1538,7 @@ function renderSettingsWorkspace() {
           </div>
         </section>
 
-        <section class="settings-card settings-card-wide">
+        <section class="settings-card settings-card-wide" data-settings-group="customer">
           <h3>Online payment</h3>
           <div class="payment-readiness">
             <div>
@@ -1538,7 +1550,7 @@ function renderSettingsWorkspace() {
         </section>
       </div>
 
-      <section class="settings-card promo-manager">
+      <section class="settings-card promo-manager" data-settings-group="customer">
         <div class="settings-card-heading">
           <div><h3>Promo codes</h3><p class="hint">Schedule codes and feature one in the storefront announcement bar.</p></div>
         </div>
@@ -1583,7 +1595,7 @@ function renderSettingsWorkspace() {
         </div>
       </section>
 
-      <section class="settings-card review-manager">
+      <section class="settings-card review-manager" data-settings-group="customer">
         <div class="settings-card-heading">
           <div>
             <h3>Customer reviews</h3>
@@ -1693,6 +1705,25 @@ function renderSettingsWorkspace() {
   `;
 
   document.getElementById("shopSettingsForm").addEventListener("submit", saveShopSettings);
+  const showSettingsTab = tab => {
+    const validTabs = ["products", "scheduling", "stock", "customer"];
+    adminSettingsTab = validTabs.includes(tab) ? tab : "products";
+    document.querySelectorAll("[data-settings-tab]").forEach(button => {
+      const isActive = button.dataset.settingsTab === adminSettingsTab;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+    });
+    document.querySelectorAll("[data-settings-group]").forEach(section => {
+      section.classList.toggle(
+        "settings-group-hidden",
+        section.dataset.settingsGroup !== adminSettingsTab
+      );
+    });
+  };
+  document.querySelectorAll("[data-settings-tab]").forEach(button => {
+    button.addEventListener("click", () => showSettingsTab(button.dataset.settingsTab));
+  });
+  showSettingsTab(adminSettingsTab);
   const colourManager = document.getElementById("adminColourManager");
   const refreshColourOrderButtons = () => {
     const rows = Array.from(colourManager?.querySelectorAll("[data-colour-row]") || []);
@@ -1722,6 +1753,7 @@ function renderSettingsWorkspace() {
       <label class="settings-field admin-colour-name"><span>Colour name</span><input name="colour_name" maxlength="50" placeholder="e.g. Peach" required></label>
       <label class="settings-field admin-colour-hex"><span>Hex code</span><input name="colour_hex" maxlength="7" value="#F5A3C2" placeholder="#F6A6B8" pattern="#[0-9A-Fa-f]{6}" required></label>
       <label class="settings-field admin-colour-material"><span>Material</span><select name="colour_material"><option value="BASIC">BASIC</option><option value="MATTE">MATTE</option></select></label>
+      <label class="settings-field admin-colour-rolls"><span>Rolls available</span><input name="colour_roll_count" type="number" min="1" max="20" step="1" value="1" required></label>
       <label class="admin-colour-visible"><input name="colour_active" type="checkbox" checked> Show to customers</label>
       <label class="admin-colour-visible admin-colour-oos"><input name="colour_unavailable" type="checkbox"> Out of stock</label>
       <div class="admin-colour-order-actions" aria-label="Reorder new colour">
@@ -1785,6 +1817,9 @@ async function saveShopSettings(event) {
     name: String(row.querySelector('[name="colour_name"]')?.value || "").trim(),
     hex: String(row.querySelector('[name="colour_hex"]')?.value || "").toUpperCase(),
     material_type: String(row.querySelector('[name="colour_material"]')?.value || "BASIC"),
+    roll_count: Math.max(1, Math.floor(Number(
+      row.querySelector('[name="colour_roll_count"]')?.value
+    ) || 1)),
     active: Boolean(row.querySelector('[name="colour_active"]')?.checked)
   }));
   const colourNameKeys = colourOptions.map(colour => colour.name.toLowerCase());
@@ -8289,8 +8324,18 @@ async function renderProductionPlanner(orders) {
     printers,
     validBasePrinter?.id
   );
+  const colourRollCounts = Object.fromEntries(
+    ADMIN_COLOUR_OPTIONS.map(colour => [
+      String(colour.name || "").trim().toLowerCase(),
+      Math.max(1, Math.floor(Number(colour.roll_count) || 1))
+    ])
+  );
   const amsPrinterLanes = freeAmsPrinters.length
-    ? distributeAmsPlatesAcrossPrinters(amsLitePlates, freeAmsPrinters)
+    ? distributeAmsPlatesAcrossPrinters(
+      amsLitePlates,
+      freeAmsPrinters,
+      colourRollCounts
+    )
     : [];
   const scheduledAmsPlates = amsPrinterLanes.flatMap(
     (lane, laneIndex) => lane.plates.map((plate, lanePlateIndex) => ({
@@ -8334,6 +8379,7 @@ async function renderProductionPlanner(orders) {
               <p>
                 Reserve one A1 for bases when needed. The remaining keycap
                 combinations are rebuilt using only filament colours that are free.
+                Print waves also follow the roll quantities saved in Settings.
               </p>
             </div>
           </div>
@@ -8409,7 +8455,7 @@ async function renderProductionPlanner(orders) {
           <span aria-hidden="true">♡</span>
           <div>
             <strong>Simple handover mode</strong>
-            <p>Start both plates in each wave together. Complete Wave 1 before Wave 2; only touch slots marked “SWAP”.</p>
+            <p>Start both listed plates in each wave together. A printer waits when the other printer is using the only saved roll of a shared colour. Complete Wave 1 before Wave 2; only touch slots marked “SWAP”.</p>
           </div>
         </div>` : `
           <div class="ams-printer-fallback-warning">

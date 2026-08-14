@@ -7,11 +7,11 @@ import {
 
 test("normalizes editable colours and preserves their order", () => {
   assert.deepEqual(normalizeColourOptions([
-    { name: " Peach ", hex: "#fab", material_type: "matte", active: true },
-    { name: "Sky", colour: "#12abef", material_type: "basic", active: false }
+    { name: " Peach ", hex: "#fab", material_type: "matte", roll_count: 2, active: true },
+    { name: "Sky", colour: "#12abef", material_type: "basic", roll_count: 1, active: false }
   ]), [
-    { name: "Peach", hex: "#FFAABB", material_type: "MATTE", active: true },
-    { name: "Sky", hex: "#12ABEF", material_type: "BASIC", active: false }
+    { name: "Peach", hex: "#FFAABB", material_type: "MATTE", roll_count: 2, active: true },
+    { name: "Sky", hex: "#12ABEF", material_type: "BASIC", roll_count: 1, active: false }
   ]);
 });
 
@@ -22,7 +22,7 @@ test("drops duplicate or invalid colour entries", () => {
     { name: "Black", hex: "#F55A74" },
     { name: "Broken", hex: "pink" }
   ]), [
-    { name: "Pink", hex: "#F55A74", material_type: "BASIC", active: true }
+    { name: "Pink", hex: "#F55A74", material_type: "BASIC", roll_count: 1, active: true }
   ]);
 });
 

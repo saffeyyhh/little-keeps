@@ -827,7 +827,8 @@ export function getHandDeliveryLabelData(order = {}) {
 
 export function distributeAmsPlatesAcrossPrinters(
   plates = [],
-  availablePrinters = []
+  availablePrinters = [],
+  colourRollCounts = {}
 ) {
   const printers = availablePrinters.length
     ? availablePrinters
@@ -870,15 +871,62 @@ export function distributeAmsPlatesAcrossPrinters(
       String(a.printer.name).localeCompare(String(b.printer.name))
     );
 
-  return preparedLanes.map(lane => {
-    return {
-      ...lane,
-      plates: lane.plates.map((plate, waveIndex) => ({
-        ...plate,
-        waveIndex
-      }))
-    };
-  });
+  const availableRollsFor = colourName => {
+    const key = String(colourName || "").trim().toLowerCase();
+    const savedValue = colourRollCounts instanceof Map
+      ? colourRollCounts.get(key) ?? colourRollCounts.get(colourName)
+      : colourRollCounts?.[key] ?? colourRollCounts?.[colourName];
+    return Math.max(1, Math.floor(Number(savedValue) || 1));
+  };
+  const plateColourNames = plate => {
+    const colours = plate?.colours instanceof Map
+      ? Array.from(plate.colours.values())
+      : Array.isArray(plate?.colours)
+        ? plate.colours
+        : [];
+    return Array.from(new Set(
+      colours
+        .map(colour => String(colour?.name || colour || "").trim().toLowerCase())
+        .filter(Boolean)
+    ));
+  };
+  const scheduledByLane = preparedLanes.map(() => []);
+  const nextPlateIndexes = preparedLanes.map(() => 0);
+  let waveIndex = 0;
+
+  while (nextPlateIndexes.some((index, laneIndex) =>
+    index < preparedLanes[laneIndex].plates.length
+  )) {
+    const rollUsage = new Map();
+    let scheduledThisWave = 0;
+    const laneOrder = preparedLanes.map((_, index) =>
+      (index + waveIndex) % preparedLanes.length
+    );
+
+    laneOrder.forEach(laneIndex => {
+      const plate = preparedLanes[laneIndex].plates[nextPlateIndexes[laneIndex]];
+      if (!plate) return;
+      const colourNames = plateColourNames(plate);
+      const hasEnoughRolls = colourNames.every(colourName =>
+        Number(rollUsage.get(colourName) || 0) + 1 <= availableRollsFor(colourName)
+      );
+      if (!hasEnoughRolls && scheduledThisWave > 0) return;
+
+      colourNames.forEach(colourName => {
+        rollUsage.set(colourName, Number(rollUsage.get(colourName) || 0) + 1);
+      });
+      scheduledByLane[laneIndex].push({ ...plate, waveIndex });
+      nextPlateIndexes[laneIndex] += 1;
+      scheduledThisWave += 1;
+    });
+
+    waveIndex += 1;
+  }
+
+  return preparedLanes.map((lane, laneIndex) => ({
+    ...lane,
+    plates: scheduledByLane[laneIndex]
+  }));
 }
 
 export function validateInventoryDecrement(currentQty, requestedQty) {

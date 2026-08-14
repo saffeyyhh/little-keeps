@@ -492,7 +492,7 @@ test("keeps both printers running even when their plates share colours", () => {
   ], [
     { id: "p1", name: "Printer 1" },
     { id: "p2", name: "Printer 2" }
-  ]);
+  ], { pink: 2, white: 1, black: 1 });
 
   const waves = new Map();
   lanes.forEach(lane => lane.plates.forEach(plate => {
@@ -501,7 +501,6 @@ test("keeps both printers running even when their plates share colours", () => {
   }));
 
   assert.equal(waves.size, 2);
-  assert.ok(Array.from(waves.values()).every(wave => wave.length === 2));
   assert.ok(Array.from(waves.values()).every(wave => wave.length === 2));
 });
 
@@ -525,7 +524,7 @@ test("allows the same filament colour on both printers in one wave", () => {
   ], [
     { id: "p1", name: "Printer 1" },
     { id: "p2", name: "Printer 2" }
-  ]);
+  ], { pink: 2, white: 1, gold: 1, black: 1 });
 
   const scheduled = lanes.flatMap(lane => lane.plates);
   const pinkWaves = scheduled
@@ -536,6 +535,21 @@ test("allows the same filament colour on both printers in one wave", () => {
   assert.ok(pinkWaves.some(
     (wave, index) => pinkWaves.indexOf(wave) !== index
   ));
+});
+
+test("does not use one filament roll on both printers in the same wave", () => {
+  const lanes = distributeAmsPlatesAcrossPrinters([
+    { id: "pink-a", pieceCount: 40, colours: [{ name: "Pink" }] },
+    { id: "pink-b", pieceCount: 35, colours: [{ name: "Pink" }] }
+  ], [
+    { id: "p1", name: "Printer 1" },
+    { id: "p2", name: "Printer 2" }
+  ], { pink: 1 });
+
+  const pinkWaves = lanes.flatMap(lane => lane.plates)
+    .map(plate => plate.waveIndex);
+
+  assert.equal(new Set(pinkWaves).size, 2);
 });
 
 test("keeps combinations using a base printer colour in a waiting queue", () => {

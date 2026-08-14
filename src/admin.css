@@ -5746,6 +5746,44 @@ a {
   gap: 16px;
 }
 
+.settings-section-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid var(--admin-border);
+  border-radius: 16px;
+  background: #f4f7fb;
+}
+
+.settings-section-tabs button {
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 11px;
+  color: #667484;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.settings-section-tabs button:hover {
+  color: var(--admin-main-dark);
+  background: rgba(255,255,255,.7);
+}
+
+.settings-section-tabs button.is-active {
+  color: #fff;
+  background: var(--admin-main);
+  box-shadow: 0 5px 14px rgba(30, 79, 153, .18);
+}
+
+.settings-group-hidden {
+  display: none !important;
+}
+
 .settings-card-wide {
   grid-column: 1 / -1;
 }
@@ -5823,7 +5861,7 @@ a {
 
 .admin-colour-manager-row {
   display: grid;
-  grid-template-columns: 48px minmax(150px, 1fr) 108px 92px auto auto auto;
+  grid-template-columns: 48px minmax(140px, 1fr) 105px 88px 90px auto auto auto;
   align-items: end;
   gap: 12px;
   padding: 12px;
@@ -6401,6 +6439,10 @@ a {
 }
 
 @media (max-width: 760px) {
+  .settings-section-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .urgent-print-panel {
     padding: 14px;
   }
@@ -6451,6 +6493,7 @@ a {
   .admin-colour-visible { grid-column: 1 / -1; }
   .admin-colour-hex { grid-column: 1 / -1; }
   .admin-colour-material { grid-column: 1 / -1; }
+  .admin-colour-rolls { grid-column: 1 / -1; }
   .admin-colour-order-actions { grid-column: 1 / -1; }
 
   .admin-page {
