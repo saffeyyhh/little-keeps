@@ -40,6 +40,7 @@ import {
   normalizeProductCatalog
 } from "./product-catalog.js";
 import {
+  COLOUR_MATERIAL_TYPES,
   DEFAULT_COLOUR_OPTIONS,
   normalizeColourOptions
 } from "./colour-catalog.js";
@@ -389,6 +390,14 @@ function getUnavailableAdminColours() {
       : []
     ).map(name => String(name).trim().toLowerCase())
   );
+}
+
+function getAdminColourMaterial(value) {
+  if (value?.material_type) return String(value.material_type).toUpperCase();
+  const hex = String(value?.hex || value || "").toLowerCase();
+  return ADMIN_COLOUR_OPTIONS.find(colour =>
+    colour.hex.toLowerCase() === hex
+  )?.material_type || "BASIC";
 }
 
 const ACTIVE_ORDER_STATUSES = [
@@ -1450,6 +1459,12 @@ function renderSettingsWorkspace() {
                   <span>Hex code</span>
                   <input name="colour_hex" maxlength="7" value="${escapeAdminHtml(colour.hex)}" placeholder="#F6A6B8" pattern="#[0-9A-Fa-f]{6}" required>
                 </label>
+                <label class="settings-field admin-colour-material">
+                  <span>Material</span>
+                  <select name="colour_material">
+                    ${COLOUR_MATERIAL_TYPES.map(material => `<option value="${material}" ${colour.material_type === material ? "selected" : ""}>${material}</option>`).join("")}
+                  </select>
+                </label>
                 <label class="admin-colour-visible">
                   <input name="colour_active" type="checkbox" ${checked(colour.active)}>
                   Show to customers
@@ -1706,6 +1721,7 @@ function renderSettingsWorkspace() {
       <input class="admin-colour-picker" name="colour_hex_picker" type="color" value="#F5A3C2" aria-label="New colour picker">
       <label class="settings-field admin-colour-name"><span>Colour name</span><input name="colour_name" maxlength="50" placeholder="e.g. Peach" required></label>
       <label class="settings-field admin-colour-hex"><span>Hex code</span><input name="colour_hex" maxlength="7" value="#F5A3C2" placeholder="#F6A6B8" pattern="#[0-9A-Fa-f]{6}" required></label>
+      <label class="settings-field admin-colour-material"><span>Material</span><select name="colour_material"><option value="BASIC">BASIC</option><option value="MATTE">MATTE</option></select></label>
       <label class="admin-colour-visible"><input name="colour_active" type="checkbox" checked> Show to customers</label>
       <label class="admin-colour-visible admin-colour-oos"><input name="colour_unavailable" type="checkbox"> Out of stock</label>
       <div class="admin-colour-order-actions" aria-label="Reorder new colour">
@@ -1768,6 +1784,7 @@ async function saveShopSettings(event) {
   const colourOptions = colourRows.map(row => ({
     name: String(row.querySelector('[name="colour_name"]')?.value || "").trim(),
     hex: String(row.querySelector('[name="colour_hex"]')?.value || "").toUpperCase(),
+    material_type: String(row.querySelector('[name="colour_material"]')?.value || "BASIC"),
     active: Boolean(row.querySelector('[name="colour_active"]')?.checked)
   }));
   const colourNameKeys = colourOptions.map(colour => colour.name.toLowerCase());
@@ -5328,24 +5345,28 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
 
         const baseName = base.name || base.hex || base;
         const baseHex = base.hex || base;
+        const baseMaterial = getAdminColourMaterial(base);
 
         const capName = cap.name || cap.hex || cap;
         const capHex = cap.hex || cap;
+        const capMaterial = getAdminColourMaterial(cap);
 
         const letterName = letterColour.name || letterColour.hex || letterColour;
         const letterHex = letterColour.hex || letterColour;
+        const letterMaterial = getAdminColourMaterial(letterColour);
 
         const baseShape =
           design.base_shape?.key ||
           design.baseShape ||
           "ribbed";
 
-        const baseKey = `${baseShape}|${baseName}`;
+        const baseKey = `${baseShape}|${baseName}|${baseMaterial}`;
 
         if (!baseTotals[baseKey]) {
           baseTotals[baseKey] = {
             name: baseName,
             hex: baseHex,
+            material: baseMaterial,
             baseShape,
             qty: 0
           };
@@ -5354,14 +5375,16 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
         baseTotals[baseKey].qty += 1;
 
         const groupKey =
-          `${capName} Cap + ${letterName} Letter`;
+          `${capName}|${capMaterial} Cap + ${letterName}|${letterMaterial} Letter`;
 
         if (!keycapGroups[groupKey]) {
           keycapGroups[groupKey] = {
             capName,
             capHex,
+            capMaterial,
             letterName,
             letterHex,
+            letterMaterial,
             letters: {},
             owners: {}
           };
@@ -7051,6 +7074,7 @@ function getAssemblyColourDetails(value, fallbackName) {
 
   return {
     name: savedName || matchedColour?.name || String(hex || fallbackName),
+    material: String(value?.material_type || matchedColour?.material_type || "BASIC"),
     hex: getSafePdfColour(value, "#d9d9d9")
   };
 }
@@ -7107,9 +7131,9 @@ function createAssemblyColourGuide(name, design = {}) {
             <div class="assembly-colour-row">
               <b>${index + 1}</b>
               <span class="assembly-colour-character">${displayIcon(character)}</span>
-              <span><i style="background:${base.hex}"></i><em>Base</em><strong>${escapeAdminHtml(base.name)}</strong></span>
-              <span><i style="background:${cap.hex}"></i><em>Cap</em><strong>${escapeAdminHtml(cap.name)}</strong></span>
-              <span><i style="background:${letter.hex}"></i><em>Letter</em><strong>${escapeAdminHtml(letter.name)}</strong></span>
+              <span><i style="background:${base.hex}"></i><em>Base</em><strong>${escapeAdminHtml(base.name)} · ${escapeAdminHtml(base.material)}</strong></span>
+              <span><i style="background:${cap.hex}"></i><em>Cap</em><strong>${escapeAdminHtml(cap.name)} · ${escapeAdminHtml(cap.material)}</strong></span>
+              <span><i style="background:${letter.hex}"></i><em>Letter</em><strong>${escapeAdminHtml(letter.name)} · ${escapeAdminHtml(letter.material)}</strong></span>
             </div>
           `;
         }).join("")}
@@ -8013,11 +8037,11 @@ async function renderProductionPlanner(orders) {
 
   const baseColourGroups = Array.from(
     baseRows.reduce((groups, item) => {
-      const key = String(item.name || "Other").trim().toLowerCase();
+      const key = `${String(item.name || "Other").trim().toLowerCase()}|${item.material || "BASIC"}`;
       if (!groups.has(key)) {
         groups.set(key, {
           key,
-          label: `${item.name} Bases`,
+          label: `${item.name} · ${item.material || "BASIC"} Bases`,
           baseName: item.name,
           hex: item.hex,
           rows: []
@@ -8123,8 +8147,10 @@ async function renderProductionPlanner(orders) {
     return {
       capName: group.capName,
       capHex: group.capHex,
+      capMaterial: group.capMaterial,
       letterName: group.letterName,
       letterHex: group.letterHex,
+      letterMaterial: group.letterMaterial,
       stlJobId,
       owners: printOwners,
       rows: rows.map(row => ({
@@ -8151,7 +8177,7 @@ async function renderProductionPlanner(orders) {
             </div>
 
             <div>
-              <h4>${group.capName} Cap + ${group.letterName} Letter</h4>
+              <h4>${group.capName} · ${group.capMaterial} Cap + ${group.letterName} · ${group.letterMaterial} Letter</h4>
               <p class="hint">
                 Letter direction is handled later during assembly.
               </p>
@@ -8232,7 +8258,7 @@ async function renderProductionPlanner(orders) {
           </button>
 
           <span class="hint">
-            Only ${group.capName} caps with ${group.letterName} letters.
+            Only ${group.capName} ${group.capMaterial} caps with ${group.letterName} ${group.letterMaterial} letters.
           </span>
         </div>
       </details>
@@ -8653,7 +8679,7 @@ async function renderProductionPlanner(orders) {
                     <i style="background:${combination.letterHex};"></i>
                   </span>
                   <div>
-                    <strong>${escapeAdminHtml(combination.capName)} cap + ${escapeAdminHtml(combination.letterName)} letter</strong>
+                    <strong>${escapeAdminHtml(combination.capName)} · ${escapeAdminHtml(combination.capMaterial || "BASIC")} cap + ${escapeAdminHtml(combination.letterName)} · ${escapeAdminHtml(combination.letterMaterial || "BASIC")} letter</strong>
                     <small>${combination.rows.reduce((sum, row) => sum + Number(row.toPrint || 0), 0)} piece${combination.rows.reduce((sum, row) => sum + Number(row.toPrint || 0), 0) === 1 ? "" : "s"} · waiting for ${combination.busyColours.map(escapeAdminHtml).join(" + ")}</small>
                   </div>
                   <button type="button" onclick="window.generateKeycapCombinationStl('${combination.stlJobId}', this)">STL</button>
@@ -9683,7 +9709,10 @@ function getPdfColourNames(values) {
   }
 
   return values
-    .map(value => value?.name || value?.hex || value)
+    .map(value => {
+      const name = value?.name || value?.hex || value;
+      return value?.material_type ? `${name} (${value.material_type})` : name;
+    })
     .filter(Boolean)
     .join(", ");
 }

@@ -2641,6 +2641,7 @@ const colours = shopSettings.colour_options
   .map(item => ({
     name: item.name,
     colour: item.hex,
+    materialType: item.material_type,
     available: !unavailableColourNames.has(item.name.toLowerCase()),
     note: ""
   }));
@@ -3891,8 +3892,9 @@ function makeSwatches(containerId, colourOptions, type) {
     btn.type = "button";
     btn.className = "swatch";
     btn.style.backgroundColor = item.colour;
-    btn.title = item.name;
-    btn.setAttribute("aria-label", item.name);
+    const colourLabel = `${item.name} · ${item.materialType}`;
+    btn.title = colourLabel;
+    btn.setAttribute("aria-label", colourLabel);
 
     const showColourName = () => {
       if (!hint) return;
@@ -3902,7 +3904,7 @@ function makeSwatches(containerId, colourOptions, type) {
           class="colour-hint-dot"
           style="background:${item.colour}"
         ></span>
-        ${item.name}
+        ${colourLabel}
       `;
     };
 
@@ -3934,7 +3936,7 @@ function makeSwatches(containerId, colourOptions, type) {
     }
 
     const label = document.createElement("span");
-    label.textContent = item.name;
+    label.textContent = colourLabel;
     option.append(btn, label);
     container.appendChild(option);
   });
@@ -5557,7 +5559,7 @@ const parts =
         <strong>${part.label}</strong>
         <span>
           ${uniqueColours.map(colour => `
-            <i style="background:${colour}"></i>${getColourName(colour)}
+            <i style="background:${colour}"></i>${getColourName(colour)} · ${getColourMaterial(colour)}
           `).join(" · ")}
         </span>
       </div>
@@ -5822,14 +5824,18 @@ function renderReviewOrder() {
   updateCollectionNote();
 }
 
+function getColourDetails(hex) {
+  return colours.find(
+    colour => colour.colour.toLowerCase() === String(hex || "").toLowerCase()
+  );
+}
+
 function getColourName(hex) {
+  return getColourDetails(hex)?.name || hex;
+}
 
-    const colour = colours.find(
-        c => c.colour.toLowerCase() === hex.toLowerCase()
-    );
-
-    return colour ? colour.name : hex;
-
+function getColourMaterial(hex) {
+  return getColourDetails(hex)?.materialType || "BASIC";
 }
 
 async function saveOrderToDatabase(order) {
@@ -6062,14 +6068,17 @@ async function submitOrderOnce() {
           },
           bases: design.bases.map(hex => ({
             name: getColourName(hex),
+            material_type: getColourMaterial(hex),
             hex
           })),
           caps: design.caps.map(hex => ({
             name: getColourName(hex),
+            material_type: getColourMaterial(hex),
             hex
           })),
           letters: design.letters.map(hex => ({
             name: getColourName(hex),
+            material_type: getColourMaterial(hex),
             hex
           }))
         }
