@@ -1246,11 +1246,15 @@ Chloe</textarea>
             Currently editing: Alicia only
           </p>
 
-          <p id="dimensionEstimate" class="dimension-estimate">
-            📏 <strong>ALICIA:</strong>
-            Approx. 17.5 cm long × 2.7 cm tall × 2.2 cm thick
-            <br><small>Approximate measurement; slight variation may occur after assembly.</small>
-          </p>
+          <div id="dimensionEstimate" class="dimension-estimate" aria-live="polite">
+            <div class="dimension-estimate-heading"><span>📏 Estimated finished size</span><strong>ALICIA</strong></div>
+            <div class="dimension-estimate-grid">
+              <span><small>Length</small><b>17.5 cm</b></span>
+              <span><small>Breadth</small><b>2.7 cm</b></span>
+              <span><small>Height</small><b>2.2 cm</b></span>
+            </div>
+            <p>Approximate measurement; slight variation may occur after assembly.</p>
+          </div>
         </div>
 
       <div class="preview-tip">
@@ -5519,10 +5523,31 @@ function renderNameCards() {
 function updateDimensionEstimate(name) {
   if (dimensionEstimate) {
     const selectedName = name || "";
+    const size = getApproximateKeychainSize(selectedName);
+
+    if (!size.characterCount) {
+      dimensionEstimate.innerHTML = `
+        <div class="dimension-estimate-heading"><span>📏 Estimated finished size</span></div>
+        <p>Enter a name to see its approximate length, breadth and height.</p>
+      `;
+      dimensionEstimate.classList.remove("is-long-name");
+      return;
+    }
+
+    const isLongName = size.characterCount >= 8;
+    dimensionEstimate.classList.toggle("is-long-name", isLongName);
     dimensionEstimate.innerHTML = `
-      📏 <strong>${selectedName || "Finished size"}:</strong>
-      ${getApproximateSizeText(selectedName)}
-      <br><small>Approximate measurement; slight variation may occur after assembly.</small>
+      <div class="dimension-estimate-heading">
+        <span>📏 Estimated finished size</span>
+        <strong>${escapePresetText(selectedName)}</strong>
+      </div>
+      <div class="dimension-estimate-grid">
+        <span><small>Length</small><b>${size.lengthCm.toFixed(1)} cm</b></span>
+        <span><small>Breadth</small><b>${size.heightCm.toFixed(1)} cm</b></span>
+        <span><small>Height</small><b>${size.thicknessCm.toFixed(1)} cm</b></span>
+      </div>
+      ${isLongName ? `<p class="dimension-long-name-warning">Long name — please check the finished length before adding it to your cart.</p>` : ""}
+      <p>Approximate measurement; slight variation may occur after assembly.</p>
     `;
   }
 }
