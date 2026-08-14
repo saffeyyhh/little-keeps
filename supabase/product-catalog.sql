@@ -65,7 +65,7 @@ insert into public.product_catalog (
 values
   (
     'modular-clicky-keychain',
-    'Modular Clicky Keychain',
+    'Chunky Clicky Keychain',
     'Articulated design',
     'Flexible character blocks that move and click.',
     'active',

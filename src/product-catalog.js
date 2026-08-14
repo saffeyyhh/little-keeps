@@ -5,7 +5,7 @@ export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const DEFAULT_PRODUCT_CATALOG = [
   {
     product_key: MODULAR_PRODUCT_KEY,
-    name: "Modular Clicky Keychain",
+    name: "Chunky Clicky Keychain",
     eyebrow: "Articulated design",
     description: "Flexible character blocks that move and click.",
     status: "active",
@@ -132,6 +132,13 @@ export function normalizeProductCatalog(rows = []) {
   const defaults = DEFAULT_PRODUCT_CATALOG.map(fallback => {
     const saved = savedByKey.get(fallback.product_key) || {};
     const product = { ...fallback, ...saved };
+
+    if (
+      fallback.product_key === MODULAR_PRODUCT_KEY &&
+      product.name === "Modular Clicky Keychain"
+    ) {
+      product.name = fallback.name;
+    }
 
     numericFields.forEach(field => {
       const value = Number(product[field]);
