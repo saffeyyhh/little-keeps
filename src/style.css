@@ -1442,22 +1442,30 @@ label {
 
 .product-customiser {
   display: grid;
-  grid-template-columns: minmax(360px, 0.88fr) minmax(0, 1.12fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
   align-items: start;
 }
 
 .preview-column {
-  min-width: 0;
+  display: contents;
 }
 
 .preview-sticky {
-  position: sticky;
-  top: 94px;
+  display: contents;
 }
+
+.preview-card { order: 1; }
+.options-column { order: 2; }
+.design-inspiration { order: 3; }
+.preview-tip { order: 4; }
 
 .preview-card {
   padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(260px, .72fr);
+  grid-template-rows: auto auto auto 1fr;
+  gap: 10px 16px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 26px;
@@ -1466,6 +1474,7 @@ label {
 }
 
 .preview-card-heading {
+  grid-column: 1 / -1;
   margin-bottom: 13px;
   display: flex;
   align-items: center;
@@ -1481,7 +1490,13 @@ label {
 
 .preview-canvas-wrap {
   position: relative;
+  grid-column: 1;
+  grid-row: 2 / 5;
 }
+
+.preview-colour-legend { grid-column: 2; grid-row: 2; }
+.preview-editing-text { grid-column: 2; grid-row: 3; }
+.dimension-estimate { grid-column: 2; grid-row: 4; align-self: start; }
 
 #previewCanvas {
   width: 100%;
@@ -1742,7 +1757,18 @@ label {
 
 .colours-card {
   padding: clamp(20px, 3vw, 30px);
+  display: flex;
+  flex-direction: column;
 }
+
+.colours-card > .customiser-heading { order: 0; }
+.colours-card > .colour-workspace { order: 1; }
+.colours-card > .random-colour-card { order: 2; }
+.colours-card > #clickyBaseShapeSection { order: 3; }
+.colours-card > #clickyOrientationSection { order: 4; }
+.colours-card > .special-colour-note { order: 5; }
+.colours-card > .screen-colour-note { order: 6; }
+.colours-card > .reset-btn { order: 7; }
 
 .customiser-heading {
   margin-bottom: 8px;
@@ -1818,6 +1844,61 @@ label {
   margin-top: 14px;
 }
 
+.colour-workspace {
+  margin-top: 8px;
+  padding-bottom: 0;
+}
+
+.colour-workspace-heading { margin-bottom: 14px; }
+
+.colour-part-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #ead6de;
+  border-radius: 16px;
+  background: #fff8fb;
+}
+
+.colour-part-tabs button {
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 12px;
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #725d66;
+  background: transparent;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.colour-part-tabs button.active {
+  border-color: #efb6ca;
+  color: var(--pink-dark);
+  background: #fff;
+  box-shadow: 0 5px 14px rgba(91, 53, 68, .08);
+}
+
+.colour-part-tabs button small {
+  max-width: 100%;
+  overflow: hidden;
+  color: #9b7d89;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colour-part-panel {
+  padding-top: 17px;
+}
+
+.colour-part-panel[hidden] { display: none !important; }
+
 .slot-row,
 .swatches,
 .mini-chain {
@@ -1875,6 +1956,43 @@ label {
 
 .swatches {
   margin-bottom: 0;
+}
+
+.material-swatch-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  align-items: start;
+}
+
+.material-swatch-group {
+  min-width: 0;
+  padding: 3px 16px 5px 0;
+}
+
+.material-swatch-group.material-matte {
+  padding-right: 0;
+  padding-left: 17px;
+  border-left: 1px solid #dfcfd6;
+}
+
+.material-swatch-group h4 {
+  margin: 0 0 12px;
+  color: #9b3d65;
+  font-size: 11px;
+  letter-spacing: .12em;
+}
+
+.material-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 6px;
+}
+
+.material-colour-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .swatch {
@@ -3454,13 +3572,13 @@ label {
   }
 
   .product-customiser {
-    grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
 
   #previewCanvas {
-    height: 360px;
-    min-height: 360px;
+    height: 380px;
+    min-height: 380px;
   }
 
   .checkout-screen {
@@ -3683,6 +3801,7 @@ label {
     z-index: 420;
     margin-bottom: 10px;
     padding: 10px;
+    display: block;
     border-radius: 18px;
     box-shadow: 0 14px 34px rgba(60, 39, 48, 0.16);
     background: rgba(255, 255, 255, 0.96);
@@ -3768,6 +3887,24 @@ label {
 
   .colour-accordion {
     overflow: hidden;
+  }
+
+  .colour-part-tabs button {
+    min-height: 50px;
+    padding: 7px;
+    font-size: 11px;
+  }
+
+  .material-swatch-group {
+    padding-right: 9px;
+  }
+
+  .material-swatch-group.material-matte {
+    padding-left: 10px;
+  }
+
+  .material-swatches {
+    gap: 9px 2px;
   }
 
   .colour-accordion-toggle {

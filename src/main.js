@@ -1366,15 +1366,21 @@ Chloe</textarea>
           </div>
         </div>
 
-        <div class="customisation-section colour-accordion is-open" data-colour-accordion="base">
-          <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="true">
+        <div class="customisation-section colour-workspace">
+          <div class="customisation-title colour-workspace-heading">
             <div>
-              <h3>Base Colours</h3>
+              <h3>Choose Colours</h3>
+              <p>Select the part you want to change, then choose from BASIC or MATTE.</p>
             </div>
-            <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
-          </button>
+          </div>
 
-          <div class="colour-accordion-content">
+          <div class="colour-part-tabs" role="tablist" aria-label="Keychain part to colour">
+            <button type="button" class="active" data-colour-part-tab="base" role="tab" aria-selected="true"><span id="baseColourPartLabel">Base</span><small id="baseTabSummary"></small></button>
+            <button type="button" class="clicky-only-option" data-colour-part-tab="cap" role="tab" aria-selected="false"><span>Cap</span><small id="capTabSummary"></small></button>
+            <button type="button" data-colour-part-tab="letter" role="tab" aria-selected="false"><span id="letterColourPartLabel">Letter</span><small id="letterTabSummary"></small></button>
+          </div>
+
+          <div class="colour-part-panel active" data-colour-part-panel="base" role="tabpanel">
             <div id="baseSlots" class="slot-row"></div>
 
             <button id="randomiseBaseColoursBtn" type="button" class="part-surprise-btn">Surprise me for bases ✨</button>
@@ -1386,20 +1392,8 @@ Chloe</textarea>
 
             <div id="baseColours" class="swatches"></div>
           </div>
-        </div>
-        <div
-          id="clickyCapColourSection"
-          class="customisation-section colour-accordion clicky-only-option"
-          data-colour-accordion="cap"
-        >
-          <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="false">
-            <div>
-              <h3>Cap Colours</h3>
-            </div>
-            <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
-          </button>
 
-          <div class="colour-accordion-content">
+          <div id="clickyCapColourSection" class="colour-part-panel clicky-only-option" data-colour-part-panel="cap" role="tabpanel" hidden>
             <div id="capSlots" class="slot-row"></div>
 
             <button id="randomiseCapColoursBtn" type="button" class="part-surprise-btn">Surprise me for caps ✨</button>
@@ -1411,17 +1405,8 @@ Chloe</textarea>
 
             <div id="capColours" class="swatches"></div>
           </div>
-        </div>
 
-        <div class="customisation-section colour-accordion" data-colour-accordion="letter">
-          <button type="button" class="customisation-title colour-accordion-toggle" aria-expanded="false">
-            <div>
-              <h3>Letter Colours</h3>
-            </div>
-            <span class="colour-accordion-arrow" aria-hidden="true">⌄</span>
-          </button>
-
-          <div class="colour-accordion-content">
+          <div class="colour-part-panel" data-colour-part-panel="letter" role="tabpanel" hidden>
             <div id="letterSlots" class="slot-row"></div>
 
             <button id="randomiseLetterColoursBtn" type="button" class="part-surprise-btn">Surprise me for letters ✨</button>
@@ -3884,7 +3869,27 @@ function makeSwatches(containerId, colourOptions, type) {
     hint.textContent = "Hover or tap a colour";
   }
 
-  colourOptions.forEach(item => {
+  container.classList.add("material-swatch-groups");
+
+  ["BASIC", "MATTE"].forEach(materialType => {
+    const group = document.createElement("section");
+    group.className = `material-swatch-group material-${materialType.toLowerCase()}`;
+    const heading = document.createElement("h4");
+    heading.textContent = materialType;
+    const options = document.createElement("div");
+    options.className = "material-swatches";
+    const materialColours = colourOptions.filter(
+      item => item.materialType === materialType
+    );
+
+    if (!materialColours.length) {
+      const empty = document.createElement("p");
+      empty.className = "material-colour-empty";
+      empty.textContent = "No colours added yet";
+      options.appendChild(empty);
+    }
+
+    materialColours.forEach(item => {
     const option = document.createElement("div");
     option.className = "swatch-option";
     const btn = document.createElement("button");
@@ -3936,9 +3941,13 @@ function makeSwatches(containerId, colourOptions, type) {
     }
 
     const label = document.createElement("span");
-    label.textContent = colourLabel;
+    label.textContent = item.name;
     option.append(btn, label);
-    container.appendChild(option);
+    options.appendChild(option);
+    });
+
+    group.append(heading, options);
+    container.appendChild(group);
   });
 }
 
@@ -4562,6 +4571,14 @@ function renderSlots(containerId, colours, type) {
     slot.style.background = colour;
     container.appendChild(slot);
   });
+
+  const summary = document.getElementById(`${type}TabSummary`);
+  if (summary) {
+    summary.textContent = colours
+      .map(colour => getColourName(colour))
+      .filter((name, index, list) => list.indexOf(name) === index)
+      .join(" + ");
+  }
 }
 
 function loadSTL(path) {
@@ -7367,26 +7384,25 @@ function updateProductCustomiser() {
         isNormalKeychain ? "none" : "";
     });
 
-  const baseHeading = document.querySelector(
-    '[data-colour-accordion="base"] h3'
-  );
-
-  const letterHeading = document.querySelector(
-    '[data-colour-accordion="letter"] h3'
-  );
+  const baseHeading = document.getElementById("baseColourPartLabel");
+  const letterHeading = document.getElementById("letterColourPartLabel");
 
   if (baseHeading) {
     baseHeading.textContent =
       isNormalKeychain
-        ? "Background Colour"
-        : "Base Colours";
+        ? "Background"
+        : "Base";
   }
 
   if (letterHeading) {
     letterHeading.textContent =
       isNormalKeychain
-        ? "Name Colour"
-        : "Letter Colours";
+        ? "Name"
+        : "Letter";
+  }
+
+  if (isNormalKeychain) {
+    document.querySelector('[data-colour-part-tab="base"]')?.click();
   }
 
   const nameLimit = Math.max(
@@ -8562,30 +8578,27 @@ function renderIconPicker() {
 }
 
 function setupColourAccordions() {
-  const accordions = Array.from(
-    document.querySelectorAll("[data-colour-accordion]")
-  );
+  const tabs = Array.from(document.querySelectorAll("[data-colour-part-tab]"));
+  const panels = Array.from(document.querySelectorAll("[data-colour-part-panel]"));
 
-  accordions.forEach(accordion => {
-    const toggle = accordion.querySelector(".colour-accordion-toggle");
-    if (!toggle) return;
-
-    toggle.addEventListener("click", () => {
-      const willOpen = !accordion.classList.contains("is-open");
-
-      accordions.forEach(item => {
-        item.classList.remove("is-open");
-        item
-          .querySelector(".colour-accordion-toggle")
-          ?.setAttribute("aria-expanded", "false");
-      });
-
-      if (willOpen) {
-        accordion.classList.add("is-open");
-        toggle.setAttribute("aria-expanded", "true");
-      }
+  const selectPart = part => {
+    tabs.forEach(tab => {
+      const selected = tab.dataset.colourPartTab === part;
+      tab.classList.toggle("active", selected);
+      tab.setAttribute("aria-selected", String(selected));
     });
+    panels.forEach(panel => {
+      const selected = panel.dataset.colourPartPanel === part;
+      panel.classList.toggle("active", selected);
+      panel.hidden = !selected;
+    });
+  };
+
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => selectPart(tab.dataset.colourPartTab));
   });
+
+  selectPart("base");
 }
 
 const CUSTOMER_STATUS_STEPS = [
