@@ -16,7 +16,7 @@ test("keeps the modular product live and the solid product safely hidden", () =>
   const modular = getProductByKey(catalogue, MODULAR_PRODUCT_KEY);
   const solid = getProductByKey(catalogue, SOLID_PRODUCT_KEY);
 
-  assert.equal(modular.name, "Chunky Clicky Keychain");
+  assert.equal(modular.name, "Chunky Modular Clicky Keychain");
   assert.equal(modular.status, "active");
   assert.equal(modular.price_visible, true);
   assert.equal(solid.status, "coming_soon");
@@ -32,8 +32,13 @@ test("upgrades the old modular product name without changing custom names", () =
     product_key: MODULAR_PRODUCT_KEY,
     name: "My Custom Product Name"
   }]), MODULAR_PRODUCT_KEY);
+  const shortChunky = getProductByKey(normalizeProductCatalog([{
+    product_key: MODULAR_PRODUCT_KEY,
+    name: "Chunky Clicky Keychain"
+  }]), MODULAR_PRODUCT_KEY);
 
-  assert.equal(legacy.name, "Chunky Clicky Keychain");
+  assert.equal(legacy.name, "Chunky Modular Clicky Keychain");
+  assert.equal(shortChunky.name, "Chunky Modular Clicky Keychain");
   assert.equal(custom.name, "My Custom Product Name");
 });
 

@@ -5,7 +5,7 @@ export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const DEFAULT_PRODUCT_CATALOG = [
   {
     product_key: MODULAR_PRODUCT_KEY,
-    name: "Chunky Clicky Keychain",
+    name: "Chunky Modular Clicky Keychain",
     eyebrow: "Articulated design",
     description: "Flexible character blocks that move and click.",
     status: "active",
@@ -135,7 +135,7 @@ export function normalizeProductCatalog(rows = []) {
 
     if (
       fallback.product_key === MODULAR_PRODUCT_KEY &&
-      product.name === "Modular Clicky Keychain"
+      ["Modular Clicky Keychain", "Chunky Clicky Keychain"].includes(product.name)
     ) {
       product.name = fallback.name;
     }

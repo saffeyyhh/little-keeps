@@ -831,7 +831,7 @@ document.querySelector("#app").innerHTML = `
         <div>
           <span class="hero-bestseller-pill">Little Keeps favourite</span>
           <p>Personalised</p>
-          <strong>Chunky Clicky Keychains</strong>
+          <strong>Chunky Modular Clicky Keychains</strong>
         </div>
 
         <div class="hero-price-badge">
