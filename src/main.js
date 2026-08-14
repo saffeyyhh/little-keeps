@@ -1292,7 +1292,7 @@ Chloe</textarea>
               <span>We’ll create one complete colour combination for you.</span>
             </div>
             <button id="randomiseColoursBtn" type="button" class="randomise-colours-btn">
-              Surprise Me — All Parts
+              Surprise Me - All Parts
             </button>
           </div>
           <details class="random-colour-options">
