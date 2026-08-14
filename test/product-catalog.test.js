@@ -36,9 +36,14 @@ test("upgrades the old modular product name without changing custom names", () =
     product_key: MODULAR_PRODUCT_KEY,
     name: "Chunky Clicky Keychain"
   }]), MODULAR_PRODUCT_KEY);
+  const oldBaseName = getProductByKey(normalizeProductCatalog([{
+    product_key: MODULAR_PRODUCT_KEY,
+    name: "Modular Base Clicky Keychain"
+  }]), MODULAR_PRODUCT_KEY);
 
   assert.equal(legacy.name, "Chunky Modular Clicky Keychain");
   assert.equal(shortChunky.name, "Chunky Modular Clicky Keychain");
+  assert.equal(oldBaseName.name, "Chunky Modular Clicky Keychain");
   assert.equal(custom.name, "My Custom Product Name");
 });
 

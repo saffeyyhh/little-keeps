@@ -6,6 +6,10 @@ set
   name = 'Chunky Modular Clicky Keychain',
   updated_at = now()
 where product_key = 'modular-clicky-keychain'
-  and name in ('Modular Clicky Keychain', 'Chunky Clicky Keychain');
+  and name in (
+    'Modular Clicky Keychain',
+    'Modular Base Clicky Keychain',
+    'Chunky Clicky Keychain'
+  );
 
 notify pgrst, 'reload schema';

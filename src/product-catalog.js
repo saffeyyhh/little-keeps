@@ -135,7 +135,11 @@ export function normalizeProductCatalog(rows = []) {
 
     if (
       fallback.product_key === MODULAR_PRODUCT_KEY &&
-      ["Modular Clicky Keychain", "Chunky Clicky Keychain"].includes(product.name)
+      [
+        "Modular Clicky Keychain",
+        "Modular Base Clicky Keychain",
+        "Chunky Clicky Keychain"
+      ].includes(product.name)
     ) {
       product.name = fallback.name;
     }

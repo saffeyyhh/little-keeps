@@ -1286,23 +1286,28 @@ Chloe</textarea>
         </div>
 
         <div class="random-colour-card clicky-only-option">
-          <div>
-            <strong>Too many lovely choices? ✨</strong>
-            <span>Let Little Keeps choose a complete colour combination for you.</span>
+          <div class="random-colour-main">
+            <div>
+              <strong>Not sure which colours to choose? ✨</strong>
+              <span>We’ll create one complete colour combination for you.</span>
+            </div>
+            <button id="randomiseColoursBtn" type="button" class="randomise-colours-btn">
+              Surprise Me
+            </button>
           </div>
-          <button id="randomiseColoursBtn" type="button" class="randomise-colours-btn">
-            Surprise Me
-          </button>
-          <label class="random-multi-colour-option" for="randomiseMultipleColours">
-            <input id="randomiseMultipleColours" type="checkbox">
-            <span>
-              <strong>Allow a mix of colours</strong>
-              Surprise Me may alternate the base, cap and letter/icon colours.
-              Extra colour add-ons apply: +${displaySettingMoney(modularProduct.extra_base_colour_price)} per extra base colour,
-              +${displaySettingMoney(modularProduct.extra_cap_colour_price)} per extra cap colour and
-              +${displaySettingMoney(modularProduct.extra_letter_colour_price)} per extra letter/icon colour.
-            </span>
-          </label>
+          <details class="random-colour-options">
+            <summary>Optional: allow mixed colours across characters</summary>
+            <label class="random-multi-colour-option" for="randomiseMultipleColours">
+              <input id="randomiseMultipleColours" type="checkbox">
+              <span>
+                <strong>Use more than one colour per part</strong>
+                This may alternate base, cap and letter/icon colours. Add-ons apply only if extra colours are used:
+                +${displaySettingMoney(modularProduct.extra_base_colour_price)} per extra base colour,
+                +${displaySettingMoney(modularProduct.extra_cap_colour_price)} per extra cap colour and
+                +${displaySettingMoney(modularProduct.extra_letter_colour_price)} per extra letter/icon colour.
+              </span>
+            </label>
+          </details>
           <p id="randomiseColoursStatus" class="hint" aria-live="polite"></p>
         </div>
 
@@ -1383,7 +1388,6 @@ Chloe</textarea>
           <div class="colour-part-panel active" data-colour-part-panel="base" role="tabpanel">
             <div id="baseSlots" class="slot-row"></div>
 
-            <button id="randomiseBaseColoursBtn" type="button" class="part-surprise-btn">Surprise me for bases ✨</button>
             <p id="baseColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="baseColourHint" class="colour-hint">
@@ -1396,7 +1400,6 @@ Chloe</textarea>
           <div id="clickyCapColourSection" class="colour-part-panel clicky-only-option" data-colour-part-panel="cap" role="tabpanel" hidden>
             <div id="capSlots" class="slot-row"></div>
 
-            <button id="randomiseCapColoursBtn" type="button" class="part-surprise-btn">Surprise me for caps ✨</button>
             <p id="capColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="capColourHint" class="colour-hint">
@@ -1409,7 +1412,6 @@ Chloe</textarea>
           <div class="colour-part-panel" data-colour-part-panel="letter" role="tabpanel" hidden>
             <div id="letterSlots" class="slot-row"></div>
 
-            <button id="randomiseLetterColoursBtn" type="button" class="part-surprise-btn">Surprise me for letters ✨</button>
             <p id="letterColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="letterColourHint" class="colour-hint">
