@@ -1569,7 +1569,7 @@ Chloe</textarea>
 
         <div id="specialDateSection" class="special-date-section hidden">
           <label id="specialDateLabel" for="requestedCompletionDate">Preferred completion date</label>
-          <input id="requestedCompletionDate" type="text" placeholder="Choose a date">
+          <input id="requestedCompletionDate" type="text" placeholder="Choose a date" readonly>
           <p id="specialOrderMessage" class="hint"></p>
           <div id="rushAvailabilityResult" class="rush-availability hidden" aria-live="polite"></div>
         </div>
@@ -3194,6 +3194,22 @@ async function checkBulkAvailability() {
   };
   bulkAssessmentFingerprint = fingerprint;
 
+  if (!allowed && requestedCompletionDate.value) {
+    const rejectedDate = requestedCompletionDate.value;
+    if (!error && !bulkUnavailableDates.includes(rejectedDate)) {
+      bulkUnavailableDates.push(rejectedDate);
+    }
+    specialDateCalendar?.clear();
+    specialDateCalendar?.set({
+      disable: [
+        ...calendarClosureDates,
+        ...bulkUnavailableDates
+      ]
+    });
+    requestedCompletionDate.value = "";
+    neededBy.value = "";
+  }
+
   if (error) console.warn("Unable to check bulk date:", error);
   showSpecialOrderAssessment(bulkAssessment, "bulk");
   renderReviewOrder();
@@ -3267,17 +3283,16 @@ function updateTurnaroundMessaging() {
   if (isBulk) {
     bulkOrderNotice.classList.remove("hidden");
     bulkOrderNotice.innerHTML = `
-      <strong>Event order</strong>
-      <p>Delivery is required for event orders. Choose an available dispatch date below and continue straight to payment.</p>
+      <p>Only islandwide delivery is available for orders of ${bulkOrderQuantity} or more keychains.</p>
     `;
     specialDateLabel.textContent = methodIsDelivery
-      ? "Choose your bulk dispatch date"
-      : "Choose your bulk completion date";
+      ? "Choose your dispatch date"
+      : "Choose your completion date";
     const earliestBulkDate = getBulkMinimumDate(turnaround.quantity);
     specialOrderMessage.textContent = methodIsDelivery
       ? `The earliest available dispatch date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. Your selected date is accepted immediately. Allow 1–3 days for delivery.`
       : `The earliest available completion date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. Your selected date is accepted immediately.`;
-    orderNotes.placeholder = "Customer notes for your bulk order...";
+    orderNotes.placeholder = "Additional order notes (optional)...";
 
     if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
       bulkAssessment = null;
@@ -3371,7 +3386,7 @@ function updateTurnaroundMessaging() {
 
   if (submitOrderBtn) {
     submitOrderBtn.textContent = isBulk
-      ? "Submit Event Order & Continue to Payment"
+      ? "Submit Order & Continue to Payment"
       : isRush
         ? "Submit Rush Request"
         : "Submit Order & Continue to Payment";
