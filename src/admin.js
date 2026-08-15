@@ -4592,11 +4592,6 @@ function renderFulfilmentWorkspace(orders) {
             <strong>${escapeAdminHtml(order.customer_phone || "Phone number missing")}</strong>
             <small>${escapeAdminHtml(order.customer_email || "Email missing")}</small>
           </div>
-          <div>
-            ${order.customer_phone ? `<button type="button" onclick='window.copyFulfilmentContact(${JSON.stringify(String(order.id))}, "phone", this)'>Copy Phone</button>` : ""}
-            ${order.customer_email ? `<button type="button" onclick='window.copyFulfilmentContact(${JSON.stringify(String(order.id))}, "email", this)'>Copy Email</button>` : ""}
-            ${order.customer_phone && order.customer_email ? `<button type="button" onclick='window.copyFulfilmentContact(${JSON.stringify(String(order.id))}, "both", this)'>Copy Both</button>` : ""}
-          </div>
         </div>
         ${order.collection_method === "delivery" ? `
           <p>${escapeAdminHtml(order.delivery_address || "Address missing")}</p>
@@ -4630,23 +4625,11 @@ function renderFulfilmentWorkspace(orders) {
       <div class="fulfilment-card-actions">
         ${order.collection_method === "delivery" ? `
           ${order.easyparcel_shipment_number ? `
-            <button type="button" class="approve-request-action" onclick='window.refreshEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Refresh EasyParcel</button>
             ${order.easyparcel_awb_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.easyparcel_awb_url)}" target="_blank" rel="noopener">Download Courier Label</a>` : ""}
             ${order.tracking_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.tracking_url)}" target="_blank" rel="noopener">Open Tracking</a>` : ""}
           ` : `
             <button type="button" class="ready-btn" onclick='window.openEasyParcelBooking(${JSON.stringify(String(order.id))})'>Compare &amp; Book EasyParcel</button>
           `}
-          <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>
-            Print Hand-Delivery Label
-          </button>
-          <button type="button" class="approve-request-action" onclick='window.copyEasyParcelReceiver(${JSON.stringify(String(order.id))}, this)'>
-            Copy for EasyParcel
-          </button>
-        ` : ""}
-        ${!["Completed", "Refunded", "Cancelled"].includes(order.status) ? `
-          <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(String(order.id))})'>
-            Edit Customer &amp; Fulfilment
-          </button>
         ` : ""}
         ${order.status === "Assembly Complete" ? `
           <button type="button" class="ready-btn" onclick='window.markReady(${JSON.stringify(String(order.id))})'>
@@ -4662,28 +4645,39 @@ function renderFulfilmentWorkspace(orders) {
           <button type="button" class="ready-btn" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "customer")'>Customer Collected - Complete</button>
           <button type="button" class="approve-request-action" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "other")'>Passed to Someone Else</button>
         ` : ""}
-        ${order.collection_method !== "delivery" && getWhatsAppHref(order.customer_phone) ? `
-          <button type="button" class="approve-request-action" onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(String(order.id))}, this)'>
-            WhatsApp: Offer Earlier Pickup
-          </button>
-        ` : ""}
         ${order.status === "Out for Delivery" ? `
-          <button type="button" class="approve-request-action" onclick='window.copyHandDeliveredWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Delivered</button>
           <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Complete Delivery</button>
         ` : ""}
-        ${order.customer_email && (
-          order.collection_method === "delivery"
-            ? ["Out for Delivery", "Completed"].includes(order.status)
-            : ["Pending Pickup", "Completed"].includes(order.status)
-        ) ? `
-          <button type="button" class="approve-request-action" onclick='window.resendCurrentStatusEmail(${JSON.stringify(String(order.id))}, this)'>
-            Resend Customer Email
-          </button>
-        ` : ""}
-        <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(String(order.id))})'>
-          Send back to rework
-        </button>
-        <button type="button" onclick='window.focusOrder(${JSON.stringify(String(order.id))})'>Open order</button>
+        <details class="fulfilment-more-actions">
+          <summary>More actions <span aria-hidden="true">⌄</span></summary>
+          <div>
+            ${!["Completed", "Refunded", "Cancelled"].includes(order.status) ? `
+              <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(String(order.id))})'>Edit customer &amp; fulfilment</button>
+            ` : ""}
+            ${order.collection_method === "delivery" ? `
+              ${order.easyparcel_shipment_number ? `
+                <button type="button" onclick='window.refreshEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Refresh EasyParcel</button>
+              ` : ""}
+              <button type="button" onclick='window.copyEasyParcelReceiver(${JSON.stringify(String(order.id))}, this)'>Copy courier details</button>
+              <button type="button" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>Print hand-delivery label</button>
+            ` : ""}
+            ${order.collection_method !== "delivery" && getWhatsAppHref(order.customer_phone) ? `
+              <button type="button" onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Offer earlier pickup</button>
+            ` : ""}
+            ${order.status === "Out for Delivery" ? `
+              <button type="button" onclick='window.copyHandDeliveredWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Delivered</button>
+            ` : ""}
+            ${order.customer_email && (
+              order.collection_method === "delivery"
+                ? ["Out for Delivery", "Completed"].includes(order.status)
+                : ["Pending Pickup", "Completed"].includes(order.status)
+            ) ? `
+              <button type="button" onclick='window.resendCurrentStatusEmail(${JSON.stringify(String(order.id))}, this)'>Resend customer email</button>
+            ` : ""}
+            <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(String(order.id))})'>Send back to rework</button>
+            <button type="button" onclick='window.focusOrder(${JSON.stringify(String(order.id))})'>Open full order</button>
+          </div>
+        </details>
       </div>
       </div>
     </details>
