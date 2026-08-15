@@ -775,7 +775,7 @@ function renderOrderAlerts(order, compact = false) {
       ` : ""}
       ${hasHandoff ? `
         <div class="order-alert handoff-alert">
-          <strong>↗ Hand off to ${escapeAdminHtml(order.handoff_name)}</strong>
+          <strong>↗ ${order.status === "Completed" ? "Handed to" : "Hand off to"} ${escapeAdminHtml(order.handoff_name)}</strong>
           <span>${escapeAdminHtml([
             order.handoff_relationship,
             order.handoff_phone
@@ -4257,11 +4257,14 @@ function renderOrders(orders) {
     <span>Status</span>
     <select
       class="status-select"
-      ${FULFILMENT_STATUSES.includes(order.status) || order.status === "Completed" ? "disabled" : ""}
-      onchange="window.updateOrderStatus('${order.id}', this.value)"
+      ${(
+        (order.collection_method === "delivery" && FULFILMENT_STATUSES.includes(order.status)) ||
+        order.status === "Completed"
+      ) ? "disabled" : ""}
+      onchange="window.handleOrderStatusSelection('${order.id}', this)"
     >
       ${FULFILMENT_STATUSES.includes(order.status) ? `
-        <option selected>${escapeAdminHtml(order.status)} · manage in Fulfilment</option>
+        <option value="${escapeAdminHtml(order.status)}" selected>${escapeAdminHtml(order.status)}${order.collection_method === "delivery" ? " · manage in Fulfilment" : ""}</option>
       ` : ""}
       ${order.status === "Completed" ? `<option selected>Completed</option>` : ""}
       ${order.status === "Rush Review" ? `<option value="Rush Review" selected>Rush request - review</option>` : ""}
@@ -4271,7 +4274,11 @@ function renderOrders(orders) {
       <option value="Payment Expired" ${order.status === "Payment Expired" ? "selected" : ""}>Checkout expired - slot released</option>
       <option value="Payment Verified" ${order.status === "Payment Verified" ? "selected" : ""}>Paid - ready to print</option>
       <option value="Printing" ${order.status === "Printing" ? "selected" : ""}>Printing</option>
-      <option value="Assembly Complete" ${order.status === "Assembly Complete" ? "selected" : ""}>Assembly complete - ready to notify</option>
+      <option value="Assembly Complete">Assembly complete - ready to notify</option>
+      ${order.collection_method !== "delivery" && ["Assembly Complete", "Pending Pickup", "Ready for Pickup/Delivery"].includes(order.status) ? `
+        <option value="complete_customer">Complete - customer collected</option>
+        <option value="complete_handoff">Complete - passed to someone else</option>
+      ` : ""}
       <option value="Refunded" ${order.status === "Refunded" ? "selected" : ""}>Refunded</option>
     </select>
   </div>
@@ -4417,8 +4424,9 @@ function renderFulfilmentWorkspace(orders) {
         ${order.status === "Pending Delivery" ? `
           <button type="button" class="ready-btn" onclick='window.startDelivery(${JSON.stringify(String(order.id))})'>Start Delivery</button>
         ` : ""}
-        ${order.status === "Pending Pickup" ? `
-          <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Complete Pickup</button>
+        ${order.collection_method !== "delivery" && ["Assembly Complete", "Pending Pickup", "Ready for Pickup/Delivery"].includes(order.status) ? `
+          <button type="button" class="ready-btn" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "customer")'>Customer Collected - Complete</button>
+          <button type="button" class="approve-request-action" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "other")'>Passed to Someone Else</button>
         ` : ""}
         ${order.collection_method !== "delivery" && getWhatsAppHref(order.customer_phone) ? `
           <button type="button" class="approve-request-action" onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(String(order.id))}, this)'>
@@ -11150,6 +11158,126 @@ window.completeFulfilment = async function(id) {
   await loadOrders();
 };
 
+async function completePickupInventoryIfNeeded(order) {
+  if (order.status !== "Assembly Complete") return true;
+
+  await loadInventoryItems();
+  const needs = getOrderRemainingInventoryNeeds(order);
+  const missingItems = Object.entries(needs).flatMap(([itemName, qtyNeeded]) => {
+    const stock = getInventoryQty(itemName);
+    return stock < qtyNeeded
+      ? [`${itemName}: need ${qtyNeeded}, stock ${stock}`]
+      : [];
+  });
+
+  if (missingItems.length) {
+    alert(
+      "This pickup cannot be completed because stock is missing:\n\n" +
+      missingItems.join("\n")
+    );
+    return false;
+  }
+
+  const { error } = await supabase.rpc("complete_order_inventory", {
+    p_order_id: String(order.id),
+    p_needs: needs
+  });
+  if (error) {
+    console.error("Unable to complete pickup inventory safely:", error);
+    alert("The order was not completed because the stock update could not finish safely.");
+    return false;
+  }
+
+  return true;
+}
+
+window.completePickupHandover = async function(id, recipientType = "customer") {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(
+    item => String(item.id) === String(id)
+  );
+  if (!order || order.collection_method === "delivery") return false;
+
+  let recipientName = String(order.customer_name || "Customer").trim();
+  let relationship = "Customer";
+  let handoffNotes = "Collected directly from Little Keeps.";
+
+  if (recipientType === "other") {
+    const enteredName = prompt(
+      "Who did you pass the order to?",
+      order.handoff_relationship === "Customer" ? "" : order.handoff_name || ""
+    );
+    if (enteredName === null) return false;
+    recipientName = enteredName.trim();
+    if (!recipientName) {
+      alert("Enter the name of the person who received the order.");
+      return false;
+    }
+
+    const enteredRelationship = prompt(
+      "Who are they to the customer? (optional)",
+      order.handoff_relationship === "Customer" ? "" : order.handoff_relationship || ""
+    );
+    if (enteredRelationship === null) return false;
+    relationship = enteredRelationship.trim() || "Collected on customer’s behalf";
+
+    const enteredNotes = prompt(
+      "Any handover note? (optional)",
+      order.handoff_notes === "Collected directly from Little Keeps."
+        ? ""
+        : order.handoff_notes || ""
+    );
+    if (enteredNotes === null) return false;
+    handoffNotes = enteredNotes.trim();
+  }
+
+  const confirmation = recipientType === "customer"
+    ? `Mark ${order.order_ref} as collected by ${recipientName} and complete the order?`
+    : `Mark ${order.order_ref} as handed to ${recipientName} and complete the order?`;
+  if (!confirm(confirmation)) return false;
+
+  if (!await completePickupInventoryIfNeeded(order)) return false;
+
+  const updateData = {
+    status: "Completed",
+    status_updated_at: new Date().toISOString(),
+    handoff_name: recipientName,
+    handoff_relationship: relationship,
+    handoff_notes: handoffNotes
+  };
+  const { error } = await updateOrderFamily(order, updateData);
+  if (error) {
+    console.error("Unable to complete pickup handover:", error);
+    alert("Unable to complete this pickup.");
+    return false;
+  }
+
+  try {
+    await sendOrderStatusEmail({ ...order, ...updateData }, "Completed");
+  } catch (error) {
+    console.error("Pickup completion email failed:", error);
+    alert("The pickup was completed, but the customer email could not be sent.");
+  }
+
+  await loadOrders();
+  return true;
+};
+
+window.handleOrderStatusSelection = async function(id, select) {
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  if (!order) return;
+
+  if (select.value === "complete_customer" || select.value === "complete_handoff") {
+    await window.completePickupHandover(
+      id,
+      select.value === "complete_customer" ? "customer" : "other"
+    );
+    select.value = order.status;
+    return;
+  }
+
+  await updateOrderStatus(id, select.value);
+};
+
 window.copyHandDeliveredWhatsApp = async function(id, button) {
   const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
   if (!order) return;
@@ -11196,9 +11324,22 @@ function getStatusEmailContent(order, status) {
   }
 
   if (status === "Completed") {
+    const collectedByCustomer =
+      order.collection_method !== "delivery" &&
+      order.handoff_relationship === "Customer";
+    const handedToSomeone =
+      order.collection_method !== "delivery" &&
+      order.handoff_name &&
+      !collectedByCustomer;
     return {
-      title: "Your Little Keeps order is complete!",
-      message: "Your order has been collected or delivered. Thank you so much for supporting Little Keeps!",
+      title: handedToSomeone
+        ? "Your Little Keeps order has been handed over!"
+        : "Your Little Keeps order is complete!",
+      message: collectedByCustomer
+        ? "Your order has been collected. Thank you so much for supporting Little Keeps!"
+        : handedToSomeone
+          ? `Your order has been handed to ${order.handoff_name}${order.handoff_relationship ? ` (${order.handoff_relationship})` : ""}. Thank you so much for supporting Little Keeps!`
+          : "Your order has been collected or delivered. Thank you so much for supporting Little Keeps!",
       actionTitle: "Love your Little Keeps order?",
       actionDetails: "We’d be so happy to see your creation! Tap below to share a review or tag us. If anything is not quite right, please reply to this email and we’ll help."
     };
