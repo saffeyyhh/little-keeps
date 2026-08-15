@@ -30,6 +30,7 @@ import {
   normalizeAssemblyProgress,
   assessRushDateCapacity,
   formatDateRange,
+  formatEasyParcelReceiver,
   getCustomerDueDate,
   formatProductionMinutes,
   isOrderReminderFinishedOrExpired,
@@ -291,6 +292,26 @@ test("groups nearby deliveries by Singapore postal sector", () => {
   assert.equal(marsiling.key, "sector-73");
   assert.equal(woodlands.postalCode, "738000");
   assert.equal(missingPostalCode.key, "sector-unknown");
+});
+
+test("formats receiver details for EasyParcel Smart Address", () => {
+  assert.equal(
+    formatEasyParcelReceiver({
+      customer_name: "Alicia Tan",
+      delivery_address: "10 Woodlands Street 12 #03-04, 738000",
+      customer_phone: "8512 1915"
+    }),
+    "Alicia Tan\n10 Woodlands Street 12 #03-04, 738000\nSingapore\n+6585121915"
+  );
+
+  assert.equal(
+    formatEasyParcelReceiver({
+      customer_name: "Ben",
+      delivery_address: "20 Marsiling Lane, Singapore 739111",
+      customer_phone: "+65 9123 4567"
+    }),
+    "Ben\n20 Marsiling Lane, Singapore 739111\n+6591234567"
+  );
 });
 
 test("normalizes every assembly checkpoint without trusting unknown fields", () => {

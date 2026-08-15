@@ -18,6 +18,7 @@ import {
   calculatePaidOrderRevenue,
   calculateSubscriptionSummary,
   distributeAmsPlatesAcrossPrinters,
+  formatEasyParcelReceiver,
   formatProductionMinutes,
   getBulkApprovalPolicy,
   getFreeAmsPrinters,
@@ -247,6 +248,81 @@ document.querySelector("#app").innerHTML = `
       </div>
     </aside>
   </main>
+
+  <dialog id="fulfilmentEditor" class="fulfilment-editor">
+    <form id="fulfilmentEditorForm" method="dialog">
+      <header>
+        <div>
+          <p>Edit order</p>
+          <h2>Customer &amp; Fulfilment Details</h2>
+          <span id="fulfilmentEditorOrderRef"></span>
+        </div>
+        <button id="closeFulfilmentEditor" type="button" aria-label="Close">×</button>
+      </header>
+
+      <div class="fulfilment-editor-grid">
+        <label>
+          <span>Customer name</span>
+          <input id="editCustomerName" required>
+        </label>
+        <label>
+          <span>Phone number</span>
+          <input id="editCustomerPhone" inputmode="tel" required>
+        </label>
+        <label class="full-row">
+          <span>Email</span>
+          <input id="editCustomerEmail" type="email" required>
+        </label>
+        <label class="full-row">
+          <span>Collection method</span>
+          <select id="editCollectionMethod">
+            <option value="pickup">Pickup</option>
+            <option value="pickup_marsiling">Pickup at Marsiling</option>
+            <option value="delivery">Islandwide delivery</option>
+          </select>
+        </label>
+
+        <div id="editPickupFields" class="fulfilment-editor-section full-row">
+          <label>
+            <span>Pickup date</span>
+            <input id="editPickupDate" type="date">
+          </label>
+          <label>
+            <span>Pickup time</span>
+            <input id="editPickupTime" placeholder="e.g. 7:30 PM">
+          </label>
+        </div>
+
+        <div id="editDeliveryFields" class="fulfilment-editor-section full-row">
+          <label class="full-row">
+            <span>Full delivery address, including postal code</span>
+            <textarea id="editDeliveryAddress" rows="4"></textarea>
+          </label>
+          <label class="full-row">
+            <span>Delivery-fee handling</span>
+            <select id="editDeliveryFeeHandling">
+              <option value="keep">Keep the current delivery fee</option>
+              <option value="standard">Add the standard delivery fee - collect separately if already paid</option>
+              <option value="waive">Waive the delivery fee</option>
+              <option value="separate">Already paid separately - do not add it to the website total</option>
+            </select>
+          </label>
+          <p id="editDeliveryFeeNote" class="fulfilment-editor-note"></p>
+        </div>
+      </div>
+
+      <div id="fulfilmentEditorWarning" class="fulfilment-editor-warning"></div>
+      <label class="fulfilment-notify-choice">
+        <input id="editNotifyCustomer" type="checkbox">
+        <span>Email the customer a confirmation of these changes</span>
+      </label>
+
+      <footer>
+        <button id="cancelFulfilmentEdit" type="button">Cancel</button>
+        <button id="saveFulfilmentEdit" type="submit">Save Changes</button>
+      </footer>
+    </form>
+  </dialog>
 `;
 
 const ordersContainer = document.getElementById("orders");
@@ -279,6 +355,8 @@ const workshopNotesToggle = document.getElementById("workshopNotesToggle");
 const workshopNotesBody = document.getElementById("workshopNotesBody");
 const workshopNotesInput = document.getElementById("workshopNotesInput");
 const workshopNotesSaveState = document.getElementById("workshopNotesSaveState");
+const fulfilmentEditor = document.getElementById("fulfilmentEditor");
+const fulfilmentEditorForm = document.getElementById("fulfilmentEditorForm");
 
 const { data: { session } } = await supabase.auth.getSession();
 
@@ -4196,6 +4274,12 @@ function renderOrders(orders) {
           </a>
         ` : ""}
 
+        ${!["Completed", "Refunded", "Cancelled"].includes(order.status) ? `
+          <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(orderId)})'>
+            Edit Customer &amp; Fulfilment
+          </button>
+        ` : ""}
+
         ${whatsappHref &&
           order.collection_method !== "delivery" &&
           !["Completed", "Refunded", "Cancelled", "Rejected"].includes(order.status) ? `
@@ -4413,6 +4497,14 @@ function renderFulfilmentWorkspace(orders) {
           <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>
             Print Hand-Delivery Label
           </button>
+          <button type="button" class="approve-request-action" onclick='window.copyEasyParcelReceiver(${JSON.stringify(String(order.id))}, this)'>
+            Copy for EasyParcel
+          </button>
+        ` : ""}
+        ${!["Completed", "Refunded", "Cancelled"].includes(order.status) ? `
+          <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(String(order.id))})'>
+            Edit Customer &amp; Fulfilment
+          </button>
         ` : ""}
         ${order.status === "Assembly Complete" ? `
           <button type="button" class="ready-btn" onclick='window.markReady(${JSON.stringify(String(order.id))})'>
@@ -4529,6 +4621,318 @@ window.copyFulfilmentContact = async function(id, type, button) {
     window.prompt("Copy contact details:", value);
   }
 };
+
+window.copyEasyParcelReceiver = async function(id, button) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(
+    item => String(item.id) === String(id)
+  );
+  if (!order) return;
+
+  const value = formatEasyParcelReceiver(order);
+  if (!value) return;
+
+  try {
+    await navigator.clipboard.writeText(value);
+    if (button) {
+      const previousLabel = button.textContent;
+      button.textContent = "EasyParcel Details Copied ✓";
+      setTimeout(() => { button.textContent = previousLabel; }, 1800);
+    }
+  } catch (error) {
+    console.error("Unable to copy EasyParcel receiver:", error);
+    window.prompt("Copy and paste into EasyParcel Smart Address:", value);
+  }
+};
+
+function refreshFulfilmentEditorFields() {
+  const method = document.getElementById("editCollectionMethod").value;
+  const isDelivery = method === "delivery";
+  const pickupFields = document.getElementById("editPickupFields");
+  const deliveryFields = document.getElementById("editDeliveryFields");
+  const feeHandling = document.getElementById("editDeliveryFeeHandling");
+  const feeNote = document.getElementById("editDeliveryFeeNote");
+  const warning = document.getElementById("fulfilmentEditorWarning");
+  const originalMethod = fulfilmentEditor.dataset.originalMethod;
+  const isPaid = fulfilmentEditor.dataset.isPaid === "true";
+
+  pickupFields.hidden = isDelivery;
+  deliveryFields.hidden = !isDelivery;
+
+  if (isDelivery && originalMethod !== "delivery" && feeHandling.dataset.method !== method) {
+    feeHandling.value = "standard";
+  }
+  feeHandling.dataset.method = method;
+
+  const standardFee = Number(adminShopSettings.delivery_fee || 0);
+  const freeThreshold = Number(adminShopSettings.free_delivery_threshold || 0);
+  const subtotal = Number(fulfilmentEditor.dataset.subtotal || 0);
+  const qualifiesForFreeDelivery = freeThreshold > 0 && subtotal >= freeThreshold;
+  feeNote.textContent = qualifiesForFreeDelivery
+    ? `This order qualifies for free delivery because its subtotal is at least ${formatMoney(freeThreshold)}.`
+    : `The current standard delivery fee is ${formatMoney(standardFee)}. Website payments are not charged again automatically.`;
+
+  if (originalMethod === method) {
+    warning.textContent = "Contact and fulfilment corrections will be saved across every linked part of this order.";
+  } else if (isDelivery) {
+    warning.textContent = isPaid
+      ? "This order is already paid. If you add a delivery fee, collect the difference separately from the customer."
+      : "The pickup appointment will be cleared and the order will move into the delivery workflow.";
+  } else {
+    warning.textContent = isPaid && Number(fulfilmentEditor.dataset.currentDeliveryFee || 0) > 0
+      ? "The delivery fee will be removed from the order total. If it was already paid, arrange the refund or credit separately."
+      : "The delivery address and courier details will be cleared and the order will move into the pickup workflow.";
+  }
+}
+
+window.openFulfilmentEditor = function(id) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(
+    item => String(item.id) === String(id)
+  );
+  if (!order) return;
+
+  fulfilmentEditor.dataset.orderId = String(order.id);
+  fulfilmentEditor.dataset.originalMethod = order.collection_method || "pickup";
+  fulfilmentEditor.dataset.isPaid = String(
+    order.payment_type === "Paid" || order.online_payment_status === "completed"
+  );
+  fulfilmentEditor.dataset.currentDeliveryFee = String(Number(order.delivery_fee || 0));
+  fulfilmentEditor.dataset.subtotal = String(Number(order.original_subtotal ?? order.subtotal ?? 0));
+
+  document.getElementById("fulfilmentEditorOrderRef").textContent =
+    `${order.order_ref || "Order"}${order.linked_children?.length ? ` · ${order.linked_children.length + 1} linked parts` : ""}`;
+  document.getElementById("editCustomerName").value = order.customer_name || "";
+  document.getElementById("editCustomerPhone").value = order.customer_phone || "";
+  document.getElementById("editCustomerEmail").value = order.customer_email || "";
+  document.getElementById("editCollectionMethod").value = order.collection_method || "pickup";
+  document.getElementById("editPickupDate").value = String(order.pickup_scheduled_date || "").slice(0, 10);
+  document.getElementById("editPickupTime").value = order.pickup_time_range || "";
+  document.getElementById("editDeliveryAddress").value = order.delivery_address || "";
+  document.getElementById("editDeliveryFeeHandling").value = "keep";
+  document.getElementById("editDeliveryFeeHandling").dataset.method = order.collection_method || "pickup";
+  document.getElementById("editNotifyCustomer").checked = false;
+
+  const methodSelect = document.getElementById("editCollectionMethod");
+  methodSelect.disabled = order.status === "Out for Delivery";
+  methodSelect.title = methodSelect.disabled
+    ? "Collection method cannot be switched after delivery has started. Contact details and the address can still be corrected."
+    : "";
+
+  refreshFulfilmentEditorFields();
+  fulfilmentEditor.showModal();
+};
+
+function closeFulfilmentEditor() {
+  fulfilmentEditor.close();
+}
+
+document.getElementById("editCollectionMethod").addEventListener("change", refreshFulfilmentEditorFields);
+document.getElementById("editDeliveryFeeHandling").addEventListener("change", refreshFulfilmentEditorFields);
+document.getElementById("closeFulfilmentEditor").addEventListener("click", closeFulfilmentEditor);
+document.getElementById("cancelFulfilmentEdit").addEventListener("click", closeFulfilmentEditor);
+fulfilmentEditor.addEventListener("click", event => {
+  if (event.target === fulfilmentEditor) closeFulfilmentEditor();
+});
+
+function getEditedFulfilmentStatus(status, oldMethod, newMethod) {
+  if (oldMethod === newMethod) return status;
+  if (newMethod === "delivery" && ["Pending Pickup", "Ready for Pickup/Delivery"].includes(status)) {
+    return "Pending Delivery";
+  }
+  if (newMethod !== "delivery" && status === "Pending Delivery") {
+    return "Pending Pickup";
+  }
+  return status;
+}
+
+async function sendFulfilmentChangeEmail(order, changes) {
+  if (!adminShopSettings.status_emails_enabled) {
+    return { skipped: true, reason: "Status emails are disabled under Settings → Customer updates." };
+  }
+  const templateId = String(adminShopSettings.status_email_template_id || "").trim();
+  if (!templateId || !order.customer_email) {
+    return { skipped: true, reason: "The status email template or customer email is missing." };
+  }
+
+  const methodDetails = order.collection_method === "delivery"
+    ? `Delivery address: ${order.delivery_address || "Please contact us to confirm the address."}`
+    : `Pickup: ${getPickupLocation(order.collection_method)}${order.pickup_scheduled_date ? ` on ${formatDate(order.pickup_scheduled_date)}${order.pickup_time_range ? ` at ${order.pickup_time_range}` : ""}` : ". You can choose a timing on your Track/Pay page when the order is ready."}`;
+
+  await emailjs.send(EMAILJS_SERVICE, templateId, {
+    to_email: order.customer_email,
+    customer_name: order.customer_name || "Customer",
+    order_ref: order.order_ref || "-",
+    update_title: "Your order details have been updated",
+    update_message: `${changes.join(" ")} ${methodDetails}`,
+    action_title: "Please check the updated details",
+    action_details: "If anything is still incorrect, reply to this email or contact Little Keeps.",
+    action_button_label: "View Your Order",
+    action_url: `https://little-keeps.vercel.app/?resume_order=${encodeURIComponent(order.order_ref || "")}#orderStatusSection`,
+    has_tracking: false,
+    tracking_number: "",
+    tracking_url: "",
+    courier_name: "",
+    collection_method: getMethodLabel(order.collection_method),
+    needed_by: formatDate(order.needed_by)
+  });
+  return { sent: true };
+}
+
+fulfilmentEditorForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(
+    item => String(item.id) === fulfilmentEditor.dataset.orderId
+  );
+  if (!order) return;
+
+  const customerName = document.getElementById("editCustomerName").value.trim();
+  const customerPhone = document.getElementById("editCustomerPhone").value.trim();
+  const customerEmail = document.getElementById("editCustomerEmail").value.trim();
+  const collectionMethod = document.getElementById("editCollectionMethod").value;
+  const pickupDate = document.getElementById("editPickupDate").value;
+  const pickupTime = document.getElementById("editPickupTime").value.trim();
+  const deliveryAddress = document.getElementById("editDeliveryAddress").value.trim();
+  const feeHandling = document.getElementById("editDeliveryFeeHandling").value;
+  const notifyCustomer = document.getElementById("editNotifyCustomer").checked;
+  const saveButton = document.getElementById("saveFulfilmentEdit");
+
+  if (!customerName || !customerPhone || !customerEmail) {
+    alert("Please complete the customer name, phone number and email.");
+    return;
+  }
+  if (collectionMethod === "delivery" && !deliveryAddress) {
+    alert("Enter the full delivery address.");
+    return;
+  }
+  if (collectionMethod === "delivery" && !/(?:^|\D)\d{6}(?:\D|$)/.test(deliveryAddress)) {
+    alert("Include the six-digit Singapore postal code in the delivery address.");
+    return;
+  }
+  if ((pickupDate && !pickupTime) || (!pickupDate && pickupTime)) {
+    alert("Enter both the pickup date and time, or leave both blank for the customer to choose later.");
+    return;
+  }
+
+  const oldMethod = order.collection_method || "pickup";
+  const standardFee = Number(order.original_subtotal ?? order.subtotal ?? 0) >= Number(adminShopSettings.free_delivery_threshold || 0)
+    ? 0
+    : Number(adminShopSettings.delivery_fee || 0);
+  const rootDeliveryFee = collectionMethod !== "delivery"
+    ? 0
+    : feeHandling === "keep"
+      ? Number(order.delivery_fee || 0)
+      : feeHandling === "standard"
+        ? standardFee
+        : 0;
+  const productionReadyDate = String(
+    order.requested_completion_date || order.estimated_ready_to || order.needed_by || ""
+  ).slice(0, 10);
+  const neededBy = collectionMethod === "delivery" || !pickupDate
+    ? productionReadyDate
+    : !productionReadyDate || pickupDate > productionReadyDate
+      ? pickupDate
+      : productionReadyDate;
+  const nextStatus = getEditedFulfilmentStatus(order.status, oldMethod, collectionMethod);
+
+  const changes = [];
+  if (customerName !== String(order.customer_name || "")) changes.push(`Customer name changed to ${customerName}.`);
+  if (customerPhone !== String(order.customer_phone || "")) changes.push(`Contact number changed to ${customerPhone}.`);
+  if (customerEmail !== String(order.customer_email || "")) changes.push(`Email changed to ${customerEmail}.`);
+  if (collectionMethod !== oldMethod) changes.push(`Fulfilment changed to ${getMethodLabel(collectionMethod)}.`);
+  if (collectionMethod === "delivery" && deliveryAddress !== String(order.delivery_address || "")) changes.push("Delivery address updated.");
+  if (collectionMethod !== "delivery" && (pickupDate !== String(order.pickup_scheduled_date || "").slice(0, 10) || pickupTime !== String(order.pickup_time_range || ""))) changes.push("Pickup appointment updated.");
+  if (!changes.length && rootDeliveryFee === Number(order.delivery_fee || 0)) {
+    alert("There are no changes to save.");
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  const auditLine = `[Fulfilment edit ${new Date().toLocaleString("en-SG")}] ${changes.join(" ")}${feeHandling === "separate" ? " Delivery fee paid separately." : feeHandling === "waive" ? " Delivery fee waived." : ""}`;
+  const family = getOrderFamily(order);
+  const rootRef = String(order.linked_order_ref || order.order_ref || "").trim().toLowerCase();
+  const isRootPart = part =>
+    String(part.order_ref || "").trim().toLowerCase() === rootRef;
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving…";
+
+  try {
+    if (IS_ADMIN_PREVIEW) {
+      family.forEach(part => Object.assign(part, {
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        collection_method: collectionMethod,
+        delivery_address: collectionMethod === "delivery" ? deliveryAddress : "",
+        pickup_scheduled_date: collectionMethod === "delivery" || !isRootPart(part) ? null : pickupDate || null,
+        pickup_time_range: collectionMethod === "delivery" || !isRootPart(part) ? null : pickupTime || null,
+        courier_name: collectionMethod === "delivery" ? part.courier_name : "",
+        tracking_number: collectionMethod === "delivery" ? part.tracking_number : "",
+        tracking_url: collectionMethod === "delivery" ? part.tracking_url : "",
+        delivery_fee: isRootPart(part) ? rootDeliveryFee : 0,
+        total: Number(part.subtotal || 0) + Number(part.rush_fee || 0) + (isRootPart(part) ? rootDeliveryFee : 0),
+        needed_by: neededBy || part.needed_by,
+        status: nextStatus,
+        status_updated_at: timestamp,
+        production_notes: [part.production_notes, auditLine].filter(Boolean).join("\n")
+      }));
+    } else {
+      const results = await Promise.all(family.map(part => {
+        const partFee = isRootPart(part) ? rootDeliveryFee : 0;
+        return supabase.from("orders").update({
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          customer_email: customerEmail,
+          collection_method: collectionMethod,
+          delivery_address: collectionMethod === "delivery" ? deliveryAddress : "",
+          pickup_scheduled_date: collectionMethod === "delivery" || !isRootPart(part) ? null : pickupDate || null,
+          pickup_time_range: collectionMethod === "delivery" || !isRootPart(part) ? null : pickupTime || null,
+          courier_name: collectionMethod === "delivery" ? part.courier_name : "",
+          tracking_number: collectionMethod === "delivery" ? part.tracking_number : "",
+          tracking_url: collectionMethod === "delivery" ? part.tracking_url : "",
+          delivery_fee: partFee,
+          total: Number(part.subtotal || 0) + Number(part.rush_fee || 0) + partFee,
+          needed_by: neededBy || part.needed_by,
+          status: nextStatus,
+          status_updated_at: timestamp,
+          production_notes: [part.production_notes, auditLine].filter(Boolean).join("\n")
+        }).eq("id", part.id);
+      }));
+      const failed = results.find(result => result.error);
+      if (failed?.error) throw failed.error;
+    }
+
+    const updatedOrder = {
+      ...order,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_email: customerEmail,
+      collection_method: collectionMethod,
+      delivery_address: collectionMethod === "delivery" ? deliveryAddress : "",
+      pickup_scheduled_date: collectionMethod === "delivery" ? null : pickupDate || null,
+      pickup_time_range: collectionMethod === "delivery" ? null : pickupTime || null,
+      delivery_fee: rootDeliveryFee,
+      needed_by: neededBy || order.needed_by,
+      status: nextStatus
+    };
+
+    let emailMessage = "";
+    if (notifyCustomer && !IS_ADMIN_PREVIEW) {
+      const result = await sendFulfilmentChangeEmail(updatedOrder, changes);
+      emailMessage = result.sent
+        ? " The customer confirmation was emailed."
+        : ` The changes were saved, but the email was skipped: ${result.reason}`;
+    }
+
+    closeFulfilmentEditor();
+    await loadOrders();
+    alert(`Customer and fulfilment details updated.${emailMessage}`);
+  } catch (error) {
+    console.error("Unable to edit fulfilment details:", error);
+    alert("The changes could not be saved. Nothing else was updated intentionally; refresh and check this linked order before trying again.");
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save Changes";
+  }
+});
 
 function getBaseInventoryName(baseName, baseShape = "ribbed") {
   const shapeLabel =

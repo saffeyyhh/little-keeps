@@ -259,6 +259,26 @@ export function getDeliveryRouteGroup(deliveryAddress) {
   };
 }
 
+export function formatEasyParcelReceiver(order = {}) {
+  const name = String(order.customer_name || "").trim();
+  const address = String(order.delivery_address || "").trim();
+  const rawPhone = String(order.customer_phone || "").trim();
+  const digits = rawPhone.replace(/\D/g, "");
+  const phone = digits.length === 8
+    ? `+65${digits}`
+    : digits.length === 10 && digits.startsWith("65")
+      ? `+${digits}`
+      : rawPhone;
+  const hasSingapore = /\bsingapore\b/i.test(address);
+
+  return [
+    name,
+    address,
+    address && !hasSingapore ? "Singapore" : "",
+    phone
+  ].filter(Boolean).join("\n");
+}
+
 export const ASSEMBLY_STAGES = [
   { key: "base_connected", label: "Base Connected" },
   { key: "letters_caps_assembled", label: "Letters/Caps Assembled" },
