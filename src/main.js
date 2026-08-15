@@ -770,16 +770,10 @@ document.querySelector("#app").innerHTML = `
     <button
       id="sharedGroupCartBtn"
       type="button"
-      class="shared-group-cart-btn"
+      class="shared-group-cart-btn hidden"
     >
-      Start a Group Order
+      Save My Cart to Group Order
     </button>
-
-    <button id="copyDesignLinkBtn" type="button" class="cart-secondary-btn">
-      Copy Continue-Designing Link
-    </button>
-
-    <p id="copyDesignLinkStatus" class="cart-share-status" aria-live="polite"></p>
 
     <button
       id="checkoutFromCartBtn"
@@ -2378,8 +2372,6 @@ const continueShoppingBtn =
 const checkoutFromCartBtn =
   document.getElementById("checkoutFromCartBtn");
 const sharedGroupCartBtn = document.getElementById("sharedGroupCartBtn");
-const copyDesignLinkBtn = document.getElementById("copyDesignLinkBtn");
-const copyDesignLinkStatus = document.getElementById("copyDesignLinkStatus");
 
 const orderStatusForm =
   document.getElementById("orderStatusForm");
@@ -6961,15 +6953,6 @@ function checkoutSharedGroup() {
 }
 
 sharedGroupCartBtn.addEventListener("click", openSharedGroupCartAction);
-copyDesignLinkBtn?.addEventListener("click", async () => {
-  if (!names.length) return;
-  try {
-    await navigator.clipboard.writeText(getShareableDesignUrl());
-    copyDesignLinkStatus.textContent = "Private continue-designing link copied ✓";
-  } catch {
-    copyDesignLinkStatus.textContent = "Unable to copy automatically. Please try again.";
-  }
-});
 sharedGroupBannerAction.addEventListener("click", () => {
   if (activeSharedGroup?.is_owner) renderSharedGroupOwner();
   else if (activeSharedGroup?.status === "open") sharedGroupHowModal.classList.remove("hidden");
@@ -7057,13 +7040,9 @@ function renderCartDrawer() {
 
     checkoutFromCartBtn.disabled = true;
     checkoutFromCartBtn.textContent = "Add a keychain first";
-    sharedGroupCartBtn.classList.remove("hidden");
+    sharedGroupCartBtn.classList.toggle("hidden", !activeSharedGroup?.is_owner);
     sharedGroupCartBtn.disabled = !activeSharedGroup?.is_owner;
-    sharedGroupCartBtn.textContent = activeSharedGroup?.is_owner
-      ? "Review Group Order"
-      : activeSharedGroup
-        ? "Design a keychain first"
-        : "Start a Group Order";
+    sharedGroupCartBtn.textContent = "Review Group Order";
     continueShoppingBtn.textContent = "Start Designing";
     return;
   }
@@ -7074,14 +7053,10 @@ function renderCartDrawer() {
     : "Checkout";
   sharedGroupCartBtn.classList.toggle(
     "hidden",
-    Boolean(activeSharedGroup && !activeSharedGroup.is_owner)
+    !activeSharedGroup?.is_owner
   );
   sharedGroupCartBtn.disabled = false;
-  sharedGroupCartBtn.textContent = activeSharedGroup?.is_owner
-    ? "Save My Cart to Group Order"
-    : activeSharedGroup
-      ? `Add Basket to ${activeSharedGroup.title}`
-      : "Start a Group Order";
+  sharedGroupCartBtn.textContent = "Save My Cart to Group Order";
   continueShoppingBtn.textContent = "Continue Designing";
 
   cartDrawerItems.innerHTML = names
@@ -8117,36 +8092,12 @@ trackSubmittedOrderBtn?.addEventListener("click", () => {
   statusCustomerEmail.focus();
 });
 
-function encodeSharedDesign(payload) {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
-  let binary = "";
-  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-}
-
 function decodeSharedDesign(value) {
   const normalized = String(value || "").replaceAll("-", "+").replaceAll("_", "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   const binary = atob(padded);
   const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
   return JSON.parse(new TextDecoder().decode(bytes));
-}
-
-function getShareableDesignUrl() {
-  const url = new URL(window.location.href);
-  url.search = "";
-  url.hash = new URLSearchParams({
-    design: encodeSharedDesign({
-      version: 1,
-      productKey: activeProduct.product_key,
-      orderType,
-      names,
-      selectedIndex,
-      globalDesign,
-      randomiseMultipleColours: Boolean(randomiseMultipleColours?.checked)
-    })
-  }).toString();
-  return url.toString();
 }
 
 function loadSharedDesignFromUrl() {

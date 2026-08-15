@@ -5751,14 +5751,6 @@ body {
 .availability-preview-grid strong { color: #b93c6c; font-size: 1.35rem; }
 .availability-preview-body > p { margin: 15px 0 0; color: #756a70; font-size: .9rem; }
 
-.cart-share-status {
-  min-height: 1.2em;
-  margin: 6px 0 0;
-  color: #6c4b7c;
-  font-size: .8rem;
-  text-align: center;
-}
-
 .payment-edit-note {
   margin: 12px 0 18px;
   padding: 11px 13px;
