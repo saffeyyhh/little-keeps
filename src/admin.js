@@ -323,6 +323,44 @@ document.querySelector("#app").innerHTML = `
       </footer>
     </form>
   </dialog>
+
+  <dialog id="easyParcelDialog" class="fulfilment-editor easyparcel-dialog">
+    <form id="easyParcelForm" method="dialog">
+      <header>
+        <div>
+          <p>EasyParcel</p>
+          <h2>Compare &amp; Book Courier</h2>
+          <span id="easyParcelOrderRef"></span>
+        </div>
+        <button id="closeEasyParcelDialog" type="button" aria-label="Close">×</button>
+      </header>
+
+      <div id="easyParcelEnvironmentBadge" class="easyparcel-environment">Sandbox · no real delivery or charge</div>
+      <div id="easyParcelReceiver" class="easyparcel-receiver"></div>
+
+      <div class="fulfilment-editor-grid">
+        <label>
+          <span>Collection date</span>
+          <input id="easyParcelCollectionDate" type="date" required>
+        </label>
+        <label>
+          <span>Weight (kg)</span>
+          <input id="easyParcelWeight" type="number" min="0.01" step="0.01" required>
+        </label>
+        <label><span>Length (cm)</span><input id="easyParcelLength" type="number" min="1" step="0.1" required></label>
+        <label><span>Width (cm)</span><input id="easyParcelWidth" type="number" min="1" step="0.1" required></label>
+        <label><span>Height (cm)</span><input id="easyParcelHeight" type="number" min="1" step="0.1" required></label>
+      </div>
+
+      <div id="easyParcelQuoteStatus" class="fulfilment-editor-note"></div>
+      <div id="easyParcelQuotes" class="easyparcel-quotes"></div>
+
+      <footer>
+        <button id="cancelEasyParcelBooking" type="button">Cancel</button>
+        <button id="getEasyParcelQuotes" type="button">Compare Couriers</button>
+      </footer>
+    </form>
+  </dialog>
 `;
 
 const ordersContainer = document.getElementById("orders");
@@ -357,8 +395,18 @@ const workshopNotesInput = document.getElementById("workshopNotesInput");
 const workshopNotesSaveState = document.getElementById("workshopNotesSaveState");
 const fulfilmentEditor = document.getElementById("fulfilmentEditor");
 const fulfilmentEditorForm = document.getElementById("fulfilmentEditorForm");
+const easyParcelDialog = document.getElementById("easyParcelDialog");
+const easyParcelForm = document.getElementById("easyParcelForm");
 
 const { data: { session } } = await supabase.auth.getSession();
+
+const easyParcelCallback = new URLSearchParams(window.location.search).get("easyparcel");
+if (easyParcelCallback) {
+  const callbackMessage = new URLSearchParams(window.location.search).get("message") ||
+    (easyParcelCallback === "connected" ? "EasyParcel connected successfully." : "EasyParcel could not connect.");
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.hash}`);
+  setTimeout(() => alert(callbackMessage), 250);
+}
 
 
 console.log(session);
@@ -445,6 +493,20 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   pickup_time_options: {
     weekday: ["7:00 PM", "7:30 PM", "8:00 PM"],
     weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
+  },
+  easyparcel_settings: {
+    sender_name: "",
+    sender_company: "Little Keeps",
+    sender_phone: "",
+    sender_email: "",
+    sender_address_1: "",
+    sender_address_2: "",
+    sender_postcode: "",
+    sender_city: "Singapore",
+    default_weight: 0.5,
+    default_length: 20,
+    default_width: 15,
+    default_height: 8
   }
 };
 
@@ -459,6 +521,9 @@ let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 let adminProductsLoadFailed = false;
 let adminSettingsTab = "products";
+let easyParcelConnectionStatus = { connected: false, environment: "sandbox" };
+let activeEasyParcelOrderId = "";
+let activeEasyParcelQuotes = [];
 
 let ADMIN_COLOUR_OPTIONS = normalizeColourOptions(DEFAULT_COLOUR_OPTIONS);
 
@@ -1358,6 +1423,10 @@ function renderSettingsWorkspace() {
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
   const pickupTimes = normalizePickupTimeOptions(adminShopSettings.pickup_time_options);
+  const easy = {
+    ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
+    ...(adminShopSettings.easyparcel_settings || {})
+  };
   const productNumberField = (product, field, label, step = "0.01") => `
     <label class="settings-field">
       <span>${label}</span>
@@ -1391,6 +1460,7 @@ function renderSettingsWorkspace() {
         <button type="button" data-settings-tab="products">Products & pricing</button>
         <button type="button" data-settings-tab="scheduling">Schedule & capacity</button>
         <button type="button" data-settings-tab="stock">Stock & colours</button>
+        <button type="button" data-settings-tab="delivery">Delivery & EasyParcel</button>
         <button type="button" data-settings-tab="customer">Customer tools</button>
       </nav>
 
@@ -1480,6 +1550,46 @@ function renderSettingsWorkspace() {
             ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
           </div>
           <p class="hint">Product prices are managed separately above.</p>
+        </section>
+
+        <section class="settings-card settings-card-wide" data-settings-group="delivery">
+          <div class="settings-card-heading">
+            <div>
+              <h3>EasyParcel connection</h3>
+              <p class="hint">Quotes, bookings, labels and tracking stay inside Fulfilment. OAuth credentials are kept on the server, never in this page.</p>
+            </div>
+            <strong class="${easyParcelConnectionStatus.connected ? "easyparcel-connected" : "easyparcel-disconnected"}">
+              ${easyParcelConnectionStatus.connected
+                ? `Connected · ${escapeAdminHtml(easyParcelConnectionStatus.environment || "sandbox")}`
+                : "Not connected"}
+            </strong>
+          </div>
+          <div class="easyparcel-settings-actions">
+            <button type="button" class="ready-btn" onclick="window.connectEasyParcel()">
+              ${easyParcelConnectionStatus.connected ? "Reconnect EasyParcel" : "Connect EasyParcel Sandbox"}
+            </button>
+            <button type="button" onclick="window.refreshEasyParcelConnection()">Refresh Status</button>
+          </div>
+          <p class="hint">Sandbox bookings use demo credit and do not create a real courier collection.</p>
+        </section>
+
+        <section class="settings-card settings-card-wide" data-settings-group="delivery">
+          <h3>Sender & default parcel</h3>
+          <p class="hint">These details prefill every EasyParcel booking. You can still change the parcel measurements before comparing couriers.</p>
+          <div class="settings-fields two-columns">
+            <label class="settings-field"><span>Sender name</span><input name="easyparcel_sender_name" value="${escapeAdminHtml(easy.sender_name)}"></label>
+            <label class="settings-field"><span>Company</span><input name="easyparcel_sender_company" value="${escapeAdminHtml(easy.sender_company)}"></label>
+            <label class="settings-field"><span>Phone</span><input name="easyparcel_sender_phone" inputmode="tel" value="${escapeAdminHtml(easy.sender_phone)}"></label>
+            <label class="settings-field"><span>Email</span><input name="easyparcel_sender_email" type="email" value="${escapeAdminHtml(easy.sender_email)}"></label>
+            <label class="settings-field"><span>Address line 1</span><input name="easyparcel_sender_address_1" value="${escapeAdminHtml(easy.sender_address_1)}"></label>
+            <label class="settings-field"><span>Address line 2</span><input name="easyparcel_sender_address_2" value="${escapeAdminHtml(easy.sender_address_2)}"></label>
+            <label class="settings-field"><span>Postal code</span><input name="easyparcel_sender_postcode" inputmode="numeric" maxlength="6" value="${escapeAdminHtml(easy.sender_postcode)}"></label>
+            <label class="settings-field"><span>City</span><input name="easyparcel_sender_city" value="${escapeAdminHtml(easy.sender_city)}"></label>
+            <label class="settings-field"><span>Default weight (kg)</span><input name="easyparcel_default_weight" type="number" min="0.01" step="0.01" value="${escapeAdminHtml(easy.default_weight)}"></label>
+            <label class="settings-field"><span>Default length (cm)</span><input name="easyparcel_default_length" type="number" min="1" step="0.1" value="${escapeAdminHtml(easy.default_length)}"></label>
+            <label class="settings-field"><span>Default width (cm)</span><input name="easyparcel_default_width" type="number" min="1" step="0.1" value="${escapeAdminHtml(easy.default_width)}"></label>
+            <label class="settings-field"><span>Default height (cm)</span><input name="easyparcel_default_height" type="number" min="1" step="0.1" value="${escapeAdminHtml(easy.default_height)}"></label>
+          </div>
         </section>
 
         <section class="settings-card" data-settings-group="scheduling">
@@ -1784,7 +1894,7 @@ function renderSettingsWorkspace() {
 
   document.getElementById("shopSettingsForm").addEventListener("submit", saveShopSettings);
   const showSettingsTab = tab => {
-    const validTabs = ["products", "scheduling", "stock", "customer"];
+    const validTabs = ["products", "scheduling", "stock", "delivery", "customer"];
     adminSettingsTab = validTabs.includes(tab) ? tab : "products";
     document.querySelectorAll("[data-settings-tab]").forEach(button => {
       const isActive = button.dataset.settingsTab === adminSettingsTab;
@@ -1934,6 +2044,20 @@ async function saveShopSettings(event) {
       .replace(/\D/g, "") || "6585121915",
     colour_options: normalizedColourOptions
   };
+  updates.easyparcel_settings = {
+    sender_name: String(form.get("easyparcel_sender_name") || "").trim(),
+    sender_company: String(form.get("easyparcel_sender_company") || "Little Keeps").trim(),
+    sender_phone: String(form.get("easyparcel_sender_phone") || "").trim(),
+    sender_email: String(form.get("easyparcel_sender_email") || "").trim(),
+    sender_address_1: String(form.get("easyparcel_sender_address_1") || "").trim(),
+    sender_address_2: String(form.get("easyparcel_sender_address_2") || "").trim(),
+    sender_postcode: String(form.get("easyparcel_sender_postcode") || "").replace(/\D/g, "").slice(0, 6),
+    sender_city: String(form.get("easyparcel_sender_city") || "Singapore").trim(),
+    default_weight: Math.max(0.01, Number(form.get("easyparcel_default_weight") || 0.5)),
+    default_length: Math.max(1, Number(form.get("easyparcel_default_length") || 20)),
+    default_width: Math.max(1, Number(form.get("easyparcel_default_width") || 15)),
+    default_height: Math.max(1, Number(form.get("easyparcel_default_height") || 8))
+  };
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase.from("shop_settings").upsert(updates).select().single();
@@ -1997,6 +2121,10 @@ async function saveShopSettings(event) {
       data.pickup_time_options?.contact_whatsapp_number || "6585121915"
     ).replace(/\D/g, "") || "6585121915",
     pickup_time_options: normalizePickupTimeOptions(data.pickup_time_options)
+  };
+  adminShopSettings.easyparcel_settings = {
+    ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
+    ...(data.easyparcel_settings || {})
   };
   adminShopSettings.colour_options = normalizeColourOptions(
     data.pickup_time_options?.colour_options || normalizedColourOptions
@@ -4472,6 +4600,13 @@ function renderFulfilmentWorkspace(orders) {
         </div>
         ${order.collection_method === "delivery" ? `
           <p>${escapeAdminHtml(order.delivery_address || "Address missing")}</p>
+          ${order.easyparcel_shipment_number ? `
+            <div class="easyparcel-shipment-summary">
+              <strong>${escapeAdminHtml(order.easyparcel_courier_name || "EasyParcel shipment")}</strong>
+              <span>${escapeAdminHtml(order.easyparcel_shipment_number)} · ${escapeAdminHtml(order.easyparcel_status || "Booked")}</span>
+              ${order.tracking_number ? `<span>AWB ${escapeAdminHtml(order.tracking_number)}</span>` : ""}
+            </div>
+          ` : ""}
           <label class="route-stop-select">
             <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
             <span>Include as route stop</span>
@@ -4494,6 +4629,13 @@ function renderFulfilmentWorkspace(orders) {
       </div>
       <div class="fulfilment-card-actions">
         ${order.collection_method === "delivery" ? `
+          ${order.easyparcel_shipment_number ? `
+            <button type="button" class="approve-request-action" onclick='window.refreshEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Refresh EasyParcel</button>
+            ${order.easyparcel_awb_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.easyparcel_awb_url)}" target="_blank" rel="noopener">Download Courier Label</a>` : ""}
+            ${order.tracking_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.tracking_url)}" target="_blank" rel="noopener">Open Tracking</a>` : ""}
+          ` : `
+            <button type="button" class="ready-btn" onclick='window.openEasyParcelBooking(${JSON.stringify(String(order.id))})'>Compare &amp; Book EasyParcel</button>
+          `}
           <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>
             Print Hand-Delivery Label
           </button>
@@ -4641,6 +4783,215 @@ window.copyEasyParcelReceiver = async function(id, button) {
   } catch (error) {
     console.error("Unable to copy EasyParcel receiver:", error);
     window.prompt("Copy and paste into EasyParcel Smart Address:", value);
+  }
+};
+
+function getTomorrowDateValue() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return getSingaporeDateValue(tomorrow);
+}
+
+function getEasyParcelFormPayload() {
+  const easy = {
+    ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
+    ...(adminShopSettings.easyparcel_settings || {})
+  };
+  return {
+    collection_date: document.getElementById("easyParcelCollectionDate").value,
+    weight: Number(document.getElementById("easyParcelWeight").value),
+    length: Number(document.getElementById("easyParcelLength").value),
+    width: Number(document.getElementById("easyParcelWidth").value),
+    height: Number(document.getElementById("easyParcelHeight").value),
+    sender_name: easy.sender_name,
+    sender_company: easy.sender_company,
+    sender_phone: easy.sender_phone,
+    sender_email: easy.sender_email,
+    sender_address_1: easy.sender_address_1,
+    sender_address_2: easy.sender_address_2,
+    sender_postcode: easy.sender_postcode,
+    sender_city: easy.sender_city
+  };
+}
+
+function closeEasyParcelDialog() {
+  easyParcelDialog.close();
+  activeEasyParcelOrderId = "";
+  activeEasyParcelQuotes = [];
+}
+
+document.getElementById("closeEasyParcelDialog").addEventListener("click", closeEasyParcelDialog);
+document.getElementById("cancelEasyParcelBooking").addEventListener("click", closeEasyParcelDialog);
+easyParcelDialog.addEventListener("click", event => {
+  if (event.target === easyParcelDialog) closeEasyParcelDialog();
+});
+
+window.openEasyParcelBooking = async function(id) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order || order.collection_method !== "delivery") return;
+
+  if (!adminSettingsLoaded) await loadAdminSettings();
+  await loadEasyParcelConnectionStatus();
+  if (!easyParcelConnectionStatus.connected) {
+    alert("Connect EasyParcel first under Settings → Delivery & EasyParcel.");
+    currentView = "settings";
+    adminSettingsTab = "delivery";
+    setActiveTab(settingsViewBtn);
+    renderCurrentView();
+    return;
+  }
+
+  const easy = {
+    ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
+    ...(adminShopSettings.easyparcel_settings || {})
+  };
+  const missingSender = [
+    easy.sender_name,
+    easy.sender_phone,
+    easy.sender_email,
+    easy.sender_address_1,
+    easy.sender_postcode
+  ].some(value => !String(value || "").trim());
+  if (missingSender) {
+    alert("Complete your sender details under Settings → Delivery & EasyParcel first.");
+    currentView = "settings";
+    adminSettingsTab = "delivery";
+    setActiveTab(settingsViewBtn);
+    renderCurrentView();
+    return;
+  }
+
+  activeEasyParcelOrderId = String(order.id);
+  activeEasyParcelQuotes = [];
+  document.getElementById("easyParcelOrderRef").textContent = order.order_ref || "Order";
+  document.getElementById("easyParcelEnvironmentBadge").textContent =
+    easyParcelConnectionStatus.environment === "live"
+      ? "Live · booking will charge your EasyParcel wallet"
+      : "Sandbox · no real delivery or charge";
+  document.getElementById("easyParcelEnvironmentBadge").classList.toggle(
+    "is-live", easyParcelConnectionStatus.environment === "live"
+  );
+  document.getElementById("easyParcelReceiver").innerHTML = `
+    <strong>${escapeAdminHtml(order.customer_name || "Customer")}</strong>
+    <span>${escapeAdminHtml(order.delivery_address || "Address missing")}</span>
+    <span>${escapeAdminHtml(order.customer_phone || "Phone missing")}</span>
+  `;
+  document.getElementById("easyParcelCollectionDate").value = getTomorrowDateValue();
+  document.getElementById("easyParcelCollectionDate").min = getSingaporeDateValue();
+  document.getElementById("easyParcelWeight").value = easy.default_weight;
+  document.getElementById("easyParcelLength").value = easy.default_length;
+  document.getElementById("easyParcelWidth").value = easy.default_width;
+  document.getElementById("easyParcelHeight").value = easy.default_height;
+  document.getElementById("easyParcelQuoteStatus").textContent = "Check the parcel size, then compare available couriers.";
+  document.getElementById("easyParcelQuotes").innerHTML = "";
+  easyParcelDialog.showModal();
+};
+
+document.getElementById("getEasyParcelQuotes").addEventListener("click", async event => {
+  const button = event.currentTarget;
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === activeEasyParcelOrderId);
+  if (!order) return;
+  const payload = getEasyParcelFormPayload();
+  if (!payload.collection_date || [payload.weight, payload.length, payload.width, payload.height].some(value => !Number.isFinite(value) || value <= 0)) {
+    alert("Enter a valid collection date, weight and parcel size.");
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Comparing…";
+  document.getElementById("easyParcelQuoteStatus").textContent = "Getting live courier options from EasyParcel…";
+  try {
+    const { data, error } = await supabase.functions.invoke("easyparcel-api", {
+      body: {
+        action: "quote",
+        receiver_address: order.delivery_address,
+        receiver_postcode: order.delivery_address,
+        parcel_value: order.total,
+        ...payload
+      }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    activeEasyParcelQuotes = (data?.data?.[0]?.quotations || []).filter(quote => quote?.courier?.service_id);
+    document.getElementById("easyParcelQuoteStatus").textContent = activeEasyParcelQuotes.length
+      ? `${activeEasyParcelQuotes.length} courier option${activeEasyParcelQuotes.length === 1 ? "" : "s"} available. Choose one to book.`
+      : "No courier is available for these details. Try another collection date or parcel size.";
+    document.getElementById("easyParcelQuotes").innerHTML = activeEasyParcelQuotes.map((quote, index) => `
+      <article class="easyparcel-quote">
+        <div>
+          <strong>${escapeAdminHtml(quote.courier?.service_name || quote.courier?.courier_name || "Courier")}</strong>
+          <span>${escapeAdminHtml(quote.courier?.delivery_duration || "Delivery duration not supplied")}</span>
+          <small>${quote.courier?.is_pickup ? "Courier pickup" : "Drop-off service"}</small>
+        </div>
+        <div>
+          <strong>${escapeAdminHtml(quote.pricing?.currency || "SGD")} ${Number(quote.pricing?.total_amount || 0).toFixed(2)}</strong>
+          <button type="button" onclick="window.bookEasyParcelQuote(${index}, this)">Book</button>
+        </div>
+      </article>
+    `).join("");
+  } catch (error) {
+    console.error("Unable to get EasyParcel quotes:", error);
+    document.getElementById("easyParcelQuoteStatus").textContent = error?.message || "Courier quotes could not be loaded.";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Compare Couriers";
+  }
+});
+
+window.bookEasyParcelQuote = async function(index, button) {
+  const quote = activeEasyParcelQuotes[Number(index)];
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === activeEasyParcelOrderId);
+  if (!quote || !order) return;
+  const currency = quote.pricing?.currency || "SGD";
+  const amount = Number(quote.pricing?.total_amount || 0).toFixed(2);
+  const isLive = easyParcelConnectionStatus.environment === "live";
+  const confirmation = isLive
+    ? `Book ${quote.courier?.service_name || "this courier"} for ${currency} ${amount}? This will charge your EasyParcel wallet.`
+    : `Create a sandbox booking with ${quote.courier?.service_name || "this courier"} for ${currency} ${amount}? No real courier or charge will be created.`;
+  if (!confirm(confirmation)) return;
+
+  button.disabled = true;
+  button.textContent = "Booking…";
+  try {
+    const { data, error } = await supabase.functions.invoke("easyparcel-api", {
+      body: {
+        action: "book",
+        order_id: order.id,
+        service_id: quote.courier.service_id,
+        courier_name: quote.courier.courier_name,
+        ...getEasyParcelFormPayload()
+      }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    closeEasyParcelDialog();
+    await loadOrders();
+    alert(`EasyParcel ${isLive ? "delivery" : "sandbox shipment"} booked successfully.`);
+  } catch (error) {
+    console.error("Unable to book EasyParcel shipment:", error);
+    alert(error?.message || "EasyParcel could not create the shipment.");
+    button.disabled = false;
+    button.textContent = "Book";
+  }
+};
+
+window.refreshEasyParcelShipment = async function(id, button) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order?.easyparcel_shipment_number) return;
+  const previousLabel = button?.textContent || "Refresh EasyParcel";
+  if (button) { button.disabled = true; button.textContent = "Refreshing…"; }
+  try {
+    const { data, error } = await supabase.functions.invoke("easyparcel-api", {
+      body: { action: "refresh", shipment_number: order.easyparcel_shipment_number }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    await loadOrders();
+  } catch (error) {
+    console.error("Unable to refresh EasyParcel shipment:", error);
+    alert(error?.message || "EasyParcel shipment could not be refreshed.");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = previousLabel; }
   }
 };
 
@@ -12141,6 +12492,10 @@ async function loadAdminSettings() {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
     ...(settingsError ? {} : (settings || {}))
   };
+  adminShopSettings.easyparcel_settings = {
+    ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
+    ...(adminShopSettings.easyparcel_settings || {})
+  };
   adminShopSettings.contact_whatsapp_number = String(
     adminShopSettings.pickup_time_options?.contact_whatsapp_number ||
     adminShopSettings.contact_whatsapp_number ||
@@ -12164,6 +12519,43 @@ async function loadAdminSettings() {
   adminShopClosures = closures || [];
   adminProductCatalog = normalizeProductCatalog(productsError ? [] : products);
 }
+
+async function loadEasyParcelConnectionStatus() {
+  if (IS_ADMIN_PREVIEW) {
+    easyParcelConnectionStatus = { connected: true, environment: "sandbox" };
+    return easyParcelConnectionStatus;
+  }
+  try {
+    const { data, error } = await supabase.functions.invoke("easyparcel-api", {
+      body: { action: "status" }
+    });
+    if (error) throw error;
+    easyParcelConnectionStatus = data || { connected: false, environment: "sandbox" };
+  } catch (error) {
+    console.warn("EasyParcel connection status is unavailable:", error);
+    easyParcelConnectionStatus = { connected: false, environment: "sandbox" };
+  }
+  return easyParcelConnectionStatus;
+}
+
+window.refreshEasyParcelConnection = async function() {
+  await loadEasyParcelConnectionStatus();
+  renderSettingsWorkspace();
+};
+
+window.connectEasyParcel = async function() {
+  try {
+    const { data, error } = await supabase.functions.invoke("easyparcel-oauth-start", {
+      body: {}
+    });
+    if (error) throw error;
+    if (!data?.url) throw new Error(data?.error || "EasyParcel connection URL is missing.");
+    window.location.href = data.url;
+  } catch (error) {
+    console.error("Unable to start EasyParcel OAuth:", error);
+    alert("EasyParcel could not start connecting. Check that the integration functions and secrets are deployed.");
+  }
+};
 
 function getSingaporeDateValue(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -13161,6 +13553,8 @@ settingsViewBtn.onclick = async () => {
     ordersContainer.innerHTML = `<p class="empty">Loading shop settings...</p>`;
     await loadAdminSettings();
   }
+
+  await loadEasyParcelConnectionStatus();
 
   renderCurrentView();
 };

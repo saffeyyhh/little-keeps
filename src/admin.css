@@ -8568,6 +8568,26 @@ body::before {
 .fulfilment-editor footer button { border: 1px solid #dbcbd5; border-radius: 12px; padding: 12px; color: #443b42; background: #fff; font-weight: 850; }
 .fulfilment-editor footer button[type="submit"] { border-color: #7950a8; color: #fff; background: #7950a8; }
 .fulfilment-editor footer button:disabled { opacity: .55; }
+.easyparcel-environment { padding: 10px 12px; border: 1px solid #c7e5d6; border-radius: 11px; color: #24734d; background: #f1fbf6; font-size: 11px; font-weight: 900; text-align: center; text-transform: uppercase; letter-spacing: .06em; }
+.easyparcel-environment.is-live { border-color: #f0d4a6; color: #8a5512; background: #fff9ee; }
+.easyparcel-receiver { display: grid; gap: 4px; padding: 13px; border: 1px solid #d9e3ee; border-radius: 12px; background: #f8fafc; }
+.easyparcel-receiver span { color: #667085; font-size: 11px; line-height: 1.45; }
+.easyparcel-quotes { display: grid; gap: 9px; }
+.easyparcel-quote { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px; border: 1px solid #dbe5ef; border-radius: 13px; background: #fff; }
+.easyparcel-quote > div { display: grid; gap: 3px; }
+.easyparcel-quote > div:last-child { justify-items: end; }
+.easyparcel-quote span,
+.easyparcel-quote small { color: #667085; font-size: 10px; }
+.easyparcel-quote button { padding: 8px 13px; border: 0; border-radius: 999px; color: #fff; background: #7950a8; font-weight: 850; }
+.easyparcel-shipment-summary { display: grid; gap: 3px; margin: 10px 0; padding: 11px 12px; border: 1px solid #c7e5d6; border-radius: 11px; background: #f1fbf6; }
+.easyparcel-shipment-summary strong { color: #24734d; }
+.easyparcel-shipment-summary span { color: #527061; font-size: 10px; }
+.fulfilment-action-link { display: block; box-sizing: border-box; border-radius: 999px; padding: 9px 12px; color: #fff; background: #537f93; font-size: 11px; font-weight: 800; text-align: center; text-decoration: none; }
+.easyparcel-settings-actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 13px 0; }
+.easyparcel-settings-actions button { border: 1px solid #d8c9e6; border-radius: 999px; padding: 9px 13px; color: #63418e; background: #fff; font-weight: 850; }
+.easyparcel-settings-actions .ready-btn { color: #fff; background: #7950a8; }
+.easyparcel-connected { color: #24734d; }
+.easyparcel-disconnected { color: #a14141; }
 
 @media (max-width: 1000px) {
   .admin-order-pipeline-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -8585,4 +8605,6 @@ body::before {
   .fulfilment-editor-section { grid-template-columns: 1fr; }
   .fulfilment-editor-grid .full-row,
   .fulfilment-editor-note { grid-column: 1; }
+  .easyparcel-quote { align-items: stretch; flex-direction: column; }
+  .easyparcel-quote > div:last-child { align-items: center; grid-template-columns: 1fr auto; justify-items: initial; }
 }
