@@ -1430,7 +1430,7 @@ function renderSettingsWorkspace() {
           </div>
           <div class="settings-fields two-columns">
             ${settingNumber("large_order_quantity", "7+ tier starts at")}
-            ${settingNumber("bulk_order_quantity", "Bulk request starts at")}
+            ${settingNumber("bulk_order_quantity", "Event order starts at")}
             ${settingNumber("rush_fee_small", "Rush fee: 1–4 items ($)", "0.50")}
             ${settingNumber("rush_fee_large", "Rush fee: 5–9 items ($)", "0.50")}
             ${settingNumber("rush_max_missing_parts", "Auto-approve up to missing parts")}
@@ -1985,6 +1985,7 @@ async function addPromoCode() {
   if (
     !/^[A-Z0-9_-]+$/.test(code) ||
     discountValue <= 0 ||
+    (discountType === "percent" && discountValue > 100) ||
     (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt))
   ) {
     alert("Enter a valid code and discount value.");

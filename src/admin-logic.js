@@ -85,7 +85,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
   if (safeQuantity >= 151) {
     return {
       quantity: safeQuantity,
-      approvalRequired: true,
+      approvalRequired: false,
       minLeadDays: 42,
       minWorkingDays: 30,
       timeframeLabel: "approximately 4–6 weeks"
@@ -95,7 +95,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
   if (safeQuantity >= 101) {
     return {
       quantity: safeQuantity,
-      approvalRequired: true,
+      approvalRequired: false,
       minLeadDays: 28,
       minWorkingDays: 20,
       timeframeLabel: "approximately 3–4 weeks"
@@ -105,7 +105,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
   if (safeQuantity >= 76) {
     return {
       quantity: safeQuantity,
-      approvalRequired: true,
+      approvalRequired: false,
       minLeadDays: 21,
       minWorkingDays: 15,
       timeframeLabel: "approximately 2–3 weeks"
@@ -115,7 +115,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
   if (safeQuantity >= 51) {
     return {
       quantity: safeQuantity,
-      approvalRequired: true,
+      approvalRequired: false,
       minLeadDays: 14,
       minWorkingDays: 10,
       timeframeLabel: "approximately 1.5–2 weeks"
@@ -125,7 +125,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
   if (safeQuantity >= 30) {
     return {
       quantity: safeQuantity,
-      approvalRequired: true,
+      approvalRequired: false,
       minLeadDays: 14,
       minWorkingDays: 10,
       timeframeLabel: "at least 14 days"
@@ -135,7 +135,7 @@ export function getBulkApprovalPolicy(quantity = 1) {
   if (safeQuantity >= 15) {
     return {
       quantity: safeQuantity,
-      approvalRequired: true,
+      approvalRequired: false,
       minLeadDays: 7,
       minWorkingDays: 7,
       timeframeLabel: "at least 7 working days"

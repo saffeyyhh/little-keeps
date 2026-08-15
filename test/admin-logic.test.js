@@ -170,7 +170,7 @@ test("allows any gifting bag quantity up to live stock", () => {
   assert.equal(getGiftingBagSelectionLimit(7, 0), 0);
 });
 
-test("requires approval and longer lead time for event quantities", () => {
+test("auto-accepts available event dates while keeping safe lead times", () => {
   assert.deepEqual(getBulkApprovalPolicy(14), {
     quantity: 14,
     approvalRequired: false,
@@ -180,21 +180,21 @@ test("requires approval and longer lead time for event quantities", () => {
   });
   assert.deepEqual(getBulkApprovalPolicy(15), {
     quantity: 15,
-    approvalRequired: true,
+    approvalRequired: false,
     minLeadDays: 7,
     minWorkingDays: 7,
     timeframeLabel: "at least 7 working days"
   });
   assert.deepEqual(getBulkApprovalPolicy(30), {
     quantity: 30,
-    approvalRequired: true,
+    approvalRequired: false,
     minLeadDays: 14,
     minWorkingDays: 10,
     timeframeLabel: "at least 14 days"
   });
   assert.deepEqual(getBulkApprovalPolicy(51), {
     quantity: 51,
-    approvalRequired: true,
+    approvalRequired: false,
     minLeadDays: 14,
     minWorkingDays: 10,
     timeframeLabel: "approximately 1.5–2 weeks"
@@ -202,21 +202,21 @@ test("requires approval and longer lead time for event quantities", () => {
   assert.equal(getBulkApprovalPolicy(75).timeframeLabel, "approximately 1.5–2 weeks");
   assert.deepEqual(getBulkApprovalPolicy(100), {
     quantity: 100,
-    approvalRequired: true,
+    approvalRequired: false,
     minLeadDays: 21,
     minWorkingDays: 15,
     timeframeLabel: "approximately 2–3 weeks"
   });
   assert.deepEqual(getBulkApprovalPolicy(150), {
     quantity: 150,
-    approvalRequired: true,
+    approvalRequired: false,
     minLeadDays: 28,
     minWorkingDays: 20,
     timeframeLabel: "approximately 3–4 weeks"
   });
   assert.deepEqual(getBulkApprovalPolicy(151), {
     quantity: 151,
-    approvalRequired: true,
+    approvalRequired: false,
     minLeadDays: 42,
     minWorkingDays: 30,
     timeframeLabel: "approximately 4–6 weeks"

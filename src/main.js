@@ -38,6 +38,11 @@ import {
   DEFAULT_COLOUR_OPTIONS,
   normalizeColourOptions
 } from "./colour-catalog.js";
+import {
+  calculatePromoDiscount,
+  getPromoEligibility as assessPromoEligibility,
+  normalizePromoCode
+} from "./promo-logic.js";
 
 const isManualOrder =
   new URLSearchParams(window.location.search).get("manual") === "true";
@@ -2078,7 +2083,7 @@ Chloe</textarea>
             <span><b>151+ keychains</b> · around 4–6 weeks</span>
           </article>
         </div>
-        <p class="policy-timing-note"><strong>Event orders:</strong> Islandwide delivery only. We’ll confirm the timing and final quote before payment. Need it sooner? Rush requests are available where production allows.</p>
+        <p class="policy-timing-note"><strong>Event orders:</strong> Islandwide delivery only. Choose an available date at checkout and continue straight to payment. Need it sooner? Rush requests are available where production allows.</p>
       </div>
     </details>
 
@@ -2175,10 +2180,7 @@ const EXTRA_CAP_COLOUR_PRICE = Number(modularProduct.extra_cap_colour_price);
 const EXTRA_LETTER_COLOUR_PRICE = Number(modularProduct.extra_letter_colour_price);
 const GIFTING_BAG_PRICE = 0.5;
 
-const configuredPromoCode = String(shopSettings.promo_code || "")
-  .trim()
-  .toUpperCase()
-  .replace(/\s+/g, "");
+const configuredPromoCode = normalizePromoCode(shopSettings.promo_code);
 
 const fallbackPromoCodes =
   shopSettings.promo_enabled !== false && configuredPromoCode
@@ -2199,7 +2201,7 @@ const fallbackPromoCodes =
 const PROMO_CODES = promoCodeRows.length
   ? Object.fromEntries(
       promoCodeRows.map(row => [
-        String(row.code || "").trim().toUpperCase(),
+        normalizePromoCode(row.code),
         {
           label: String(row.label || row.code || "Promo"),
           discountType: row.discount_type === "fixed" ? "fixed" : "percent",
@@ -3091,7 +3093,7 @@ function showSpecialOrderAssessment(assessment, type = "rush") {
       : assessment.status === "checking"
         ? "One moment please."
         : isBulk
-          ? "This date can be requested. We’ll confirm the timing and final quote before payment."
+          ? "This date is available. You can continue to payment."
           : "";
 
   rushAvailabilityResult.innerHTML = `
@@ -3236,7 +3238,7 @@ function updateTurnaroundMessaging() {
 
   if (turnaroundSummary) {
     turnaroundSummary.innerHTML = isBulk
-      ? `📦 <strong>${turnaround.quantity} ${itemWord}</strong> · allow <strong>${bulkPolicy.timeframeLabel}</strong>. We’ll confirm the timing and final quote before payment.`
+      ? `📦 <strong>${turnaround.quantity} ${itemWord}</strong> · allow <strong>${bulkPolicy.timeframeLabel}</strong>. Choose an available date and continue to payment.`
       : `
         🕒 <strong>${turnaround.quantity} ${itemWord}</strong>
         ${methodIsDelivery ? "estimated to dispatch" : "estimated ready for pickup"}
@@ -3265,16 +3267,16 @@ function updateTurnaroundMessaging() {
   if (isBulk) {
     bulkOrderNotice.classList.remove("hidden");
     bulkOrderNotice.innerHTML = `
-      <strong>Event order request</strong>
-      <p>Delivery is required for event orders. We’ll review the details and contact you with the confirmed timing and final quote before payment.</p>
+      <strong>Event order</strong>
+      <p>Delivery is required for event orders. Choose an available dispatch date below and continue straight to payment.</p>
     `;
     specialDateLabel.textContent = methodIsDelivery
       ? "Choose your bulk dispatch date"
       : "Choose your bulk completion date";
     const earliestBulkDate = getBulkMinimumDate(turnaround.quantity);
     specialOrderMessage.textContent = methodIsDelivery
-      ? `The earliest available dispatch date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. We’ll confirm it with your final quote. Allow 1–3 days for delivery.`
-      : `The earliest available completion date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. We’ll confirm it with your final quote.`;
+      ? `The earliest available dispatch date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. Your selected date is accepted immediately. Allow 1–3 days for delivery.`
+      : `The earliest available completion date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. Your selected date is accepted immediately.`;
     orderNotes.placeholder = "Customer notes for your bulk order...";
 
     if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
@@ -3369,7 +3371,7 @@ function updateTurnaroundMessaging() {
 
   if (submitOrderBtn) {
     submitOrderBtn.textContent = isBulk
-      ? "Request Event Order Quote"
+      ? "Submit Event Order & Continue to Payment"
       : isRush
         ? "Submit Rush Request"
         : "Submit Order & Continue to Payment";
@@ -4114,19 +4116,7 @@ function getAppliedPromo() {
 
 function getPromoDiscount(subtotal) {
   const promo = getAppliedPromo();
-
-  if (!promo) return 0;
-  if (!getPromoEligibility(promo, subtotal).allowed) return 0;
-
-  if (promo.discountType === "fixed") {
-    return roundMoney(
-      Math.min(Number(subtotal || 0), Number(promo.discountValue || 0))
-    );
-  }
-
-  return roundMoney(
-    subtotal * (Number(promo.discountValue || 0) / 100)
-  );
+  return calculatePromoDiscount(promo, subtotal);
 }
 
 function getPromoOfferLabel(promo) {
@@ -4138,30 +4128,17 @@ function getPromoOfferLabel(promo) {
 }
 
 function getPromoEligibility(promo, subtotal = getOrderSubtotal()) {
-  const now = new Date();
-
-  if (promo.startsAt && now < new Date(promo.startsAt)) {
-    return {
-      allowed: false,
-      message: "This promo code is not active yet."
-    };
-  }
-
-  if (promo.endsAt && now > new Date(promo.endsAt)) {
-    return {
-      allowed: false,
-      message: "This promo code has expired."
-    };
-  }
-
-  if (subtotal < Number(promo.minimumSpend || 0)) {
-    return {
-      allowed: false,
-      message: `A minimum spend of ${displaySettingMoney(promo.minimumSpend)} is required.`
-    };
-  }
-
-  return { allowed: true, message: "" };
+  const eligibility = assessPromoEligibility(promo, subtotal);
+  const messages = {
+    invalid: "Sorry, that promo code is not valid.",
+    not_started: "This promo code is not active yet.",
+    expired: "This promo code has expired.",
+    minimum_spend: `A minimum spend of ${displaySettingMoney(promo?.minimumSpend)} is required.`
+  };
+  return {
+    ...eligibility,
+    message: messages[eligibility.reason] || ""
+  };
 }
 
 function showPromoStatus(message, type = "") {
@@ -4172,10 +4149,7 @@ function showPromoStatus(message, type = "") {
 }
 
 function applyPromoCode() {
-  const enteredCode = promoCodeInput.value
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
+  const enteredCode = normalizePromoCode(promoCodeInput.value);
 
   if (!enteredCode) {
     appliedPromoCode = "";
@@ -5770,7 +5744,15 @@ function renderReviewOrder() {
       ? deliveryFeeSetting
       : 0;
 
-  const promo = getAppliedPromo();
+  let promo = getAppliedPromo();
+  if (promo) {
+    const eligibility = getPromoEligibility(promo, total);
+    if (!eligibility.allowed) {
+      appliedPromoCode = "";
+      showPromoStatus(eligibility.message, "error");
+      promo = null;
+    }
+  }
   const discountAmount = getPromoDiscount(total);
   const discountedSubtotal = roundMoney(total - discountAmount);
   const rushFee = getRushFee();
@@ -6026,8 +6008,8 @@ async function submitOrderOnce() {
     confirmedRushAssessment?.status === "available";
   const isReviewRequest =
     !isManualOrder &&
-    (checkoutOrderType === "bulk" ||
-      (checkoutOrderType === "rush" && !rushAutoApproved));
+    checkoutOrderType === "rush" &&
+    !rushAutoApproved;
 
   const productionNeededBy = ["rush", "bulk"].includes(checkoutOrderType)
     ? requestedCompletionDate.value
@@ -6153,7 +6135,7 @@ async function submitOrderOnce() {
       : productionNeededBy,
     review_status: isReviewRequest
       ? "Pending Review"
-      : rushAutoApproved
+      : rushAutoApproved || checkoutOrderType === "bulk"
         ? "Auto Approved"
         : null,
 
@@ -6175,9 +6157,7 @@ async function submitOrderOnce() {
       ? "Pending Payment"
       : checkoutOrderType === "rush"
         ? rushAutoApproved ? "Pending Payment" : "Rush Review"
-        : checkoutOrderType === "bulk"
-          ? "Bulk Review"
-          : "Pending Payment",
+        : "Pending Payment",
 
     order_data: orderData
   };
