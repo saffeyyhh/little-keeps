@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Little Keeps · Group Orders</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      --ink: #352d31;
+      --muted: #776a70;
+      --pink: #ef4e8d;
+      --pink-dark: #bf396b;
+      --lavender: #7750ad;
+      --cream: #fffaf7;
+      --line: #ead7df;
+    }
+    html, body { margin: 0; background: #eee; }
+    body { font-family: Arial, Helvetica, sans-serif; color: var(--ink); }
+    .canvas {
+      position: relative;
+      overflow: hidden;
+      zoom: .5;
+      background:
+        radial-gradient(circle at 93% 6%, rgba(245, 165, 196, .35), transparent 25%),
+        radial-gradient(circle at 5% 96%, rgba(202, 183, 229, .48), transparent 28%),
+        linear-gradient(155deg, #fffdf9 0%, #fff5f8 58%, #f9f4ff 100%);
+    }
+    .content { position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column; }
+    .brand-row { display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 900; }
+    .brand i { color: var(--pink); font-style: normal; }
+    .pill {
+      padding: 11px 17px; border: 1px solid #e6c8d4; border-radius: 999px;
+      color: var(--pink-dark); background: rgba(255,255,255,.75);
+      font-size: 14px; font-weight: 900; letter-spacing: .11em;
+    }
+    h1 { margin: 0; line-height: .98; letter-spacing: -.055em; }
+    h1 em { color: var(--pink-dark); font-style: normal; }
+    .dek { margin: 0; color: var(--muted); line-height: 1.48; }
+    .screen-card {
+      overflow: hidden; border: 1px solid rgba(220,186,199,.9); border-radius: 32px;
+      background: #fff; box-shadow: 0 26px 70px rgba(83,48,63,.13);
+    }
+    .screen-card img { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .benefits { display: grid; gap: 10px; }
+    .benefit {
+      display: flex; align-items: center; gap: 10px; padding: 13px 16px;
+      border: 1px solid rgba(210,184,224,.9); border-radius: 18px;
+      color: #563f68; background: rgba(255,255,255,.76); font-size: 17px; font-weight: 800;
+    }
+    .benefit b {
+      flex: 0 0 auto; width: 26px; height: 26px; display: grid; place-items: center;
+      border-radius: 50%; color: #fff; background: var(--lavender); font-size: 15px;
+    }
+    .cta {
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      border-radius: 24px; color: #fff; background: linear-gradient(135deg, #ef659a, #e74482);
+      box-shadow: 0 18px 35px rgba(217,71,125,.24);
+    }
+    .cta strong, .cta span { display: block; }
+    .cta span { margin-top: 3px; opacity: .9; }
+    .cta b { font-size: 30px; }
+
+    .post { width: 1080px; height: 1350px; }
+    .post .content { padding: 48px 56px 42px; }
+    .post h1 { max-width: 930px; margin-top: 34px; font-size: 72px; }
+    .post .dek { max-width: 830px; margin-top: 18px; font-size: 22px; }
+    .post .main { min-height: 0; margin-top: 30px; display: grid; grid-template-columns: 1.22fr .78fr; gap: 22px; flex: 1; }
+    .post .screen-card { height: 720px; }
+    .post .screen-card img { object-position: left top; }
+    .post .side { display: flex; flex-direction: column; gap: 18px; }
+    .post .side-shot { height: 415px; }
+    .post .side-shot img { object-position: left top; }
+    .post .benefits { margin-top: auto; }
+    .post .cta { margin-top: 25px; padding: 20px 25px; }
+    .post .cta strong { font-size: 23px; }
+    .post .cta span { font-size: 16px; }
+
+    .story { width: 1080px; height: 1920px; zoom: 1; }
+    .story .content { padding: 72px 70px 62px; }
+    .story h1 { max-width: 900px; margin-top: 62px; font-size: 88px; }
+    .story .dek { max-width: 850px; margin-top: 24px; font-size: 28px; }
+    .story .main { min-height: 0; margin-top: 44px; display: grid; grid-template-columns: 1fr .44fr; gap: 24px; flex: 1; }
+    .story .screen-card.primary { height: 1040px; }
+    .story .screen-card.primary img { object-position: center top; }
+    .story .story-side { display: flex; flex-direction: column; gap: 22px; }
+    .story .screen-card.success { height: 530px; }
+    .story .screen-card.success img { object-position: center; }
+    .story .benefits { margin-top: auto; }
+    .story .benefit { font-size: 18px; padding: 15px 14px; }
+    .story .cta { margin-top: 30px; padding: 26px 30px; }
+    .story .cta strong { font-size: 28px; }
+    .story .cta span { font-size: 19px; }
+  </style>
+</head>
+<body>
+  <main id="campaign"></main>
+  <script>
+    const format = new URLSearchParams(location.search).get("format") === "story" ? "story" : "post";
+    const isStory = format === "story";
+    document.querySelector("#campaign").innerHTML = `
+      <section class="canvas ${format}">
+        <div class="content">
+          <div class="brand-row">
+            <div class="brand"><i>✿</i> Little Keeps</div>
+            <div class="pill">NEW ON THE WEBSITE</div>
+          </div>
+          <h1>${isStory ? "Ordering together<br><em>just got easier ♡</em>" : "GROUP ORDERS<br><em>ARE HERE ♡</em>"}</h1>
+          <p class="dek">One private link. Everyone chooses their own name, colours and style. The organiser reviews everything and pays once.</p>
+          <div class="main">
+            <div class="screen-card primary">
+              <img src="${isStory ? "./screenshots/group-order-how-ui.png" : "./screenshots/group-order-create-ui.png"}" alt="Little Keeps Group Order screen">
+            </div>
+            <div class="${isStory ? "story-side" : "side"}">
+              <div class="screen-card ${isStory ? "success" : "side-shot"}">
+                <img src="${isStory ? "./screenshots/group-order-success-ui.png" : "./screenshots/group-order-review-ui.png"}" alt="Little Keeps Group Order review screen">
+              </div>
+              <div class="benefits">
+                <div class="benefit"><b>1</b><span>Share one link</span></div>
+                <div class="benefit"><b>2</b><span>Everyone designs</span></div>
+                <div class="benefit"><b>3</b><span>Review & pay once</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="cta">
+            <div><strong>Create your Group Order</strong><span>little-keeps.vercel.app</span></div>
+            <b>→</b>
+          </div>
+        </div>
+      </section>`;
+    if (new URLSearchParams(location.search).get("capture") === "fit") {
+      document.querySelector(".canvas").style.zoom = isStory ? ".1875" : ".2666666667";
+      document.body.style.minHeight = "100vh";
+      document.body.style.display = "grid";
+      document.body.style.placeItems = "center";
+    }
+  </script>
+</body>
+</html>

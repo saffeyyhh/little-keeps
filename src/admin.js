@@ -4963,8 +4963,7 @@ document.getElementById("getEasyParcelQuotes").addEventListener("click", async e
       const prices = getEasyParcelQuotePrices(quote);
       const breakdown = [
         prices.headline > 0 ? `base ${prices.currency} ${prices.headline.toFixed(2)}` : "",
-        prices.tax > 0 ? `tax ${prices.currency} ${prices.tax.toFixed(2)}` : "",
-        prices.addOns > 0 ? `add-ons ${prices.currency} ${prices.addOns.toFixed(2)}` : ""
+        prices.tax > 0 ? `tax ${prices.currency} ${prices.tax.toFixed(2)}` : ""
       ].filter(Boolean).join(" + ");
       return `
       <article class="easyparcel-quote">
@@ -4974,8 +4973,9 @@ document.getElementById("getEasyParcelQuotes").addEventListener("click", async e
           <small>Courier pickup</small>
         </div>
         <div>
-          <strong>${escapeAdminHtml(prices.currency)} ${prices.payable.toFixed(2)}</strong>
-          ${breakdown && Math.abs(prices.payable - prices.headline) > 0.001 ? `<small>${escapeAdminHtml(breakdown)} · final EasyParcel API total shown above</small>` : ""}
+          <strong>${escapeAdminHtml(prices.currency)} ${prices.payable.toFixed(2)} estimated</strong>
+          ${breakdown && Math.abs(prices.payable - prices.headline) > 0.001 ? `<small>${escapeAdminHtml(breakdown)}</small>` : ""}
+          ${prices.addOns > 0 ? `<small>Optional tracking features +${escapeAdminHtml(prices.currency)} ${prices.addOns.toFixed(2)} · not selected</small>` : ""}
           <button type="button" onclick="window.bookEasyParcelQuote(${index}, this)">Book</button>
         </div>
       </article>
@@ -5001,7 +5001,7 @@ window.bookEasyParcelQuote = async function(index, button) {
     alert("Please confirm the parcel details and prohibited-items check before booking.");
     return;
   }
-  const confirmation = `Book ${quote.courier?.service_name || "this courier"} for ${currency} ${amount}? EasyParcel will process this using the authorised account and may charge its wallet.`;
+  const confirmation = `Book ${quote.courier?.service_name || "this courier"} for an estimated ${currency} ${amount}? Optional tracking extras are switched off. EasyParcel will confirm the actual wallet charge after booking.`;
   const availableCredit = Number(easyParcelConnectionStatus.wallet_balance || 0) +
     Number(easyParcelConnectionStatus.free_credit_balance || 0);
   if (easyParcelConnectionStatus.wallet_currency === currency && availableCredit + 0.001 < prices.payable) {

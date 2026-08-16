@@ -989,7 +989,7 @@ function firstPositiveAmount(...values) {
 
 export function getEasyParcelQuotePrices(quote = {}) {
   const pricing = quote?.pricing || {};
-  const payable = firstPositiveAmount(
+  const apiTotal = firstPositiveAmount(
     pricing.total_amount,
     pricing.payable_amount,
     pricing.grand_total,
@@ -1006,16 +1006,22 @@ export function getEasyParcelQuotePrices(quote = {}) {
     pricing.base_price,
     pricing.shipping_fee,
     pricing.price,
-    payable
+    apiTotal
   );
+  const tax = Math.max(0, Number(pricing.shipment_tax || 0));
+  const addOns = Math.max(0, Number(pricing.total_features_price || 0)) +
+    Math.max(0, Number(pricing.total_features_tax || 0));
+  const withoutOptionalFeatures = apiTotal > 0
+    ? Math.max(0, apiTotal - addOns)
+    : headline + tax;
 
   return {
     currency: String(pricing.currency || pricing.currency_code || "SGD"),
     headline,
-    payable: payable || headline,
-    tax: Math.max(0, Number(pricing.shipment_tax || 0)),
-    addOns: Math.max(0, Number(pricing.total_features_price || 0)) +
-      Math.max(0, Number(pricing.total_features_tax || 0))
+    payable: withoutOptionalFeatures || headline,
+    apiTotal: apiTotal || withoutOptionalFeatures || headline,
+    tax,
+    addOns
   };
 }
 

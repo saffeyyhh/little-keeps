@@ -75,7 +75,23 @@ test("keeps EasyParcel's website rate separate from its payable total", () => {
     getEasyParcelQuotePrices({
       pricing: { currency: "SGD", base_price: 3.75, total_amount: 3.94 }
     }),
-    { currency: "SGD", headline: 3.75, payable: 3.94, tax: 0, addOns: 0 }
+    { currency: "SGD", headline: 3.75, payable: 3.94, apiTotal: 3.94, tax: 0, addOns: 0 }
+  );
+});
+
+test("does not include unselected EasyParcel tracking features in the booking estimate", () => {
+  assert.deepEqual(
+    getEasyParcelQuotePrices({
+      pricing: {
+        currency: "SGD",
+        shipment_price: 3.65,
+        shipment_tax: 0,
+        total_features_price: 0.19,
+        total_features_tax: 0,
+        total_amount: 3.84
+      }
+    }),
+    { currency: "SGD", headline: 3.65, payable: 3.65, apiTotal: 3.84, tax: 0, addOns: 0.19 }
   );
 });
 
