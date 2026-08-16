@@ -57,7 +57,7 @@ Deno.serve(async request => {
   const now = Date.now();
   const { error } = await supabase.from("easyparcel_connections").upsert({
     id: "primary",
-    environment: Deno.env.get("EASYPARCEL_ENVIRONMENT") || "sandbox",
+    environment: "account_authorized",
     oauth_state: null,
     oauth_state_expires_at: null,
     access_token: tokenData.access_token,
@@ -68,6 +68,5 @@ Deno.serve(async request => {
     updated_at: new Date().toISOString()
   });
   if (error) return redirect("EasyParcel connected, but the tokens could not be saved.");
-  return redirect("EasyParcel sandbox connected successfully.", true);
+  return redirect("EasyParcel account connected successfully.", true);
 });
-

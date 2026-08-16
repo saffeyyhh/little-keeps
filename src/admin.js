@@ -12,6 +12,7 @@ import {
   assignPrintedKeycapsToOwners,
   buildGoogleMapsRouteUrl,
   canOrderAcceptAddOn,
+  canCancelEasyParcelShipment,
   calculateProductionTimeEstimate,
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
@@ -19,10 +20,12 @@ import {
   calculateSubscriptionSummary,
   distributeAmsPlatesAcrossPrinters,
   formatEasyParcelReceiver,
+  formatEasyParcelDeliveryDuration,
   formatProductionMinutes,
   getBulkApprovalPolicy,
   getFreeAmsPrinters,
   getEasyParcelQuotePrices,
+  getEasyParcelVolumetricWeight,
   getHandDeliveryLabelData,
   getInternalBasketLabelData,
   groupLinkedOrdersForAdmin,
@@ -36,6 +39,7 @@ import {
   optimizeAmsPlateSequence,
   partitionAmsCombinationsByBusyColours,
   sortEasyParcelQuotesByPrice,
+  isEasyParcelPickupQuote,
   validateInventoryDecrement
 } from "./admin-logic.js";
 import {
@@ -337,7 +341,7 @@ document.querySelector("#app").innerHTML = `
         <button id="closeEasyParcelDialog" type="button" aria-label="Close">×</button>
       </header>
 
-      <div id="easyParcelEnvironmentBadge" class="easyparcel-environment">Sandbox · no real delivery or charge</div>
+      <div id="easyParcelEnvironmentBadge" class="easyparcel-environment">Checking connected account…</div>
       <div id="easyParcelReceiver" class="easyparcel-receiver"></div>
 
       <div class="fulfilment-editor-grid">
@@ -352,7 +356,14 @@ document.querySelector("#app").innerHTML = `
         <label><span>Length (cm)</span><input id="easyParcelLength" type="number" min="1" step="0.1" required></label>
         <label><span>Width (cm)</span><input id="easyParcelWidth" type="number" min="1" step="0.1" required></label>
         <label><span>Height (cm)</span><input id="easyParcelHeight" type="number" min="1" step="0.1" required></label>
+        <label class="easyparcel-content-field"><span>Parcel contents</span><input id="easyParcelContents" maxlength="100" value="3D-printed plastic keychains" required></label>
       </div>
+
+      <div id="easyParcelChargeableWeight" class="fulfilment-editor-note"></div>
+      <label class="easyparcel-compliance-check">
+        <input id="easyParcelCompliance" type="checkbox">
+        <span>I checked that the parcel details are accurate and the contents are not prohibited by the selected courier.</span>
+      </label>
 
       <div id="easyParcelQuoteStatus" class="fulfilment-editor-note"></div>
       <div id="easyParcelQuotes" class="easyparcel-quotes"></div>
@@ -523,7 +534,7 @@ let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 let adminProductsLoadFailed = false;
 let adminSettingsTab = "products";
-let easyParcelConnectionStatus = { connected: false, environment: "sandbox" };
+let easyParcelConnectionStatus = { connected: false };
 let activeEasyParcelOrderId = "";
 let activeEasyParcelQuotes = [];
 
@@ -1562,17 +1573,20 @@ function renderSettingsWorkspace() {
             </div>
             <strong class="${easyParcelConnectionStatus.connected ? "easyparcel-connected" : "easyparcel-disconnected"}">
               ${easyParcelConnectionStatus.connected
-                ? `Connected · ${escapeAdminHtml(easyParcelConnectionStatus.environment || "sandbox")}`
+                ? `Connected${easyParcelConnectionStatus.wallet_currency ? ` · ${escapeAdminHtml(easyParcelConnectionStatus.wallet_currency)}` : ""}`
                 : "Not connected"}
             </strong>
           </div>
           <div class="easyparcel-settings-actions">
             <button type="button" class="ready-btn" onclick="window.connectEasyParcel()">
-              ${easyParcelConnectionStatus.connected ? "Reconnect EasyParcel" : "Connect EasyParcel Sandbox"}
+              ${easyParcelConnectionStatus.connected ? "Connect Another EasyParcel Account" : "Connect EasyParcel"}
             </button>
             <button type="button" onclick="window.refreshEasyParcelConnection()">Refresh Status</button>
           </div>
-          <p class="hint">Sandbox bookings use demo credit and do not create a real courier collection.</p>
+          ${easyParcelConnectionStatus.connected ? `
+            <p class="hint">Authorised account: ${escapeAdminHtml(easyParcelConnectionStatus.account_name || "EasyParcel account")}${easyParcelConnectionStatus.account_type ? ` · ${escapeAdminHtml(easyParcelConnectionStatus.account_type)}` : ""}</p>
+            <p class="hint">Wallet: ${escapeAdminHtml(easyParcelConnectionStatus.wallet_currency || "-")} ${Number(easyParcelConnectionStatus.wallet_balance || 0).toFixed(2)}${Number(easyParcelConnectionStatus.free_credit_balance || 0) > 0 ? ` · Free credit ${escapeAdminHtml(easyParcelConnectionStatus.free_credit_currency || easyParcelConnectionStatus.wallet_currency || "")} ${Number(easyParcelConnectionStatus.free_credit_balance).toFixed(2)}` : ""}</p>
+          ` : `<p class="hint">The account you authorise determines whether EasyParcel uses its sandbox or live environment.</p>`}
         </section>
 
         <section class="settings-card settings-card-wide" data-settings-group="delivery">
@@ -4659,6 +4673,9 @@ function renderFulfilmentWorkspace(orders) {
             ${order.collection_method === "delivery" ? `
               ${order.easyparcel_shipment_number ? `
                 <button type="button" onclick='window.refreshEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Refresh EasyParcel</button>
+                ${canCancelEasyParcelShipment(order.easyparcel_status) ? `
+                  <button type="button" class="danger-action" onclick='window.cancelEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Cancel courier booking</button>
+                ` : ""}
               ` : ""}
               <button type="button" onclick='window.copyEasyParcelReceiver(${JSON.stringify(String(order.id))}, this)'>Copy courier details</button>
               <button type="button" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>Print hand-delivery label</button>
@@ -4799,6 +4816,7 @@ function getEasyParcelFormPayload() {
     length: Number(document.getElementById("easyParcelLength").value),
     width: Number(document.getElementById("easyParcelWidth").value),
     height: Number(document.getElementById("easyParcelHeight").value),
+    contents: String(document.getElementById("easyParcelContents").value || "").trim(),
     sender_name: easy.sender_name,
     sender_company: easy.sender_company,
     sender_phone: easy.sender_phone,
@@ -4809,6 +4827,23 @@ function getEasyParcelFormPayload() {
     sender_city: easy.sender_city
   };
 }
+
+function updateEasyParcelChargeableWeight() {
+  const actual = Number(document.getElementById("easyParcelWeight")?.value || 0);
+  const volumetric = getEasyParcelVolumetricWeight(
+    document.getElementById("easyParcelLength")?.value,
+    document.getElementById("easyParcelWidth")?.value,
+    document.getElementById("easyParcelHeight")?.value
+  );
+  const chargeable = Math.max(actual, volumetric);
+  document.getElementById("easyParcelChargeableWeight").textContent = chargeable > 0
+    ? `Estimated chargeable weight: ${chargeable.toFixed(2)} kg (higher of actual ${actual.toFixed(2)} kg and volumetric ${volumetric.toFixed(2)} kg). Couriers may remeasure it.`
+    : "Enter the packed parcel's actual weight and dimensions.";
+}
+
+["easyParcelWeight", "easyParcelLength", "easyParcelWidth", "easyParcelHeight"].forEach(id => {
+  document.getElementById(id)?.addEventListener("input", updateEasyParcelChargeableWeight);
+});
 
 function closeEasyParcelDialog() {
   easyParcelDialog.close();
@@ -4830,6 +4865,14 @@ window.openEasyParcelBooking = async function(id) {
   await loadEasyParcelConnectionStatus();
   if (!easyParcelConnectionStatus.connected) {
     alert("Connect EasyParcel first under Settings → Delivery & EasyParcel.");
+    currentView = "settings";
+    adminSettingsTab = "delivery";
+    setActiveTab(settingsViewBtn);
+    renderCurrentView();
+    return;
+  }
+  if (easyParcelConnectionStatus.wallet_currency && easyParcelConnectionStatus.wallet_currency !== "SGD") {
+    alert(`The connected wallet is ${easyParcelConnectionStatus.wallet_currency}. Connect your Singapore EasyParcel account before booking Singapore delivery.`);
     currentView = "settings";
     adminSettingsTab = "delivery";
     setActiveTab(settingsViewBtn);
@@ -4860,13 +4903,12 @@ window.openEasyParcelBooking = async function(id) {
   activeEasyParcelOrderId = String(order.id);
   activeEasyParcelQuotes = [];
   document.getElementById("easyParcelOrderRef").textContent = order.order_ref || "Order";
+  const walletLabel = easyParcelConnectionStatus.wallet_currency
+    ? `${easyParcelConnectionStatus.wallet_currency} ${Number(easyParcelConnectionStatus.wallet_balance || 0).toFixed(2)} wallet`
+    : "authorised EasyParcel account";
   document.getElementById("easyParcelEnvironmentBadge").textContent =
-    easyParcelConnectionStatus.environment === "live"
-      ? "Live · booking will charge your EasyParcel wallet"
-      : "Sandbox · no real delivery or charge";
-  document.getElementById("easyParcelEnvironmentBadge").classList.toggle(
-    "is-live", easyParcelConnectionStatus.environment === "live"
-  );
+    `${easyParcelConnectionStatus.account_name || "Connected account"} · ${walletLabel} · booking may charge this account`;
+  document.getElementById("easyParcelEnvironmentBadge").classList.add("is-live");
   document.getElementById("easyParcelReceiver").innerHTML = `
     <strong>${escapeAdminHtml(order.customer_name || "Customer")}</strong>
     <span>${escapeAdminHtml(order.delivery_address || "Address missing")}</span>
@@ -4878,6 +4920,9 @@ window.openEasyParcelBooking = async function(id) {
   document.getElementById("easyParcelLength").value = easy.default_length;
   document.getElementById("easyParcelWidth").value = easy.default_width;
   document.getElementById("easyParcelHeight").value = easy.default_height;
+  document.getElementById("easyParcelContents").value = "3D-printed plastic keychains";
+  document.getElementById("easyParcelCompliance").checked = false;
+  updateEasyParcelChargeableWeight();
   document.getElementById("easyParcelQuoteStatus").textContent = "Check the parcel size, then compare available couriers.";
   document.getElementById("easyParcelQuotes").innerHTML = "";
   easyParcelDialog.showModal();
@@ -4908,25 +4953,29 @@ document.getElementById("getEasyParcelQuotes").addEventListener("click", async e
     });
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
-    activeEasyParcelQuotes = sortEasyParcelQuotesByPrice(
-      (data?.data?.[0]?.quotations || []).filter(quote => quote?.courier?.service_id)
-    );
+    const allQuotes = (data?.data?.[0]?.quotations || []).filter(quote => quote?.courier?.service_id);
+    activeEasyParcelQuotes = sortEasyParcelQuotesByPrice(allQuotes.filter(isEasyParcelPickupQuote));
+    const dropOffCount = allQuotes.length - activeEasyParcelQuotes.length;
     document.getElementById("easyParcelQuoteStatus").textContent = activeEasyParcelQuotes.length
-      ? `${activeEasyParcelQuotes.length} courier option${activeEasyParcelQuotes.length === 1 ? "" : "s"} available. Choose one to book.`
+      ? `${activeEasyParcelQuotes.length} pickup option${activeEasyParcelQuotes.length === 1 ? "" : "s"}, cheapest first.${dropOffCount ? ` ${dropOffCount} drop-off option${dropOffCount === 1 ? " was" : "s were"} hidden because a drop-off point must be selected.` : ""}`
       : "No courier is available for these details. Try another collection date or parcel size.";
     document.getElementById("easyParcelQuotes").innerHTML = activeEasyParcelQuotes.map((quote, index) => {
       const prices = getEasyParcelQuotePrices(quote);
-      const hasSeparatePayable = prices.headline > 0 && prices.payable > prices.headline + 0.001;
+      const breakdown = [
+        prices.headline > 0 ? `base ${prices.currency} ${prices.headline.toFixed(2)}` : "",
+        prices.tax > 0 ? `tax ${prices.currency} ${prices.tax.toFixed(2)}` : "",
+        prices.addOns > 0 ? `add-ons ${prices.currency} ${prices.addOns.toFixed(2)}` : ""
+      ].filter(Boolean).join(" + ");
       return `
       <article class="easyparcel-quote">
         <div>
           <strong>${escapeAdminHtml(quote.courier?.service_name || quote.courier?.courier_name || "Courier")}</strong>
-          <span>${escapeAdminHtml(quote.courier?.delivery_duration || "Delivery duration not supplied")}</span>
-          <small>${quote.courier?.is_pickup ? "Courier pickup" : "Drop-off service"}</small>
+          <span>${escapeAdminHtml(formatEasyParcelDeliveryDuration(quote.courier?.delivery_duration))}</span>
+          <small>Courier pickup</small>
         </div>
         <div>
-          <strong>${escapeAdminHtml(prices.currency)} ${prices.headline.toFixed(2)}</strong>
-          ${hasSeparatePayable ? `<small>${escapeAdminHtml(prices.currency)} ${prices.payable.toFixed(2)} payable including EasyParcel fees</small>` : ""}
+          <strong>${escapeAdminHtml(prices.currency)} ${prices.payable.toFixed(2)}</strong>
+          ${breakdown && Math.abs(prices.payable - prices.headline) > 0.001 ? `<small>${escapeAdminHtml(breakdown)} · final EasyParcel API total shown above</small>` : ""}
           <button type="button" onclick="window.bookEasyParcelQuote(${index}, this)">Book</button>
         </div>
       </article>
@@ -4948,10 +4997,17 @@ window.bookEasyParcelQuote = async function(index, button) {
   const prices = getEasyParcelQuotePrices(quote);
   const currency = prices.currency;
   const amount = prices.payable.toFixed(2);
-  const isLive = easyParcelConnectionStatus.environment === "live";
-  const confirmation = isLive
-    ? `Book ${quote.courier?.service_name || "this courier"} for ${currency} ${amount}? This will charge your EasyParcel wallet.`
-    : `Create a sandbox booking with ${quote.courier?.service_name || "this courier"} for ${currency} ${amount}? No real courier or charge will be created.`;
+  if (!document.getElementById("easyParcelCompliance").checked) {
+    alert("Please confirm the parcel details and prohibited-items check before booking.");
+    return;
+  }
+  const confirmation = `Book ${quote.courier?.service_name || "this courier"} for ${currency} ${amount}? EasyParcel will process this using the authorised account and may charge its wallet.`;
+  const availableCredit = Number(easyParcelConnectionStatus.wallet_balance || 0) +
+    Number(easyParcelConnectionStatus.free_credit_balance || 0);
+  if (easyParcelConnectionStatus.wallet_currency === currency && availableCredit + 0.001 < prices.payable) {
+    alert(`Your displayed EasyParcel balance is ${currency} ${availableCredit.toFixed(2)}. Top up before booking this ${currency} ${amount} shipment.`);
+    return;
+  }
   if (!confirm(confirmation)) return;
 
   button.disabled = true;
@@ -4968,9 +5024,10 @@ window.bookEasyParcelQuote = async function(index, button) {
     });
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
+    const charged = Number(data?.shipment?.pricing_breakdown?.total_paid_amount || prices.payable);
     closeEasyParcelDialog();
     await loadOrders();
-    alert(`EasyParcel ${isLive ? "delivery" : "sandbox shipment"} booked successfully.`);
+    alert(`EasyParcel shipment booked for ${currency} ${charged.toFixed(2)}. Download and attach the courier label before handover.`);
   } catch (error) {
     console.error("Unable to book EasyParcel shipment:", error);
     alert(error?.message || "EasyParcel could not create the shipment.");
@@ -4994,6 +5051,39 @@ window.refreshEasyParcelShipment = async function(id, button) {
   } catch (error) {
     console.error("Unable to refresh EasyParcel shipment:", error);
     alert(error?.message || "EasyParcel shipment could not be refreshed.");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = previousLabel; }
+  }
+};
+
+window.cancelEasyParcelShipment = async function(id, button) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order?.easyparcel_shipment_number) return;
+  const bookedAt = new Date(order.easyparcel_booked_at || "").getTime();
+  const olderThanSevenDays = Number.isFinite(bookedAt) && Date.now() - bookedAt > 7 * 24 * 60 * 60 * 1000;
+  const reason = window.prompt(
+    `${olderThanSevenDays ? "This booking is over 7 days old and may not receive a refund.\n\n" : ""}Why are you cancelling this courier booking?`,
+    "Customer cancelled order"
+  );
+  if (!reason?.trim()) return;
+  if (!confirm("Cancel this EasyParcel courier booking? This does not cancel or refund the Little Keeps customer order.")) return;
+  const previousLabel = button?.textContent || "Cancel courier booking";
+  if (button) { button.disabled = true; button.textContent = "Cancelling…"; }
+  try {
+    const { data, error } = await supabase.functions.invoke("easyparcel-api", {
+      body: {
+        action: "cancel",
+        shipment_number: order.easyparcel_shipment_number,
+        remark: reason.trim()
+      }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    await loadOrders();
+    alert("Courier cancellation submitted. Any eligible refund is handled by EasyParcel.");
+  } catch (error) {
+    console.error("Unable to cancel EasyParcel shipment:", error);
+    alert(error?.message || "EasyParcel could not cancel this shipment.");
   } finally {
     if (button) { button.disabled = false; button.textContent = previousLabel; }
   }
@@ -12526,7 +12616,13 @@ async function loadAdminSettings() {
 
 async function loadEasyParcelConnectionStatus() {
   if (IS_ADMIN_PREVIEW) {
-    easyParcelConnectionStatus = { connected: true, environment: "sandbox" };
+    easyParcelConnectionStatus = {
+      connected: true,
+      account_name: "EasyParcel account",
+      account_type: "Business",
+      wallet_balance: 0,
+      wallet_currency: "SGD"
+    };
     return easyParcelConnectionStatus;
   }
   try {
@@ -12534,10 +12630,10 @@ async function loadEasyParcelConnectionStatus() {
       body: { action: "status" }
     });
     if (error) throw error;
-    easyParcelConnectionStatus = data || { connected: false, environment: "sandbox" };
+    easyParcelConnectionStatus = data || { connected: false };
   } catch (error) {
     console.warn("EasyParcel connection status is unavailable:", error);
-    easyParcelConnectionStatus = { connected: false, environment: "sandbox" };
+    easyParcelConnectionStatus = { connected: false };
   }
   return easyParcelConnectionStatus;
 }

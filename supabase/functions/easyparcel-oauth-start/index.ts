@@ -35,7 +35,7 @@ Deno.serve(async request => {
   const serviceClient = createClient(supabaseUrl, serviceRoleKey);
   const { error } = await serviceClient.from("easyparcel_connections").upsert({
     id: "primary",
-    environment: Deno.env.get("EASYPARCEL_ENVIRONMENT") || "sandbox",
+    environment: "account_authorized",
     oauth_state: state,
     oauth_state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     updated_at: new Date().toISOString()
@@ -48,4 +48,3 @@ Deno.serve(async request => {
   url.searchParams.set("state", state);
   return json({ url: url.toString() });
 });
-

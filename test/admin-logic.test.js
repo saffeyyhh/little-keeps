@@ -13,6 +13,7 @@ import {
   ASSEMBLY_STAGES,
   buildGoogleMapsRouteUrl,
   canOrderAcceptAddOn,
+  canCancelEasyParcelShipment,
   distributeAmsPlatesAcrossPrinters,
   getFreeAmsPrinters,
   getEasyParcelQuotePrices,
@@ -32,6 +33,8 @@ import {
   assessRushDateCapacity,
   formatDateRange,
   formatEasyParcelReceiver,
+  formatEasyParcelDeliveryDuration,
+  getEasyParcelVolumetricWeight,
   getCustomerDueDate,
   formatProductionMinutes,
   isOrderReminderFinishedOrExpired,
@@ -42,6 +45,7 @@ import {
   pickRandomDesignColours,
   partitionAmsCombinationsByBusyColours,
   sortEasyParcelQuotesByPrice,
+  isEasyParcelPickupQuote,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
 
@@ -71,8 +75,26 @@ test("keeps EasyParcel's website rate separate from its payable total", () => {
     getEasyParcelQuotePrices({
       pricing: { currency: "SGD", base_price: 3.75, total_amount: 3.94 }
     }),
-    { currency: "SGD", headline: 3.75, payable: 3.94 }
+    { currency: "SGD", headline: 3.75, payable: 3.94, tax: 0, addOns: 0 }
   );
+});
+
+test("formats EasyParcel delivery duration objects and JSON strings", () => {
+  assert.equal(formatEasyParcelDeliveryDuration({ type: "days", value: "1" }), "1 day");
+  assert.equal(formatEasyParcelDeliveryDuration('{"type":"days","value":"1-3"}'), "1-3 days");
+});
+
+test("calculates Singapore volumetric weight and identifies pickup services", () => {
+  assert.equal(getEasyParcelVolumetricWeight(35, 35, 10), 2.45);
+  assert.equal(isEasyParcelPickupQuote({ courier: { is_pickup: true } }), true);
+  assert.equal(isEasyParcelPickupQuote({ courier: { is_pickup: false } }), false);
+});
+
+test("only offers EasyParcel cancellation before parcel handover", () => {
+  assert.equal(canCancelEasyParcelShipment("Schedule In Arrangement"), true);
+  assert.equal(canCancelEasyParcelShipment("To Be Collected"), true);
+  assert.equal(canCancelEasyParcelShipment("Collected"), false);
+  assert.equal(canCancelEasyParcelShipment("Delivery In Transit"), false);
 });
 
 test("uses the three promised keychain turnaround tiers", () => {

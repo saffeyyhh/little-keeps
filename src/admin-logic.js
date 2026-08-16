@@ -997,6 +997,7 @@ export function getEasyParcelQuotePrices(quote = {}) {
     pricing.amount
   );
   const headline = firstPositiveAmount(
+    pricing.shipment_price,
     pricing.discounted_amount,
     pricing.discounted_price,
     pricing.promo_amount,
@@ -1011,8 +1012,46 @@ export function getEasyParcelQuotePrices(quote = {}) {
   return {
     currency: String(pricing.currency || pricing.currency_code || "SGD"),
     headline,
-    payable: payable || headline
+    payable: payable || headline,
+    tax: Math.max(0, Number(pricing.shipment_tax || 0)),
+    addOns: Math.max(0, Number(pricing.total_features_price || 0)) +
+      Math.max(0, Number(pricing.total_features_tax || 0))
   };
+}
+
+export function formatEasyParcelDeliveryDuration(value) {
+  if (!value) return "Delivery estimate not supplied";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "Delivery estimate not supplied";
+    try {
+      return formatEasyParcelDeliveryDuration(JSON.parse(trimmed));
+    } catch {
+      return trimmed;
+    }
+  }
+  if (typeof value !== "object") return String(value);
+  const amount = String(value.value ?? "").trim();
+  if (!amount) return "Delivery estimate not supplied";
+  const unit = String(value.type || "days").toLowerCase().replace(/s$/, "");
+  return `${amount} ${unit}${amount === "1" ? "" : "s"}`;
+}
+
+export function getEasyParcelVolumetricWeight(length, width, height) {
+  const dimensions = [length, width, height].map(Number);
+  if (dimensions.some(value => !Number.isFinite(value) || value <= 0)) return 0;
+  return Math.round((dimensions[0] * dimensions[1] * dimensions[2] / 5000) * 100) / 100;
+}
+
+export function isEasyParcelPickupQuote(quote = {}) {
+  return quote?.courier?.is_pickup === true || quote?.courier?.is_pickup === 1;
+}
+
+export function canCancelEasyParcelShipment(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (!normalized) return true;
+  return ["schedule", "arrangement", "pending", "to be collected", "submitted", "booked", "created"]
+    .some(value => normalized.includes(value));
 }
 
 export function sortEasyParcelQuotesByPrice(quotes = []) {

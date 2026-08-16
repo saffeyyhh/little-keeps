@@ -7,6 +7,14 @@ Deno.serve(async request => {
   if (!expectedSecret || suppliedSecret !== expectedSecret) return new Response("unauthorized", { status: 401 });
 
   const payload = await request.json().catch(() => null);
+  const topic = String(payload?.topic || "");
+  const supportedTopics = new Set([
+    "shipment.status.update",
+    "shipment.awb.update",
+    "shipment.tracking.update",
+    "shipment.created"
+  ]);
+  if (topic && !supportedTopics.has(topic)) return new Response("ok", { status: 200 });
   const shipmentNumber = String(payload?.shipment_number || "");
   if (!shipmentNumber) return new Response("ok", { status: 200 });
 
@@ -44,4 +52,3 @@ Deno.serve(async request => {
   }
   return new Response("ok", { status: 200 });
 });
-
