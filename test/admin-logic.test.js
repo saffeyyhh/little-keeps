@@ -15,6 +15,7 @@ import {
   canOrderAcceptAddOn,
   distributeAmsPlatesAcrossPrinters,
   getFreeAmsPrinters,
+  getEasyParcelQuotePrices,
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
   getHandDeliveryLabelData,
@@ -40,6 +41,7 @@ import {
   pickRandomDesignColourSets,
   pickRandomDesignColours,
   partitionAmsCombinationsByBusyColours,
+  sortEasyParcelQuotesByPrice,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
 
@@ -49,6 +51,28 @@ test("allows add-ons only before an order enters printing", () => {
   assert.equal(canOrderAcceptAddOn("Printing"), false);
   assert.equal(canOrderAcceptAddOn("Assembly Complete"), false);
   assert.equal(canOrderAcceptAddOn("Completed"), false);
+});
+
+test("sorts EasyParcel quotes by the final payable price", () => {
+  const quotes = [
+    { courier: { service_id: "a" }, pricing: { total_amount: 4.69 } },
+    { courier: { service_id: "b" }, pricing: { total_amount: 3.94 } },
+    { courier: { service_id: "c" }, pricing: { total_amount: 4.34 } }
+  ];
+
+  assert.deepEqual(
+    sortEasyParcelQuotesByPrice(quotes).map(quote => quote.courier.service_id),
+    ["b", "c", "a"]
+  );
+});
+
+test("keeps EasyParcel's website rate separate from its payable total", () => {
+  assert.deepEqual(
+    getEasyParcelQuotePrices({
+      pricing: { currency: "SGD", base_price: 3.75, total_amount: 3.94 }
+    }),
+    { currency: "SGD", headline: 3.75, payable: 3.94 }
+  );
 });
 
 test("uses the three promised keychain turnaround tiers", () => {

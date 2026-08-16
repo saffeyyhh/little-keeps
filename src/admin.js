@@ -22,6 +22,7 @@ import {
   formatProductionMinutes,
   getBulkApprovalPolicy,
   getFreeAmsPrinters,
+  getEasyParcelQuotePrices,
   getHandDeliveryLabelData,
   getInternalBasketLabelData,
   groupLinkedOrdersForAdmin,
@@ -34,6 +35,7 @@ import {
   normalizeAssemblyProgress,
   optimizeAmsPlateSequence,
   partitionAmsCombinationsByBusyColours,
+  sortEasyParcelQuotesByPrice,
   validateInventoryDecrement
 } from "./admin-logic.js";
 import {
@@ -4906,11 +4908,16 @@ document.getElementById("getEasyParcelQuotes").addEventListener("click", async e
     });
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
-    activeEasyParcelQuotes = (data?.data?.[0]?.quotations || []).filter(quote => quote?.courier?.service_id);
+    activeEasyParcelQuotes = sortEasyParcelQuotesByPrice(
+      (data?.data?.[0]?.quotations || []).filter(quote => quote?.courier?.service_id)
+    );
     document.getElementById("easyParcelQuoteStatus").textContent = activeEasyParcelQuotes.length
       ? `${activeEasyParcelQuotes.length} courier option${activeEasyParcelQuotes.length === 1 ? "" : "s"} available. Choose one to book.`
       : "No courier is available for these details. Try another collection date or parcel size.";
-    document.getElementById("easyParcelQuotes").innerHTML = activeEasyParcelQuotes.map((quote, index) => `
+    document.getElementById("easyParcelQuotes").innerHTML = activeEasyParcelQuotes.map((quote, index) => {
+      const prices = getEasyParcelQuotePrices(quote);
+      const hasSeparatePayable = prices.headline > 0 && prices.payable > prices.headline + 0.001;
+      return `
       <article class="easyparcel-quote">
         <div>
           <strong>${escapeAdminHtml(quote.courier?.service_name || quote.courier?.courier_name || "Courier")}</strong>
@@ -4918,11 +4925,13 @@ document.getElementById("getEasyParcelQuotes").addEventListener("click", async e
           <small>${quote.courier?.is_pickup ? "Courier pickup" : "Drop-off service"}</small>
         </div>
         <div>
-          <strong>${escapeAdminHtml(quote.pricing?.currency || "SGD")} ${Number(quote.pricing?.total_amount || 0).toFixed(2)}</strong>
+          <strong>${escapeAdminHtml(prices.currency)} ${prices.headline.toFixed(2)}</strong>
+          ${hasSeparatePayable ? `<small>${escapeAdminHtml(prices.currency)} ${prices.payable.toFixed(2)} payable including EasyParcel fees</small>` : ""}
           <button type="button" onclick="window.bookEasyParcelQuote(${index}, this)">Book</button>
         </div>
       </article>
-    `).join("");
+    `;
+    }).join("");
   } catch (error) {
     console.error("Unable to get EasyParcel quotes:", error);
     document.getElementById("easyParcelQuoteStatus").textContent = error?.message || "Courier quotes could not be loaded.";
@@ -4936,8 +4945,9 @@ window.bookEasyParcelQuote = async function(index, button) {
   const quote = activeEasyParcelQuotes[Number(index)];
   const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === activeEasyParcelOrderId);
   if (!quote || !order) return;
-  const currency = quote.pricing?.currency || "SGD";
-  const amount = Number(quote.pricing?.total_amount || 0).toFixed(2);
+  const prices = getEasyParcelQuotePrices(quote);
+  const currency = prices.currency;
+  const amount = prices.payable.toFixed(2);
   const isLive = easyParcelConnectionStatus.environment === "live";
   const confirmation = isLive
     ? `Book ${quote.courier?.service_name || "this courier"} for ${currency} ${amount}? This will charge your EasyParcel wallet.`

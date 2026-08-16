@@ -980,6 +980,49 @@ export function validateInventoryDecrement(currentQty, requestedQty) {
   };
 }
 
+function firstPositiveAmount(...values) {
+  const amount = values
+    .map(value => Number(value))
+    .find(value => Number.isFinite(value) && value > 0);
+  return amount ?? 0;
+}
+
+export function getEasyParcelQuotePrices(quote = {}) {
+  const pricing = quote?.pricing || {};
+  const payable = firstPositiveAmount(
+    pricing.total_amount,
+    pricing.payable_amount,
+    pricing.grand_total,
+    pricing.total,
+    pricing.amount
+  );
+  const headline = firstPositiveAmount(
+    pricing.discounted_amount,
+    pricing.discounted_price,
+    pricing.promo_amount,
+    pricing.rate_amount,
+    pricing.base_amount,
+    pricing.base_price,
+    pricing.shipping_fee,
+    pricing.price,
+    payable
+  );
+
+  return {
+    currency: String(pricing.currency || pricing.currency_code || "SGD"),
+    headline,
+    payable: payable || headline
+  };
+}
+
+export function sortEasyParcelQuotesByPrice(quotes = []) {
+  return [...quotes].sort((left, right) => {
+    const leftPrice = getEasyParcelQuotePrices(left).payable || Number.POSITIVE_INFINITY;
+    const rightPrice = getEasyParcelQuotePrices(right).payable || Number.POSITIVE_INFINITY;
+    return leftPrice - rightPrice;
+  });
+}
+
 export function isOrderReminderFinishedOrExpired(order, now = Date.now()) {
   if (!order) return false;
   if (
