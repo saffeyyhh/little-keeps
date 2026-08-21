@@ -6,7 +6,10 @@ import { jsPDF } from "jspdf";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
+import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
+import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import polygonClipping from "polygon-clipping";
 import {
   ASSEMBLY_STAGES,
   assignPrintedKeycapsToOwners,
@@ -492,6 +495,8 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   large_max_working_days: 5,
   rush_fee_small: 5,
   rush_fee_large: 8,
+  nfc_addon_price: 2.50,
+  photo_clicker_addon_price: 3.00,
   rush_max_missing_parts: 60,
   rush_max_active_orders: 5,
   mechanical_switch_low_stock: 100,
@@ -1561,6 +1566,8 @@ function renderSettingsWorkspace() {
           <div class="settings-fields two-columns">
             ${settingNumber("delivery_fee", "Delivery fee ($)", "0.10")}
             ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
+            ${settingNumber("nfc_addon_price", "NFC add-on per keychain ($)", "0.10")}
+            ${settingNumber("photo_clicker_addon_price", "Photo clicker upgrade ($)", "0.10")}
           </div>
           <p class="hint">Product prices are managed separately above.</p>
         </section>
@@ -2006,7 +2013,8 @@ async function saveShopSettings(event) {
     "bulk_order_quantity",
     "standard_min_working_days", "standard_max_working_days", "large_min_working_days",
     "large_max_working_days", "rush_fee_small", "rush_fee_large", "rush_max_missing_parts",
-    "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock"
+    "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock",
+    "nfc_addon_price", "photo_clicker_addon_price"
   ];
   const updates = { id: 1 };
   numberFields.forEach(name => { updates[name] = Number(form.get(name)); });
@@ -2792,9 +2800,127 @@ window.markKeychainComplete = async function(orderId, itemIndex) {
 
     currentView = "fulfilment";
     setActiveTab(fulfilmentViewBtn);
+    order.status = "Assembly Complete";
   }
 
-  await loadOrders();
+  keychain.assembly_completed = true;
+  keychain.assembly_completed_at = new Date().toISOString();
+  await loadInventoryItems();
+  renderCurrentView();
+};
+
+window.syncAssemblySelection = function() {
+  const checkboxes = Array.from(
+    document.querySelectorAll("[data-assembly-select]")
+  );
+  const selectedCount = checkboxes.filter(input => input.checked).length;
+  const selectAll = document.getElementById("selectAllReadyKeychains");
+  const completeButton = document.getElementById("completeSelectedKeychainsBtn");
+
+  if (selectAll) {
+    selectAll.checked = checkboxes.length > 0 && selectedCount === checkboxes.length;
+    selectAll.indeterminate = selectedCount > 0 && selectedCount < checkboxes.length;
+  }
+  if (completeButton) {
+    completeButton.disabled = selectedCount === 0;
+    completeButton.textContent = selectedCount
+      ? `Complete Selected (${selectedCount})`
+      : "Complete Selected";
+  }
+};
+
+window.toggleAllReadyKeychains = function(checked) {
+  document.querySelectorAll("[data-assembly-select]").forEach(input => {
+    input.checked = checked;
+  });
+  window.syncAssemblySelection();
+};
+
+window.completeSelectedKeychains = async function(button) {
+  const selections = Array.from(
+    document.querySelectorAll("[data-assembly-select]:checked")
+  ).map(input => ({
+    orderId: String(input.dataset.orderId || ""),
+    itemIndex: Number(input.dataset.itemIndex)
+  })).filter(selection => selection.orderId && Number.isInteger(selection.itemIndex));
+
+  if (!selections.length) return;
+  await loadInventoryItems();
+
+  const selectedItems = selections.map(selection => {
+    const order = latestOrders.find(item => String(item.id) === selection.orderId);
+    const keychain = order?.order_data?.[selection.itemIndex];
+    return { ...selection, order, keychain };
+  }).filter(entry => entry.order && entry.keychain && !entry.keychain.assembly_completed);
+
+  if (!selectedItems.length) return;
+
+  const totalNeeds = {};
+  selectedItems.forEach(({ order, keychain }) => {
+    const needs = getOrderInventoryNeeds({ ...order, order_data: [keychain] });
+    Object.entries(needs).forEach(([itemName, qty]) => {
+      totalNeeds[itemName] = Number(totalNeeds[itemName] || 0) + Number(qty || 0);
+    });
+  });
+  const missingItems = Object.entries(totalNeeds).filter(
+    ([itemName, qty]) => getInventoryQty(itemName) < qty
+  );
+  if (missingItems.length) {
+    alert(
+      "The selected keychains are still missing stock:\n\n" +
+      missingItems.map(([itemName, qty]) =>
+        `${itemName}: need ${qty}, stock ${getInventoryQty(itemName)}`
+      ).join("\n")
+    );
+    return;
+  }
+
+  if (!confirm(
+    `Complete ${selectedItems.length} selected keychain${selectedItems.length === 1 ? "" : "s"} together?\n\nTheir printed parts and hardware will be deducted now.`
+  )) return;
+
+  const previousLabel = button?.textContent || "Complete Selected";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Completing…";
+  }
+
+  const completed = [];
+  for (const entry of selectedItems) {
+    const needs = getOrderInventoryNeeds({ ...entry.order, order_data: [entry.keychain] });
+    const { error } = await supabase.rpc("complete_order_keychain_inventory", {
+      p_order_id: entry.orderId,
+      p_item_index: entry.itemIndex,
+      p_needs: needs
+    });
+    if (error) {
+      console.error("Unable to complete selected keychain:", error);
+      break;
+    }
+    entry.keychain.assembly_completed = true;
+    entry.keychain.assembly_completed_at = new Date().toISOString();
+    completed.push(entry);
+  }
+
+  const affectedOrders = Array.from(new Set(completed.map(entry => entry.order)));
+  const fullyCompletedOrders = affectedOrders.filter(order =>
+    (order.order_data || []).every(item => item.assembly_completed)
+  );
+
+  if (fullyCompletedOrders.length && !IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: "Assembly Complete", status_updated_at: new Date().toISOString() })
+      .in("id", fullyCompletedOrders.map(order => order.id));
+    if (!error) fullyCompletedOrders.forEach(order => { order.status = "Assembly Complete"; });
+  }
+
+  await loadInventoryItems();
+  await renderAssemblyQueue();
+
+  if (completed.length !== selectedItems.length) {
+    alert(`${completed.length} keychain${completed.length === 1 ? " was" : "s were"} completed before an error stopped the batch.`);
+  }
 };
 
 window.markBaseAssemblyComplete = async function(orderId, itemIndex) {
@@ -5394,6 +5520,28 @@ function getKeycapInventoryName(
   return `${capName} Cap + ${letterName} Letter - ${character}`;
 }
 
+function isCustomNameKeychain(order, item) {
+  return String(item?.product_key || order?.product_key || "") === "standard-name-keychain";
+}
+
+function isPhotoKeepsake(order, item) {
+  return String(item?.product_key || order?.product_key || "") === "ai-photo-keepsake";
+}
+
+function getPhotoKeepsakeInventoryName(order, item, itemIndex = 0) {
+  const reference = String(order?.order_ref || order?.id || "ORDER").trim();
+  const label = String(item?.name || "PHOTO").trim();
+  const variant = item?.design?.photo?.variant === "clicker" ? "Clicker" : "Classic";
+  return `Photo Keepsake - ${reference} - ${itemIndex + 1} - ${label} - ${variant}`;
+}
+
+function getCustomNameInventoryName(order, item, itemIndex = 0) {
+  const reference = String(order?.order_ref || order?.id || "ORDER").trim();
+  const name = String(item?.clean_name || item?.name || "NAME").trim();
+  const fontSize = Math.max(1, Number(item?.design?.font_size_mm || 24));
+  return `Custom Name Keychain - ${reference} - ${itemIndex + 1} - ${name} - ${fontSize}mm`;
+}
+
 async function loadInventoryItems() {
   if (IS_ADMIN_PREVIEW) {
     inventoryItems = {
@@ -5725,7 +5873,7 @@ window.setProductionStageView = async function(stage) {
 };
 
 window.setProductionQueueView = async function(view) {
-  if (!["batch", "timeline", "bases", "keycaps"].includes(view)) return;
+  if (!["batch", "timeline", "bases", "keycaps", "custom"].includes(view)) return;
   productionQueueView = view;
   await renderProductionPlanner(latestOrders);
 };
@@ -5949,8 +6097,8 @@ window.syncProductionJobSelection = function() {
   const selectAll = document.getElementById(
     "selectAllProductionJobs"
   );
-  const actionButton = document.getElementById(
-    "productionBulkAction"
+  const actionButtons = Array.from(
+    document.querySelectorAll("[data-production-bulk-action]")
   );
 
   if (selectAll) {
@@ -5962,17 +6110,13 @@ window.syncProductionJobSelection = function() {
       selectedCount < checkboxes.length;
   }
 
-  if (actionButton) {
-    const actionStage = actionButton.dataset.stage;
-    actionButton.disabled = selectedCount === 0;
-    actionButton.textContent = actionStage === "picked"
-      ? selectedCount
-        ? `Add ${selectedCount} Selected to Inventory`
-        : "Add Selected to Inventory"
-      : selectedCount
-        ? `Mark ${selectedCount} Selected as Picked`
-        : "Mark Selected as Picked";
-  }
+  actionButtons.forEach(button => {
+    button.disabled = selectedCount === 0;
+    const baseLabel = button.dataset.label || button.textContent;
+    button.textContent = selectedCount
+      ? `${baseLabel} (${selectedCount})`
+      : baseLabel;
+  });
 };
 
 window.toggleAllProductionJobs = function(checked) {
@@ -6029,6 +6173,121 @@ window.markSelectedProductionJobsPicked = async function(button) {
     return;
   }
 
+  await renderProductionPlanner(latestOrders);
+};
+
+function getSelectedProductionJobs(stage = "") {
+  const selectedIds = new Set(Array.from(
+    document.querySelectorAll("[data-production-job-select]:checked")
+  ).map(checkbox => String(checkbox.value)));
+
+  return productionJobs.filter(job =>
+    selectedIds.has(String(job.id)) && (!stage || job.stage === stage)
+  );
+}
+
+window.moveSelectedProductionJobs = async function(stage, button) {
+  if (!["printing", "picked"].includes(stage)) return;
+  const jobs = getSelectedProductionJobs(stage === "picked" ? "printing" : "picked");
+  if (!jobs.length) return;
+
+  const previousLabel = button?.textContent || "Update Selected";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Updating…";
+  }
+
+  const timestamp = new Date().toISOString();
+  const { error } = await supabase
+    .from("production_jobs")
+    .update({
+      stage,
+      picked_at: stage === "picked" ? timestamp : null,
+      updated_at: timestamp
+    })
+    .in("id", jobs.map(job => job.id));
+
+  if (error) {
+    console.error("Unable to move selected print jobs:", error);
+    alert("Unable to update the selected prints.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  await loadProductionJobs();
+  await renderProductionPlanner(latestOrders);
+};
+
+window.returnSelectedProductionJobsToQueue = async function(button) {
+  const jobs = getSelectedProductionJobs("printing");
+  if (!jobs.length) return;
+  const pieces = jobs.reduce((sum, job) => sum + Number(job.quantity || 0), 0);
+  if (!confirm(`Move ${jobs.length} selected print job${jobs.length === 1 ? "" : "s"} (${pieces} pieces) back to To Print?`)) return;
+
+  const previousLabel = button?.textContent || "Back to To Print";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Moving…";
+  }
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .delete()
+    .in("id", jobs.map(job => job.id));
+
+  if (error) {
+    console.error("Unable to return selected jobs to queue:", error);
+    alert("Unable to move the selected prints back to To Print.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  productionStageView = "queue";
+  await loadProductionJobs();
+  await renderProductionPlanner(latestOrders);
+};
+
+window.markSelectedProductionQualityIssue = async function(button) {
+  const jobs = getSelectedProductionJobs("printing");
+  if (!jobs.length) return;
+  const notes = prompt(
+    `What went wrong with these ${jobs.length} selected print job${jobs.length === 1 ? "" : "s"}?`,
+    "Poor print quality"
+  );
+  if (notes === null) return;
+
+  const previousLabel = button?.textContent || "Bad Print / Reprint";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Flagging…";
+  }
+
+  const { error } = await supabase
+    .from("production_jobs")
+    .update({
+      quality_status: "reprint_needed",
+      issue_notes: notes.trim(),
+      updated_at: new Date().toISOString()
+    })
+    .in("id", jobs.map(job => job.id));
+
+  if (error) {
+    console.error("Unable to flag selected reprints:", error);
+    alert("Unable to flag the selected prints for reprint.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  await loadProductionJobs();
   await renderProductionPlanner(latestOrders);
 };
 
@@ -6219,6 +6478,8 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
     )
   );
 
+  const customItems = [];
+
   activeOrders.forEach(order => {
     const items = (order.order_data || []).filter(
       item => !item.assembly_completed
@@ -6230,6 +6491,36 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
       const design = item.design;
 
       if (!design) return;
+
+      if (isCustomNameKeychain(order, item)) {
+        customItems.push({
+          order,
+          item,
+          itemIndex,
+          itemName: getCustomNameInventoryName(order, item, itemIndex),
+          name: item.name || "Custom name",
+          fontSize: Number(design.font_size_mm || 24),
+          background: design.bases?.[0],
+          lettering: design.letters?.[0]
+        });
+        return;
+      }
+
+      if (isPhotoKeepsake(order, item)) {
+        customItems.push({
+          order,
+          item,
+          itemIndex,
+          itemName: getPhotoKeepsakeInventoryName(order, item, itemIndex),
+          name: item.name || "Photo keepsake",
+          fontSize: 0,
+          isPhoto: true,
+          photo: design.photo || {},
+          background: design.bases?.[0],
+          lettering: design.letters?.[0]
+        });
+        return;
+      }
 
       letters.forEach((letter, index) => {
         const base = design.bases[index % design.bases.length];
@@ -6307,7 +6598,7 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
     group.owners = Object.values(group.owners || {});
   });
 
-  return { baseTotals, keycapGroups, count: activeOrders.length };
+  return { baseTotals, keycapGroups, customItems, count: activeOrders.length };
 }
 
 function getOrderPrintableInventoryNeeds(order) {
@@ -6319,7 +6610,7 @@ function getOrderPrintableInventoryNeeds(order) {
 
   (order.order_data || [])
     .filter(item => !item.assembly_completed)
-    .forEach(item => {
+    .forEach((item, itemIndex) => {
       const characters = Array.from(
         item.clean_name || sanitizeName(item.name || "")
       );
@@ -6327,6 +6618,16 @@ function getOrderPrintableInventoryNeeds(order) {
       const bases = Array.isArray(design.bases) ? design.bases : [];
       const caps = Array.isArray(design.caps) ? design.caps : [];
       const letters = Array.isArray(design.letters) ? design.letters : [];
+
+      if (isCustomNameKeychain(order, item)) {
+        addNeed(getCustomNameInventoryName(order, item, itemIndex));
+        return;
+      }
+
+      if (isPhotoKeepsake(order, item)) {
+        addNeed(getPhotoKeepsakeInventoryName(order, item, itemIndex));
+        return;
+      }
 
       if (!bases.length || !caps.length || !letters.length) return;
 
@@ -6442,11 +6743,28 @@ function getOrderInventoryNeeds(order) {
     needs[itemName] = (needs[itemName] || 0) + qty;
   }
 
-  (order.order_data || []).forEach(item => {
+  (order.order_data || []).forEach((item, itemIndex) => {
     const letters = Array.from(item.clean_name || item.name || "");
     const design = item.design;
 
     if (!design) return;
+
+    if (isCustomNameKeychain(order, item)) {
+      if (!item.base_assembled) {
+        add(getCustomNameInventoryName(order, item, itemIndex), 1);
+        add("Metal Large D Ring", 1);
+      }
+      if (design.nfc?.enabled) add("NTAG215 NFC Wet Label (25 mm)", 1);
+      return;
+    }
+
+    if (isPhotoKeepsake(order, item)) {
+      add(getPhotoKeepsakeInventoryName(order, item, itemIndex), 1);
+      add("Metal Large D Ring", 1);
+      if (design.photo?.variant === "clicker") add("Mechanical Switch", 1);
+      if (design.nfc?.enabled) add("NTAG215 NFC Wet Label (25 mm)", 1);
+      return;
+    }
 
     letters.forEach((letter, index) => {
       const base = design.bases[index % design.bases.length];
@@ -6493,6 +6811,7 @@ function getOrderInventoryNeeds(order) {
       add("Mechanical Switch", letters.length);
       add("Metal Large D Ring", 1);
     }
+    if (design.nfc?.enabled) add("NTAG215 NFC Wet Label (25 mm)", 1);
   });
   add(
     "Gifting Bag",
@@ -6504,6 +6823,8 @@ function getOrderInventoryNeeds(order) {
 
 function getKeychainBaseAssemblyNeeds(item) {
   if (item?.base_assembled) return {};
+  if (String(item?.product_key || "") === "standard-name-keychain") return {};
+  if (String(item?.product_key || "") === "ai-photo-keepsake") return {};
   const needs = getKeychainPrintablePartNeeds(item, "base");
   const characterCount = Array.from(item?.clean_name || item?.name || "").length;
   if (characterCount > 0) needs["Mechanical Switch"] = characterCount;
@@ -6727,6 +7048,197 @@ let currentBaseColourPlan = [];
 const productionStlGeometryCache = new Map();
 const productionStlLoader = new STLLoader();
 const productionStlExporter = new STLExporter();
+const productionFontLoader = new FontLoader();
+let customNameFontPromise = null;
+
+function loadCustomNameFont() {
+  if (!customNameFontPromise) {
+    customNameFontPromise = new Promise((resolve, reject) => {
+      productionFontLoader.load(
+        "/fonts/fredoka_bold.typeface.json",
+        resolve,
+        undefined,
+        reject
+      );
+    });
+  }
+  return customNameFontPromise;
+}
+
+function buildCustomNameBackgroundGeometry(name, font, fontSize) {
+  const outlineRadius = 2.5;
+  const offsets = [[0, 0]];
+  for (let index = 0; index < 32; index += 1) {
+    const angle = (index / 32) * Math.PI * 2;
+    offsets.push([
+      Math.cos(angle) * outlineRadius,
+      Math.sin(angle) * outlineRadius
+    ]);
+  }
+
+  const offsetPolygons = [];
+  font.generateShapes(name, fontSize)
+    .map(shape => shape.getPoints(20))
+    .filter(points => points.length >= 3)
+    .forEach(points => {
+      offsets.forEach(([offsetX, offsetY]) => {
+        const ring = points.map(point => [point.x + offsetX, point.y + offsetY]);
+        ring.push([...ring[0]]);
+        offsetPolygons.push([ring]);
+      });
+    });
+
+  const mergedPolygons = offsetPolygons.length
+    ? polygonClipping.union(...offsetPolygons)
+    : [];
+  const shapes = mergedPolygons
+    .filter(polygon => polygon[0]?.length >= 4)
+    .map(polygon => {
+      const shape = new THREE.Shape(
+        polygon[0].slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y))
+      );
+      polygon.slice(1).forEach(holeRing => {
+        if (holeRing.length >= 4) {
+          shape.holes.push(new THREE.Path(
+            holeRing.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y))
+          ));
+        }
+      });
+      return shape;
+    });
+
+  return new THREE.ExtrudeGeometry(shapes, {
+    depth: 3,
+    curveSegments: 16,
+    bevelEnabled: false
+  });
+}
+
+function buildCustomNameStlGeometries(name, font, fontSize) {
+  const cleanName = String(name || "NAME").trim().replace(/[^a-z0-9 ]/gi, "") || "NAME";
+  const text = new TextGeometry(cleanName, {
+    font,
+    size: fontSize,
+    depth: 1.2,
+    curveSegments: 16,
+    bevelEnabled: false
+  });
+  text.computeBoundingBox();
+  const textBounds = text.boundingBox;
+  const textWidth = textBounds ? textBounds.max.x - textBounds.min.x : cleanName.length * fontSize * .6;
+  const textCentreY = textBounds ? (textBounds.min.y + textBounds.max.y) / 2 : 0;
+  text.translate(0, 0, 3);
+
+  const background = buildCustomNameBackgroundGeometry(cleanName, font, fontSize);
+  const outerRadius = 5;
+  const innerRadius = 2.25;
+  const loopX = (textBounds?.min.x || 0) - outerRadius + 2.5;
+  const loopY = fontSize * .38;
+  const ringShape = new THREE.Shape();
+  ringShape.absarc(loopX, loopY, outerRadius, 0, Math.PI * 2, false);
+  const ringHole = new THREE.Path();
+  ringHole.absarc(loopX, loopY, innerRadius, 0, Math.PI * 2, true);
+  ringShape.holes.push(ringHole);
+  const ring = new THREE.ExtrudeGeometry(ringShape, {
+    depth: 3,
+    curveSegments: 48,
+    bevelEnabled: false
+  });
+  const bridge = new THREE.BoxGeometry(outerRadius, 4, 3);
+  bridge.translate(loopX + outerRadius - 1.5, loopY, 1.5);
+  const backgroundCombined = mergeGeometries([background, ring, bridge], false);
+  if (!backgroundCombined) throw new Error("Unable to join the customised background geometry.");
+  backgroundCombined.computeVertexNormals();
+
+  return { background: backgroundCombined, lettering: text, textWidth, textCentreY };
+}
+
+function exportGeometryStl(geometry) {
+  const binary = productionStlExporter.parse(new THREE.Mesh(geometry), { binary: true });
+  return new Blob([binary], { type: "model/stl" });
+}
+
+window.generateCustomNameKeychainStls = async function(orderId, itemIndex, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const item = order?.order_data?.[Number(itemIndex)];
+  if (!order || !item || !isCustomNameKeychain(order, item)) {
+    alert("This customised name keychain could not be found.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Download 2 STLs";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Building STLs…";
+  }
+
+  try {
+    const font = await loadCustomNameFont();
+    const fontSize = Math.max(18, Number(item.design?.font_size_mm || 24));
+    const geometries = buildCustomNameStlGeometries(item.name, font, fontSize);
+    const reference = safeProductionFileName(order.order_ref, "order");
+    const name = safeProductionFileName(item.name, "name");
+    const files = [
+      {
+        blob: exportGeometryStl(geometries.background),
+        filename: `${reference}_${name}_${fontSize}mm_BACKGROUND.stl`
+      },
+      {
+        blob: exportGeometryStl(geometries.lettering),
+        filename: `${reference}_${name}_${fontSize}mm_RAISED-NAME.stl`
+      }
+    ];
+    files.forEach((file, index) => {
+      setTimeout(() => downloadRushStl(file.blob, file.filename), index * 300);
+    });
+    geometries.background.dispose();
+    geometries.lettering.dispose();
+    if (button) button.textContent = "Downloaded ✓";
+    setTimeout(() => { if (button) button.textContent = previousLabel; }, 2200);
+  } catch (error) {
+    console.error("Unable to build customised name STL files:", error);
+    alert(`Unable to build this customised name keychain.\n\n${error.message || error}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+};
+
+window.downloadPhotoKeepsakeArtwork = async function(orderId, itemIndex, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const item = order?.order_data?.[Number(itemIndex)];
+  const artworkPath = item?.design?.photo?.artwork_path;
+  if (!artworkPath) {
+    alert("This photo keepsake has no saved artwork file.");
+    return;
+  }
+  const previousLabel = button?.textContent || "Download Artwork";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Preparing…";
+  }
+  const { data, error } = await supabase.storage
+    .from("customer-artwork")
+    .createSignedUrl(artworkPath, 300, { download: `${safeProductionFileName(order.order_ref, "order")}_${safeProductionFileName(item.name, "photo")}_ARTWORK.png` });
+  if (error || !data?.signedUrl) {
+    alert("Unable to open this private artwork. Check the photo-keepsake storage policy.");
+  } else {
+    window.open(data.signedUrl, "_blank", "noopener");
+  }
+  if (button) {
+    button.disabled = false;
+    button.textContent = previousLabel;
+  }
+};
+
+window.startPhotoKeepsakePrint = async function(orderId, itemIndex, itemName) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const item = order?.order_data?.[Number(itemIndex)];
+  if (!order || !item) return;
+  if (!confirm(
+    `Start printing ${item.name || "this photo keepsake"}?\n\nConfirm you checked the artwork for connected shapes, minimum wall thickness and a safe keyring/clicker area in your slicer.`
+  )) return;
+  await window.startProductionJob(itemName, 1, "Base");
+};
 
 function getProductionKeycapPath(character) {
   const specialName = specialKeycaps[character];
@@ -7685,6 +8197,29 @@ async function generateOrderStls(id, button) {
   const order = latestOrders.find(item => String(item.id) === String(id));
   if (!order) return alert("Order could not be found.");
 
+  const customNameItems = (order.order_data || [])
+    .map((item, itemIndex) => ({ item, itemIndex }))
+    .filter(({ item }) => !item.assembly_completed && isCustomNameKeychain(order, item));
+  if (customNameItems.length) {
+    if (!confirm(
+      `Generate the two-colour STL set for ${customNameItems.length} customised name keychain${customNameItems.length === 1 ? "" : "s"}?`
+    )) return;
+    const previousLabel = button?.textContent || "Generate Order STLs";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Building custom STLs…";
+    }
+    for (const { itemIndex } of customNameItems) {
+      await window.generateCustomNameKeychainStls(String(order.id), itemIndex, null);
+    }
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Downloaded ✓";
+      setTimeout(() => { button.textContent = previousLabel; }, 2200);
+    }
+    return;
+  }
+
   await loadInventoryItems();
 
   const selectedScopeActive = productionOrderSelection.size > 0;
@@ -8153,11 +8688,26 @@ async function renderAssemblyQueue() {
     const characters = Array.from(
       item.clean_name || sanitizeName(item.name || "")
     );
+    const customNameProduct = String(item.product_key || order.product_key || "") === "standard-name-keychain";
+    const photoProduct = String(item.product_key || order.product_key || "") === "ai-photo-keepsake";
 
     return `
-      <div class="assembly-item ${completed ? "is-complete" : ""}">
+      <div class="assembly-item ${completed ? "is-complete" : ""} ${!completed && !baseOnly ? "is-selectable" : ""}">
         <div class="assembly-item-top">
-          <strong>${escapeAdminHtml(item.name || "-")}</strong>
+          <div class="assembly-item-name">
+            ${!completed && !baseOnly ? `
+              <label class="assembly-item-select" title="Select ${escapeAdminHtml(item.name || "this keychain")}">
+                <input
+                  type="checkbox"
+                  data-assembly-select
+                  data-order-id="${escapeAdminHtml(String(order.id))}"
+                  data-item-index="${itemIndex}"
+                  onchange="window.syncAssemblySelection()"
+                >
+              </label>
+            ` : ""}
+            <strong>${escapeAdminHtml(item.name || "-")}</strong>
+          </div>
 
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             ${item.group_contributor_name ? `
@@ -8170,28 +8720,41 @@ async function renderAssemblyQueue() {
                 ? `<span class="assembly-tag assembly-complete-tag">Completed ✓</span>`
                 : ""
             }
-            <span class="assembly-tag">
-              ${sanitizeName(item.name).length} Characters
-            </span>
-
-            <span class="assembly-tag">
-              ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
-            </span>
-
-            <span class="assembly-tag">
-              ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
-            </span>
+            ${photoProduct ? `
+              <span class="assembly-tag">Photo Keepsake</span>
+              <span class="assembly-tag">${item.design?.photo?.variant === "clicker" ? "Clicker" : "Classic"}</span>
+            ` : customNameProduct ? `
+              <span class="assembly-tag">Customised Name</span>
+              <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
+            ` : `
+              <span class="assembly-tag">${sanitizeName(item.name).length} Characters</span>
+              <span class="assembly-tag">${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}</span>
+              <span class="assembly-tag">${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}</span>
+            `}
 
             ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
+            ${item.design?.nfc?.enabled ? `<span class="assembly-tag nfc-assembly-tag">NFC · ${escapeAdminHtml(item.design.nfc.content_type || "link")}</span>` : ""}
             ${baseOnly ? `<span class="assembly-tag">${item.base_assembled ? "Base assembled & set aside" : "Base parts ready"}</span>` : ""}
           </div>
         </div>
 
-        <div class="mini-chain">
-          ${createAssemblyMiniPreview(item.name, item.design)}
-        </div>
+        ${photoProduct ? `
+          <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 3)} colours · review in Custom Prints</div>
+        ` : customNameProduct ? `
+          <div class="assembly-standard-name-preview" style="--name-bg:${getSafePdfColour(item.design?.bases?.[0]?.hex || item.design?.bases?.[0], "#f55a74")}; --name-fg:${getSafePdfColour(item.design?.letters?.[0]?.hex || item.design?.letters?.[0], "#ffffff")}">${escapeAdminHtml(item.name || "Name")}</div>
+          ${createAssemblyColourGuide(item.name, item.design)}
+        ` : `
+          <div class="mini-chain">${createAssemblyMiniPreview(item.name, item.design)}</div>
+          ${createAssemblyColourGuide(item.name, item.design)}
+        `}
 
-        ${createAssemblyColourGuide(item.name, item.design)}
+        ${item.design?.nfc?.enabled ? `
+          <div class="assembly-nfc-instruction">
+            <strong>Program NFC before closing the keychain</strong>
+            <code>${escapeAdminHtml(item.design.nfc.payload || "No link saved")}</code>
+            <button type="button" onclick='navigator.clipboard.writeText(${JSON.stringify(String(item.design.nfc.payload || ""))}); this.textContent="Copied ✓"'>Copy NFC Link</button>
+          </div>
+        ` : ""}
 
         ${
           completed
@@ -8296,13 +8859,7 @@ async function renderAssemblyQueue() {
                 </button>
               </details>
 
-              <button
-                class="keychain-complete-btn"
-                type="button"
-                onclick="window.markKeychainComplete('${order.id}', ${itemIndex})"
-              >
-                Complete Keychain
-              </button>
+              <p class="assembly-selection-hint">Tick this keychain, then use Complete Selected at the top.</p>
             `
         }
       </div>
@@ -8427,7 +8984,7 @@ async function renderAssemblyQueue() {
         <div>
           <h2>Ready Keychains</h2>
           <p class="hint">
-            Complete keychains individually so assembled pieces stay clearly tracked.
+            Tick everything you finished, then complete it in one go.
           </p>
         </div>
 
@@ -8435,6 +8992,16 @@ async function renderAssemblyQueue() {
           ${readyKeychainCount} ready · ${baseReadyKeychainCount} base-only · ${completedKeychainCount} completed
         </p>
       </div>
+
+      ${readyKeychainCount ? `
+        <div class="assembly-selection-toolbar">
+          <label>
+            <input id="selectAllReadyKeychains" type="checkbox" onchange="window.toggleAllReadyKeychains(this.checked)">
+            <span>Select all ready keychains</span>
+          </label>
+          <button id="completeSelectedKeychainsBtn" type="button" disabled onclick="window.completeSelectedKeychains(this)">Complete Selected</button>
+        </div>
+      ` : ""}
 
       ${assemblyOrders.length ? assemblyCards : emptyAssemblyMessage}
     </div>
@@ -8871,7 +9438,7 @@ async function renderProductionPlanner(orders) {
   const planningOrders = selectedScopeActive
     ? orders.filter(order => productionOrderSelection.has(String(order.id)))
     : orders;
-  const { baseTotals, keycapGroups, count } = getProductionSummary(
+  const { baseTotals, keycapGroups, customItems, count } = getProductionSummary(
     planningOrders,
     selectedScopeActive
   );
@@ -8927,6 +9494,14 @@ async function renderProductionPlanner(orders) {
       return { ...item, itemName, need, stock, tracked, toPrint };
     })
     .filter(item => item.toPrint > 0);
+
+  const customPrintRows = customItems.map(item => {
+    const need = 1;
+    const stock = getInventoryQty(item.itemName);
+    const tracked = getTrackedProductionQuantity(productionJobs, item.itemName);
+    const toPrint = calculateQueuedProductionQuantity(need, stock, tracked);
+    return { ...item, need, stock, tracked, toPrint };
+  }).filter(item => item.toPrint > 0);
 
   const baseColourGroups = Array.from(
     baseRows.reduce((groups, item) => {
@@ -9854,9 +10429,13 @@ async function renderProductionPlanner(orders) {
       ),
     0
   );
-  const queuedPieces = baseQueuedPieces + keycapQueuedPieces;
+  const customQueuedPieces = customPrintRows.reduce(
+    (sum, item) => sum + item.toPrint,
+    0
+  );
+  const queuedPieces = baseQueuedPieces + keycapQueuedPieces + customQueuedPieces;
   const productionTimeEstimate = calculateProductionTimeEstimate(
-    baseQueuedPieces,
+    baseQueuedPieces + customQueuedPieces,
     keycapQueuedPieces,
     onlinePrinterCount
   );
@@ -10023,23 +10602,16 @@ async function renderProductionPlanner(orders) {
               >
               <span>Select all</span>
             </label>
-
-            <button
-              id="productionBulkAction"
-              type="button"
-              data-stage="${stage}"
-              disabled
-              onclick="${
-                stage === "printing"
-                  ? "window.markSelectedProductionJobsPicked(this)"
-                  : "window.addSelectedProductionJobsToInventory(this)"
-              }"
-            >
-              ${stage === "printing"
-                ? "Mark Selected as Picked"
-                : "Add Selected to Inventory"
-              }
-            </button>
+            <div class="production-bulk-actions">
+              ${stage === "printing" ? `
+                <button type="button" data-production-bulk-action data-label="Mark Picked" disabled onclick="window.moveSelectedProductionJobs('picked', this)">Mark Picked</button>
+                <button type="button" class="is-warning" data-production-bulk-action data-label="Bad Print / Reprint" disabled onclick="window.markSelectedProductionQualityIssue(this)">Bad Print / Reprint</button>
+                <button type="button" class="is-secondary" data-production-bulk-action data-label="Back to To Print" disabled onclick="window.returnSelectedProductionJobsToQueue(this)">Back to To Print</button>
+              ` : `
+                <button type="button" data-production-bulk-action data-label="Add to Inventory" disabled onclick="window.addSelectedProductionJobsToInventory(this)">Add to Inventory</button>
+                <button type="button" class="is-secondary" data-production-bulk-action data-label="Back to Printing" disabled onclick="window.moveSelectedProductionJobs('printing', this)">Back to Printing</button>
+              `}
+            </div>
           </div>
 
           <div class="production-job-groups">
@@ -10112,20 +10684,6 @@ async function renderProductionPlanner(orders) {
                       ${groupPieces} piece${groupPieces === 1 ? "" : "s"}
                     </span>
                   </summary>
-
-                  ${group.category === "Keycap" ? `
-                    <div class="production-plate-actions">
-                      <button
-                        type="button"
-                        onclick='event.stopPropagation(); ${stage === "printing"
-                          ? `window.markProductionPlatePicked(${JSON.stringify(group.jobs.map(job => String(job.id)))}, this)`
-                          : `window.completeProductionPlate(${JSON.stringify(group.jobs.map(job => String(job.id)))}, this)`
-                        }'
-                      >
-                        ${stage === "printing" ? "Mark Whole Plate Picked" : "Add Whole Plate to Inventory"}
-                      </button>
-                    </div>
-                  ` : ""}
 
                   ${group.category === "Keycap" ? `
                     <div class="production-plate-combinations">
@@ -10209,45 +10767,7 @@ async function renderProductionPlanner(orders) {
                             ${["failed", "reprint_needed"].includes(job.quality_status)
                               ? `<strong class="quality-issue-badge">Quality issue · reprint needed</strong>`
                               : ""}
-                            <button
-                              type="button"
-                              class="production-stage-secondary quality-action"
-                              onclick="window.markProductionQualityIssue(${JSON.stringify(job.id)})"
-                            >
-                              Bad Print / Reprint
-                            </button>
-                          ` : ""}
-                          ${stage === "printing" ? `
-                            <button
-                              type="button"
-                              class="production-stage-primary"
-                              onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'picked')"
-                            >
-                              Picked from Printer
-                            </button>
-                            <button
-                              type="button"
-                              class="production-stage-secondary"
-                              onclick="window.cancelProductionJob(${JSON.stringify(job.id)})"
-                            >
-                              Back to To Print
-                            </button>
-                          ` : `
-                            <button
-                              type="button"
-                              class="production-stage-primary inventory-action"
-                              onclick="window.completeProductionJob(${JSON.stringify(job.id)})"
-                            >
-                              Add to Inventory
-                            </button>
-                            <button
-                              type="button"
-                              class="production-stage-secondary"
-                              onclick="window.updateProductionJobStage(${JSON.stringify(job.id)}, 'printing')"
-                            >
-                              Back to Printing
-                            </button>
-                          `}
+                          ` : `<span class="production-job-ready-note">Use the selected actions above</span>`}
                         </div>
                       </article>
                     `).join("")}
@@ -10329,7 +10849,7 @@ async function renderProductionPlanner(orders) {
           <div>
             <p>Print-time calculator</p>
             <h3>${queuedPieces} queued piece${queuedPieces === 1 ? "" : "s"}</h3>
-            <small>${baseQueuedPieces} bases · ${keycapQueuedPieces} keycaps</small>
+            <small>${baseQueuedPieces} modular bases · ${keycapQueuedPieces} keycaps · ${customQueuedPieces} custom prints</small>
           </div>
           <strong>${formatProductionMinutes(productionTimeEstimate.totalPrinterMinutes)} machine time</strong>
         </header>
@@ -10453,6 +10973,14 @@ async function renderProductionPlanner(orders) {
             <span>Keycaps Printing</span>
             <strong>${keycapQueuedPieces}</strong>
           </button>
+          <button
+            type="button"
+            class="${productionQueueView === "custom" ? "active" : ""}"
+            onclick="window.setProductionQueueView('custom')"
+          >
+            <span>Custom Prints</span>
+            <strong>${customQueuedPieces}</strong>
+          </button>
         </nav>
 
         ${selectedScopeActive ? `
@@ -10554,6 +11082,46 @@ async function renderProductionPlanner(orders) {
         <div class="production-queue-section ${productionQueueView === "keycaps" ? "" : "hidden"}">
           <h3>Keycaps Printing</h3>
           ${amsLitePlanner || "<p>No keycaps need printing.</p>"}
+        </div>
+
+        <div class="production-queue-section ${productionQueueView === "custom" ? "" : "hidden"}">
+          <h3>Order-Specific Custom Prints</h3>
+          <p class="hint">Name keychains include two generated STLs. Photo keepsakes include private artwork that must pass your slicer check before printing.</p>
+          <div class="custom-print-grid">
+            ${customPrintRows.map(row => {
+              const background = row.background || {};
+              const lettering = row.lettering || {};
+              return `
+                <article class="custom-print-card">
+                  <header>
+                    <div>
+                      <span>${escapeAdminHtml(row.order.order_ref || "No reference")}</span>
+                      <h4>${escapeAdminHtml(row.name)}</h4>
+                    </div>
+                    <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : `${row.fontSize} mm letters`}</strong>
+                  </header>
+                  ${row.isPhoto ? `
+                    <div class="photo-printability-warning"><strong>Manual printability check required</strong><span>${Number(row.photo.colour_count || 3)}-colour AI artwork · inspect connected shapes and minimum wall thickness.</span></div>
+                  ` : `
+                    <div class="custom-print-colours">
+                      <span><i style="background:${getSafePdfColour(background.hex || background, "#f55a74")}"></i>Background · ${escapeAdminHtml(background.name || "Selected colour")}</span>
+                      <span><i style="background:${getSafePdfColour(lettering.hex || lettering, "#ffffff")}"></i>Name · ${escapeAdminHtml(lettering.name || "Selected colour")}</span>
+                    </div>
+                  `}
+                  <p>Need: ${row.need} · Stock: ${row.stock}${row.tracked ? ` · Tracked: ${row.tracked}` : ""}</p>
+                  <div class="custom-print-actions">
+                    ${row.isPhoto ? `
+                      <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download Private Artwork</button>
+                      <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)})'>Checked · Start Printing</button>
+                    ` : `
+                      <button type="button" onclick='window.generateCustomNameKeychainStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download 2 STLs</button>
+                      <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, 1, "Base")'>Start Printing</button>
+                    `}
+                  </div>
+                </article>
+              `;
+            }).join("") || `<p>No customised name keychains need printing.</p>`}
+          </div>
         </div>
       </div>
 

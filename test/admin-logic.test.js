@@ -746,6 +746,12 @@ test("combines shared group designs while preserving each contributor", () => {
         design: {
           base_shape: "bubbly",
           letter_orientation: "horizontal",
+          font_size_mm: 30,
+          nfc: {
+            enabled: true,
+            content_type: "pet",
+            payload: "https://example.com/milo"
+          },
           bases: ["#ffffff"],
           caps: ["#f55a74"],
           letters: ["#332d30"]
@@ -764,6 +770,11 @@ test("combines shared group designs while preserving each contributor", () => {
       custom: {
         baseShape: "bubbly",
         letterOrientation: "horizontal",
+        fontSize: 30,
+        nfcEnabled: true,
+        nfcType: "pet",
+        nfcPayload: "https://example.com/milo",
+        photo: null,
         bases: ["#ffffff"],
         caps: ["#f55a74"],
         letters: ["#332d30"]
@@ -776,6 +787,11 @@ test("combines shared group designs while preserving each contributor", () => {
       custom: {
         baseShape: "ribbed",
         letterOrientation: "vertical",
+        fontSize: 24,
+        nfcEnabled: false,
+        nfcType: "guardian",
+        nfcPayload: "",
+        photo: null,
         bases: [],
         caps: [],
         letters: []

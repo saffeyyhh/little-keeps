@@ -2437,6 +2437,119 @@ body {
   background: #f2fbf5;
 }
 
+.assembly-item.is-selectable {
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.assembly-item-name,
+.assembly-item-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assembly-item-select input,
+.assembly-selection-toolbar input {
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  accent-color: #399165;
+  cursor: pointer;
+}
+
+.assembly-selection-toolbar {
+  position: sticky;
+  top: 74px;
+  z-index: 8;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #bfe3ce;
+  border-radius: 15px;
+  background: rgba(244, 252, 247, .96);
+  box-shadow: 0 8px 20px rgba(58, 123, 84, .1);
+  backdrop-filter: blur(8px);
+}
+
+.assembly-selection-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #345e47;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.assembly-selection-toolbar button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 11px;
+  color: #fff;
+  background: #399165;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.assembly-selection-toolbar button:disabled {
+  color: #8e9b93;
+  background: #dfe9e2;
+  cursor: not-allowed;
+}
+
+.assembly-selection-hint {
+  margin: 12px 0 0;
+  color: #5e7969;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.nfc-assembly-tag {
+  color: #276a52;
+  background: #dff4ea;
+}
+
+.assembly-nfc-instruction {
+  margin: 12px 0;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 10px;
+  border: 1px solid #bfe2d3;
+  border-radius: 13px;
+  background: #f1faf6;
+}
+
+.assembly-nfc-instruction strong {
+  grid-column: 1 / -1;
+  color: #285b46;
+  font-size: 12px;
+}
+
+.assembly-nfc-instruction code {
+  min-width: 0;
+  overflow: hidden;
+  color: #4e6e60;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assembly-nfc-instruction button {
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: #3f8d6b;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .assembly-complete-tag {
   color: #287049;
   background: #dff4e7;
@@ -4963,6 +5076,142 @@ a {
   color: #9a8990;
   background: #eadfe4;
   cursor: not-allowed;
+}
+
+.production-bulk-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.production-selection-toolbar .production-bulk-actions .is-warning {
+  background: #a76435;
+}
+
+.production-selection-toolbar .production-bulk-actions .is-secondary {
+  color: #52758a;
+  background: #e3f0f6;
+}
+
+.production-job-ready-note {
+  color: #6c818c;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.custom-print-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.custom-print-card {
+  padding: 15px;
+  border: 1px solid #e5d7df;
+  border-radius: 16px;
+  background: #fffafd;
+}
+
+.custom-print-card header,
+.custom-print-actions,
+.custom-print-colours {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.custom-print-card header span,
+.custom-print-card p {
+  color: #74838a;
+  font-size: 10px;
+}
+
+.custom-print-card h4 {
+  margin: 2px 0 0;
+  color: var(--admin-navy);
+}
+
+.custom-print-card header > strong {
+  padding: 6px 8px;
+  border-radius: 999px;
+  color: #87516a;
+  background: #f8e8ef;
+  font-size: 10px;
+}
+
+.custom-print-colours {
+  margin: 12px 0;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.custom-print-colours span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #5d6e76;
+  font-size: 10px;
+}
+
+.custom-print-colours i {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, .12);
+  border-radius: 50%;
+}
+
+.custom-print-actions {
+  margin-top: 12px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.custom-print-actions button {
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: #7c4fa4;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.photo-printability-warning {
+  margin: 12px 0;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #ebc77e;
+  border-radius: 11px;
+  color: #76591f;
+  background: #fff8e8;
+  font-size: 10px;
+}
+
+.assembly-photo-summary,
+.assembly-standard-name-preview {
+  margin: 12px 0;
+  padding: 13px;
+  border-radius: 13px;
+}
+
+.assembly-photo-summary {
+  color: #684d78;
+  background: #f3eafb;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.assembly-standard-name-preview {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--name-fg);
+  background: var(--name-bg);
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: .02em;
 }
 
 .production-job-groups {

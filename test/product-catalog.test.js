@@ -4,23 +4,32 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_PRODUCT_CATALOG,
   MODULAR_PRODUCT_KEY,
+  PHOTO_PRODUCT_KEY,
   SOLID_PRODUCT_KEY,
+  STANDARD_PRODUCT_KEY,
   calculateProductProductionEstimate,
   calculateProductUnitPrice,
   getProductByKey,
   normalizeProductCatalog
 } from "../src/product-catalog.js";
 
-test("keeps the modular product live and the solid product safely hidden", () => {
+test("keeps launch-ready products live and unfinished products safely hidden", () => {
   const catalogue = normalizeProductCatalog([]);
   const modular = getProductByKey(catalogue, MODULAR_PRODUCT_KEY);
   const solid = getProductByKey(catalogue, SOLID_PRODUCT_KEY);
+  const standard = getProductByKey(catalogue, STANDARD_PRODUCT_KEY);
+  const photo = getProductByKey(catalogue, PHOTO_PRODUCT_KEY);
 
   assert.equal(modular.name, "Chunky Modular Clicky Keychain");
   assert.equal(modular.status, "active");
   assert.equal(modular.price_visible, true);
   assert.equal(solid.status, "coming_soon");
   assert.equal(solid.price_visible, false);
+  assert.equal(standard.name, "Customised Name Keychain");
+  assert.equal(standard.status, "active");
+  assert.equal(standard.price_visible, true);
+  assert.equal(photo.status, "coming_soon");
+  assert.equal(photo.price_visible, false);
 });
 
 test("upgrades the old modular product name without changing custom names", () => {

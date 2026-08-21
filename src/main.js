@@ -29,6 +29,7 @@ import {
   MODULAR_PRODUCT_KEY,
   SOLID_PRODUCT_KEY,
   STANDARD_PRODUCT_KEY,
+  PHOTO_PRODUCT_KEY,
   calculateProductUnitPrice,
   getProductByKey,
   getProductDisplayPrice,
@@ -79,6 +80,8 @@ const DEFAULT_SHOP_SETTINGS = {
   bulk_order_quantity: 15,
   rush_fee_small: 5,
   rush_fee_large: 8,
+  nfc_addon_price: 2.5,
+  photo_clicker_addon_price: 3,
   stripe_enabled: false,
   status_emails_enabled: false,
   status_email_template_id: "",
@@ -444,6 +447,7 @@ const standardProduct = getProductByKey(
   productCatalog,
   STANDARD_PRODUCT_KEY
 );
+const photoProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
 
 let activeProduct = modularProduct;
 
@@ -497,6 +501,9 @@ const solidCardPrice = solidProduct.price_visible
   const standardCardPrice = standardProduct.price_visible
   ? displaySettingMoney(getProductDisplayPrice(standardProduct))
   : "Price coming soon";
+const photoCardPrice = photoProduct.price_visible
+  ? `From ${displaySettingMoney(getProductDisplayPrice(photoProduct))}`
+  : "Pricing coming soon";
 const deliveryFeeSetting = getSettingNumber("delivery_fee", 2.5);
 const freeDeliveryThreshold = getSettingNumber("free_delivery_threshold", 50);
 const maxOrdersPerDate = Math.max(
@@ -954,29 +961,29 @@ document.querySelector("#app").innerHTML = `
   ` : ""}
 
   ${solidProduct.status !== "hidden" ? `
-    <article class="product-card product-card-coming" aria-disabled="true">
+    <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <div class="product-card-visual mystery-product-visual" aria-hidden="true">
         <div class="mystery-solid-base">
           <i></i><i></i><i></i><b>ABC</b>
         </div>
-        <span class="product-card-badge">Coming soon</span>
+        <span class="product-card-badge">${solidProduct.status === "active" ? "Available now" : "Coming soon"}</span>
       </div>
 
       <div class="product-card-content">
         <div>
-          <small>${escapePresetText(standardProduct.eyebrow)}</small>
-          <h3>${escapePresetText(standardProduct.name)}</h3>
+          <small>${escapePresetText(solidProduct.eyebrow)}</small>
+          <h3>${escapePresetText(solidProduct.name)}</h3>
         </div>
 
-        <p>${escapePresetText(standardProduct.description)}</p>
+        <p>${escapePresetText(solidProduct.description)}</p>
 
         <span class="product-card-price">
-          ${escapePresetText(standardCardPrice)}
+          ${escapePresetText(solidCardPrice)}
         </span>
 
-        <button type="button" disabled>
-          Coming soon
-        </button>
+        ${solidProduct.status === "active" ? `
+          <button type="button" data-product-key="${SOLID_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>
+        ` : `<button type="button" disabled>Coming soon</button>`}
       </div>
     </article>
   ` : ""}
@@ -1028,9 +1035,78 @@ document.querySelector("#app").innerHTML = `
     </article>
   ` : ""}
 
+  ${photoProduct.status !== "hidden" ? `
+    <article class="product-card ${photoProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${photoProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+      <div class="product-card-visual photo-keepsake-visual" aria-hidden="true">
+        <div class="photo-artwork-sample"><span>♡</span><b>PHOTO</b></div>
+        <span class="product-card-badge">${photoProduct.status === "active" ? "Available now" : "AI studio coming soon"}</span>
+      </div>
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(photoProduct.eyebrow)}</small>
+          <h3>${escapePresetText(photoProduct.name)}</h3>
+        </div>
+        <p>${escapePresetText(photoProduct.description)}</p>
+        <span class="product-card-price">${escapePresetText(photoCardPrice)}</span>
+        ${photoProduct.status === "active"
+          ? `<button type="button" data-photo-product-start>Upload your photo <span>→</span></button>`
+          : `<button type="button" disabled>Coming soon</button>`}
+      </div>
+    </article>
+  ` : ""}
+
 </div>
   </div>
 </section>
+
+<div id="photoKeepsakeModal" class="photo-keepsake-modal hidden" role="dialog" aria-modal="true" aria-labelledby="photoKeepsakeTitle">
+  <div class="photo-keepsake-dialog">
+    <button id="closePhotoKeepsakeModal" type="button" class="photo-modal-close" aria-label="Close">×</button>
+    <p class="section-eyebrow">AI Photo Keepsake</p>
+    <h2 id="photoKeepsakeTitle">Turn a photo into printable artwork</h2>
+    <p>We simplify one clear subject into bold, limited-colour artwork. You approve the preview before it enters your cart.</p>
+
+    <div class="photo-keepsake-grid">
+      <section>
+        <label class="photo-upload-zone" for="photoKeepsakeInput">
+          <input id="photoKeepsakeInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+          <span>Upload one clear photo</span>
+          <small>JPG, PNG or WebP · maximum 8 MB · one person, pet or object works best</small>
+          <img id="photoOriginalPreview" class="hidden" alt="Your uploaded photo preview">
+        </label>
+
+        <div class="photo-option-grid">
+          <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="object">Object or keepsake</option></select></label>
+          <label><span>Product</span><select id="photoProductVariant"><option value="classic">Classic keychain</option><option value="clicker">Clicker keychain</option></select></label>
+          <label><span>Maximum colours</span><select id="photoColourCount"><option value="2">2 colours · easiest to print</option><option value="3" selected>3 colours</option><option value="4">4 colours</option></select></label>
+          <label><span>Short label</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
+        </div>
+
+        <label class="photo-permission-check photo-nfc-toggle"><input id="photoNfcEnabled" type="checkbox"><span><strong>Add an NFC tap link (+${displaySettingMoney(Number(shopSettings.nfc_addon_price) || 2.5)})</strong><small>Open a pet-return page, guardian contact page, social profile or any secure web link when tapped.</small></span></label>
+        <div id="photoNfcFields" class="photo-nfc-fields hidden">
+          <label><span>Tap opens</span><select id="photoNfcType"><option value="pet">Pet return details</option><option value="guardian">Guardian contact page</option><option value="contact">Contact card</option><option value="social">Social profile</option><option value="website">Website or other link</option></select></label>
+          <label><span>Secure link</span><input id="photoNfcPayload" type="url" inputmode="url" placeholder="https://..."></label>
+          <small>Use a page you can update later. For children and pets, avoid publishing a home address, date of birth or sensitive medical details.</small>
+        </div>
+
+        <label class="photo-permission-check"><input id="photoPermissionCheck" type="checkbox"><span>I own this photo or have permission to use it, including permission from the person or guardian shown.</span></label>
+        <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I understand the photo will be privately sent to an AI service to create this artwork and retained for up to 30 days for production support.</span></label>
+        <button id="generatePhotoArtworkBtn" type="button" class="photo-generate-btn">Create My Artwork</button>
+        <p id="photoGenerationStatus" class="hint" aria-live="polite"></p>
+      </section>
+
+      <section class="photo-result-panel">
+        <div id="photoResultPlaceholder"><span>✦</span><strong>Your simplified artwork will appear here</strong><small>No payment is taken when you generate a preview.</small></div>
+        <img id="photoArtworkResult" class="hidden" alt="AI simplified printable artwork preview">
+        <div id="photoResultActions" class="photo-result-actions hidden">
+          <button id="regeneratePhotoArtworkBtn" type="button">Try Another Version</button>
+          <button id="addPhotoArtworkToCartBtn" type="button">Approve & Add to Cart</button>
+        </div>
+        <p class="photo-proof-note">AI previews still receive a manual printability check. Tiny details may be simplified further before production.</p>
+      </section>
+    </div>
+  </div>
+</div>
 
 <section id="howItWorksSection" class="how-it-works-section" data-store-view="shop">
   <div class="how-it-works-heading">
@@ -1237,6 +1313,7 @@ Chloe</textarea>
 
           <div class="preview-canvas-wrap">
             <canvas id="previewCanvas"></canvas>
+            <img id="photoDesignPreview" class="photo-design-preview hidden" alt="Your approved photo keepsake artwork">
 
             <div id="previewLoading" class="preview-loading">
               <div class="preview-loading-spinner"></div>
@@ -1282,6 +1359,21 @@ Chloe</textarea>
       <div class="card colours-card">
         <div class="customiser-heading">
           <h2>Choose Your Style</h2>
+        </div>
+
+        <div id="standardKeychainOptions" class="standard-keychain-options" style="display:none">
+          <div class="customisation-title">
+            <div>
+              <h3>Letter Size</h3>
+              <p>Choose the physical height of the raised name. Your finished measurements update in the preview.</p>
+            </div>
+          </div>
+          <div class="standard-font-size-options" role="group" aria-label="Letter size">
+            <button type="button" data-standard-font-size="18"><strong>Small</strong><span>18 mm letters</span></button>
+            <button type="button" class="active" data-standard-font-size="24"><strong>Regular</strong><span>24 mm letters</span></button>
+            <button type="button" data-standard-font-size="30"><strong>Large</strong><span>30 mm letters</span></button>
+          </div>
+          <p class="standard-size-note">Longer names become wider. Please check the live length before adding to cart.</p>
         </div>
 
         <div class="random-colour-card clicky-only-option">
@@ -1421,6 +1513,34 @@ Chloe</textarea>
             </p>
 
             <div id="letterColours" class="swatches"></div>
+          </div>
+        </div>
+
+        <div class="nfc-addon-card">
+          <label class="nfc-addon-toggle" for="nfcEnabledToggle">
+            <input id="nfcEnabledToggle" type="checkbox">
+            <span>
+              <strong>Add tap-to-open NFC</strong>
+              <small>+<span id="nfcAddonPrice">S$2.50</span> per keychain · works with most modern phones</small>
+            </span>
+          </label>
+          <div id="nfcAddonFields" class="nfc-addon-fields hidden">
+            <label>
+              <span>What should it open?</span>
+              <select id="nfcContentType">
+                <option value="guardian">Guardian contact</option>
+                <option value="pet">Pet owner contact</option>
+                <option value="contact">Contact card</option>
+                <option value="social">Social media or portfolio</option>
+                <option value="website">Website or custom link</option>
+                <option value="wifi">Wi-Fi details page</option>
+              </select>
+            </label>
+            <label>
+              <span>Link to program into the NFC tag</span>
+              <input id="nfcPayload" type="url" inputmode="url" maxlength="500" placeholder="https://...">
+            </label>
+            <p id="nfcGuidance" class="nfc-guidance">For a child, use a guardian contact page with only the information needed to return the item. Avoid home addresses, birth dates and private medical information.</p>
           </div>
         </div>
 
@@ -2230,6 +2350,7 @@ const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
 const dimensionEstimate = document.getElementById("dimensionEstimate");
 const previewColourLegend = document.getElementById("previewColourLegend");
+const photoDesignPreview = document.getElementById("photoDesignPreview");
 const inspirationStatus = document.getElementById("inspirationStatus");
 const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
 const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
@@ -2288,6 +2409,33 @@ const giftingBagQuantityInput = document.getElementById("giftingBagQuantity");
 const giftingBagDecrease = document.getElementById("giftingBagDecrease");
 const giftingBagIncrease = document.getElementById("giftingBagIncrease");
 const giftingBagStockStatus = document.getElementById("giftingBagStockStatus");
+const nfcEnabledToggle = document.getElementById("nfcEnabledToggle");
+const nfcAddonFields = document.getElementById("nfcAddonFields");
+const nfcContentType = document.getElementById("nfcContentType");
+const nfcPayload = document.getElementById("nfcPayload");
+const nfcGuidance = document.getElementById("nfcGuidance");
+const nfcAddonPrice = document.getElementById("nfcAddonPrice");
+const photoKeepsakeModal = document.getElementById("photoKeepsakeModal");
+const closePhotoKeepsakeModal = document.getElementById("closePhotoKeepsakeModal");
+const photoKeepsakeInput = document.getElementById("photoKeepsakeInput");
+const photoOriginalPreview = document.getElementById("photoOriginalPreview");
+const photoSubjectType = document.getElementById("photoSubjectType");
+const photoProductVariant = document.getElementById("photoProductVariant");
+const photoColourCount = document.getElementById("photoColourCount");
+const photoKeepsakeLabel = document.getElementById("photoKeepsakeLabel");
+const photoNfcEnabled = document.getElementById("photoNfcEnabled");
+const photoNfcFields = document.getElementById("photoNfcFields");
+const photoNfcType = document.getElementById("photoNfcType");
+const photoNfcPayload = document.getElementById("photoNfcPayload");
+const photoPermissionCheck = document.getElementById("photoPermissionCheck");
+const photoAiConsentCheck = document.getElementById("photoAiConsentCheck");
+const generatePhotoArtworkBtn = document.getElementById("generatePhotoArtworkBtn");
+const regeneratePhotoArtworkBtn = document.getElementById("regeneratePhotoArtworkBtn");
+const addPhotoArtworkToCartBtn = document.getElementById("addPhotoArtworkToCartBtn");
+const photoGenerationStatus = document.getElementById("photoGenerationStatus");
+const photoResultPlaceholder = document.getElementById("photoResultPlaceholder");
+const photoArtworkResult = document.getElementById("photoArtworkResult");
+const photoResultActions = document.getElementById("photoResultActions");
 const orderNotes = document.getElementById("orderNotes");
 const submitOrderBtn = document.getElementById("submitOrderBtn");
 const confirmFinalOrderDetails = document.getElementById("confirmFinalOrderDetails");
@@ -3462,8 +3610,35 @@ function sanitizeName(name) {
     .join("");
 }
 
-function getApproximateKeychainSize(name) {
+function getApproximateKeychainSize(
+  name,
+  productKey = activeProduct?.product_key,
+  design = getActiveDesign()
+) {
   const characterCount = Array.from(sanitizeName(name)).length;
+
+  if (productKey === PHOTO_PRODUCT_KEY) {
+    const clicker = design?.photo?.variant === "clicker";
+    return {
+      characterCount: 1,
+      lengthCm: clicker ? 7 : 6,
+      heightCm: 6,
+      thicknessCm: clicker ? 2.2 : .45
+    };
+  }
+
+  if (productKey === STANDARD_PRODUCT_KEY) {
+    const fontSize = getStandardFontSize(design);
+    const cleanLength = Math.max(0, String(name || "").trim().length);
+    const estimatedTextWidthMm = cleanLength * fontSize * 0.61;
+    return {
+      characterCount,
+      lengthCm: characterCount ? (estimatedTextWidthMm + 13) / 10 : 0,
+      heightCm: (fontSize + 5) / 10,
+      thicknessCm: 0.42,
+      fontSizeMm: fontSize
+    };
+  }
 
   if (!characterCount) {
     return {
@@ -3487,7 +3662,7 @@ function getApproximateKeychainSize(name) {
 }
 
 function getApproximateSizeText(name) {
-  const size = getApproximateKeychainSize(name);
+  const size = getApproximateKeychainSize(name, activeProduct.product_key, getActiveDesign());
 
   if (!size.characterCount) {
     return "Enter a name to see its approximate finished size.";
@@ -3527,6 +3702,14 @@ let editingPendingOrder = false;
 let pendingOrderEditableUntil = 0;
 let currentSubmissionId = crypto.randomUUID();
 let currentSubmissionOrderRef = "";
+let photoKeepsakeState = {
+  file: null,
+  inputDataUrl: "",
+  originalPath: "",
+  artworkPath: "",
+  artworkUrl: "",
+  generationId: ""
+};
 
 let cartHasItems = false;
 let draftHasMeaningfulChanges = false;
@@ -3543,6 +3726,10 @@ if (!available.length) available.push("#FFFFFF");
 let globalDesign = {
   baseShape: "ribbed",
   letterOrientation: "vertical",
+  fontSize: 24,
+  nfcEnabled: false,
+  nfcType: "guardian",
+  nfcPayload: "",
 
   bases: [
     available[0]
@@ -3651,13 +3838,21 @@ function getUniqueColourCount(colours) {
 function calculatePrice(design, name = "") {
   const characterCount = Array.from(sanitizeName(name)).length;
 
-  return calculateProductUnitPrice({
+  const productPrice = calculateProductUnitPrice({
     product: activeProduct,
     characterCount,
     baseColourCount: getUniqueColourCount(design.bases),
     capColourCount: getUniqueColourCount(design.caps),
     letterColourCount: getUniqueColourCount(design.letters)
   });
+  const nfcPrice = design?.nfcEnabled
+    ? Math.max(0, Number(shopSettings.nfc_addon_price ?? 2.5))
+    : 0;
+  const photoVariantPrice =
+    activeProduct.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker"
+      ? Math.max(0, Number(shopSettings.photo_clicker_addon_price ?? 3))
+      : 0;
+  return roundMoney(productPrice + nfcPrice + photoVariantPrice);
 }
 
 function getUnitPriceBreakdown(design, name = "") {
@@ -3697,6 +3892,22 @@ function getUnitPriceBreakdown(design, name = "") {
     });
   });
 
+  if (design?.nfcEnabled) {
+    rows.push({
+      label: "Tap-to-open NFC tag",
+      amount: Math.max(0, Number(shopSettings.nfc_addon_price ?? 2.5)),
+      addOn: true
+    });
+  }
+
+  if (activeProduct.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker") {
+    rows.push({
+      label: "Clicker keychain upgrade",
+      amount: Math.max(0, Number(shopSettings.photo_clicker_addon_price ?? 3)),
+      addOn: true
+    });
+  }
+
   return {
     rows,
     unitTotal: calculatePrice(design, name)
@@ -3733,11 +3944,17 @@ function getActiveDesign() {
     item.custom = {
       baseShape: globalDesign.baseShape || "ribbed",
       letterOrientation: globalDesign.letterOrientation || "vertical",
+      fontSize: getStandardFontSize(globalDesign),
+      nfcEnabled: Boolean(globalDesign.nfcEnabled),
+      nfcType: globalDesign.nfcType || "guardian",
+      nfcPayload: globalDesign.nfcPayload || "",
       bases: [...globalDesign.bases],
       caps: [...globalDesign.caps],
       letters: [...globalDesign.letters]
     };
   }
+
+  item.custom.fontSize = getStandardFontSize(item.custom);
 
   return item.custom;
 }
@@ -4677,6 +4894,13 @@ function getDesign(item) {
       globalDesign.letterOrientation ||
       "vertical",
 
+    fontSize: getStandardFontSize(item.custom),
+
+    nfcEnabled: Boolean(item.custom.nfcEnabled),
+    nfcType: item.custom.nfcType || "guardian",
+    nfcPayload: item.custom.nfcPayload || "",
+    photo: item.custom.photo || null,
+
     bases:
       item.custom.bases ||
       globalDesign.bases,
@@ -4790,7 +5014,13 @@ function getStandardPreviewFont() {
   return standardPreviewFontPromise;
 }
 
-const selectedStandardSize = 24;
+const STANDARD_FONT_SIZES = [18, 24, 30];
+
+function getStandardFontSize(design = {}) {
+  const requested = Number(design.fontSize || design.font_size || 24);
+  return STANDARD_FONT_SIZES.includes(requested) ? requested : 24;
+}
+
 let previewBuildNumber = 0;
 
 function disposePreviewObject(object) {
@@ -4821,6 +5051,7 @@ function createStandardTextGeometry(
   font,
   depth,
   {
+    fontSize = 24,
     bevelEnabled = false,
     bevelSize = 0,
     bevelThickness = 0
@@ -4828,7 +5059,7 @@ function createStandardTextGeometry(
 ) {
   const geometry = new TextGeometry(name, {
     font,
-    size: selectedStandardSize,
+    size: fontSize,
     depth,
     curveSegments: 16,
     bevelEnabled,
@@ -4858,13 +5089,14 @@ function createStandardTextGeometry(
 function createStandardBackground(
   name,
   font,
-  backgroundColour
+  backgroundColour,
+  fontSize = 24
 ) {
   const outlineRadius = 2.5;
   const outlineSteps = 32;
   const offsets = [[0, 0]];
   const contours = font
-    .generateShapes(name, selectedStandardSize)
+    .generateShapes(name, fontSize)
     .map(shape => shape.getPoints(20))
     .filter(points => points.length >= 3);
 
@@ -4942,7 +5174,8 @@ function addStandardKeyringLoop(
   group,
   textWidth,
   textSourceCentreY,
-  backgroundColour
+  backgroundColour,
+  fontSize = 24
 ) {
   const outerRadius = 5;
   const innerRadius = 2.25;
@@ -4951,7 +5184,7 @@ function addStandardKeyringLoop(
   const loopX =
     -(textWidth / 2) - outerRadius + loopOverlap;
   const loopY =
-    selectedStandardSize * 0.38 - textSourceCentreY;
+    fontSize * 0.38 - textSourceCentreY;
   const ringShape = new THREE.Shape();
 
   ringShape.absarc(
@@ -5031,9 +5264,10 @@ async function buildStandardKeychain(name, design) {
 
     const nameColour =
       design.letters?.[0] || "#FFFFFF";
+    const fontSize = getStandardFontSize(design);
 
     const textGeometryForWidth =
-      createStandardTextGeometry(cleanName, font, 1.2);
+      createStandardTextGeometry(cleanName, font, 1.2, { fontSize });
 
     textGeometryForWidth.computeBoundingBox();
 
@@ -5041,7 +5275,7 @@ async function buildStandardKeychain(name, design) {
       textGeometryForWidth.boundingBox
         ? textGeometryForWidth.boundingBox.max.x -
           textGeometryForWidth.boundingBox.min.x
-        : cleanName.length * selectedStandardSize * 0.6;
+        : cleanName.length * fontSize * 0.6;
 
     const textSourceCentreY = Number(
       textGeometryForWidth.userData.sourceCentreY || 0
@@ -5052,11 +5286,12 @@ async function buildStandardKeychain(name, design) {
     const backgroundGroup = createStandardBackground(
       cleanName,
       font,
-      backgroundColour
+      backgroundColour,
+      fontSize
     );
 
     const nameGeometry =
-      createStandardTextGeometry(cleanName, font, 1.2);
+      createStandardTextGeometry(cleanName, font, 1.2, { fontSize });
 
     const nameMesh = new THREE.Mesh(
       nameGeometry,
@@ -5077,7 +5312,8 @@ async function buildStandardKeychain(name, design) {
       standardGroup,
       textWidth,
       textSourceCentreY,
-      backgroundColour
+      backgroundColour,
+      fontSize
     );
 
     const standardBounds = new THREE.Box3().setFromObject(
@@ -5190,6 +5426,14 @@ function updateNames() {
                 globalDesign.letterOrientation ||
                 "vertical",
 
+              fontSize: getStandardFontSize(previousItem.custom),
+
+              nfcEnabled: Boolean(previousItem.custom.nfcEnabled),
+              nfcType: previousItem.custom.nfcType || "guardian",
+              nfcPayload: previousItem.custom.nfcPayload || "",
+
+              photo: previousItem.custom.photo || null,
+
               bases: [...previousItem.custom.bases],
               caps: [...previousItem.custom.caps],
               letters: [...previousItem.custom.letters]
@@ -5230,6 +5474,14 @@ function updateNames() {
                 previousItem.custom.letterOrientation ||
                 globalDesign.letterOrientation ||
                 "vertical",
+
+              fontSize: getStandardFontSize(previousItem.custom),
+
+              nfcEnabled: Boolean(previousItem.custom.nfcEnabled),
+              nfcType: previousItem.custom.nfcType || "guardian",
+              nfcPayload: previousItem.custom.nfcPayload || "",
+
+              photo: previousItem.custom.photo || null,
 
               bases: [...previousItem.custom.bases],
               caps: [...previousItem.custom.caps],
@@ -5296,6 +5548,89 @@ function updateLetterOrientationButtons() {
   );
 }
 
+function updateStandardFontSizeButtons() {
+  const selectedSize = getStandardFontSize(getActiveDesign());
+  document.querySelectorAll("[data-standard-font-size]").forEach(button => {
+    const isActive = Number(button.dataset.standardFontSize) === selectedSize;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+const NFC_GUIDANCE = {
+  guardian: "For a child, use a guardian contact page with only the information needed to return the item. Avoid home addresses, birth dates and private medical information.",
+  pet: "A pet profile can include the pet’s name, owner contact and urgent care notes. Avoid publishing your full home address.",
+  contact: "Use a public contact-card link so the recipient can update it later without reprogramming the tag.",
+  social: "Paste one public Instagram, TikTok, portfolio or link-in-bio URL.",
+  website: "Paste the full public page beginning with https://.",
+  wifi: "Use a page or QR destination you control. Do not paste a raw Wi-Fi password into a public link."
+};
+
+function updateNfcOptions() {
+  const design = getActiveDesign();
+  const enabled = Boolean(design.nfcEnabled);
+  if (nfcEnabledToggle) nfcEnabledToggle.checked = enabled;
+  nfcAddonFields?.classList.toggle("hidden", !enabled);
+  if (nfcContentType) nfcContentType.value = design.nfcType || "guardian";
+  if (nfcPayload && document.activeElement !== nfcPayload) {
+    nfcPayload.value = design.nfcPayload || "";
+  }
+  if (nfcGuidance) {
+    nfcGuidance.textContent = NFC_GUIDANCE[design.nfcType] || NFC_GUIDANCE.website;
+  }
+  if (nfcAddonPrice) {
+    nfcAddonPrice.textContent = displaySettingMoney(
+      Math.max(0, Number(shopSettings.nfc_addon_price ?? 2.5))
+    );
+  }
+}
+
+function setStandardFontSize(size) {
+  const normalized = Number(size);
+  if (!STANDARD_FONT_SIZES.includes(normalized)) return;
+
+  if (applyAllToggle.checked) {
+    globalDesign.fontSize = normalized;
+    names.forEach(item => { item.custom = null; });
+  } else {
+    getActiveDesign().fontSize = normalized;
+  }
+
+  draftHasMeaningfulChanges = true;
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+}
+
+document.querySelectorAll("[data-standard-font-size]").forEach(button => {
+  button.addEventListener("click", () => setStandardFontSize(button.dataset.standardFontSize));
+});
+
+nfcEnabledToggle?.addEventListener("change", () => {
+  const design = getActiveDesign();
+  design.nfcEnabled = nfcEnabledToggle.checked;
+  if (applyAllToggle.checked) globalDesign.nfcEnabled = design.nfcEnabled;
+  draftHasMeaningfulChanges = true;
+  refreshUI();
+  saveDraft();
+});
+
+nfcContentType?.addEventListener("change", () => {
+  const design = getActiveDesign();
+  design.nfcType = nfcContentType.value;
+  if (applyAllToggle.checked) globalDesign.nfcType = design.nfcType;
+  updateNfcOptions();
+  saveDraft();
+});
+
+nfcPayload?.addEventListener("input", () => {
+  const design = getActiveDesign();
+  design.nfcPayload = nfcPayload.value.trim();
+  if (applyAllToggle.checked) globalDesign.nfcPayload = design.nfcPayload;
+  draftHasMeaningfulChanges = true;
+  saveDraft();
+});
+
 function setLetterOrientation(orientation) {
   if (!["vertical", "horizontal"].includes(orientation)) return;
 
@@ -5337,6 +5672,10 @@ function setBaseShape(shape) {
       item.custom = {
         baseShape: globalDesign.baseShape || "ribbed",
         letterOrientation: globalDesign.letterOrientation || "vertical",
+        fontSize: getStandardFontSize(globalDesign),
+        nfcEnabled: Boolean(globalDesign.nfcEnabled),
+        nfcType: globalDesign.nfcType || "guardian",
+        nfcPayload: globalDesign.nfcPayload || "",
         bases: [...globalDesign.bases],
         caps: [...globalDesign.caps],
         letters: [...globalDesign.letters]
@@ -5367,6 +5706,10 @@ horizontalLetterBtn.onclick = () => {
 };
 
 function createMiniPreview(name, design) {
+  if (activeProduct.product_key === PHOTO_PRODUCT_KEY && design.photo?.artworkUrl) {
+    return `<div class="mini-photo-keepsake"><img src="${escapePresetText(design.photo.artworkUrl)}" alt="${escapePresetText(name)} artwork"></div>`;
+  }
+
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
     const backgroundColour = design.bases?.[0] || "#F55A74";
     const nameColour = design.letters?.[0] || "#FFFFFF";
@@ -5407,6 +5750,12 @@ function createMiniPreview(name, design) {
 }
 
 function getDesignDescription(design) {
+  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+    return design.photo?.variant === "clicker"
+      ? "AI simplified artwork · Clicker keychain"
+      : "AI simplified artwork · Classic keychain";
+  }
+
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
     return "Flat background · Raised name";
   }
@@ -5421,6 +5770,9 @@ function getDesignDescription(design) {
 }
 
 function getDesignColourSummary(design) {
+  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+    return `Up to ${Number(design.photo?.colourCount || 3)} printable colours · final printability check included`;
+  }
   const uniqueNames = values => Array.from(new Set((values || []).map(getColourName))).join(", ");
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
     return `Background: ${uniqueNames(design.bases)} · Name: ${uniqueNames(design.letters)}`;
@@ -5466,7 +5818,11 @@ function renderNameCards() {
 function updateDimensionEstimate(name) {
   if (dimensionEstimate) {
     const selectedName = name || "";
-    const size = getApproximateKeychainSize(selectedName);
+    const size = getApproximateKeychainSize(
+      selectedName,
+      activeProduct.product_key,
+      getActiveDesign()
+    );
 
     if (!size.characterCount) {
       dimensionEstimate.innerHTML = `
@@ -5673,6 +6029,33 @@ function renderReviewOrder() {
     .forEach(button => {
       button.addEventListener("click", () => {
         selectedIndex = Number(button.dataset.reviewEdit);
+
+        if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+          const item = names[selectedIndex];
+          const design = getDesign(item);
+          photoKeepsakeLabel.value = item?.name || "";
+          photoProductVariant.value = design.photo?.variant || "classic";
+          photoColourCount.value = String(design.photo?.colourCount || 3);
+          photoSubjectType.value = design.photo?.subjectType || "person";
+          photoNfcEnabled.checked = Boolean(design.nfcEnabled);
+          photoNfcType.value = design.nfcType || (photoSubjectType.value === "pet" ? "pet" : "website");
+          photoNfcPayload.value = design.nfcPayload || "";
+          photoNfcFields.classList.toggle("hidden", !photoNfcEnabled.checked);
+          Object.assign(photoKeepsakeState, {
+            originalPath: design.photo?.originalPath || "",
+            artworkPath: design.photo?.artworkPath || "",
+            artworkUrl: design.photo?.artworkUrl || "",
+            generationId: design.photo?.generationId || ""
+          });
+          if (design.photo?.artworkUrl) {
+            photoArtworkResult.src = design.photo.artworkUrl;
+            photoArtworkResult.classList.remove("hidden");
+            photoResultPlaceholder.classList.add("hidden");
+            photoResultActions.classList.remove("hidden");
+          }
+          openPhotoKeepsakeStudio();
+          return;
+        }
 
         refreshUI();
         buildSelectedPreview();
@@ -6072,10 +6455,26 @@ async function submitOrderOnce() {
         gifting_bag_quantity: includesGiftingBag ? giftingBagQuantity : 0,
 
         design: {
+          font_size_mm: getStandardFontSize(design),
+          nfc: design.nfcEnabled ? {
+            enabled: true,
+            content_type: design.nfcType || "website",
+            payload: String(design.nfcPayload || "").trim()
+          } : { enabled: false },
+          photo: design.photo ? {
+            original_path: design.photo.originalPath || "",
+            artwork_path: design.photo.artworkPath || "",
+            artwork_url: design.photo.artworkUrl || "",
+            generation_id: design.photo.generationId || "",
+            subject_type: design.photo.subjectType || "person",
+            colour_count: Number(design.photo.colourCount || 3),
+            variant: design.photo.variant || "classic",
+            printability_status: "needs_review"
+          } : null,
           letter_orientation: design.letterOrientation || "vertical",
           base_shape: {
             key: design.baseShape || "ribbed",
-            label: BASE_SHAPES[design.baseShape || "ribbed"].label
+            label: BASE_SHAPES[design.baseShape || "ribbed"]?.label || "Photo Artwork"
           },
           bases: design.bases.map(hex => ({
             name: getColourName(hex),
@@ -6377,6 +6776,8 @@ function refreshUI() {
   renderColourChargeNotices();
   updateBaseShapeButtons();
   updateLetterOrientationButtons();
+  updateStandardFontSizeButtons();
+  updateNfcOptions();
   updateGiftingBagOptions();
   updateCartDisplay();
   updateTurnaroundMessaging();
@@ -6388,11 +6789,25 @@ function buildSelectedPreview() {
     previewBuildNumber += 1;
     clearKeychainPreview();
     previewLoading?.classList.add("hidden");
+    photoDesignPreview?.classList.add("hidden");
     return;
   }
 
   const item = names[selectedIndex];
   const design = getDesign(item);
+
+  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+    previewBuildNumber += 1;
+    clearKeychainPreview();
+    previewLoading?.classList.add("hidden");
+    if (photoDesignPreview) {
+      photoDesignPreview.src = design.photo?.artworkUrl || "";
+      photoDesignPreview.classList.toggle("hidden", !design.photo?.artworkUrl);
+    }
+    return;
+  }
+
+  photoDesignPreview?.classList.add("hidden");
 
   if (
     activeProduct.product_key ===
@@ -6498,6 +6913,13 @@ function serializeSharedGroupBasket() {
       name: item.name,
       quantity: getItemQuantity(item),
       design: {
+        font_size_mm: getStandardFontSize(design),
+        nfc: design.nfcEnabled ? {
+          enabled: true,
+          content_type: design.nfcType || "website",
+          payload: String(design.nfcPayload || "").trim()
+        } : { enabled: false },
+        photo: design.photo || null,
         base_shape: design.baseShape || "ribbed",
         letter_orientation: design.letterOrientation || "vertical",
         bases: [...design.bases],
@@ -7138,6 +7560,33 @@ window.editCartItem = function(index) {
 
   closeCartDrawer();
 
+  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+    const item = names[index];
+    const design = getDesign(item);
+    photoKeepsakeLabel.value = item?.name || "";
+    photoProductVariant.value = design.photo?.variant || "classic";
+    photoColourCount.value = String(design.photo?.colourCount || 3);
+    photoSubjectType.value = design.photo?.subjectType || "person";
+    photoNfcEnabled.checked = Boolean(design.nfcEnabled);
+    photoNfcType.value = design.nfcType || (photoSubjectType.value === "pet" ? "pet" : "website");
+    photoNfcPayload.value = design.nfcPayload || "";
+    photoNfcFields.classList.toggle("hidden", !photoNfcEnabled.checked);
+    Object.assign(photoKeepsakeState, {
+      originalPath: design.photo?.originalPath || "",
+      artworkPath: design.photo?.artworkPath || "",
+      artworkUrl: design.photo?.artworkUrl || "",
+      generationId: design.photo?.generationId || ""
+    });
+    if (design.photo?.artworkUrl) {
+      photoArtworkResult.src = design.photo.artworkUrl;
+      photoArtworkResult.classList.remove("hidden");
+      photoResultPlaceholder.classList.add("hidden");
+      photoResultActions.classList.remove("hidden");
+    }
+    openPhotoKeepsakeStudio();
+    return;
+  }
+
   refreshUI();
   buildSelectedPreview();
   setStorefrontView("design", {
@@ -7226,9 +7675,28 @@ function proceedToCheckout() {
   });
 }
 
+function getInvalidNfcItem() {
+  return names.find(item => {
+    const design = getDesign(item);
+    if (!design.nfcEnabled) return false;
+    try {
+      const url = new URL(String(design.nfcPayload || ""));
+      return url.protocol !== "https:";
+    } catch {
+      return true;
+    }
+  });
+}
+
 nextBtn.onclick = async () => {
   if (!names.length) {
     alert("Please enter at least one name.");
+    return;
+  }
+
+  const invalidNfcItem = getInvalidNfcItem();
+  if (invalidNfcItem) {
+    alert(`Add a complete https:// link for the NFC tag on ${invalidNfcItem.name || "this keychain"}.`);
     return;
   }
 
@@ -7336,7 +7804,7 @@ function updateProductCustomiser() {
 
     if (dimensionEstimate) {
   dimensionEstimate.style.display =
-    isNormalKeychain ? "none" : "";
+    "";
 }
 
   document.body.classList.toggle(
@@ -7390,6 +7858,194 @@ function updateProductCustomiser() {
 
   updateNames();
 }
+
+function resetPhotoArtworkResult() {
+  photoKeepsakeState.originalPath = "";
+  photoKeepsakeState.artworkPath = "";
+  photoKeepsakeState.artworkUrl = "";
+  photoKeepsakeState.generationId = "";
+  photoArtworkResult?.classList.add("hidden");
+  photoArtworkResult?.removeAttribute("src");
+  photoResultActions?.classList.add("hidden");
+  photoResultPlaceholder?.classList.remove("hidden");
+}
+
+function openPhotoKeepsakeStudio() {
+  activeProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
+  photoKeepsakeModal?.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+}
+
+function closePhotoKeepsakeStudio() {
+  photoKeepsakeModal?.classList.add("hidden");
+  document.body.classList.remove("modal-open");
+}
+
+async function preparePhotoForAi(file) {
+  if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("Choose a JPG, PNG or WebP photo.");
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("This photo is larger than 8 MB. Please choose a smaller file.");
+  }
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("This photo could not be read."));
+      element.src = objectUrl;
+    });
+    const maxSide = 1600;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d", { alpha: false }).drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", .9);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function generatePhotoKeepsakeArtwork() {
+  if (!photoKeepsakeState.file) {
+    photoGenerationStatus.textContent = "Upload one clear photo first.";
+    return;
+  }
+  if (!photoPermissionCheck.checked || !photoAiConsentCheck.checked) {
+    photoGenerationStatus.textContent = "Please confirm photo permission and AI processing first.";
+    return;
+  }
+
+  generatePhotoArtworkBtn.disabled = true;
+  regeneratePhotoArtworkBtn.disabled = true;
+  photoGenerationStatus.textContent = "Creating a simple, printable version… this may take a minute.";
+
+  try {
+    const imageDataUrl = photoKeepsakeState.inputDataUrl || await preparePhotoForAi(photoKeepsakeState.file);
+    photoKeepsakeState.inputDataUrl = imageDataUrl;
+    const { data, error } = await supabase.functions.invoke("generate-photo-keepsake", {
+      body: {
+        image_data_url: imageDataUrl,
+        subject_type: photoSubjectType.value,
+        colour_count: Number(photoColourCount.value),
+        variant: photoProductVariant.value,
+        client_token: currentSubmissionId
+      }
+    });
+    if (error) throw error;
+    if (!data?.artwork_url || !data?.artwork_path) {
+      throw new Error(data?.error || "The artwork service did not return a preview.");
+    }
+
+    Object.assign(photoKeepsakeState, {
+      originalPath: data.original_path || "",
+      artworkPath: data.artwork_path,
+      artworkUrl: data.artwork_url,
+      generationId: data.generation_id || ""
+    });
+    photoArtworkResult.src = data.artwork_url;
+    photoArtworkResult.classList.remove("hidden");
+    photoResultPlaceholder.classList.add("hidden");
+    photoResultActions.classList.remove("hidden");
+    photoGenerationStatus.textContent = "Preview ready. Approve it or try one more version.";
+  } catch (error) {
+    console.error("Unable to generate photo keepsake artwork:", error);
+    photoGenerationStatus.textContent =
+      error?.context?.body?.error || error?.message ||
+      "The AI studio is not configured yet. Please try again later.";
+  } finally {
+    generatePhotoArtworkBtn.disabled = false;
+    regeneratePhotoArtworkBtn.disabled = false;
+  }
+}
+
+function addPhotoKeepsakeToCart() {
+  if (!photoKeepsakeState.artworkPath || !photoKeepsakeState.artworkUrl) return;
+  const wantsNfc = Boolean(photoNfcEnabled?.checked);
+  const nfcLink = String(photoNfcPayload?.value || "").trim();
+  if (wantsNfc && !isSecureWebUrl(nfcLink)) {
+    photoGenerationStatus.textContent = "Add a complete secure NFC link beginning with https:// first.";
+    photoNfcPayload?.focus();
+    return;
+  }
+  const label = photoKeepsakeLabel.value.trim() ||
+    (photoSubjectType.value === "pet" ? "Pet Photo" : "Photo Keepsake");
+  const fallbackColours = getAvailableColours();
+  names = [{
+    name: label,
+    quantity: 1,
+    groupContributorName: null,
+    custom: {
+      baseShape: "photo",
+      letterOrientation: "vertical",
+      fontSize: 24,
+      bases: [fallbackColours[0] || "#F55A74"],
+      caps: [fallbackColours[1] || fallbackColours[0] || "#FFFFFF"],
+      letters: [fallbackColours[2] || "#FFFFFF"],
+      photo: {
+        originalPath: photoKeepsakeState.originalPath,
+        artworkPath: photoKeepsakeState.artworkPath,
+        artworkUrl: photoKeepsakeState.artworkUrl,
+        generationId: photoKeepsakeState.generationId,
+        subjectType: photoSubjectType.value,
+        colourCount: Number(photoColourCount.value),
+        variant: photoProductVariant.value
+      },
+      nfcEnabled: wantsNfc,
+      nfcType: photoNfcType?.value || (photoSubjectType.value === "pet" ? "pet" : "website"),
+      nfcPayload: wantsNfc ? nfcLink : ""
+    }
+  }];
+  selectedIndex = 0;
+  orderType = "single";
+  cartHasItems = true;
+  draftHasMeaningfulChanges = true;
+  closePhotoKeepsakeStudio();
+  refreshUI();
+  renderCartDrawer();
+  openCartDrawer();
+}
+
+function isSecureWebUrl(value) {
+  try {
+    return new URL(String(value || "").trim()).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+document.querySelectorAll("[data-photo-product-start]").forEach(button => {
+  button.addEventListener("click", openPhotoKeepsakeStudio);
+});
+closePhotoKeepsakeModal?.addEventListener("click", closePhotoKeepsakeStudio);
+photoKeepsakeModal?.addEventListener("click", event => {
+  if (event.target === photoKeepsakeModal) closePhotoKeepsakeStudio();
+});
+photoKeepsakeInput?.addEventListener("change", async () => {
+  const file = photoKeepsakeInput.files?.[0];
+  if (!file) return;
+  try {
+    const dataUrl = await preparePhotoForAi(file);
+    photoKeepsakeState.file = file;
+    photoKeepsakeState.inputDataUrl = dataUrl;
+    photoOriginalPreview.src = dataUrl;
+    photoOriginalPreview.classList.remove("hidden");
+    resetPhotoArtworkResult();
+    photoGenerationStatus.textContent = "Photo ready. Choose the options, then create your artwork.";
+  } catch (error) {
+    photoGenerationStatus.textContent = error.message;
+    photoKeepsakeInput.value = "";
+  }
+});
+generatePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
+regeneratePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
+addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
+photoNfcEnabled?.addEventListener("change", () => {
+  photoNfcFields?.classList.toggle("hidden", !photoNfcEnabled.checked);
+  if (photoNfcEnabled.checked && photoSubjectType?.value === "pet") photoNfcType.value = "pet";
+});
 
 document
   .querySelectorAll("[data-view-target]")
@@ -7932,7 +8588,14 @@ function validateForm() {
     let valid = true;
     let message = "";
 
-    if (!customerName.value.trim()) {
+    const invalidNfcItem = getInvalidNfcItem();
+
+    if (invalidNfcItem) {
+        valid = false;
+        message = `Add a complete https:// link for the NFC tag on ${invalidNfcItem.name || "this keychain"}.`;
+    }
+
+    else if (!customerName.value.trim()) {
         valid = false;
         message = "Please enter your name.";
     }
@@ -9067,6 +9730,21 @@ window.reorderTrackedItems = function(items) {
       custom: {
         baseShape: design.base_shape?.key || design.baseShape || "ribbed",
         letterOrientation: design.letter_orientation || design.letterOrientation || "vertical",
+        fontSize: getStandardFontSize({
+          fontSize: design.font_size_mm || design.fontSize || design.font_size
+        }),
+        nfcEnabled: Boolean(design.nfc?.enabled || design.nfcEnabled),
+        nfcType: design.nfc?.content_type || design.nfcType || "guardian",
+        nfcPayload: design.nfc?.payload || design.nfcPayload || "",
+        photo: design.photo ? {
+          originalPath: design.photo.original_path || design.photo.originalPath || "",
+          artworkPath: design.photo.artwork_path || design.photo.artworkPath || "",
+          artworkUrl: design.photo.artwork_url || design.photo.artworkUrl || "",
+          generationId: design.photo.generation_id || design.photo.generationId || "",
+          subjectType: design.photo.subject_type || design.photo.subjectType || "person",
+          colourCount: Number(design.photo.colour_count || design.photo.colourCount || 3),
+          variant: design.photo.variant || "classic"
+        } : null,
         bases: (design.bases || []).map(colour => colour?.hex || colour),
         caps: (design.caps || []).map(colour => colour?.hex || colour),
         letters: (design.letters || []).map(colour => colour?.hex || colour)

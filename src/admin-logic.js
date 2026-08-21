@@ -791,6 +791,11 @@ export function flattenSharedGroupContributions(contributions = []) {
         custom: {
           baseShape: item.design?.base_shape || "ribbed",
           letterOrientation: item.design?.letter_orientation || "vertical",
+          fontSize: Number(item.design?.font_size_mm || 24),
+          nfcEnabled: Boolean(item.design?.nfc?.enabled),
+          nfcType: item.design?.nfc?.content_type || "guardian",
+          nfcPayload: item.design?.nfc?.payload || "",
+          photo: item.design?.photo || null,
           bases: Array.isArray(item.design?.bases) ? item.design.bases : [],
           caps: Array.isArray(item.design?.caps) ? item.design.caps : [],
           letters: Array.isArray(item.design?.letters) ? item.design.letters : []

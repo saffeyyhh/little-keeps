@@ -1,6 +1,7 @@
 export const MODULAR_PRODUCT_KEY = "modular-clicky-keychain";
 export const SOLID_PRODUCT_KEY = "solid-clicky-keychain";
 export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
+export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 
 export const DEFAULT_PRODUCT_CATALOG = [
   {
@@ -64,11 +65,11 @@ export const DEFAULT_PRODUCT_CATALOG = [
 
   {
     product_key: STANDARD_PRODUCT_KEY,
-    name: "Normal Name Keychain",
+    name: "Customised Name Keychain",
     eyebrow: "Classic design",
     description: "A personalised name keychain without clickable switches.",
-    status: "coming_soon",
-    price_visible: false,
+    status: "active",
+    price_visible: true,
 
     usual_base_price: 3.5,
     launch_base_price: 3.5,
@@ -99,6 +100,35 @@ export const DEFAULT_PRODUCT_CATALOG = [
 
     production_notes:
       "Normal personalised name keychain without clickable keycaps."
+  },
+  {
+    product_key: PHOTO_PRODUCT_KEY,
+    name: "Photo Keepsake Keychain",
+    eyebrow: "Your photo, simplified for 3D printing",
+    description: "Upload a person, pet or meaningful picture and receive a limited-colour illustrated keepsake.",
+    status: "coming_soon",
+    price_visible: false,
+    usual_base_price: 15,
+    launch_base_price: 12,
+    launch_price_enabled: true,
+    launch_price_ends_at: null,
+    included_characters: 50,
+    extra_character_price: 0,
+    included_base_colours: 1,
+    included_cap_colours: 1,
+    included_letter_colours: 1,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0,
+    minimum_characters: 1,
+    maximum_characters: 50,
+    base_print_minutes_fixed: 120,
+    base_print_minutes_per_character: 0,
+    keycap_print_minutes_per_character: 0,
+    assembly_minutes_per_item: 10,
+    sort_order: 40,
+    image_path: null,
+    production_notes: "AI artwork requires a printability check before slicing. Keep this product coming soon until the OpenAI secret and storage migration are installed."
   }
 ];
 
