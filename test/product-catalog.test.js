@@ -26,8 +26,8 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   assert.equal(solid.status, "coming_soon");
   assert.equal(solid.price_visible, false);
   assert.equal(standard.name, "Customised Name Keychain");
-  assert.equal(standard.status, "active");
-  assert.equal(standard.price_visible, true);
+  assert.equal(standard.status, "coming_soon");
+  assert.equal(standard.price_visible, false);
   assert.equal(photo.status, "coming_soon");
   assert.equal(photo.price_visible, false);
 });

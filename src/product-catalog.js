@@ -68,8 +68,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     name: "Customised Name Keychain",
     eyebrow: "Classic design",
     description: "A personalised name keychain without clickable switches.",
-    status: "active",
-    price_visible: true,
+    status: "coming_soon",
+    price_visible: false,
 
     usual_base_price: 3.5,
     launch_base_price: 3.5,
