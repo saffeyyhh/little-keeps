@@ -31,7 +31,13 @@ values (
   'AI artwork requires a manual printability check before slicing. Activate only after the OpenAI secret and function are installed.',
   40
 )
-on conflict (product_key) do nothing;
+on conflict (product_key) do update set
+  name = excluded.name,
+  eyebrow = excluded.eyebrow,
+  description = excluded.description,
+  status = 'coming_soon',
+  price_visible = false,
+  production_notes = excluded.production_notes;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
