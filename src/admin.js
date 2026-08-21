@@ -1567,7 +1567,6 @@ function renderSettingsWorkspace() {
             ${settingNumber("delivery_fee", "Delivery fee ($)", "0.10")}
             ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
             ${settingNumber("nfc_addon_price", "NFC add-on per keychain ($)", "0.10")}
-            ${settingNumber("photo_clicker_addon_price", "Photo clicker upgrade ($)", "0.10")}
           </div>
           <p class="hint">Product prices are managed separately above.</p>
         </section>
@@ -2014,7 +2013,7 @@ async function saveShopSettings(event) {
     "standard_min_working_days", "standard_max_working_days", "large_min_working_days",
     "large_max_working_days", "rush_fee_small", "rush_fee_large", "rush_max_missing_parts",
     "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock",
-    "nfc_addon_price", "photo_clicker_addon_price"
+    "nfc_addon_price"
   ];
   const updates = { id: 1 };
   numberFields.forEach(name => { updates[name] = Number(form.get(name)); });
@@ -4657,6 +4656,8 @@ function renderOrders(orders) {
       item.design?.baseShape ||
       "ribbed";
     const letterOrientation = getLetterOrientation(item.design);
+    const photoProduct = isPhotoKeepsake(order, item);
+    const customNameProduct = isCustomNameKeychain(order, item);
 
     return `
       <div class="order-preview-item">
@@ -4669,20 +4670,35 @@ function renderOrders(orders) {
             </span>
           ` : ""}
 
-          <span class="assembly-tag">
-            ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
-          </span>
-
-          <span class="assembly-tag">
-            ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
-          </span>
+          ${photoProduct ? `
+            <span class="assembly-tag">Photo Keepsake</span>
+            <span class="assembly-tag">Classic Keychain</span>
+            <span class="assembly-tag">${Number(item.design?.photo?.colour_count || 3)} Colours</span>
+          ` : customNameProduct ? `
+            <span class="assembly-tag">Customised Name</span>
+            <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
+          ` : `
+            <span class="assembly-tag">
+              ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+            </span>
+            <span class="assembly-tag">
+              ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
+            </span>
+          `}
 
           ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
+          ${item.design?.nfc?.enabled ? `<span class="assembly-tag nfc-assembly-tag">NFC</span>` : ""}
         </div>
 
-        <div class="mini-chain">
-          ${createAssemblyMiniPreview(item.name, item.design)}
-        </div>
+        ${photoProduct ? `
+          <div class="assembly-photo-summary">Private artwork saved · download the STL pack under Production → Custom Prints</div>
+        ` : customNameProduct ? `
+          <div class="assembly-standard-name-preview" style="--name-bg:${getSafePdfColour(item.design?.bases?.[0]?.hex || item.design?.bases?.[0], "#f55a74")}; --name-fg:${getSafePdfColour(item.design?.letters?.[0]?.hex || item.design?.letters?.[0], "#ffffff")}">${escapeAdminHtml(item.name || "Name")}</div>
+        ` : `
+          <div class="mini-chain">
+            ${createAssemblyMiniPreview(item.name, item.design)}
+          </div>
+        `}
       </div>
     `;
   }).join("")}
@@ -5532,7 +5548,8 @@ function getPhotoKeepsakeInventoryName(order, item, itemIndex = 0) {
   const reference = String(order?.order_ref || order?.id || "ORDER").trim();
   const label = String(item?.name || "PHOTO").trim();
   const variant = item?.design?.photo?.variant === "clicker" ? "Clicker" : "Classic";
-  return `Photo Keepsake - ${reference} - ${itemIndex + 1} - ${label} - ${variant}`;
+  const generation = String(item?.design?.photo?.generation_id || "").slice(0, 8);
+  return `Photo Keepsake - ${reference} - ${label} - ${variant} - ${generation || itemIndex + 1}`;
 }
 
 function getCustomNameInventoryName(order, item, itemIndex = 0) {
@@ -7230,14 +7247,261 @@ window.downloadPhotoKeepsakeArtwork = async function(orderId, itemIndex, button)
   }
 };
 
-window.startPhotoKeepsakePrint = async function(orderId, itemIndex, itemName) {
+function photoColourDistance(left, right) {
+  const red = left[0] - right[0];
+  const green = left[1] - right[1];
+  const blue = left[2] - right[2];
+  return red * red + green * green + blue * blue;
+}
+
+function getPhotoArtworkClusters(pixelData, colourCount) {
+  const histogram = new Map();
+  for (let index = 0; index < pixelData.length; index += 4) {
+    if (pixelData[index + 3] < 128) continue;
+    const red = Math.round(pixelData[index] / 16) * 16;
+    const green = Math.round(pixelData[index + 1] / 16) * 16;
+    const blue = Math.round(pixelData[index + 2] / 16) * 16;
+    const key = `${Math.min(255, red)},${Math.min(255, green)},${Math.min(255, blue)}`;
+    histogram.set(key, (histogram.get(key) || 0) + 1);
+  }
+
+  const colours = Array.from(histogram, ([key, count]) => ({
+    value: key.split(",").map(Number),
+    count
+  })).sort((left, right) => right.count - left.count);
+  if (!colours.length) throw new Error("The artwork has no visible printable pixels.");
+
+  const targetCount = Math.min(Math.max(2, Number(colourCount) || 3), colours.length);
+  const centres = [colours[0].value.slice()];
+  while (centres.length < targetCount) {
+    let best = colours[0];
+    let bestScore = -1;
+    colours.forEach(entry => {
+      const distance = Math.min(...centres.map(centre => photoColourDistance(entry.value, centre)));
+      const score = distance * Math.sqrt(entry.count);
+      if (score > bestScore) {
+        best = entry;
+        bestScore = score;
+      }
+    });
+    centres.push(best.value.slice());
+  }
+
+  for (let iteration = 0; iteration < 8; iteration += 1) {
+    const totals = centres.map(() => [0, 0, 0, 0]);
+    colours.forEach(entry => {
+      let closest = 0;
+      let closestDistance = Infinity;
+      centres.forEach((centre, index) => {
+        const distance = photoColourDistance(entry.value, centre);
+        if (distance < closestDistance) {
+          closest = index;
+          closestDistance = distance;
+        }
+      });
+      totals[closest][0] += entry.value[0] * entry.count;
+      totals[closest][1] += entry.value[1] * entry.count;
+      totals[closest][2] += entry.value[2] * entry.count;
+      totals[closest][3] += entry.count;
+    });
+    totals.forEach((total, index) => {
+      if (!total[3]) return;
+      centres[index] = [
+        total[0] / total[3],
+        total[1] / total[3],
+        total[2] / total[3]
+      ];
+    });
+  }
+
+  return centres.sort((left, right) =>
+    (left[0] + left[1] + left[2]) - (right[0] + right[1] + right[2])
+  );
+}
+
+function buildPhotoPixelGeometry(mask, width, height, cellSize, zStart, depth) {
+  const positions = [];
+  const zEnd = zStart + depth;
+  const offsetX = width * cellSize / 2;
+  const offsetY = height * cellSize / 2;
+  const addTriangle = (a, b, c) => positions.push(...a, ...b, ...c);
+  const addQuad = (a, b, c, d) => {
+    addTriangle(a, b, c);
+    addTriangle(a, c, d);
+  };
+  const hasCell = (row, column) =>
+    row >= 0 && row < height && column >= 0 && column < width && mask[row * width + column];
+
+  for (let row = 0; row < height; row += 1) {
+    for (let column = 0; column < width; column += 1) {
+      if (!hasCell(row, column)) continue;
+      const x0 = column * cellSize - offsetX;
+      const x1 = x0 + cellSize;
+      const y0 = (height - row - 1) * cellSize - offsetY;
+      const y1 = y0 + cellSize;
+
+      addQuad([x0, y0, zEnd], [x1, y0, zEnd], [x1, y1, zEnd], [x0, y1, zEnd]);
+      addQuad([x0, y1, zStart], [x1, y1, zStart], [x1, y0, zStart], [x0, y0, zStart]);
+      if (!hasCell(row, column - 1)) {
+        addQuad([x0, y0, zStart], [x0, y0, zEnd], [x0, y1, zEnd], [x0, y1, zStart]);
+      }
+      if (!hasCell(row, column + 1)) {
+        addQuad([x1, y1, zStart], [x1, y1, zEnd], [x1, y0, zEnd], [x1, y0, zStart]);
+      }
+      if (!hasCell(row - 1, column)) {
+        addQuad([x0, y1, zStart], [x0, y1, zEnd], [x1, y1, zEnd], [x1, y1, zStart]);
+      }
+      if (!hasCell(row + 1, column)) {
+        addQuad([x1, y0, zStart], [x1, y0, zEnd], [x0, y0, zEnd], [x0, y0, zStart]);
+      }
+    }
+  }
+
+  if (!positions.length) return null;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+async function preparePhotoArtworkStlParts(artworkUrl, colourCount) {
+  const response = await fetch(artworkUrl);
+  if (!response.ok) throw new Error("The private artwork could not be downloaded.");
+  const bitmap = await createImageBitmap(await response.blob());
+  const source = document.createElement("canvas");
+  source.width = bitmap.width;
+  source.height = bitmap.height;
+  const sourceContext = source.getContext("2d", { willReadFrequently: true });
+  sourceContext.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  const sourcePixels = sourceContext.getImageData(0, 0, source.width, source.height);
+
+  let minX = source.width;
+  let minY = source.height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < source.height; y += 1) {
+    for (let x = 0; x < source.width; x += 1) {
+      if (sourcePixels.data[(y * source.width + x) * 4 + 3] < 128) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (maxX < minX || maxY < minY) throw new Error("The artwork is fully transparent.");
+
+  const cropWidth = maxX - minX + 1;
+  const cropHeight = maxY - minY + 1;
+  const scale = Math.min(1, 140 / Math.max(cropWidth, cropHeight));
+  const width = Math.max(8, Math.round(cropWidth * scale));
+  const height = Math.max(8, Math.round(cropHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, minX, minY, cropWidth, cropHeight, 0, 0, width, height);
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const centres = getPhotoArtworkClusters(pixels, colourCount);
+  const backingMask = new Uint8Array(width * height);
+  const colourMasks = centres.map(() => new Uint8Array(width * height));
+
+  for (let index = 0; index < width * height; index += 1) {
+    const offset = index * 4;
+    if (pixels[offset + 3] < 128) continue;
+    backingMask[index] = 1;
+    const colour = [pixels[offset], pixels[offset + 1], pixels[offset + 2]];
+    let closest = 0;
+    let closestDistance = Infinity;
+    centres.forEach((centre, centreIndex) => {
+      const distance = photoColourDistance(colour, centre);
+      if (distance < closestDistance) {
+        closest = centreIndex;
+        closestDistance = distance;
+      }
+    });
+    colourMasks[closest][index] = 1;
+  }
+
+  const cellSize = 60 / Math.max(width, height);
+  const backing = buildPhotoPixelGeometry(backingMask, width, height, cellSize, 0, 1.6);
+  const colours = colourMasks.map(mask =>
+    buildPhotoPixelGeometry(mask, width, height, cellSize, 1.6, .7)
+  );
+  return { backing, colours, centres, widthMm: width * cellSize, heightMm: height * cellSize };
+}
+
+window.generatePhotoKeepsakeStls = async function(orderId, itemIndex, button, orderedQuantity = 1) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const item = order?.order_data?.[Number(itemIndex)];
+  const artworkPath = item?.design?.photo?.artwork_path;
+  if (!order || !item || !artworkPath) {
+    alert("This photo keepsake has no saved artwork file.");
+    return;
+  }
+
+  const previousLabel = button?.textContent || "Download STL Pack";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Building STL pack…";
+  }
+
+  try {
+    const { data, error } = await supabase.storage
+      .from("customer-artwork")
+      .createSignedUrl(artworkPath, 300);
+    if (error || !data?.signedUrl) throw error || new Error("Unable to open the private artwork.");
+    const parts = await preparePhotoArtworkStlParts(
+      data.signedUrl,
+      Number(item.design?.photo?.colour_count || 3)
+    );
+    const reference = safeProductionFileName(order.order_ref, "order");
+    const label = safeProductionFileName(item.name, "photo");
+    const files = [{
+      blob: exportGeometryStl(parts.backing),
+      filename: `${reference}_${label}_00-BACKING_1.6mm.stl`
+    }];
+    parts.colours.forEach((geometry, index) => {
+      if (!geometry) return;
+      const centre = parts.centres[index].map(value => Math.max(0, Math.min(255, Math.round(value))));
+      const hex = centre.map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
+      files.push({
+        blob: exportGeometryStl(geometry),
+        filename: `${reference}_${label}_${String(index + 1).padStart(2, "0")}-COLOUR-${hex}.stl`
+      });
+    });
+    files.forEach((file, index) => {
+      setTimeout(() => downloadRushStl(file.blob, file.filename), index * 350);
+    });
+    parts.backing?.dispose();
+    parts.colours.forEach(geometry => geometry?.dispose());
+    if (button) button.textContent = `Downloaded ${files.length} STLs ✓`;
+    alert(
+      `STL pack ready at approximately ${parts.widthMm.toFixed(1)} × ${parts.heightMm.toFixed(1)} mm.\n\n` +
+      "Import every STL together as one object with multiple parts, assign the matching filament colours, and keep their positions unchanged. " +
+      `Set ${Math.max(1, Number(orderedQuantity) || 1)} cop${Number(orderedQuantity) === 1 ? "y" : "ies"} in your slicer. Inspect the keyring hole and small details before printing.`
+    );
+  } catch (error) {
+    console.error("Unable to generate photo keepsake STL files:", error);
+    alert(`Unable to generate this photo STL pack.\n\n${error?.message || error}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      setTimeout(() => { button.textContent = previousLabel; }, 3000);
+    }
+  }
+};
+
+window.startPhotoKeepsakePrint = async function(orderId, itemIndex, itemName, quantity = 1) {
   const order = latestOrders.find(item => String(item.id) === String(orderId));
   const item = order?.order_data?.[Number(itemIndex)];
   if (!order || !item) return;
   if (!confirm(
     `Start printing ${item.name || "this photo keepsake"}?\n\nConfirm you checked the artwork for connected shapes, minimum wall thickness and a safe keyring/clicker area in your slicer.`
   )) return;
-  await window.startProductionJob(itemName, 1, "Base");
+  await window.startProductionJob(itemName, Math.max(1, Number(quantity) || 1), "Base");
 };
 
 function getProductionKeycapPath(character) {
@@ -8196,6 +8460,41 @@ function downloadRushStl(blob, filename) {
 async function generateOrderStls(id, button) {
   const order = latestOrders.find(item => String(item.id) === String(id));
   if (!order) return alert("Order could not be found.");
+
+  const photoItems = Array.from((order.order_data || [])
+    .map((item, itemIndex) => ({ item, itemIndex }))
+    .filter(({ item }) => !item.assembly_completed && isPhotoKeepsake(order, item))
+    .reduce((groups, entry) => {
+      const key = getPhotoKeepsakeInventoryName(order, entry.item, entry.itemIndex);
+      const existing = groups.get(key);
+      if (existing) existing.quantity += 1;
+      else groups.set(key, { ...entry, quantity: 1 });
+      return groups;
+    }, new Map()).values());
+  if (photoItems.length) {
+    if (!confirm(
+      `Generate the printable backing and colour STL pack for ${photoItems.length} photo design${photoItems.length === 1 ? "" : "s"}?`
+    )) return;
+    const previousLabel = button?.textContent || "Generate Order STLs";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Building photo STLs…";
+    }
+    for (const entry of photoItems) {
+      await window.generatePhotoKeepsakeStls(
+        String(order.id),
+        entry.itemIndex,
+        null,
+        entry.quantity
+      );
+    }
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Downloaded ✓";
+      setTimeout(() => { button.textContent = previousLabel; }, 2200);
+    }
+    return;
+  }
 
   const customNameItems = (order.order_data || [])
     .map((item, itemIndex) => ({ item, itemIndex }))
@@ -9495,8 +9794,18 @@ async function renderProductionPlanner(orders) {
     })
     .filter(item => item.toPrint > 0);
 
-  const customPrintRows = customItems.map(item => {
-    const need = 1;
+  const groupedCustomItems = Array.from(customItems.reduce((groups, item) => {
+    const existing = groups.get(item.itemName);
+    if (existing) {
+      existing.need += 1;
+    } else {
+      groups.set(item.itemName, { ...item, need: 1 });
+    }
+    return groups;
+  }, new Map()).values());
+
+  const customPrintRows = groupedCustomItems.map(item => {
+    const need = item.need;
     const stock = getInventoryQty(item.itemName);
     const tracked = getTrackedProductionQuantity(productionJobs, item.itemName);
     const toPrint = calculateQueuedProductionQuantity(need, stock, tracked);
@@ -11112,7 +11421,8 @@ async function renderProductionPlanner(orders) {
                   <div class="custom-print-actions">
                     ${row.isPhoto ? `
                       <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download Private Artwork</button>
-                      <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)})'>Checked · Start Printing</button>
+                      <button type="button" onclick='window.generatePhotoKeepsakeStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
+                      <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)}, ${row.need})'>Checked · Start Printing × ${row.need}</button>
                     ` : `
                       <button type="button" onclick='window.generateCustomNameKeychainStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download 2 STLs</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, 1, "Base")'>Start Printing</button>

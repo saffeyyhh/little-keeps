@@ -45,7 +45,7 @@ Deno.serve(async request => {
     const subjectType = ["person", "pet", "object"].includes(body.subject_type)
       ? body.subject_type
       : "person";
-    const variant = body.variant === "clicker" ? "clicker" : "classic";
+    const variant = "classic";
     const colourCount = Math.min(4, Math.max(2, Number(body.colour_count) || 3));
     const clientToken = String(body.client_token || "").slice(0, 120);
     if (!clientToken) return json({ error: "The preview session is missing. Refresh and try again." }, 400);
@@ -91,9 +91,7 @@ Deno.serve(async request => {
       `Use no more than ${colourCount} flat solid colours including outlines.`,
       "Keep the subject recognizable and charming, with bold connected shapes, smooth closed outlines, and no gradients, shadows, texture, text, logos, scenery, frame, or background.",
       "Remove tiny details and isolated specks. Every important stroke and gap must remain thick enough to print at approximately 60 mm wide; target at least 1.2 mm features.",
-      variant === "clicker"
-        ? "Leave a simple solid area near the lower centre where a round mechanical clicker can be fitted later."
-        : "Keep the silhouette compact with a safe solid area near an upper corner for a keyring hole.",
+      "Keep the silhouette compact with a safe solid area near an upper corner for a keyring hole.",
       "Return one centred front-facing sticker-like design on a transparent background. Do not add mockups, keyrings, hands, or product photography."
     ].join(" ");
 

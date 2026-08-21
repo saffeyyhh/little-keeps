@@ -1077,9 +1077,9 @@ document.querySelector("#app").innerHTML = `
 
         <div class="photo-option-grid">
           <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="object">Object or keepsake</option></select></label>
-          <label><span>Product</span><select id="photoProductVariant"><option value="classic">Classic keychain</option><option value="clicker">Clicker keychain</option></select></label>
           <label><span>Maximum colours</span><select id="photoColourCount"><option value="2">2 colours · easiest to print</option><option value="3" selected>3 colours</option><option value="4">4 colours</option></select></label>
           <label><span>Short label</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
+          <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
         </div>
 
         <label class="photo-permission-check photo-nfc-toggle"><input id="photoNfcEnabled" type="checkbox"><span><strong>Add an NFC tap link (+${displaySettingMoney(Number(shopSettings.nfc_addon_price) || 2.5)})</strong><small>Open a pet-return page, guardian contact page, social profile or any secure web link when tapped.</small></span></label>
@@ -2420,9 +2420,9 @@ const closePhotoKeepsakeModal = document.getElementById("closePhotoKeepsakeModal
 const photoKeepsakeInput = document.getElementById("photoKeepsakeInput");
 const photoOriginalPreview = document.getElementById("photoOriginalPreview");
 const photoSubjectType = document.getElementById("photoSubjectType");
-const photoProductVariant = document.getElementById("photoProductVariant");
 const photoColourCount = document.getElementById("photoColourCount");
 const photoKeepsakeLabel = document.getElementById("photoKeepsakeLabel");
+const photoKeepsakeQuantity = document.getElementById("photoKeepsakeQuantity");
 const photoNfcEnabled = document.getElementById("photoNfcEnabled");
 const photoNfcFields = document.getElementById("photoNfcFields");
 const photoNfcType = document.getElementById("photoNfcType");
@@ -6034,9 +6034,9 @@ function renderReviewOrder() {
           const item = names[selectedIndex];
           const design = getDesign(item);
           photoKeepsakeLabel.value = item?.name || "";
-          photoProductVariant.value = design.photo?.variant || "classic";
           photoColourCount.value = String(design.photo?.colourCount || 3);
           photoSubjectType.value = design.photo?.subjectType || "person";
+          photoKeepsakeQuantity.value = String(getItemQuantity(item));
           photoNfcEnabled.checked = Boolean(design.nfcEnabled);
           photoNfcType.value = design.nfcType || (photoSubjectType.value === "pet" ? "pet" : "website");
           photoNfcPayload.value = design.nfcPayload || "";
@@ -7564,9 +7564,9 @@ window.editCartItem = function(index) {
     const item = names[index];
     const design = getDesign(item);
     photoKeepsakeLabel.value = item?.name || "";
-    photoProductVariant.value = design.photo?.variant || "classic";
     photoColourCount.value = String(design.photo?.colourCount || 3);
     photoSubjectType.value = design.photo?.subjectType || "person";
+    photoKeepsakeQuantity.value = String(getItemQuantity(item));
     photoNfcEnabled.checked = Boolean(design.nfcEnabled);
     photoNfcType.value = design.nfcType || (photoSubjectType.value === "pet" ? "pet" : "website");
     photoNfcPayload.value = design.nfcPayload || "";
@@ -7930,7 +7930,7 @@ async function generatePhotoKeepsakeArtwork() {
         image_data_url: imageDataUrl,
         subject_type: photoSubjectType.value,
         colour_count: Number(photoColourCount.value),
-        variant: photoProductVariant.value,
+        variant: "classic",
         client_token: currentSubmissionId
       }
     });
@@ -7975,7 +7975,7 @@ function addPhotoKeepsakeToCart() {
   const fallbackColours = getAvailableColours();
   names = [{
     name: label,
-    quantity: 1,
+    quantity: normalizeItemQuantity(photoKeepsakeQuantity?.value),
     groupContributorName: null,
     custom: {
       baseShape: "photo",
@@ -7991,7 +7991,7 @@ function addPhotoKeepsakeToCart() {
         generationId: photoKeepsakeState.generationId,
         subjectType: photoSubjectType.value,
         colourCount: Number(photoColourCount.value),
-        variant: photoProductVariant.value
+        variant: "classic"
       },
       nfcEnabled: wantsNfc,
       nfcType: photoNfcType?.value || (photoSubjectType.value === "pet" ? "pet" : "website"),
