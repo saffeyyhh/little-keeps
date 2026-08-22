@@ -5458,16 +5458,23 @@ async function buildKeychain(name, design) {
     if (activeProduct.product_key === SOLID_PRODUCT_KEY && letters.length) {
       const slotCount = Math.min(10, Math.max(1, letters.length));
       const baseGeometry = await loadSTL(`/models/solid-base-${slotCount}.stl`);
+      baseGeometry.computeBoundingBox();
+      const baseSize = new THREE.Vector3();
+      baseGeometry.boundingBox?.getSize(baseSize);
       const solidBase = new THREE.Mesh(
         baseGeometry,
         createMat(design.bases[0] || available[0])
       );
       keychain.add(solidBase);
 
+      // The compact base's keyring end makes its overall bounding box slightly
+      // asymmetrical. Its switch slots are centred 1.84 mm to the right of the
+      // mesh centre, at an exact 20.5 mm pitch.
+      const slotCentreOffsetX = 1.84;
       for (let index = 0; index < letters.length; index += 1) {
         const cap = await createKeycapTop(letters[index], index, design);
         cap.position.set(
-          (index - (letters.length - 1) / 2) * 20.5,
+          slotCentreOffsetX + (index - (letters.length - 1) / 2) * 20.5,
           0,
           11
         );
@@ -5476,9 +5483,13 @@ async function buildKeychain(name, design) {
       }
 
       keychain.position.set(0, 0, 0);
-      keychain.rotation.x = -0.8;
-      keychain.rotation.y = 0.2;
+      // Keep this one-piece design closer to a top view. A steep tilt makes
+      // raised caps appear displaced from their slots through perspective.
+      keychain.rotation.set(-0.32, 0.08, 0);
       controls.target.set(0, 0, 0);
+      camera.fov = 35;
+      camera.position.set(0, 0, Math.max(145, baseSize.x * 1.08));
+      camera.updateProjectionMatrix();
       controls.update();
       return;
     }
