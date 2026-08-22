@@ -95,7 +95,7 @@ values
     'solid-clicky-keychain',
     'Compact Solid Clicky Keychain',
     'Compact one-piece base',
-    'One sturdy base with the same satisfying chunky clicks.',
+    'One sturdy base for up to 10 characters, made in one base colour with the same satisfying chunky clicks.',
     'coming_soon',
     false,
     4.50,

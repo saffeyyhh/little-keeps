@@ -44,7 +44,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     product_key: SOLID_PRODUCT_KEY,
     name: "Compact Solid Clicky Keychain",
     eyebrow: "Compact one-piece base",
-    description: "One sturdy base with the same satisfying chunky clicks.",
+    description: "One sturdy base for up to 10 characters, made in one base colour with the same satisfying chunky clicks.",
     status: "coming_soon",
     price_visible: false,
     usual_base_price: 4.5,
@@ -196,7 +196,10 @@ export function normalizeProductCatalog(rows = []) {
       if (product.eyebrow === "One-piece design") {
         product.eyebrow = fallback.eyebrow;
       }
-      if (product.description === "A clean solid base with the same satisfying click.") {
+      if ([
+        "A clean solid base with the same satisfying click.",
+        "One sturdy base with the same satisfying chunky clicks."
+      ].includes(product.description)) {
         product.description = fallback.description;
       }
       product.minimum_characters = 1;

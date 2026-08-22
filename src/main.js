@@ -1273,6 +1273,7 @@ ${requestedPreviewProductKey ? `
               Number(modularProduct.maximum_characters) || 10
             )}"
           >
+          <p id="productCharacterLimitNotice" class="hint" hidden></p>
 
           <label class="design-quantity-field" for="singleQuantity">
             <span>How many of this design?</span>
@@ -1427,16 +1428,16 @@ Chloe</textarea>
               Surprise Me - All Parts
             </button>
           </div>
-          <details class="random-colour-options">
-            <summary>Optional: allow mixed colours across characters</summary>
+          <details id="randomColourOptions" class="random-colour-options">
+            <summary id="randomColourOptionsSummary">Optional: allow mixed colours across characters</summary>
             <label class="random-multi-colour-option" for="randomiseMultipleColours">
               <input id="randomiseMultipleColours" type="checkbox">
               <span>
-                <strong>Use more than one colour per part</strong>
-                This may alternate base, cap and letter/icon colours. Add-ons apply only if extra colours are used:
-                +${displaySettingMoney(modularProduct.extra_base_colour_price)} per extra base colour,
-                +${displaySettingMoney(modularProduct.extra_cap_colour_price)} per extra cap colour and
-                +${displaySettingMoney(modularProduct.extra_letter_colour_price)} per extra letter/icon colour.
+                <strong id="randomColourOptionsTitle">Use more than one colour per part</strong>
+                <span id="randomColourOptionsText">This may alternate base, cap and letter/icon colours. Add-ons apply only if extra colours are used:</span>
+                <span id="randomBaseColourFee">+${displaySettingMoney(modularProduct.extra_base_colour_price)} per extra base colour,</span>
+                <span>+${displaySettingMoney(modularProduct.extra_cap_colour_price)} per extra cap colour and</span>
+                <span>+${displaySettingMoney(modularProduct.extra_letter_colour_price)} per extra letter/icon colour.</span>
               </span>
             </label>
           </details>
@@ -2368,9 +2369,14 @@ const inspirationStatus = document.getElementById("inspirationStatus");
 const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
 const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
 const randomiseMultipleColours = document.getElementById("randomiseMultipleColours");
+const randomColourOptionsSummary = document.getElementById("randomColourOptionsSummary");
+const randomColourOptionsTitle = document.getElementById("randomColourOptionsTitle");
+const randomColourOptionsText = document.getElementById("randomColourOptionsText");
+const randomBaseColourFee = document.getElementById("randomBaseColourFee");
 const randomiseBaseColoursBtn = document.getElementById("randomiseBaseColoursBtn");
 const randomiseCapColoursBtn = document.getElementById("randomiseCapColoursBtn");
 const randomiseLetterColoursBtn = document.getElementById("randomiseLetterColoursBtn");
+const productCharacterLimitNotice = document.getElementById("productCharacterLimitNotice");
 
 const applyAllSection = document.getElementById("applyAllSection");
 const resetSelected = document.getElementById("resetSelected");
@@ -3674,6 +3680,37 @@ function sanitizeName(name) {
     .join("");
 }
 
+function getActiveProductCharacterLimit() {
+  const configuredLimit = Math.max(
+    1,
+    Number(activeProduct?.maximum_characters) || 10
+  );
+  return activeProduct?.product_key === SOLID_PRODUCT_KEY
+    ? Math.min(10, configuredLimit)
+    : configuredLimit;
+}
+
+function limitKeychainName(value) {
+  return Array.from(String(value || ""))
+    .slice(0, getActiveProductCharacterLimit())
+    .join("");
+}
+
+function enforceNameInputLimits() {
+  const limitedSingleName = limitKeychainName(singleName.value);
+  if (singleName.value !== limitedSingleName) {
+    singleName.value = limitedSingleName;
+  }
+
+  const limitedLines = String(nameList.value || "")
+    .split("\n")
+    .map(limitKeychainName)
+    .join("\n");
+  if (nameList.value !== limitedLines) {
+    nameList.value = limitedLines;
+  }
+}
+
 function getApproximateKeychainSize(
   name,
   productKey = activeProduct?.product_key,
@@ -3990,6 +4027,11 @@ function renderColourChargeNotices() {
   ].forEach(([id, selectedColours, includedCount, extraPrice, label]) => {
     const element = document.getElementById(id);
     if (!element) return;
+    if (id === "baseColourPriceNotice" && activeProduct.product_key === SOLID_PRODUCT_KEY) {
+      element.classList.remove("has-charge");
+      element.textContent = "The compact solid base is one piece and uses one base colour.";
+      return;
+    }
     const uniqueCount = getUniqueColourCount(selectedColours || []);
     const extras = Math.max(0, uniqueCount - Number(includedCount || 0));
     const unitPrice = Number(extraPrice || 0);
@@ -4099,12 +4141,13 @@ function randomiseArticulatedColours() {
     allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
   const design = getActiveDesign();
-  design.bases = selected.bases;
+  const solidProduct = activeProduct.product_key === SOLID_PRODUCT_KEY;
+  design.bases = solidProduct ? selected.bases.slice(0, 1) : selected.bases;
   design.caps = selected.caps;
   design.letters = selected.letters;
 
   if (applyAllToggle.checked) {
-    globalDesign.bases = [...selected.bases];
+    globalDesign.bases = [...design.bases];
     globalDesign.caps = [...selected.caps];
     globalDesign.letters = [...selected.letters];
     names.forEach(item => { item.custom = null; });
@@ -4140,10 +4183,12 @@ function randomiseColourPart(part) {
   });
   const property = part === "base" ? "bases" : part === "cap" ? "caps" : "letters";
   const design = getActiveDesign();
-  design[property] = [...selected[property]];
+  design[property] = activeProduct.product_key === SOLID_PRODUCT_KEY && part === "base"
+    ? selected.bases.slice(0, 1)
+    : [...selected[property]];
 
   if (applyAllToggle.checked) {
-    globalDesign[property] = [...selected[property]];
+    globalDesign[property] = [...design[property]];
     names.forEach(item => { item.custom = null; });
   }
 
@@ -4519,8 +4564,10 @@ function addColourToDesign(type, colour) {
 
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
+  const isSolidProduct =
+    activeProduct.product_key === SOLID_PRODUCT_KEY;
 
-  if (isStandardProduct) {
+  if (isStandardProduct || (isSolidProduct && type === "base")) {
     if (type === "base") {
       design.bases = [colour];
     }
@@ -4794,10 +4841,12 @@ function startFeaturedPromoCountdown() {
 function removeColourFromDesign(type, index) {
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
+  const isFixedSolidBase =
+    activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
 
   // Standard keychains must always keep one background
   // colour and one name colour.
-  if (isStandardProduct) return;
+  if (isStandardProduct || isFixedSolidBase) return;
 
   const design = getActiveDesign();
 
@@ -4841,8 +4890,10 @@ function renderSlots(containerId, colours, type) {
 
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
+  const isFixedSolidBase =
+    activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
 
-  if (!isStandardProduct) {
+  if (!isStandardProduct && !isFixedSolidBase) {
     slot.title = "Click to remove this colour";
     slot.onclick = () => removeColourFromDesign(type, index);
   } else {
@@ -5521,6 +5572,7 @@ async function buildKeychain(name, design) {
 }
 
 function updateNames() {
+  enforceNameInputLimits();
   const previousNames = [...names];
 
   if (orderType === "single") {
@@ -7845,6 +7897,15 @@ function updateProductCustomiser() {
   const isSolidClicker =
     activeProduct.product_key === SOLID_PRODUCT_KEY;
 
+  if (isSolidClicker) {
+    globalDesign.bases = globalDesign.bases.slice(0, 1);
+    names.forEach(item => {
+      if (item.custom?.bases?.length) {
+        item.custom.bases = item.custom.bases.slice(0, 1);
+      }
+    });
+  }
+
     if (designInspiration) {
   designInspiration.style.display =
     isNormalKeychain ? "none" : "";
@@ -7904,11 +7965,39 @@ function updateProductCustomiser() {
 
   const nameLimit = Math.max(
     1,
-    Number(activeProduct.maximum_characters) || 10
+    getActiveProductCharacterLimit()
   );
 
-  singleName.maxLength = nameLimit;
-  nameList.maxLength = nameLimit * 250;
+  // Emoji icons can use more than one UTF-16 unit, so the input receives
+  // extra room while updateNames enforces the real character count.
+  singleName.maxLength = isSolidClicker ? nameLimit * 4 : nameLimit;
+  nameList.maxLength = (isSolidClicker ? nameLimit * 4 : nameLimit) * 250;
+
+  if (productCharacterLimitNotice) {
+    productCharacterLimitNotice.hidden = !isSolidClicker;
+    productCharacterLimitNotice.textContent = isSolidClicker
+      ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
+      : "";
+  }
+
+  if (randomColourOptionsSummary) {
+    randomColourOptionsSummary.textContent = isSolidClicker
+      ? "Optional: mix cap or letter colours"
+      : "Optional: allow mixed colours across characters";
+  }
+  if (randomColourOptionsTitle) {
+    randomColourOptionsTitle.textContent = isSolidClicker
+      ? "Use more than one cap or letter/icon colour"
+      : "Use more than one colour per part";
+  }
+  if (randomColourOptionsText) {
+    randomColourOptionsText.textContent = isSolidClicker
+      ? "The base stays one colour. Caps and letters/icons may alternate. Add-ons apply only if extra colours are used:"
+      : "This may alternate base, cap and letter/icon colours. Add-ons apply only if extra colours are used:";
+  }
+  if (randomBaseColourFee) {
+    randomBaseColourFee.hidden = isSolidClicker;
+  }
 
   updateNames();
 }
