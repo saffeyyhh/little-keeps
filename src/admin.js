@@ -338,6 +338,44 @@ document.querySelector("#app").innerHTML = `
     </form>
   </dialog>
 
+  <dialog id="aiMessageWriterDialog" class="fulfilment-editor ai-message-writer-dialog">
+    <form id="aiMessageWriterForm" method="dialog">
+      <header>
+        <div>
+          <p>Little Keeps AI Writer</p>
+          <h2>Draft Customer Message</h2>
+          <span id="aiMessageWriterOrderRef"></span>
+        </div>
+        <button id="closeAiMessageWriter" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="fulfilment-editor-grid">
+        <label class="full-row">
+          <span>What do you need?</span>
+          <select id="aiMessageType">
+            <option value="general WhatsApp order update">General order update</option>
+            <option value="ready early pickup WhatsApp message">Ready early - offer pickup</option>
+            <option value="delay apology WhatsApp message">Delay or apology</option>
+            <option value="thank-you WhatsApp message after completion">Thank you after completion</option>
+            <option value="short Instagram caption about this finished order without private customer information">Instagram caption</option>
+          </select>
+        </label>
+        <label class="full-row">
+          <span>Anything specific to include? (optional)</span>
+          <textarea id="aiMessageNote" rows="3" maxlength="500" placeholder="e.g. I can meet at Marsiling after 7 pm"></textarea>
+        </label>
+        <label class="full-row">
+          <span>Editable draft</span>
+          <textarea id="aiMessageDraft" rows="8" placeholder="Your draft will appear here"></textarea>
+        </label>
+      </div>
+      <p id="aiMessageWriterStatus" class="ai-message-writer-status" aria-live="polite">Nothing is sent automatically. Check the draft before copying.</p>
+      <footer>
+        <button id="generateAiMessage" type="button">Create Draft</button>
+        <button id="copyAiMessage" type="button">Copy Message</button>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog id="easyParcelDialog" class="fulfilment-editor easyparcel-dialog">
     <form id="easyParcelForm" method="dialog">
       <header>
@@ -418,6 +456,12 @@ const fulfilmentEditor = document.getElementById("fulfilmentEditor");
 const fulfilmentEditorForm = document.getElementById("fulfilmentEditorForm");
 const easyParcelDialog = document.getElementById("easyParcelDialog");
 const easyParcelForm = document.getElementById("easyParcelForm");
+const aiMessageWriterDialog = document.getElementById("aiMessageWriterDialog");
+const aiMessageWriterForm = document.getElementById("aiMessageWriterForm");
+const aiMessageType = document.getElementById("aiMessageType");
+const aiMessageNote = document.getElementById("aiMessageNote");
+const aiMessageDraft = document.getElementById("aiMessageDraft");
+const aiMessageWriterStatus = document.getElementById("aiMessageWriterStatus");
 
 const { data: { session } } = await supabase.auth.getSession();
 
@@ -4652,6 +4696,10 @@ function renderOrders(orders) {
           </a>
         ` : ""}
 
+        <button type="button" onclick='window.openAiMessageWriter(${JSON.stringify(orderId)})'>
+          Write Message ✨
+        </button>
+
         ${!["Completed", "Refunded", "Cancelled"].includes(order.status) ? `
           <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(orderId)})'>
             Edit Customer &amp; Fulfilment
@@ -4917,6 +4965,7 @@ function renderFulfilmentWorkspace(orders) {
         <details class="fulfilment-more-actions">
           <summary>More actions <span aria-hidden="true">⌄</span></summary>
           <div>
+            <button type="button" onclick='window.openAiMessageWriter(${JSON.stringify(String(order.id))})'>Write customer message ✨</button>
             ${!["Completed", "Refunded", "Cancelled"].includes(order.status) ? `
               <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(String(order.id))})'>Edit customer &amp; fulfilment</button>
             ` : ""}
@@ -5000,6 +5049,79 @@ function renderFulfilmentWorkspace(orders) {
     </details>
   `;
 }
+
+window.openAiMessageWriter = function(id) {
+  const order = latestOrders.find(item => String(item.id) === String(id)) ||
+    groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order || !aiMessageWriterDialog) return;
+  aiMessageWriterDialog.dataset.orderId = String(order.id);
+  document.getElementById("aiMessageWriterOrderRef").textContent =
+    `${order.order_ref || "Order"} · ${order.customer_name || "Customer"}`;
+  aiMessageType.value = "general WhatsApp order update";
+  aiMessageNote.value = "";
+  aiMessageDraft.value = "";
+  aiMessageWriterStatus.textContent = "Nothing is sent automatically. Check the draft before copying.";
+  aiMessageWriterDialog.showModal();
+};
+
+function closeAiMessageWriterDialog() {
+  aiMessageWriterDialog?.close();
+}
+
+document.getElementById("closeAiMessageWriter")?.addEventListener("click", closeAiMessageWriterDialog);
+aiMessageWriterDialog?.addEventListener("click", event => {
+  if (event.target === aiMessageWriterDialog) closeAiMessageWriterDialog();
+});
+aiMessageWriterForm?.addEventListener("submit", event => event.preventDefault());
+
+document.getElementById("generateAiMessage")?.addEventListener("click", async event => {
+  const button = event.currentTarget;
+  const orderId = aiMessageWriterDialog?.dataset.orderId;
+  if (!orderId) return;
+  button.disabled = true;
+  button.textContent = "Writing…";
+  aiMessageWriterStatus.textContent = "Creating a natural draft from the current order details…";
+  try {
+    const { data, error } = await supabase.functions.invoke("little-keeps-ai", {
+      body: {
+        mode: "admin_message",
+        order_id: orderId,
+        message_type: aiMessageType.value,
+        note: aiMessageNote.value
+      }
+    });
+    if (error) throw error;
+    if (!data?.draft) throw new Error(data?.error || "No draft was returned.");
+    aiMessageDraft.value = data.draft;
+    aiMessageWriterStatus.textContent = "Draft ready. Edit anything you like, then copy it.";
+  } catch (error) {
+    console.error("Unable to create AI message:", error);
+    aiMessageWriterStatus.textContent = "Could not create a draft right now. Please try again.";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Create Draft";
+  }
+});
+
+document.getElementById("copyAiMessage")?.addEventListener("click", async event => {
+  const message = String(aiMessageDraft?.value || "").trim();
+  if (!message) {
+    aiMessageWriterStatus.textContent = "Create or type a message first.";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(message);
+    const button = event.currentTarget;
+    const previous = button.textContent;
+    button.textContent = "Copied ✓";
+    aiMessageWriterStatus.textContent = "Copied. Nothing has been sent automatically.";
+    setTimeout(() => { button.textContent = previous; }, 1400);
+  } catch {
+    aiMessageDraft.select();
+    document.execCommand("copy");
+    aiMessageWriterStatus.textContent = "Copied. Nothing has been sent automatically.";
+  }
+});
 
 window.copyFulfilmentContact = async function(id, type, button) {
   const order = groupLinkedOrdersForAdmin(latestOrders).find(

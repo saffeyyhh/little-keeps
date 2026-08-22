@@ -49,6 +49,7 @@ import {
   DEFAULT_COLOUR_OPTIONS,
   normalizeColourOptions
 } from "./colour-catalog.js";
+import { normalizeAiDesignSuggestions } from "./ai-logic.js";
 import {
   calculatePromoDiscount,
   getPromoEligibility as assessPromoEligibility,
@@ -1121,6 +1122,8 @@ ${requestedPreviewProductKey ? `
           <img id="photoOriginalPreview" class="hidden" alt="Your uploaded photo preview">
         </label>
 
+        <div id="photoSuitabilityCheck" class="photo-suitability-check hidden" aria-live="polite"></div>
+
         <div class="photo-option-grid">
           <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="object">Object or keepsake</option></select></label>
           <label><span>Artwork detail</span><select id="photoColourCount"><option value="2">Simple · 2 colours</option><option value="3">Balanced · 3 colours</option><option value="4" selected>More detail · 4 colours</option></select></label>
@@ -1388,6 +1391,16 @@ Chloe</textarea>
 
       <div id="designInspiration" class="design-inspiration">
         <h3>Need inspiration? ✨</h3>
+        <div class="ai-design-helper">
+          <label for="aiDesignBrief">Tell us the vibe, occasion or person</label>
+          <div class="ai-design-helper-input">
+            <input id="aiDesignBrief" maxlength="300" placeholder="e.g. cute purple birthday gift for a cat lover">
+            <button id="aiDesignHelperBtn" type="button">Suggest Ideas</button>
+          </div>
+          <small>Suggestions only use colours currently marked in stock. Your website still controls the final price.</small>
+          <p id="aiDesignHelperStatus" aria-live="polite"></p>
+          <div id="aiDesignSuggestions" class="ai-design-suggestions hidden"></div>
+        </div>
         <div class="inspiration-scroll">
           ${renderDesignPresetCards()}
         </div>
@@ -2443,11 +2456,16 @@ const regeneratePhotoArtworkBtn = document.getElementById("regeneratePhotoArtwor
 const addPhotoArtworkToCartBtn = document.getElementById("addPhotoArtworkToCartBtn");
 const downloadPhotoTestStlsBtn = document.getElementById("downloadPhotoTestStlsBtn");
 const photoGenerationStatus = document.getElementById("photoGenerationStatus");
+const photoSuitabilityCheck = document.getElementById("photoSuitabilityCheck");
 const photoResultPlaceholder = document.getElementById("photoResultPlaceholder");
 const photoArtworkResult = document.getElementById("photoArtworkResult");
 const photoResultActions = document.getElementById("photoResultActions");
 const photoMappedPalette = document.getElementById("photoMappedPalette");
 const photoAttemptStatus = document.getElementById("photoAttemptStatus");
+const aiDesignBrief = document.getElementById("aiDesignBrief");
+const aiDesignHelperBtn = document.getElementById("aiDesignHelperBtn");
+const aiDesignHelperStatus = document.getElementById("aiDesignHelperStatus");
+const aiDesignSuggestions = document.getElementById("aiDesignSuggestions");
 const refreshAvailabilityBtn = document.getElementById("refreshAvailabilityBtn");
 const orderNotes = document.getElementById("orderNotes");
 const submitOrderBtn = document.getElementById("submitOrderBtn");
@@ -4125,6 +4143,121 @@ function applyDesignPreset(presetKey) {
   refreshUI();
   buildSelectedPreview();
   saveDraft();
+}
+
+let currentAiDesignSuggestions = [];
+
+function renderAiDesignSuggestions(suggestions) {
+  currentAiDesignSuggestions = suggestions;
+  if (!aiDesignSuggestions) return;
+  aiDesignSuggestions.classList.toggle("hidden", !suggestions.length);
+  aiDesignSuggestions.innerHTML = suggestions.map((suggestion, index) => `
+    <article>
+      <div class="ai-design-swatch-row">
+        <i style="background:${suggestion.baseHex}"></i>
+        <i style="background:${suggestion.capHex}"></i>
+        <i style="background:${suggestion.letterHex}"></i>
+        ${suggestion.icon ? `<b>${escapePresetText(suggestion.icon)}</b>` : ""}
+      </div>
+      <strong>${escapePresetText(suggestion.title)}</strong>
+      <span>${escapePresetText(suggestion.description || suggestion.reason)}</span>
+      <button type="button" data-ai-design-index="${index}">Use These Colours</button>
+    </article>
+  `).join("");
+}
+
+async function requestAiDesignSuggestions() {
+  const brief = String(aiDesignBrief?.value || "").trim();
+  if (!brief) {
+    aiDesignHelperStatus.textContent = "Tell us the vibe you want first.";
+    aiDesignBrief?.focus();
+    return;
+  }
+  const palette = colours.filter(item => item.available).map(item => ({
+    name: item.name,
+    hex: item.colour,
+    material: item.materialType
+  }));
+  aiDesignHelperBtn.disabled = true;
+  aiDesignHelperBtn.textContent = "Thinking…";
+  aiDesignHelperStatus.textContent = "Matching ideas to the colours currently in stock…";
+  renderAiDesignSuggestions([]);
+  try {
+    const { data, error } = await supabase.functions.invoke("little-keeps-ai", {
+      body: {
+        mode: "design_helper",
+        brief,
+        product_name: activeProduct.name,
+        palette,
+        icons: iconChoices
+      }
+    });
+    if (error) {
+      const details = await getPhotoFunctionErrorDetails(error);
+      throw new Error(details.error || error.message || "Suggestions are unavailable right now.");
+    }
+    const suggestions = normalizeAiDesignSuggestions(data?.suggestions, palette, iconChoices);
+    if (!suggestions.length) throw new Error("No in-stock combinations were returned. Please try again.");
+    renderAiDesignSuggestions(suggestions);
+    aiDesignHelperStatus.textContent = "Choose one, or keep your current design.";
+  } catch (error) {
+    aiDesignHelperStatus.textContent = error.message || "Suggestions are unavailable right now.";
+  } finally {
+    aiDesignHelperBtn.disabled = false;
+    aiDesignHelperBtn.textContent = "Suggest Ideas";
+  }
+}
+
+function applyAiDesignSuggestion(index) {
+  const suggestion = currentAiDesignSuggestions[Number(index)];
+  if (!suggestion) return;
+  const design = getActiveDesign();
+  design.bases = [suggestion.baseHex];
+  design.caps = [suggestion.capHex];
+  design.letters = [suggestion.letterHex];
+  if (applyAllToggle.checked) {
+    Object.assign(globalDesign, {
+      bases: [suggestion.baseHex],
+      caps: [suggestion.capHex],
+      letters: [suggestion.letterHex]
+    });
+    names.forEach(item => { item.custom = null; });
+  }
+  draftHasMeaningfulChanges = true;
+  aiDesignHelperStatus.textContent = `${suggestion.title} applied. ${suggestion.icon ? `${suggestion.icon} is an optional icon idea.` : ""}`;
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+}
+
+async function checkPhotoSuitability(imageDataUrl) {
+  if (!photoSuitabilityCheck) return;
+  photoSuitabilityCheck.className = "photo-suitability-check is-checking";
+  photoSuitabilityCheck.innerHTML = "<strong>Checking your photo…</strong><span>Looking at lighting and how clearly the main subject shows.</span>";
+  try {
+    const { data, error } = await supabase.functions.invoke("little-keeps-ai", {
+      body: {
+        mode: "photo_check",
+        image_data_url: imageDataUrl,
+        subject_type: photoSubjectType?.value || "person"
+      }
+    });
+    if (error) {
+      const details = await getPhotoFunctionErrorDetails(error);
+      throw new Error(details.error || error.message);
+    }
+    const rating = ["great", "okay", "difficult"].includes(data?.rating) ? data.rating : "okay";
+    const tips = (Array.isArray(data?.tips) ? data.tips : []).slice(0, 3);
+    photoSuitabilityCheck.className = `photo-suitability-check is-${rating}`;
+    photoSuitabilityCheck.innerHTML = `
+      <strong>${escapePresetText(data?.heading || "Photo checked")}</strong>
+      <span>${escapePresetText(data?.summary || "You can continue with this photo.")}</span>
+      ${tips.length ? `<ul>${tips.map(tip => `<li>${escapePresetText(tip)}</li>`).join("")}</ul>` : ""}
+    `;
+  } catch (error) {
+    photoSuitabilityCheck.className = "photo-suitability-check is-neutral";
+    photoSuitabilityCheck.innerHTML = "<strong>Photo check unavailable</strong><span>You can still create a preview. We will check the finished artwork before making it.</span>";
+  }
 }
 
 function randomiseArticulatedColours() {
@@ -8412,6 +8545,7 @@ photoKeepsakeInput?.addEventListener("change", async () => {
     photoOriginalPreview.classList.remove("hidden");
     resetPhotoArtworkResult();
     photoGenerationStatus.textContent = "Photo ready. Choose the options, then create your artwork.";
+    void checkPhotoSuitability(dataUrl);
   } catch (error) {
     photoGenerationStatus.textContent = error.message;
     photoKeepsakeInput.value = "";
@@ -8421,6 +8555,14 @@ generatePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork)
 regeneratePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
 downloadPhotoTestStlsBtn?.addEventListener("click", downloadPhotoTestStlPack);
+aiDesignHelperBtn?.addEventListener("click", requestAiDesignSuggestions);
+aiDesignBrief?.addEventListener("keydown", event => {
+  if (event.key === "Enter") requestAiDesignSuggestions();
+});
+aiDesignSuggestions?.addEventListener("click", event => {
+  const button = event.target.closest("[data-ai-design-index]");
+  if (button) applyAiDesignSuggestion(button.dataset.aiDesignIndex);
+});
 refreshAvailabilityBtn?.addEventListener("click", async () => {
   const previous = refreshAvailabilityBtn.textContent;
   refreshAvailabilityBtn.disabled = true;
