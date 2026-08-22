@@ -2704,7 +2704,7 @@ async function updateOrderFamily(order, updateData) {
   return supabase.from("orders").update(updateData).in("id", ids);
 }
 
-window.markReady = async function(id) {
+window.markReady = async function(id, automatic = false) {
   const order = groupLinkedOrdersForAdmin(latestOrders).find(
     order => String(order.id) === String(id)
   );
@@ -2745,7 +2745,7 @@ window.markReady = async function(id) {
 
   const isDelivery = order.collection_method === "delivery";
 
-  const ok = confirm(
+  const ok = automatic || confirm(
     isDelivery
       ? `Move ${order.order_ref} to Pending Delivery?\n\n` +
         `This deducts any remaining parts and keeps delivery completion inside Fulfilment.`
@@ -2789,7 +2789,9 @@ window.markReady = async function(id) {
   }
 
   if (isDelivery) {
-    alert("Order moved to Pending Delivery. This is an internal step, so no customer email was sent.");
+    if (!automatic) {
+      alert("Order moved to Pending Delivery. This is an internal step, so no customer email was sent.");
+    }
     await loadOrders();
     return;
   }
@@ -4828,6 +4830,7 @@ function renderFulfilmentWorkspace(orders) {
         Number(aRoute.postalCode || 999999) - Number(bRoute.postalCode || 999999);
     });
   const pickups = ready.filter(order => order.collection_method !== "delivery");
+  const handDeliveries = deliveries.filter(order => !order.easyparcel_shipment_number);
 
   const fulfilmentCard = order => `
     <details class="fulfilment-card">
@@ -4844,7 +4847,7 @@ function renderFulfilmentWorkspace(orders) {
       </summary>
       <div class="fulfilment-card-body">
       <div class="fulfilment-card-info">
-        ${order.collection_method === "delivery" ? `
+        ${order.collection_method === "delivery" && !order.easyparcel_shipment_number ? `
           <label class="route-stop-select">
             <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
             <span>Select hand-delivery label</span>
@@ -4866,10 +4869,12 @@ function renderFulfilmentWorkspace(orders) {
               ${order.tracking_number ? `<span>AWB ${escapeAdminHtml(order.tracking_number)}</span>` : ""}
             </div>
           ` : ""}
-          <label class="route-stop-select">
-            <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
-            <span>Include as route stop</span>
-          </label>
+          ${!order.easyparcel_shipment_number ? `
+            <label class="route-stop-select">
+              <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
+              <span>Include as hand-delivery route stop</span>
+            </label>
+          ` : ""}
         ` : `
           <p><strong>${escapeAdminHtml(getPickupLocation(order.collection_method))}</strong><br>
           ${order.pickup_scheduled_date
@@ -4895,22 +4900,20 @@ function renderFulfilmentWorkspace(orders) {
             <button type="button" class="ready-btn" onclick='window.openEasyParcelBooking(${JSON.stringify(String(order.id))})'>Compare &amp; Book EasyParcel</button>
           `}
         ` : ""}
-        ${order.status === "Assembly Complete" ? `
+        ${order.status === "Assembly Complete" && order.collection_method !== "delivery" ? `
           <button type="button" class="ready-btn" onclick='window.markReady(${JSON.stringify(String(order.id))})'>
-            ${order.collection_method === "delivery"
-              ? "Set Pending Delivery"
-              : "Set Pending Pickup"}
+            Set Pending Pickup
           </button>
         ` : ""}
-        ${order.status === "Pending Delivery" ? `
-          <button type="button" class="ready-btn" onclick='window.startDelivery(${JSON.stringify(String(order.id))})'>Start Delivery</button>
+        ${order.collection_method === "delivery" && !order.easyparcel_shipment_number && ["Assembly Complete", "Pending Delivery"].includes(order.status) ? `
+          <button type="button" class="ready-btn" onclick='window.startDelivery(${JSON.stringify(String(order.id))})'>Start Hand Delivery</button>
         ` : ""}
         ${order.collection_method !== "delivery" && ["Assembly Complete", "Pending Pickup", "Ready for Pickup/Delivery"].includes(order.status) ? `
           <button type="button" class="ready-btn" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "customer")'>Customer Collected - Complete</button>
           <button type="button" class="approve-request-action" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "other")'>Passed to Someone Else</button>
         ` : ""}
-        ${order.status === "Out for Delivery" ? `
-          <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Complete Delivery</button>
+        ${order.status === "Out for Delivery" && !order.easyparcel_shipment_number ? `
+          <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Hand Delivered - Complete</button>
         ` : ""}
         <details class="fulfilment-more-actions">
           <summary>More actions <span aria-hidden="true">⌄</span></summary>
@@ -4926,17 +4929,17 @@ function renderFulfilmentWorkspace(orders) {
                 ` : ""}
               ` : ""}
               <button type="button" onclick='window.copyEasyParcelReceiver(${JSON.stringify(String(order.id))}, this)'>Copy courier details</button>
-              <button type="button" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>Print hand-delivery label</button>
+              ${!order.easyparcel_shipment_number ? `<button type="button" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>Print hand-delivery label</button>` : ""}
             ` : ""}
             ${order.collection_method !== "delivery" && getWhatsAppHref(order.customer_phone) ? `
               <button type="button" onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Offer earlier pickup</button>
             ` : ""}
-            ${order.status === "Out for Delivery" ? `
+            ${order.status === "Out for Delivery" && !order.easyparcel_shipment_number ? `
               <button type="button" onclick='window.copyHandDeliveredWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Delivered</button>
             ` : ""}
             ${order.customer_email && (
               order.collection_method === "delivery"
-                ? ["Out for Delivery", "Completed"].includes(order.status)
+                ? !order.easyparcel_shipment_number && ["Out for Delivery", "Completed"].includes(order.status)
                 : ["Pending Pickup", "Completed"].includes(order.status)
             ) ? `
               <button type="button" onclick='window.resendCurrentStatusEmail(${JSON.stringify(String(order.id))}, this)'>Resend customer email</button>
@@ -4968,20 +4971,22 @@ function renderFulfilmentWorkspace(orders) {
       </div>
       <span>${pickups.length} pickup · ${deliveries.length} delivery</span>
     </div>
-    <details class="fulfilment-tools">
-      <summary><span><strong>Delivery tools</strong><small>Hand-delivery labels and route planning</small></span><i>⌄</i></summary>
-      <div class="route-assistance-bar">
-        <div>
-          <strong>Prepare deliveries in one go</strong>
-          <span>Select delivery orders inside the cards, then print hand-delivery labels or open the selected route.</span>
+    ${handDeliveries.length ? `
+      <details class="fulfilment-tools">
+        <summary><span><strong>Hand-delivery tools</strong><small>Labels and route planning</small></span><i>⌄</i></summary>
+        <div class="route-assistance-bar">
+          <div>
+            <strong>Prepare hand deliveries in one go</strong>
+            <span>Select the orders you are delivering yourself, then print labels or open their route.</span>
+          </div>
+          <div class="route-assistance-actions">
+          <button type="button" class="hand-delivery-label-action" onclick="window.printSelectedHandDeliveryLabels()">Print Selected Hand-Delivery Labels</button>
+          <button type="button" class="hand-delivery-label-secondary" onclick="window.printAllHandDeliveryLabels()">Print All ${handDeliveries.length} Hand-Delivery Labels</button>
+          <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
+          </div>
         </div>
-        <div class="route-assistance-actions">
-        <button type="button" class="hand-delivery-label-action" onclick="window.printSelectedHandDeliveryLabels()">Print Selected Hand-Delivery Labels</button>
-        <button type="button" class="hand-delivery-label-secondary" onclick="window.printAllHandDeliveryLabels()">Print All ${deliveries.length || ""} Hand-Delivery Labels</button>
-        <button type="button" onclick="window.openSelectedDeliveryRoute()">Open Selected Route</button>
-        </div>
-      </div>
-    </details>
+      </details>
+    ` : ""}
     <details class="fulfilment-section" ${deliveries.length ? "open" : ""}>
       <summary><span><strong>Deliveries</strong><small>Ready, pending and out for delivery</small></span><b>${deliveries.length}</b><i>⌄</i></summary>
       <div class="fulfilment-section-body">
@@ -5274,7 +5279,11 @@ window.bookEasyParcelQuote = async function(index, button) {
     if (data?.error) throw new Error(data.error);
     const charged = Number(data?.shipment?.pricing_breakdown?.total_paid_amount || prices.payable);
     closeEasyParcelDialog();
-    await loadOrders();
+    if (order.status === "Assembly Complete") {
+      await window.markReady(String(order.id), true);
+    } else {
+      await loadOrders();
+    }
     alert(`EasyParcel shipment booked for ${currency} ${charged.toFixed(2)}. Download and attach the courier label before handover.`);
   } catch (error) {
     console.error("Unable to book EasyParcel shipment:", error);
@@ -12900,24 +12909,22 @@ window.copyPickupWhatsAppReminder = async function(id, button) {
 };
 
 window.startDelivery = async function(id) {
-  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  let order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
   if (!order) return;
-  const courierName = prompt(
-    "Courier name (leave blank if Little Keeps is delivering):",
-    order.courier_name || ""
-  );
-  if (courierName === null) return;
-  const trackingNumber = prompt("Tracking number (optional):", order.tracking_number || "");
-  if (trackingNumber === null) return;
-  const trackingUrl = prompt("Tracking link (optional):", order.tracking_url || "");
-  if (trackingUrl === null) return;
+  if (order.easyparcel_shipment_number) return;
+  if (order.status === "Assembly Complete") {
+    await window.markReady(String(order.id), true);
+    order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+    if (!order || order.status !== "Pending Delivery") return;
+  }
+  if (!confirm(`Start hand delivery for ${order.order_ref}?`)) return;
 
   const updateData = {
     status: "Out for Delivery",
     status_updated_at: new Date().toISOString(),
-    courier_name: courierName.trim(),
-    tracking_number: trackingNumber.trim(),
-    tracking_url: trackingUrl.trim()
+    courier_name: "Little Keeps hand delivery",
+    tracking_number: "",
+    tracking_url: ""
   };
   const { error } = await updateOrderFamily(order, updateData);
   if (error) return alert("Unable to start delivery.");
@@ -12927,6 +12934,7 @@ window.startDelivery = async function(id) {
 
 window.completeFulfilment = async function(id) {
   const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (order?.easyparcel_shipment_number) return;
   if (!order || !confirm(`Complete ${order.order_ref}?`)) return;
   const updateData = { status: "Completed", status_updated_at: new Date().toISOString() };
   const { error } = await updateOrderFamily(order, updateData);
@@ -14419,7 +14427,8 @@ window.printAllHandDeliveryLabels = function() {
     .filter(order =>
       !order.archived_at &&
       FULFILMENT_STATUSES.includes(order.status) &&
-      order.collection_method === "delivery"
+      order.collection_method === "delivery" &&
+      !order.easyparcel_shipment_number
     )
     .map(order => order.id);
   printHandDeliveryLabels(orderIds);
