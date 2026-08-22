@@ -16,6 +16,10 @@ import {
   normalizePhotoFilamentPalette
 } from "./photo-palette.js";
 import {
+  exportPhotoGeometryStl,
+  preparePhotoArtworkStlParts
+} from "./photo-stl.js";
+import {
   calculateGiftingBagTotal,
   formatDateRange,
   getCustomerDueDate,
@@ -564,7 +568,7 @@ document.querySelector("#app").innerHTML = `
 ${requestedPreviewProductKey ? `
   <aside class="product-preview-banner ${isProductPreview ? "" : "is-locked"}">
     <strong>${isProductPreview ? `Private preview: ${escapePresetText(previewProduct?.name || "Product")}` : "Private preview unavailable"}</strong>
-    <span>${isProductPreview ? "You can test the product page, but real checkout is disabled." : "Sign in to Admin on this browser, then open the preview link again."}</span>
+    <span>${isProductPreview ? "You can generate artwork and download test STLs, but real checkout is disabled." : "Sign in to Admin on this browser, then open the preview link again."}</span>
     <a href="/admin.html">Open Admin</a>
   </aside>
 ` : ""}
@@ -1136,6 +1140,7 @@ ${requestedPreviewProductKey ? `
         <div id="photoResultActions" class="photo-result-actions hidden">
           <div class="photo-retry-action"><button id="regeneratePhotoArtworkBtn" type="button">Try Another Version</button><small id="photoAttemptStatus">Up to 5 previews per hour</small></div>
           <button id="addPhotoArtworkToCartBtn" type="button">Approve & Add to Cart</button>
+          ${isProductPreview ? `<button id="downloadPhotoTestStlsBtn" class="photo-preview-download-btn" type="button">Download Test STL Pack</button>` : ""}
         </div>
         <div id="photoMappedPalette" class="photo-mapped-palette hidden"></div>
         <p class="photo-proof-note">We check every design before making it. Very tiny details may be adjusted so your finished keychain looks neat.</p>
@@ -2430,6 +2435,7 @@ const photoAiConsentCheck = document.getElementById("photoAiConsentCheck");
 const generatePhotoArtworkBtn = document.getElementById("generatePhotoArtworkBtn");
 const regeneratePhotoArtworkBtn = document.getElementById("regeneratePhotoArtworkBtn");
 const addPhotoArtworkToCartBtn = document.getElementById("addPhotoArtworkToCartBtn");
+const downloadPhotoTestStlsBtn = document.getElementById("downloadPhotoTestStlsBtn");
 const photoGenerationStatus = document.getElementById("photoGenerationStatus");
 const photoResultPlaceholder = document.getElementById("photoResultPlaceholder");
 const photoArtworkResult = document.getElementById("photoArtworkResult");
@@ -8098,6 +8104,75 @@ async function generatePhotoKeepsakeArtwork() {
   }
 }
 
+function safePhotoTestFileName(value, fallback = "photo") {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || fallback;
+}
+
+function downloadPhotoTestBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadPhotoTestStlPack() {
+  if (!isProductPreview || !photoKeepsakeState.artworkUrl) return;
+  const previousLabel = downloadPhotoTestStlsBtn?.textContent || "Download Test STL Pack";
+  if (downloadPhotoTestStlsBtn) {
+    downloadPhotoTestStlsBtn.disabled = true;
+    downloadPhotoTestStlsBtn.textContent = "Building Test STLs…";
+  }
+
+  try {
+    const palette = normalizePhotoFilamentPalette(photoKeepsakeState.filamentPalette);
+    const parts = await preparePhotoArtworkStlParts(
+      photoKeepsakeState.artworkUrl,
+      Number(photoColourCount.value || 4),
+      palette
+    );
+    const label = safePhotoTestFileName(photoKeepsakeLabel.value, "Photo-Keepsake");
+    const backingFilament = parts.mappedPalette[parts.backingPaletteIndex] || parts.mappedPalette[0];
+    const files = [{
+      blob: exportPhotoGeometryStl(parts.backing),
+      filename: `TEST_${label}_00-BACKING_${safePhotoTestFileName(backingFilament.name, "filament")}_${backingFilament.material_type}_1.6mm_0.4MM-NOZZLE.stl`
+    }];
+    parts.colours.forEach((geometry, index) => {
+      if (!geometry) return;
+      const filament = parts.mappedPalette[index];
+      files.push({
+        blob: exportPhotoGeometryStl(geometry),
+        filename:
+          `TEST_${label}_${String(index + 1).padStart(2, "0")}-` +
+          `${safePhotoTestFileName(filament.name, "filament")}_${filament.material_type}_${filament.hex.slice(1)}_0.4MM-NOZZLE.stl`
+      });
+    });
+    files.forEach((file, index) => {
+      setTimeout(() => downloadPhotoTestBlob(file.blob, file.filename), index * 350);
+    });
+    parts.backing?.dispose();
+    parts.colours.forEach(geometry => geometry?.dispose());
+    photoGenerationStatus.textContent =
+      `Downloaded ${files.length} test STLs at approximately ${parts.widthMm.toFixed(1)} × ${parts.heightMm.toFixed(1)} mm. Import them together without moving their positions.`;
+    if (downloadPhotoTestStlsBtn) downloadPhotoTestStlsBtn.textContent = "Downloaded ✓";
+  } catch (error) {
+    console.error("Unable to build private preview STL files:", error);
+    photoGenerationStatus.textContent = error?.message || "The test STL pack could not be created.";
+  } finally {
+    if (downloadPhotoTestStlsBtn) {
+      downloadPhotoTestStlsBtn.disabled = false;
+      setTimeout(() => { downloadPhotoTestStlsBtn.textContent = previousLabel; }, 2500);
+    }
+  }
+}
+
 function addPhotoKeepsakeToCart() {
   if (!photoKeepsakeState.artworkPath || !photoKeepsakeState.artworkUrl) return;
   const label = photoKeepsakeLabel.value.trim() ||
@@ -8170,6 +8245,7 @@ photoKeepsakeInput?.addEventListener("change", async () => {
 generatePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 regeneratePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
+downloadPhotoTestStlsBtn?.addEventListener("click", downloadPhotoTestStlPack);
 refreshAvailabilityBtn?.addEventListener("click", async () => {
   const previous = refreshAvailabilityBtn.textContent;
   refreshAvailabilityBtn.disabled = true;
