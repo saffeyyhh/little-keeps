@@ -50,8 +50,9 @@ import {
   normalizePromoCode
 } from "./promo-logic.js";
 
-const isManualOrder =
-  new URLSearchParams(window.location.search).get("manual") === "true";
+const pageUrlParams = new URLSearchParams(window.location.search);
+const isManualOrder = pageUrlParams.get("manual") === "true";
+const requestedPreviewProductKey = String(pageUrlParams.get("preview_product") || "").trim();
 
 console.log("Manual mode:", isManualOrder);
 
@@ -279,6 +280,19 @@ try {
   productCatalog = normalizeProductCatalog(data);
 } catch (error) {
   console.warn("Using the built-in product catalogue:", error);
+}
+
+let previewProduct = requestedPreviewProductKey
+  ? productCatalog.find(product => product.product_key === requestedPreviewProductKey) || null
+  : null;
+let isProductPreview = false;
+if (previewProduct) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    isProductPreview = Boolean(data?.session?.user);
+  } catch (error) {
+    console.warn("Unable to verify the private product preview:", error);
+  }
 }
 
 const unavailableColourNames = new Set(
@@ -533,6 +547,14 @@ function displaySettingMoney(value) {
 
 document.querySelector("#app").innerHTML = `
 <main class="page">
+
+${requestedPreviewProductKey ? `
+  <aside class="product-preview-banner ${isProductPreview ? "" : "is-locked"}">
+    <strong>${isProductPreview ? `Private preview: ${escapePresetText(previewProduct?.name || "Product")}` : "Private preview unavailable"}</strong>
+    <span>${isProductPreview ? "You can test the product page, but real checkout is disabled." : "Sign in to Admin on this browser, then open the preview link again."}</span>
+    <a href="/admin.html">Open Admin</a>
+  </aside>
+` : ""}
 
 
 <div class="announcement-bar">
@@ -2875,6 +2897,7 @@ let specialDateCalendar = null;
 let specialDateCalendarMode = "";
 let checkoutPickupCalendar = null;
 let shopClosureRanges = [];
+let pickupUnavailableDates = [];
 let normalUnavailableDates = [];
 let bulkUnavailableDates = [];
 let calendarClosureDates = [];
@@ -2887,6 +2910,19 @@ let bulkAssessmentFingerprint = "";
 
 function getTurnaroundInfo(quantity = getTotalKeychainQuantity() || 1) {
   const safeQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+  const productMinimum = Number(activeProduct?.minimum_working_days);
+  const productMaximum = Number(activeProduct?.maximum_working_days);
+  if (productMinimum >= 1 || productMaximum >= 1) {
+    const minDays = Math.max(1, productMinimum || productMaximum);
+    const maxDays = Math.max(minDays, productMaximum || minDays);
+    return {
+      quantity: safeQuantity,
+      tier: "product",
+      minDays,
+      maxDays,
+      isLargeOrder: false
+    };
+  }
   const standardMin = Math.max(1, Number(shopSettings.standard_min_working_days || 2));
   const standardMax = Math.max(standardMin, Number(shopSettings.standard_max_working_days || 3));
   const largeMin = Math.max(standardMax, Number(shopSettings.large_min_working_days || 4));
@@ -2907,6 +2943,10 @@ function isShopClosedDate(date) {
   return shopClosureRanges.some(range =>
     value >= range.start_date && value <= range.end_date
   );
+}
+
+function isPickupUnavailableDate(date) {
+  return pickupUnavailableDates.includes(toLocalDateString(date));
 }
 
 function addWorkingDays(startDate, workingDays) {
@@ -2947,7 +2987,11 @@ function getFirstPickupDateAfter(readyDate) {
   maximum.setDate(maximum.getDate() + 30);
 
   while (candidate <= maximum) {
-    if (isPickupDay(toLocalDateString(candidate)) && !isShopClosedDate(candidate)) {
+    if (
+      isPickupDay(toLocalDateString(candidate)) &&
+      !isShopClosedDate(candidate) &&
+      !isPickupUnavailableDate(candidate)
+    ) {
       return candidate;
     }
     candidate.setDate(candidate.getDate() + 1);
@@ -3064,7 +3108,8 @@ function isCheckoutPickupDateAvailable(dateValue) {
   date.setHours(0, 0, 0, 0);
   readyDate.setHours(0, 0, 0, 0);
 
-  return date >= readyDate && isPickupDay(toLocalDateString(date)) && !isShopClosedDate(date);
+  return date >= readyDate && isPickupDay(toLocalDateString(date)) &&
+    !isShopClosedDate(date) && !isPickupUnavailableDate(date);
 }
 
 function getFirstCheckoutPickupDate() {
@@ -4493,7 +4538,7 @@ async function setupNeededByCalendar() {
 
   const today = toLocalDateString(new Date());
 
-  const [closureResult, unavailableDateResult, bulkUnavailableDateResult] = await Promise.all([
+  const [closureResult, unavailableDateResult, bulkUnavailableDateResult, dayOverrideResult] = await Promise.all([
     supabase
       .from("shop_closures")
       .select("start_date, end_date")
@@ -4504,6 +4549,10 @@ async function setupNeededByCalendar() {
     }),
     supabase.rpc("get_unavailable_bulk_dates", {
       p_start: toLocalDateString(minDate),
+      p_end: toLocalDateString(maxDate)
+    }),
+    supabase.rpc("get_pickup_unavailable_dates", {
+      p_start: today,
       p_end: toLocalDateString(maxDate)
     })
   ]);
@@ -4525,6 +4574,9 @@ async function setupNeededByCalendar() {
       bulkUnavailableDateResult.error
     );
   }
+  if (dayOverrideResult.error) {
+    console.warn("Pickup blackout dates are not ready yet:", dayOverrideResult.error);
+  }
 
   const closureDates = (closureResult.data || []).map(item => ({
     from: item.start_date,
@@ -4538,6 +4590,9 @@ async function setupNeededByCalendar() {
       reason: item.reason || "Shop closed"
     }));
   }
+  pickupUnavailableDates = (dayOverrideResult.data || [])
+    .map(item => String(item.unavailable_date || "").slice(0, 10))
+    .filter(Boolean);
 
   const fullOrderDates = (unavailableDateResult.data || [])
     .map(item => item.unavailable_date)
@@ -6303,6 +6358,10 @@ async function updatePendingOrderInDatabase(order) {
 }
 
 async function submitOrder() {
+  if (isProductPreview) {
+    alert("This is a private product preview. Real checkout is disabled.");
+    return;
+  }
   if (orderSubmissionInProgress || (orderSubmitted && !editingPendingOrder)) return;
   orderSubmissionInProgress = true;
   const previousSubmitLabel = submitOrderBtn.textContent;
@@ -8150,6 +8209,16 @@ setStorefrontView("shop", {
   scroll: false
 });
 
+if (isProductPreview && previewProduct) {
+  activeProduct = getProductByKey(productCatalog, previewProduct.product_key);
+  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+    openPhotoKeepsakeStudio();
+  } else {
+    updateProductCustomiser();
+    setStorefrontView("design", { instant: true, scroll: false });
+  }
+}
+
 const PENDING_ORDER_STORAGE_KEY = "littleKeepsPendingOrder";
 let pendingOrderExpiryTimer = null;
 
@@ -8665,7 +8734,12 @@ function validateForm() {
 
     const invalidNfcItem = getInvalidNfcItem();
 
-    if (invalidNfcItem) {
+    if (isProductPreview) {
+        valid = false;
+        message = "Private preview mode - checkout is disabled.";
+    }
+
+    else if (invalidNfcItem) {
         valid = false;
         message = `Add a complete https:// link for the NFC tag on ${invalidNfcItem.name || "this keychain"}.`;
     }
@@ -9399,7 +9473,8 @@ function isTrackedPickupDateAvailable(dateValue) {
     dateString >= bounds.minimum &&
     dateString <= bounds.maximum &&
     isPickupDay(dateString) &&
-    !isShopClosedDate(date)
+    !isShopClosedDate(date) &&
+    !isPickupUnavailableDate(date)
   );
 }
 

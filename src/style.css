@@ -6202,3 +6202,24 @@ body {
     min-height: 58px;
   }
 }
+.product-preview-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 12px 18px;
+  background: #6f45a5;
+  color: #fff;
+  text-align: center;
+}
+
+.product-preview-banner span { opacity: .9; }
+.product-preview-banner a { color: #fff; font-weight: 900; }
+.product-preview-banner.is-locked { background: #8d3d4d; }
+
+@media (max-width: 700px) {
+  .product-preview-banner { align-items: stretch; flex-direction: column; gap: 4px; }
+}

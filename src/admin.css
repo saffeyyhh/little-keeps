@@ -7212,6 +7212,21 @@ a {
   background: #fff;
 }
 
+.product-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.product-preview-actions button {
+  padding: 9px 12px;
+  border: 1px solid #d9c4eb;
+  border-radius: 10px;
+  background: #faf6ff;
+  color: #684197;
+  font-weight: 800;
+}
+
 .product-draft-note {
   margin: 0 0 13px;
   padding: 10px 11px;
@@ -8637,6 +8652,8 @@ body::before {
 .schedule-day.is-today .schedule-day-number { background: #ef4f91; color: #fff; }
 .schedule-day.is-full { background: #fff3f6; border-color: #f2b9ca; }
 .schedule-day.is-closed { background: #f4f1f2; color: #94898e; }
+.schedule-day.is-pickup-closed { box-shadow: inset 0 -4px #e4a139; }
+.schedule-day.has-override { border-style: dashed; }
 .schedule-day-number { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-weight: 900; }
 .schedule-day strong { color: #6f47a2; font-size: .82rem; }
 .schedule-day small { color: #897c83; }
@@ -8645,6 +8662,19 @@ body::before {
 .schedule-date-detail { padding: 20px; }
 .schedule-date-detail h3 { margin: 3px 0 4px; }
 .schedule-date-detail > div > span { color: #7e7178; }
+.schedule-day-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #faf6ff;
+}
+.schedule-day-editor > label { display: grid; gap: 6px; color: #65565e; font-weight: 800; }
+.schedule-day-editor input[type="number"],
+.schedule-day-editor input[type="text"] { padding: 10px 12px; border: 1px solid #ddced6; border-radius: 10px; background: #fff; }
+.schedule-day-editor > div { display: flex; align-items: center; gap: 9px; }
 .schedule-detail-list { display: grid; gap: 9px; margin-top: 16px; }
 .schedule-detail-list button {
   display: flex;
@@ -8670,6 +8700,7 @@ body::before {
   .schedule-day strong { font-size: .67rem; }
   .schedule-day small { display: none; }
   .schedule-detail-list button { flex-direction: column; }
+  .schedule-day-editor { grid-template-columns: 1fr; }
 }
 .admin-order-pipeline {
   display: grid;

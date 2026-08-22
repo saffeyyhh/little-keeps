@@ -539,6 +539,7 @@ let adminSettingsLoadFailed = false;
 let adminPromoCodes = [];
 let adminCustomerReviews = [];
 let adminShopClosures = [];
+let adminScheduleDayOverrides = [];
 let adminReviewsLoadFailed = false;
 let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
@@ -1314,6 +1315,9 @@ function renderScheduleCalendar() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthLabel = scheduleMonth.toLocaleDateString("en-SG", { month: "long", year: "numeric" });
   const maxOrders = Math.max(1, Number(adminShopSettings.max_orders_per_date || 2));
+  const overridesByDate = new Map(
+    adminScheduleDayOverrides.map(item => [String(item.date), item])
+  );
   const closedDates = new Set();
   adminShopClosures.forEach(closure => {
     const cursor = new Date(`${closure.start_date}T12:00:00`);
@@ -1331,19 +1335,27 @@ function renderScheduleCalendar() {
     const due = getScheduleOrdersForDate(dateValue);
     const pickups = latestOrders.filter(order => isScheduleOrderActive(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === dateValue);
     const keychains = due.reduce((sum, order) => sum + (order.order_data || []).length, 0);
-    const isFull = due.length >= maxOrders;
+    const override = overridesByDate.get(dateValue);
+    const dayLimit = override?.max_orders == null
+      ? maxOrders
+      : Math.max(0, Number(override.max_orders));
+    const isFull = due.length >= dayLimit;
     const classes = [
       "schedule-day",
       dateValue === selectedScheduleDate ? "is-selected" : "",
       dateValue === getSingaporeDateValue() ? "is-today" : "",
       closedDates.has(dateValue) ? "is-closed" : "",
+      override?.pickup_unavailable ? "is-pickup-closed" : "",
+      override ? "has-override" : "",
       isFull ? "is-full" : ""
     ].filter(Boolean).join(" ");
     cells.push(`
       <button class="${classes}" type="button" onclick="window.selectScheduleDate('${dateValue}')">
         <span class="schedule-day-number">${day}</span>
         ${closedDates.has(dateValue) ? `<small>Closed</small>` : ""}
-        ${due.length ? `<strong>${keychains} keychain${keychains === 1 ? "" : "s"}</strong><small>${due.length}/${maxOrders} orders</small>` : ""}
+        ${override?.pickup_unavailable ? `<small>Pickup off</small>` : ""}
+        ${override?.ignore_bulk_buffer ? `<small>Buffer override</small>` : ""}
+        ${due.length ? `<strong>${keychains} keychain${keychains === 1 ? "" : "s"}</strong><small>${due.length}/${dayLimit} orders</small>` : `<small>Limit ${dayLimit}</small>`}
         ${pickups.length ? `<em>${pickups.length} pickup${pickups.length === 1 ? "" : "s"}</em>` : ""}
       </button>
     `);
@@ -1353,6 +1365,10 @@ function renderScheduleCalendar() {
   const selectedPickups = latestOrders.filter(order => isScheduleOrderActive(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === selectedScheduleDate);
   const detailRows = [...new Map([...selectedOrders, ...selectedPickups].map(order => [String(order.id), order])).values()];
   const selectedKeychains = selectedOrders.reduce((sum, order) => sum + (order.order_data || []).length, 0);
+  const selectedOverride = overridesByDate.get(selectedScheduleDate) || {};
+  const selectedLimit = selectedOverride.max_orders == null
+    ? maxOrders
+    : Math.max(0, Number(selectedOverride.max_orders));
 
   ordersContainer.innerHTML = `
     <section class="schedule-workspace">
@@ -1372,7 +1388,14 @@ function renderScheduleCalendar() {
       <div class="schedule-weekdays">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(day => `<span>${day}</span>`).join("")}</div>
       <div class="schedule-grid">${cells.join("")}</div>
       <section class="schedule-date-detail">
-        <div><p class="section-kicker">Selected date</p><h3>${formatDate(selectedScheduleDate)}</h3><span>${selectedOrders.length}/${maxOrders} orders · ${selectedKeychains} keychain${selectedKeychains === 1 ? "" : "s"} due</span></div>
+        <div><p class="section-kicker">Selected date</p><h3>${formatDate(selectedScheduleDate)}</h3><span>${selectedOrders.length}/${selectedLimit} orders · ${selectedKeychains} keychain${selectedKeychains === 1 ? "" : "s"} due</span></div>
+        <form class="schedule-day-editor" onsubmit="window.saveScheduleDayOverride(event, '${selectedScheduleDate}')">
+          <label><span>Order limit for this day</span><input name="max_orders" type="number" min="0" max="50" placeholder="Default: ${maxOrders}" value="${selectedOverride.max_orders ?? ""}"></label>
+          <label class="settings-toggle"><input name="pickup_unavailable" type="checkbox" ${selectedOverride.pickup_unavailable ? "checked" : ""}> Pickup unavailable on this date</label>
+          <label class="settings-toggle"><input name="ignore_bulk_buffer" type="checkbox" ${selectedOverride.ignore_bulk_buffer ? "checked" : ""}> Allow orders despite the bulk-order buffer</label>
+          <label><span>Private note (optional)</span><input name="note" maxlength="200" value="${escapeAdminHtml(selectedOverride.note || "")}" placeholder="e.g. Free afternoon - can take one more"></label>
+          <div><button class="ready-btn" type="submit">Save day</button>${selectedOverride.date ? `<button type="button" onclick="window.deleteScheduleDayOverride('${selectedScheduleDate}')">Use defaults</button>` : ""}</div>
+        </form>
         <div class="schedule-detail-list">
           ${detailRows.map(order => `
             <button type="button" onclick="window.focusOrder('${escapeAdminHtml(String(order.id))}')">
@@ -1393,6 +1416,49 @@ window.changeScheduleMonth = function(offset) {
 
 window.selectScheduleDate = function(dateValue) {
   selectedScheduleDate = dateValue;
+  renderScheduleCalendar();
+};
+
+window.saveScheduleDayOverride = async function(event, dateValue) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const rawLimit = String(form.get("max_orders") || "").trim();
+  const payload = {
+    date: dateValue,
+    max_orders: rawLimit === "" ? null : Math.max(0, Math.floor(Number(rawLimit) || 0)),
+    pickup_unavailable: form.has("pickup_unavailable"),
+    ignore_bulk_buffer: form.has("ignore_bulk_buffer"),
+    note: String(form.get("note") || "").trim(),
+    updated_at: new Date().toISOString()
+  };
+  const hasOverride = payload.max_orders != null || payload.pickup_unavailable ||
+    payload.ignore_bulk_buffer || payload.note;
+
+  const query = hasOverride
+    ? supabase.from("schedule_day_overrides").upsert(payload, { onConflict: "date" })
+    : supabase.from("schedule_day_overrides").delete().eq("date", dateValue);
+  const { error } = await query;
+  if (error) {
+    console.error("Unable to save day settings:", error);
+    alert("Unable to save this day. Run the supplied scheduling SQL once, then try again.");
+    return;
+  }
+
+  await loadAdminSettings();
+  renderScheduleCalendar();
+};
+
+window.deleteScheduleDayOverride = async function(dateValue) {
+  const { error } = await supabase
+    .from("schedule_day_overrides")
+    .delete()
+    .eq("date", dateValue);
+  if (error) {
+    console.error("Unable to clear day settings:", error);
+    alert("Unable to restore the default settings for this day.");
+    return;
+  }
+  await loadAdminSettings();
   renderScheduleCalendar();
 };
 
@@ -1450,18 +1516,22 @@ function renderSettingsWorkspace() {
     ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
     ...(adminShopSettings.easyparcel_settings || {})
   };
-  const productNumberField = (product, field, label, step = "0.01") => `
+  const productNumberField = (product, field, label, step = "0.01") => {
+    const isOptionalLeadTime = ["minimum_working_days", "maximum_working_days"].includes(field);
+    return `
     <label class="settings-field">
       <span>${label}</span>
       <input
         name="product:${escapeAdminHtml(product.product_key)}:${field}"
         type="number"
-        min="0"
+        min="${isOptionalLeadTime ? 1 : 0}"
         step="${step}"
-        value="${escapeAdminHtml(product[field] ?? 0)}"
+        value="${escapeAdminHtml(product[field] ?? (isOptionalLeadTime ? "" : 0))}"
+        ${isOptionalLeadTime ? "placeholder=\"Uses normal order timing\"" : ""}
       >
     </label>
   `;
+  };
 
   ordersContainer.innerHTML = `
     <form id="shopSettingsForm" class="settings-workspace">
@@ -1523,6 +1593,11 @@ function renderSettingsWorkspace() {
                     </select>
                   </header>
 
+                  <div class="product-preview-actions">
+                    <button type="button" onclick="window.openProductPreview('${escapeAdminHtml(product.product_key)}')">Open private preview</button>
+                    <button type="button" onclick="window.copyProductPreviewLink('${escapeAdminHtml(product.product_key)}', this)">Copy preview link</button>
+                  </div>
+
                   ${isSolidDraft ? `
                     <p class="product-draft-note">Draft suggestion: S$3.80 launch, then S$4.50. Keep pricing hidden until the test prints are timed.</p>
                   ` : ""}
@@ -1545,6 +1620,8 @@ function renderSettingsWorkspace() {
                       ${productNumberField(product, "base_print_minutes_per_character", "Base minutes / character")}
                       ${productNumberField(product, "keycap_print_minutes_per_character", "Keycap minutes / character")}
                       ${productNumberField(product, "assembly_minutes_per_item", "Assembly minutes / item")}
+                      ${productNumberField(product, "minimum_working_days", "Minimum working days", "1")}
+                      ${productNumberField(product, "maximum_working_days", "Maximum working days", "1")}
                     </div>
                   </div>
 
@@ -2003,6 +2080,25 @@ function renderSettingsWorkspace() {
   });
 }
 
+function getProductPreviewUrl(productKey) {
+  const url = new URL("/", window.location.origin);
+  url.searchParams.set("preview_product", productKey);
+  return url.toString();
+}
+
+window.openProductPreview = function(productKey) {
+  window.open(getProductPreviewUrl(productKey), "_blank", "noopener");
+};
+
+window.copyProductPreviewLink = async function(productKey, button) {
+  await navigator.clipboard.writeText(getProductPreviewUrl(productKey));
+  const previous = button?.textContent || "Copy preview link";
+  if (button) button.textContent = "Copied ✓";
+  setTimeout(() => {
+    if (button) button.textContent = previous;
+  }, 1600);
+};
+
 async function saveShopSettings(event) {
   event.preventDefault();
 
@@ -2108,7 +2204,9 @@ async function saveShopSettings(event) {
       "base_print_minutes_fixed",
       "base_print_minutes_per_character",
       "keycap_print_minutes_per_character",
-      "assembly_minutes_per_item"
+      "assembly_minutes_per_item",
+      "minimum_working_days",
+      "maximum_working_days"
     ];
     const productUpdates = adminProductCatalog.map(product => {
       const prefix = `product:${product.product_key}:`;
@@ -2122,7 +2220,10 @@ async function saveShopSettings(event) {
       };
 
       productNumberFields.forEach(field => {
-        productUpdate[field] = Number(form.get(`${prefix}${field}`));
+        const rawValue = String(form.get(`${prefix}${field}`) ?? "").trim();
+        productUpdate[field] = ["minimum_working_days", "maximum_working_days"].includes(field) && !rawValue
+          ? null
+          : Number(rawValue);
       });
       return productUpdate;
     });
@@ -13384,6 +13485,7 @@ async function loadAdminSettings() {
     adminPromoCodes = [];
     adminCustomerReviews = [];
     adminShopClosures = [];
+    adminScheduleDayOverrides = [];
     adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
     adminProductsLoadFailed = false;
     return;
@@ -13394,7 +13496,8 @@ async function loadAdminSettings() {
     { data: promos, error: promosError },
     { data: reviews, error: reviewsError },
     { data: products, error: productsError },
-    { data: closures, error: closuresError }
+    { data: closures, error: closuresError },
+    { data: dayOverrides, error: dayOverridesError }
   ] = await Promise.all([
     supabase.from("shop_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.from("promo_codes").select("*").order("created_at", { ascending: false }),
@@ -13411,7 +13514,12 @@ async function loadAdminSettings() {
       .from("shop_closures")
       .select("*")
       .gte("end_date", getSingaporeDateValue())
-      .order("start_date", { ascending: true })
+      .order("start_date", { ascending: true }),
+    supabase
+      .from("schedule_day_overrides")
+      .select("*")
+      .gte("date", getSingaporeDateValue())
+      .order("date", { ascending: true })
   ]);
 
   if (settingsError) console.warn("Using fallback admin settings:", settingsError);
@@ -13419,6 +13527,7 @@ async function loadAdminSettings() {
   if (reviewsError) console.warn("Customer review management is not ready yet:", reviewsError);
   if (productsError) console.warn("Product catalogue is not ready yet:", productsError);
   if (closuresError) console.warn("Shop closures could not be loaded:", closuresError);
+  if (dayOverridesError) console.warn("Day-by-day scheduling controls are not ready yet:", dayOverridesError);
 
   adminSettingsLoaded = true;
   adminSettingsLoadFailed = Boolean(settingsError);
@@ -13453,6 +13562,7 @@ async function loadAdminSettings() {
   adminPromoCodes = promos || [];
   adminCustomerReviews = reviews || [];
   adminShopClosures = closures || [];
+  adminScheduleDayOverrides = dayOverrides || [];
   adminProductCatalog = normalizeProductCatalog(productsError ? [] : products);
 }
 

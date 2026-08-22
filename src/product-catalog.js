@@ -29,6 +29,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     base_print_minutes_per_character: 25,
     keycap_print_minutes_per_character: 15,
     assembly_minutes_per_item: 0,
+    minimum_working_days: null,
+    maximum_working_days: null,
     sort_order: 10,
     image_path: "/images/modular-clicky-keychain.jpg",
     production_notes: "One modular base and one keycap are printed for every character."
@@ -58,6 +60,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     base_print_minutes_per_character: 0,
     keycap_print_minutes_per_character: 15,
     assembly_minutes_per_item: 0,
+    minimum_working_days: null,
+    maximum_working_days: null,
     sort_order: 20,
     image_path: null,
     production_notes: "Draft pricing only. Time 2-, 6- and 10-character test prints before launch."
@@ -94,6 +98,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     base_print_minutes_per_character: 25,
     keycap_print_minutes_per_character: 0,
     assembly_minutes_per_item: 0,
+    minimum_working_days: null,
+    maximum_working_days: null,
 
     sort_order: 30,
     image_path: null,
@@ -126,6 +132,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     base_print_minutes_per_character: 0,
     keycap_print_minutes_per_character: 0,
     assembly_minutes_per_item: 10,
+    minimum_working_days: 4,
+    maximum_working_days: 5,
     sort_order: 40,
     image_path: null,
     production_notes: "AI artwork requires a printability check before slicing. Keep this product coming soon until the OpenAI secret and storage migration are installed."
@@ -149,6 +157,8 @@ const numericFields = [
   "base_print_minutes_per_character",
   "keycap_print_minutes_per_character",
   "assembly_minutes_per_item",
+  "minimum_working_days",
+  "maximum_working_days",
   "sort_order"
 ];
 
@@ -175,6 +185,13 @@ export function normalizeProductCatalog(rows = []) {
     }
 
     numericFields.forEach(field => {
+      if (
+        ["minimum_working_days", "maximum_working_days"].includes(field) &&
+        (product[field] === null || product[field] === "")
+      ) {
+        product[field] = null;
+        return;
+      }
       const value = Number(product[field]);
       product[field] = Number.isFinite(value) ? value : fallback[field];
     });

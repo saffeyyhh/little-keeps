@@ -30,6 +30,8 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   assert.equal(standard.price_visible, false);
   assert.equal(photo.status, "coming_soon");
   assert.equal(photo.price_visible, false);
+  assert.equal(photo.minimum_working_days, 4);
+  assert.equal(photo.maximum_working_days, 5);
 });
 
 test("upgrades the old modular product name without changing custom names", () => {
@@ -104,4 +106,16 @@ test("merges saved product settings over safe defaults", () => {
   assert.equal(solid.price_visible, true);
   assert.equal(solid.launch_base_price, 4.1);
   assert.equal(solid.name, "Solid Clicky Keychain");
+});
+
+test("keeps optional product lead times empty unless configured", () => {
+  const catalogue = normalizeProductCatalog([{
+    product_key: MODULAR_PRODUCT_KEY,
+    minimum_working_days: null,
+    maximum_working_days: null
+  }]);
+  const modular = getProductByKey(catalogue, MODULAR_PRODUCT_KEY);
+
+  assert.equal(modular.minimum_working_days, null);
+  assert.equal(modular.maximum_working_days, null);
 });
