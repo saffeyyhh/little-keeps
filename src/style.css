@@ -6096,34 +6096,6 @@ body {
 
 .photo-permission-check input { width: 18px; height: 18px; accent-color: #ef4f88; }
 
-.photo-nfc-toggle {
-  padding: 12px;
-  border: 1px solid #d9c4f4;
-  border-radius: 12px;
-  background: #fbf7ff;
-}
-
-.photo-nfc-toggle span,
-.photo-nfc-toggle small { display: block; }
-.photo-nfc-toggle small { margin-top: 3px; color: #7c6b76; }
-
-.photo-nfc-fields {
-  margin-top: 10px;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 10px;
-  border: 1px solid #dfced8;
-  border-radius: 12px;
-  background: #fff;
-}
-
-.photo-nfc-fields label > span,
-.photo-nfc-fields > small { color: #6e6268; font-size: 11px; font-weight: 750; }
-.photo-nfc-fields select,
-.photo-nfc-fields input { width: 100%; min-height: 42px; margin-top: 5px; padding: 8px 10px; border: 1px solid #decbd4; border-radius: 9px; font: inherit; }
-.photo-nfc-fields > small { grid-column: 1 / -1; line-height: 1.45; }
-
 .photo-generate-btn,
 .photo-result-actions button {
   min-height: 45px;

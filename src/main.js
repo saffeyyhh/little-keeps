@@ -1110,13 +1110,6 @@ ${requestedPreviewProductKey ? `
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
         </div>
 
-        <label class="photo-permission-check photo-nfc-toggle"><input id="photoNfcEnabled" type="checkbox"><span><strong>Add an NFC tap link (+${displaySettingMoney(Number(shopSettings.nfc_addon_price) || 2.5)})</strong><small>Open a pet-return page, guardian contact page, social profile or any secure web link when tapped.</small></span></label>
-        <div id="photoNfcFields" class="photo-nfc-fields hidden">
-          <label><span>Tap opens</span><select id="photoNfcType"><option value="pet">Pet return details</option><option value="guardian">Guardian contact page</option><option value="contact">Contact card</option><option value="social">Social profile</option><option value="website">Website or other link</option></select></label>
-          <label><span>Secure link</span><input id="photoNfcPayload" type="url" inputmode="url" placeholder="https://..."></label>
-          <small>Use a page you can update later. For children and pets, avoid publishing a home address, date of birth or sensitive medical details.</small>
-        </div>
-
         <label class="photo-permission-check"><input id="photoPermissionCheck" type="checkbox"><span>I own this photo or have permission to use it, including permission from the person or guardian shown.</span></label>
         <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I agree to private AI processing of this photo. It may be kept for up to 30 days so Little Keeps can make my order.</span></label>
         <button id="generatePhotoArtworkBtn" type="button" class="photo-generate-btn">Create My Artwork</button>
@@ -2452,10 +2445,6 @@ const photoSubjectType = document.getElementById("photoSubjectType");
 const photoColourCount = document.getElementById("photoColourCount");
 const photoKeepsakeLabel = document.getElementById("photoKeepsakeLabel");
 const photoKeepsakeQuantity = document.getElementById("photoKeepsakeQuantity");
-const photoNfcEnabled = document.getElementById("photoNfcEnabled");
-const photoNfcFields = document.getElementById("photoNfcFields");
-const photoNfcType = document.getElementById("photoNfcType");
-const photoNfcPayload = document.getElementById("photoNfcPayload");
 const photoPermissionCheck = document.getElementById("photoPermissionCheck");
 const photoAiConsentCheck = document.getElementById("photoAiConsentCheck");
 const generatePhotoArtworkBtn = document.getElementById("generatePhotoArtworkBtn");
@@ -6117,10 +6106,6 @@ function renderReviewOrder() {
           photoColourCount.value = String(design.photo?.colourCount || 4);
           photoSubjectType.value = design.photo?.subjectType || "person";
           photoKeepsakeQuantity.value = String(getItemQuantity(item));
-          photoNfcEnabled.checked = Boolean(design.nfcEnabled);
-          photoNfcType.value = design.nfcType || (photoSubjectType.value === "pet" ? "pet" : "website");
-          photoNfcPayload.value = design.nfcPayload || "";
-          photoNfcFields.classList.toggle("hidden", !photoNfcEnabled.checked);
           Object.assign(photoKeepsakeState, {
             originalPath: design.photo?.originalPath || "",
             artworkPath: design.photo?.artworkPath || "",
@@ -7658,10 +7643,6 @@ window.editCartItem = function(index) {
     photoColourCount.value = String(design.photo?.colourCount || 4);
     photoSubjectType.value = design.photo?.subjectType || "person";
     photoKeepsakeQuantity.value = String(getItemQuantity(item));
-    photoNfcEnabled.checked = Boolean(design.nfcEnabled);
-    photoNfcType.value = design.nfcType || (photoSubjectType.value === "pet" ? "pet" : "website");
-    photoNfcPayload.value = design.nfcPayload || "";
-    photoNfcFields.classList.toggle("hidden", !photoNfcEnabled.checked);
     Object.assign(photoKeepsakeState, {
       originalPath: design.photo?.originalPath || "",
       artworkPath: design.photo?.artworkPath || "",
@@ -8233,13 +8214,6 @@ async function generatePhotoKeepsakeArtwork() {
 
 function addPhotoKeepsakeToCart() {
   if (!photoKeepsakeState.artworkPath || !photoKeepsakeState.artworkUrl) return;
-  const wantsNfc = Boolean(photoNfcEnabled?.checked);
-  const nfcLink = String(photoNfcPayload?.value || "").trim();
-  if (wantsNfc && !isSecureWebUrl(nfcLink)) {
-    photoGenerationStatus.textContent = "Add a complete secure NFC link beginning with https:// first.";
-    photoNfcPayload?.focus();
-    return;
-  }
   const label = photoKeepsakeLabel.value.trim() ||
     (photoSubjectType.value === "pet" ? "Pet Photo" : "Photo Keepsake");
   const fallbackColours = getAvailableColours();
@@ -8263,10 +8237,7 @@ function addPhotoKeepsakeToCart() {
         colourCount: Number(photoColourCount.value),
         variant: "classic",
         filamentPalette: normalizePhotoFilamentPalette(photoKeepsakeState.filamentPalette)
-      },
-      nfcEnabled: wantsNfc,
-      nfcType: photoNfcType?.value || (photoSubjectType.value === "pet" ? "pet" : "website"),
-      nfcPayload: wantsNfc ? nfcLink : ""
+      }
     }
   }];
   selectedIndex = 0;
@@ -8313,10 +8284,6 @@ photoKeepsakeInput?.addEventListener("change", async () => {
 generatePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 regeneratePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
-photoNfcEnabled?.addEventListener("change", () => {
-  photoNfcFields?.classList.toggle("hidden", !photoNfcEnabled.checked);
-  if (photoNfcEnabled.checked && photoSubjectType?.value === "pet") photoNfcType.value = "pet";
-});
 refreshAvailabilityBtn?.addEventListener("click", async () => {
   const previous = refreshAvailabilityBtn.textContent;
   refreshAvailabilityBtn.disabled = true;
