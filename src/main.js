@@ -1138,6 +1138,12 @@ ${requestedPreviewProductKey ? `
       </section>
 
       <section class="photo-result-panel">
+        <div id="photoGenerationLoader" class="photo-generation-loader hidden" role="status" aria-live="polite">
+          <span class="photo-generation-spinner" aria-hidden="true"></span>
+          <strong>Creating your artwork…</strong>
+          <small>Please wait — this usually takes about 30–60 seconds.</small>
+          <i aria-hidden="true"></i>
+        </div>
         <div id="photoResultPlaceholder"><span>✦</span><strong>Your simplified artwork will appear here</strong><small>No payment is taken when you generate a preview.</small></div>
         <img id="photoArtworkResult" class="hidden" alt="AI simplified printable artwork preview">
         <div id="photoResultActions" class="photo-result-actions hidden">
@@ -2455,6 +2461,7 @@ const regeneratePhotoArtworkBtn = document.getElementById("regeneratePhotoArtwor
 const addPhotoArtworkToCartBtn = document.getElementById("addPhotoArtworkToCartBtn");
 const downloadPhotoTestStlsBtn = document.getElementById("downloadPhotoTestStlsBtn");
 const photoGenerationStatus = document.getElementById("photoGenerationStatus");
+const photoGenerationLoader = document.getElementById("photoGenerationLoader");
 const photoSuitabilityCheck = document.getElementById("photoSuitabilityCheck");
 const photoResultPlaceholder = document.getElementById("photoResultPlaceholder");
 const photoArtworkResult = document.getElementById("photoArtworkResult");
@@ -8142,6 +8149,7 @@ function resetPhotoArtworkResult() {
   photoResultActions?.classList.add("hidden");
   photoResultPlaceholder?.classList.remove("hidden");
   photoMappedPalette?.classList.add("hidden");
+  photoGenerationLoader?.classList.add("hidden");
   if (photoMappedPalette) photoMappedPalette.innerHTML = "";
 }
 
@@ -8329,7 +8337,12 @@ async function generatePhotoKeepsakeArtwork() {
 
   generatePhotoArtworkBtn.disabled = true;
   regeneratePhotoArtworkBtn.disabled = true;
-  photoGenerationStatus.textContent = "Creating a simple, printable version… this may take a minute.";
+  photoGenerationStatus.textContent = "Please keep this page open while your artwork is created.";
+  photoGenerationLoader?.classList.remove("hidden");
+  photoResultPlaceholder?.classList.add("hidden");
+  photoArtworkResult?.classList.add("hidden");
+  photoResultActions?.classList.add("hidden");
+  photoMappedPalette?.classList.add("hidden");
 
   try {
     const imageDataUrl = photoKeepsakeState.inputDataUrl || await preparePhotoForAi(photoKeepsakeState.file);
@@ -8401,7 +8414,15 @@ async function generatePhotoKeepsakeArtwork() {
     photoGenerationStatus.textContent =
       error?.details?.error || error?.message ||
       "The AI studio is not configured yet. Please try again later.";
+    if (photoKeepsakeState.artworkUrl) {
+      photoArtworkResult?.classList.remove("hidden");
+      photoResultActions?.classList.remove("hidden");
+      renderPhotoMappedPalette();
+    } else {
+      photoResultPlaceholder?.classList.remove("hidden");
+    }
   } finally {
+    photoGenerationLoader?.classList.add("hidden");
     const rateLimited = photoRetryAvailableAt > Date.now();
     generatePhotoArtworkBtn.disabled = rateLimited;
     regeneratePhotoArtworkBtn.disabled = rateLimited;
