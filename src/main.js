@@ -2828,7 +2828,24 @@ const specialKeycaps = {
   "🥒": "pickleball",
   "🎳": "bowling",
   "⚾": "baseball",
-  "♟": "chess"
+  "♟": "chess",
+
+  // Fruits
+  "🍎": "apple",
+  "🥑": "avocado",
+  "🍌": "banana",
+  "🫐": "blueberry",
+  "🍒": "cherry",
+  "🌰": "durian",
+  "🍇": "grapes",
+  "🥝": "kiwi",
+  "🍋": "lemon",
+  "🥭": "mango",
+  "🍊": "orange",
+  "🍑": "peach",
+  "🌟": "starfruit",
+  "🍓": "strawberry",
+  "🍉": "watermelon"
 };
 
 const iconChoices = Object.keys(specialKeycaps);
@@ -2858,6 +2875,11 @@ const ICON_CATEGORIES = [
     key: "fun",
     label: "Food & Fun",
     icons: ["♪", "🔥", "☕", "🦆", "♟"]
+  },
+  {
+    key: "fruits",
+    label: "Fruits",
+    icons: ["🍎", "🥑", "🍌", "🫐", "🍒", "🌰", "🍇", "🥝", "🍋", "🥭", "🍊", "🍑", "🌟", "🍓", "🍉"]
   },
   {
     key: "travel",
@@ -3679,6 +3701,17 @@ function getApproximateKeychainSize(
       heightCm: (fontSize + 5) / 10,
       thicknessCm: 0.42,
       fontSizeMm: fontSize
+    };
+  }
+
+  if (productKey === SOLID_PRODUCT_KEY) {
+    const slotPitchMm = 20.5;
+    const solidBaseLengthMm = 25.88 + Math.max(0, characterCount - 1) * slotPitchMm;
+    return {
+      characterCount,
+      lengthCm: characterCount ? solidBaseLengthMm / 10 : 0,
+      heightCm: 2.2,
+      thicknessCm: 2.2
     };
   }
 
@@ -4959,22 +4992,9 @@ function getDesign(item) {
   };
 }
 
-async function createKeycap(letter, index, design) {
-  const group = new THREE.Group();
-
-  const baseColour = design.bases[index % design.bases.length];
+async function createKeycapTop(letter, index, design) {
   const capColour = design.caps[index % design.caps.length];
   const letterColour = design.letters[index % design.letters.length];
-
-  const selectedBaseShape =
-    design.baseShape || "ribbed";
-
-  const baseGeo = await loadSTL(
-    BASE_SHAPES[selectedBaseShape].file
-  );
-  const base = new THREE.Mesh(baseGeo, createMat(baseColour));
-  base.rotation.z = Math.PI / 2;
-  group.add(base);
 
   // Load the correct keycap STL
   const special = specialKeycaps[letter];
@@ -5015,6 +5035,25 @@ async function createKeycap(letter, index, design) {
   const capGroup = new THREE.Group();
   capGroup.add(tile);
   capGroup.add(raisedLetter);
+
+  return capGroup;
+}
+
+async function createKeycap(letter, index, design) {
+  const group = new THREE.Group();
+
+  const baseColour = design.bases[index % design.bases.length];
+  const selectedBaseShape =
+    design.baseShape || "ribbed";
+
+  const baseGeo = await loadSTL(
+    BASE_SHAPES[selectedBaseShape].file
+  );
+  const base = new THREE.Mesh(baseGeo, createMat(baseColour));
+  base.rotation.z = Math.PI / 2;
+  group.add(base);
+
+  const capGroup = await createKeycapTop(letter, index, design);
   capGroup.position.set(4.2, 0, 11);
   group.add(capGroup);
 
@@ -5416,6 +5455,34 @@ async function buildKeychain(name, design) {
   const letters = Array.from(cleanName);
 
   try {
+    if (activeProduct.product_key === SOLID_PRODUCT_KEY && letters.length) {
+      const slotCount = Math.min(10, Math.max(1, letters.length));
+      const baseGeometry = await loadSTL(`/models/solid-base-${slotCount}.stl`);
+      const solidBase = new THREE.Mesh(
+        baseGeometry,
+        createMat(design.bases[0] || available[0])
+      );
+      keychain.add(solidBase);
+
+      for (let index = 0; index < letters.length; index += 1) {
+        const cap = await createKeycapTop(letters[index], index, design);
+        cap.position.set(
+          (index - (letters.length - 1) / 2) * 20.5,
+          0,
+          11
+        );
+        if (thisBuildNumber !== previewBuildNumber) return;
+        keychain.add(cap);
+      }
+
+      keychain.position.set(0, 0, 0);
+      keychain.rotation.x = -0.8;
+      keychain.rotation.y = 0.2;
+      controls.target.set(0, 0, 0);
+      controls.update();
+      return;
+    }
+
     for (let i = 0; i < letters.length; i++) {
       try {
         const item = await createKeycap(letters[i], i, design);
@@ -7764,6 +7831,8 @@ function setStorefrontView(view, options = {}) {
 function updateProductCustomiser() {
   const isNormalKeychain =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
+  const isSolidClicker =
+    activeProduct.product_key === SOLID_PRODUCT_KEY;
 
     if (designInspiration) {
   designInspiration.style.display =
@@ -7794,6 +7863,12 @@ function updateProductCustomiser() {
       section.style.display =
         isNormalKeychain ? "none" : "";
     });
+
+  const baseShapeSection = document.getElementById("clickyBaseShapeSection");
+  if (baseShapeSection) {
+    baseShapeSection.style.display =
+      isNormalKeychain || isSolidClicker ? "none" : "";
+  }
 
   const baseHeading = document.getElementById("baseColourPartLabel");
   const letterHeading = document.getElementById("letterColourPartLabel");

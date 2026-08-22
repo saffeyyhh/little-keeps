@@ -4760,10 +4760,9 @@ function renderOrders(orders) {
 </div>
 <div class="order-preview-list">
   ${(order.order_data || []).map(item => {
-    const baseShape =
-      item.design?.base_shape?.key ||
-      item.design?.baseShape ||
-      "ribbed";
+    const baseShape = isSolidClickyKeychain(order, item)
+      ? getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length)
+      : item.design?.base_shape?.key || item.design?.baseShape || "ribbed";
     const letterOrientation = getLetterOrientation(item.design);
     const photoProduct = isPhotoKeepsake(order, item);
     const customNameProduct = isCustomNameKeychain(order, item);
@@ -4788,7 +4787,7 @@ function renderOrders(orders) {
             <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
           ` : `
             <span class="assembly-tag">
-              ${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}
+              ${getBaseShapeLabel(baseShape)} Base
             </span>
             <span class="assembly-tag">
               ${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}
@@ -5636,11 +5635,29 @@ fulfilmentEditorForm.addEventListener("submit", async event => {
   }
 });
 
-function getBaseInventoryName(baseName, baseShape = "ribbed") {
-  const shapeLabel =
-    baseShape === "bubbly" ? "Bubbly" : "Ribbed";
+function isSolidClickyKeychain(order, item) {
+  return String(item?.product_key || order?.product_key || "") === "solid-clicky-keychain";
+}
 
-  return `${baseName} ${shapeLabel} Base`;
+function getSolidBaseShape(characterCount) {
+  const slots = Math.min(10, Math.max(1, Number(characterCount) || 1));
+  return `solid-${slots}`;
+}
+
+function getBaseShapeLabel(baseShape = "ribbed") {
+  const solidMatch = String(baseShape).match(/^solid-(\d+)$/);
+  if (solidMatch) return `Compact Solid ${solidMatch[1]}-Slot`;
+  return baseShape === "bubbly" ? "Bubbly" : "Ribbed";
+}
+
+function getBaseModelPath(baseShape = "ribbed") {
+  const solidMatch = String(baseShape).match(/^solid-(\d+)$/);
+  if (solidMatch) return `/models/solid-base-${solidMatch[1]}.stl`;
+  return `/models/base_${baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`;
+}
+
+function getBaseInventoryName(baseName, baseShape = "ribbed") {
+  return `${baseName} ${getBaseShapeLabel(baseShape)} Base`;
 }
 
 function getKeycapInventoryName(
@@ -6649,8 +6666,13 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
         return;
       }
 
+      const solidProduct = isSolidClickyKeychain(order, item);
+      const solidBaseShape = getSolidBaseShape(letters.length);
+
       letters.forEach((letter, index) => {
-        const base = design.bases[index % design.bases.length];
+        const base = solidProduct
+          ? design.bases[0]
+          : design.bases[index % design.bases.length];
         const cap = design.caps[index % design.caps.length];
         const letterColour = design.letters[index % design.letters.length];
 
@@ -6666,24 +6688,25 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
         const letterHex = letterColour.hex || letterColour;
         const letterMaterial = getAdminColourMaterial(letterColour);
 
-        const baseShape =
-          design.base_shape?.key ||
-          design.baseShape ||
-          "ribbed";
+        const baseShape = solidProduct
+          ? solidBaseShape
+          : design.base_shape?.key || design.baseShape || "ribbed";
 
         const baseKey = `${baseShape}|${baseName}|${baseMaterial}`;
 
-        if (!baseTotals[baseKey]) {
-          baseTotals[baseKey] = {
-            name: baseName,
-            hex: baseHex,
-            material: baseMaterial,
-            baseShape,
-            qty: 0
-          };
-        }
+        if (!solidProduct || index === 0) {
+          if (!baseTotals[baseKey]) {
+            baseTotals[baseKey] = {
+              name: baseName,
+              hex: baseHex,
+              material: baseMaterial,
+              baseShape,
+              qty: 0
+            };
+          }
 
-        baseTotals[baseKey].qty += 1;
+          baseTotals[baseKey].qty += 1;
+        }
 
         const groupKey =
           `${capName}|${capMaterial} Cap + ${letterName}|${letterMaterial} Letter`;
@@ -6758,20 +6781,22 @@ function getOrderPrintableInventoryNeeds(order) {
 
       if (!bases.length || !caps.length || !letters.length) return;
 
-      const baseShape =
-        design.base_shape?.key ||
-        design.baseShape ||
-        "ribbed";
+      const solidProduct = isSolidClickyKeychain(order, item);
+      const baseShape = solidProduct
+        ? getSolidBaseShape(characters.length)
+        : design.base_shape?.key || design.baseShape || "ribbed";
 
       characters.forEach((character, index) => {
-        const base = bases[index % bases.length];
+        const base = solidProduct ? bases[0] : bases[index % bases.length];
         const cap = caps[index % caps.length];
         const letter = letters[index % letters.length];
         const baseName = base?.name || base?.hex || base;
         const capName = cap?.name || cap?.hex || cap;
         const letterName = letter?.name || letter?.hex || letter;
 
-        addNeed(getBaseInventoryName(baseName, baseShape));
+        if (!solidProduct || index === 0) {
+          addNeed(getBaseInventoryName(baseName, baseShape));
+        }
         addNeed(
           getKeycapInventoryName(
             capName,
@@ -6891,8 +6916,13 @@ function getOrderInventoryNeeds(order) {
       return;
     }
 
+    const solidProduct = isSolidClickyKeychain(order, item);
+    const solidBaseShape = getSolidBaseShape(letters.length);
+
     letters.forEach((letter, index) => {
-      const base = design.bases[index % design.bases.length];
+      const base = solidProduct
+        ? design.bases[0]
+        : design.bases[index % design.bases.length];
       const cap = design.caps[index % design.caps.length];
       const letterColour = design.letters[index % design.letters.length];
 
@@ -6900,15 +6930,11 @@ function getOrderInventoryNeeds(order) {
       const capName = cap.name || cap.hex || cap;
       const letterName = letterColour.name || letterColour.hex || letterColour;
 
-      const baseShape =
+      const baseShape = solidProduct
+        ? solidBaseShape
+        : design.base_shape?.key || design.baseShape || "ribbed";
 
-        design.base_shape?.key ||
-
-        design.baseShape ||
-
-        "ribbed";
-
-      if (!item.base_assembled) {
+      if (!item.base_assembled && (!solidProduct || index === 0)) {
         add(
           getBaseInventoryName(baseName, baseShape),
           1
@@ -6980,6 +7006,17 @@ function getKeychainPrintablePartNeeds(
     needs[itemName] = (needs[itemName] || 0) + 1;
   };
 
+  const solidProduct = isSolidClickyKeychain(null, item);
+  const baseShape = solidProduct
+    ? getSolidBaseShape(characters.length)
+    : design.base_shape?.key || design.baseShape || "ribbed";
+
+  if ((partType === "base" || partType === "all") && solidProduct) {
+    const base = bases[0];
+    const baseName = base?.name || base?.hex || base;
+    add(getBaseInventoryName(baseName, baseShape));
+  }
+
   indexes.forEach(index => {
     if (index < 0 || index >= characters.length) return;
 
@@ -6990,12 +7027,7 @@ function getKeychainPrintablePartNeeds(
     const capName = cap?.name || cap?.hex || cap;
     const letterName =
       letterColour?.name || letterColour?.hex || letterColour;
-    const baseShape =
-      design.base_shape?.key ||
-      design.baseShape ||
-      "ribbed";
-
-    if (partType === "base" || partType === "all") {
+    if ((partType === "base" || partType === "all") && !solidProduct) {
       add(getBaseInventoryName(baseName, baseShape));
     }
 
@@ -7058,7 +7090,24 @@ const specialKeycaps = {
   "🥒": "pickleball",
   "🎳": "bowling",
   "⚾": "baseball",
-  "♟": "chess"
+  "♟": "chess",
+
+  // Fruits
+  "🍎": "apple",
+  "🥑": "avocado",
+  "🍌": "banana",
+  "🫐": "blueberry",
+  "🍒": "cherry",
+  "🌰": "durian",
+  "🍇": "grapes",
+  "🥝": "kiwi",
+  "🍋": "lemon",
+  "🥭": "mango",
+  "🍊": "orange",
+  "🍑": "peach",
+  "🌟": "starfruit",
+  "🍓": "strawberry",
+  "🍉": "watermelon"
 };
 
 function sanitizeName(name) {
@@ -7701,7 +7750,7 @@ async function generateBaseColourStl(jobId, button) {
       components.flatMap(component =>
         Array.from({ length: component.quantity }, () =>
           loadProductionStlGeometry(
-            `/models/base_${component.baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`
+            getBaseModelPath(component.baseShape)
           )
         )
       )
@@ -7720,7 +7769,7 @@ async function generateBaseColourStl(jobId, button) {
 
     const colourName = safeProductionFileName(job.baseName, "base");
     const shapeCounts = components.map(component =>
-      `${component.baseShape === "bubbly" ? "bubbly" : "ribbed"}-${component.quantity}`
+      `${safeProductionFileName(getBaseShapeLabel(component.baseShape), "base")}-${component.quantity}`
     ).join("_");
 
     downloadProductionStl(
@@ -8396,9 +8445,12 @@ function getRushOrderPrintGroups(order, missingParts = null) {
 
     if (!characters.length || !bases.length || !caps.length || !letters.length) return;
 
-    const baseShape = design.base_shape?.key || design.baseShape || "ribbed";
+    const solidProduct = isSolidClickyKeychain(order, item);
+    const baseShape = solidProduct
+      ? getSolidBaseShape(characters.length)
+      : design.base_shape?.key || design.baseShape || "ribbed";
     characters.forEach((character, index) => {
-      const base = bases[index % bases.length];
+      const base = solidProduct ? bases[0] : bases[index % bases.length];
       const cap = caps[index % caps.length];
       const letterColour = letters[index % letters.length];
       const baseName = base?.name || base?.hex || base || "Base";
@@ -8416,7 +8468,7 @@ function getRushOrderPrintGroups(order, missingParts = null) {
         character
       );
 
-      if (needsPrint(baseInventoryName)) {
+      if ((!solidProduct || index === 0) && needsPrint(baseInventoryName)) {
         if (!baseGroups[baseKey]) {
           baseGroups[baseKey] = {
             baseShape,
@@ -8611,7 +8663,7 @@ async function generateOrderStls(id, button) {
 
   const summary = [
     ...groups.bases.map(group =>
-      `${group.baseName} ${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} Bases × ${group.quantity}`
+      `${group.baseName} ${getBaseShapeLabel(group.baseShape)} Bases × ${group.quantity}`
     ),
     ...keycapPlatePlan.map((plate, plateIndex) =>
       `AMS Plate ${plateIndex + 1}: ${plate.pieceCount} keycaps using ` +
@@ -8638,7 +8690,7 @@ async function generateOrderStls(id, button) {
     for (const group of groups.bases) {
       const requests = Array.from({ length: group.quantity }, () => ({
         kind: "base",
-        path: `/models/base_${group.baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`
+        path: getBaseModelPath(group.baseShape)
       }));
       const blob = await buildRushStlPlate(requests);
       files.push({
@@ -9039,10 +9091,9 @@ async function renderAssemblyQueue() {
   function renderAssemblyItem(order, item, itemIndex, mode = "ready") {
     const completed = mode === "completed";
     const baseOnly = mode === "base-only";
-    const baseShape =
-      item.design?.base_shape?.key ||
-      item.design?.baseShape ||
-      "ribbed";
+    const baseShape = isSolidClickyKeychain(order, item)
+      ? getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length)
+      : item.design?.base_shape?.key || item.design?.baseShape || "ribbed";
     const letterOrientation = getLetterOrientation(item.design);
     const characters = Array.from(
       item.clean_name || sanitizeName(item.name || "")
@@ -9087,7 +9138,7 @@ async function renderAssemblyQueue() {
               <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
             ` : `
               <span class="assembly-tag">${sanitizeName(item.name).length} Characters</span>
-              <span class="assembly-tag">${baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"}</span>
+              <span class="assembly-tag">${getBaseShapeLabel(baseShape)} Base</span>
               <span class="assembly-tag">${letterOrientation === "horizontal" ? "Sideways Letters" : "Upright Letters"}</span>
             `}
 
@@ -10677,7 +10728,7 @@ async function renderProductionPlanner(orders) {
                                   <i style="background:${getSafePdfColour(group.baseHex, "#f6a9c2")}"></i>
                                   <span>
                                     <strong>${escapeAdminHtml(group.baseName)}</strong>
-                                    ${group.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} base
+                                    ${getBaseShapeLabel(group.baseShape)} base
                                   </span>
                                   <b>× ${group.quantity}</b>
                                 </div>
@@ -10838,7 +10889,7 @@ async function renderProductionPlanner(orders) {
                 <div>
                   <strong>${escapeAdminHtml(group.label)}</strong>
                   <small>${group.rows.map(item =>
-                    `${item.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} × ${item.toPrint}`
+                    `${getBaseShapeLabel(item.baseShape)} × ${item.toPrint}`
                   ).join(" · ")} · one colour plate</small>
                 </div>
                 <b>× ${group.rows.reduce((sum, item) => sum + item.toPrint, 0)}</b>
@@ -11382,7 +11433,7 @@ async function renderProductionPlanner(orders) {
                       <span class="colour-dot" style="background:${item.hex}"></span>
 
                       <div style="flex:1;">
-                        <strong>${item.baseShape === "bubbly" ? "Bubbly" : "Ribbed"} design</strong>
+                        <strong>${getBaseShapeLabel(item.baseShape)} design</strong>
                         <p class="hint">
                           Need: ${item.need} · Stock: ${item.stock}
                           ${item.tracked ? ` · Tracked: ${item.tracked}` : ""}
@@ -11644,11 +11695,9 @@ async function generateLegacyRenderedOrderPdf(order, items) {
   const itemCards = items.length
     ? items.map((item, index) => {
         const design = item.design || {};
-        const baseShape =
-          design.base_shape?.label ||
-          (design.base_shape?.key === "bubbly"
-            ? "Bubbly Base"
-            : "Ribbed Base");
+        const baseShape = isSolidClickyKeychain(order, item)
+          ? `${getBaseShapeLabel(getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length))} Base`
+          : design.base_shape?.label || (design.base_shape?.key === "bubbly" ? "Bubbly Base" : "Ribbed Base");
         const baseColours = getPdfColourNames(design.bases);
         const capColours = getPdfColourNames(design.caps);
         const letterColours = getPdfColourNames(design.letters);
@@ -12082,11 +12131,9 @@ async function generateCustomerOrderPdf(order, items) {
     const letters = Array.isArray(design.letters) && design.letters.length
       ? design.letters
       : ["#332d30"];
-    const baseShape =
-      design.base_shape?.label ||
-      (design.base_shape?.key === "bubbly"
-        ? "Bubbly Base"
-        : "Ribbed Base");
+    const baseShape = isSolidClickyKeychain(order, item)
+      ? `${getBaseShapeLabel(getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length))} Base`
+      : design.base_shape?.label || (design.base_shape?.key === "bubbly" ? "Bubbly Base" : "Ribbed Base");
     const letterOrientation = getLetterOrientation(design);
     const letterOrientationLabel = getLetterOrientationLabel(design);
     const baseNames = getPdfColourNames(bases);

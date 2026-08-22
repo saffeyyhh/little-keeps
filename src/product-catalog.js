@@ -42,9 +42,9 @@ export const DEFAULT_PRODUCT_CATALOG = [
   },
   {
     product_key: SOLID_PRODUCT_KEY,
-    name: "Solid Clicky Keychain",
-    eyebrow: "One-piece design",
-    description: "A clean solid base with the same satisfying click.",
+    name: "Compact Solid Clicky Keychain",
+    eyebrow: "Compact one-piece base",
+    description: "One sturdy base with the same satisfying chunky clicks.",
     status: "coming_soon",
     price_visible: false,
     usual_base_price: 4.5,
@@ -59,8 +59,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     extra_base_colour_price: 0,
     extra_cap_colour_price: 0.3,
     extra_letter_colour_price: 0.2,
-    minimum_characters: 2,
-    maximum_characters: 12,
+    minimum_characters: 1,
+    maximum_characters: 10,
     base_print_minutes_fixed: 0,
     base_print_minutes_per_character: 0,
     keycap_print_minutes_per_character: 15,
@@ -69,7 +69,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     maximum_working_days: null,
     sort_order: 20,
     image_path: null,
-    production_notes: "Draft pricing only. Time 2-, 6- and 10-character test prints before launch."
+    production_notes: "Use the matching licensed Compact Fidget Clicker solid base for 1–10 slots, plus one chunky keycap and switch per character."
   },
 
   {
@@ -187,6 +187,23 @@ export function normalizeProductCatalog(rows = []) {
       ].includes(product.name)
     ) {
       product.name = fallback.name;
+    }
+
+    if (fallback.product_key === SOLID_PRODUCT_KEY) {
+      if (["Solid Clicky Keychain", "Solid Base Clicky Keychain"].includes(product.name)) {
+        product.name = fallback.name;
+      }
+      if (product.eyebrow === "One-piece design") {
+        product.eyebrow = fallback.eyebrow;
+      }
+      if (product.description === "A clean solid base with the same satisfying click.") {
+        product.description = fallback.description;
+      }
+      product.minimum_characters = 1;
+      product.maximum_characters = Math.min(10, Math.max(1, Number(product.maximum_characters) || 10));
+      if (!product.production_notes || product.production_notes.startsWith("Draft pricing only")) {
+        product.production_notes = fallback.production_notes;
+      }
     }
 
     numericFields.forEach(field => {

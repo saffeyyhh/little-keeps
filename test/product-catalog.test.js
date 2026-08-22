@@ -111,7 +111,9 @@ test("merges saved product settings over safe defaults", () => {
   assert.equal(solid.status, "active");
   assert.equal(solid.price_visible, true);
   assert.equal(solid.launch_base_price, 4.1);
-  assert.equal(solid.name, "Solid Clicky Keychain");
+  assert.equal(solid.name, "Compact Solid Clicky Keychain");
+  assert.equal(solid.minimum_characters, 1);
+  assert.equal(solid.maximum_characters, 10);
 });
 
 test("keeps optional product lead times empty unless configured", () => {
