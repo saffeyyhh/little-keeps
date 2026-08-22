@@ -112,7 +112,11 @@ begin
     from public.orders
     where archived_at is null
       and order_type = 'bulk'
-      and coalesce(status, '') not in ('Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded')
+      and coalesce(status, '') not in (
+        'Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded',
+        'Assembly Complete', 'Ready for Pickup/Delivery', 'Pending Pickup',
+        'Pending Delivery', 'Out for Delivery', 'Delivered', 'Completed'
+      )
       and p_date between
         coalesce(requested_completion_date, needed_by)::date - v_bulk_buffer
         and coalesce(requested_completion_date, needed_by)::date + v_bulk_buffer
@@ -126,7 +130,11 @@ begin
   into v_order_count, v_keychain_count
   from public.orders
   where archived_at is null
-    and coalesce(status, '') not in ('Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded')
+    and coalesce(status, '') not in (
+      'Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded',
+      'Assembly Complete', 'Ready for Pickup/Delivery', 'Pending Pickup',
+      'Pending Delivery', 'Out for Delivery', 'Delivered', 'Completed'
+    )
     and (
       case
         when order_type in ('rush', 'bulk') then coalesce(requested_completion_date, needed_by)::date
@@ -206,7 +214,11 @@ begin
   if not v_ignore_bulk_buffer and exists (
     select 1 from public.orders
     where archived_at is null
-      and coalesce(status, '') not in ('Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded')
+      and coalesce(status, '') not in (
+        'Cancelled', 'Rejected', 'Payment Failed', 'Payment Expired', 'Refunded',
+        'Assembly Complete', 'Ready for Pickup/Delivery', 'Pending Pickup',
+        'Pending Delivery', 'Out for Delivery', 'Delivered', 'Completed'
+      )
       and (
         case
           when order_type in ('rush', 'bulk') then coalesce(requested_completion_date, needed_by)::date

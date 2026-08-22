@@ -1298,7 +1298,15 @@ function getScheduleDate(order) {
 
 function isScheduleOrderActive(order) {
   return !order.archived_at && ![
-    "Cancelled", "Rejected", "Payment Failed", "Payment Expired", "Refunded"
+    "Cancelled", "Rejected", "Payment Failed", "Payment Expired", "Refunded",
+    "Assembly Complete", "Ready for Pickup/Delivery", "Pending Pickup",
+    "Pending Delivery", "Out for Delivery", "Delivered", "Completed"
+  ].includes(order.status || "");
+}
+
+function isSchedulePickupVisible(order) {
+  return !order.archived_at && ![
+    "Cancelled", "Rejected", "Payment Failed", "Payment Expired", "Refunded", "Completed"
   ].includes(order.status || "");
 }
 
@@ -1333,7 +1341,7 @@ function renderScheduleCalendar() {
   for (let day = 1; day <= daysInMonth; day += 1) {
     const dateValue = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const due = getScheduleOrdersForDate(dateValue);
-    const pickups = latestOrders.filter(order => isScheduleOrderActive(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === dateValue);
+    const pickups = latestOrders.filter(order => isSchedulePickupVisible(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === dateValue);
     const keychains = due.reduce((sum, order) => sum + (order.order_data || []).length, 0);
     const override = overridesByDate.get(dateValue);
     const dayLimit = override?.max_orders == null
@@ -1362,7 +1370,7 @@ function renderScheduleCalendar() {
   }
 
   const selectedOrders = getScheduleOrdersForDate(selectedScheduleDate);
-  const selectedPickups = latestOrders.filter(order => isScheduleOrderActive(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === selectedScheduleDate);
+  const selectedPickups = latestOrders.filter(order => isSchedulePickupVisible(order) && String(order.pickup_scheduled_date || "").slice(0, 10) === selectedScheduleDate);
   const detailRows = [...new Map([...selectedOrders, ...selectedPickups].map(order => [String(order.id), order])).values()];
   const selectedKeychains = selectedOrders.reduce((sum, order) => sum + (order.order_data || []).length, 0);
   const selectedOverride = overridesByDate.get(selectedScheduleDate) || {};
