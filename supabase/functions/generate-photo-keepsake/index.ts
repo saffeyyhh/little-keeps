@@ -69,13 +69,25 @@ Deno.serve(async request => {
     });
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count } = await supabase
+    const { data: recentAttempts, count } = await supabase
       .from("photo_artwork_requests")
-      .select("id", { count: "exact", head: true })
+      .select("created_at", { count: "exact" })
       .eq("requester_hash", requesterHash)
-      .gte("created_at", oneHourAgo);
+      .gte("created_at", oneHourAgo)
+      .order("created_at", { ascending: true })
+      .limit(1);
     if ((count || 0) >= 5) {
-      return json({ error: "You have reached the preview limit. Please try again in an hour." }, 429);
+      const resetAt = new Date(
+        new Date(recentAttempts?.[0]?.created_at || Date.now()).getTime() + 60 * 60 * 1000
+      );
+      const retryAfterSeconds = Math.max(60, Math.ceil((resetAt.getTime() - Date.now()) / 1000));
+      return json({
+        error: "You have used all 5 previews for this hour.",
+        attempts_used: 5,
+        attempts_remaining: 0,
+        retry_after_seconds: retryAfterSeconds,
+        retry_at: resetAt.toISOString()
+      }, 429);
     }
 
     const moderationResponse = await fetch("https://api.openai.com/v1/moderations", {
@@ -160,12 +172,22 @@ Deno.serve(async request => {
       .from("customer-artwork")
       .createSignedUrl(artworkPath, 60 * 60 * 2);
     if (signedError) throw signedError;
+    const { data: recolourUpload, error: recolourUploadError } = await supabase.storage
+      .from("customer-artwork")
+      .createSignedUploadUrl(artworkPath, { upsert: true });
+    if (recolourUploadError) throw recolourUploadError;
 
     return json({
       generation_id: generationId,
       original_path: originalPath,
       artwork_path: artworkPath,
-      artwork_url: signedArtwork.signedUrl
+      artwork_url: signedArtwork.signedUrl,
+      recolour_token: recolourUpload.token,
+      attempts_used: (count || 0) + 1,
+      attempts_remaining: Math.max(0, 4 - (count || 0)),
+      retry_at: new Date(
+        new Date(recentAttempts?.[0]?.created_at || Date.now()).getTime() + 60 * 60 * 1000
+      ).toISOString()
     });
   } catch (error) {
     console.error("generate-photo-keepsake failed", error);

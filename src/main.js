@@ -951,7 +951,8 @@ ${requestedPreviewProductKey ? `
       <article><span>Pickup</span><strong id="availabilityPickupDate">Checking…</strong><small>First selectable appointment</small></article>
       <article><span>Event orders</span><strong id="availabilityBulkDate">Checking…</strong><small>Earliest dispatch request</small></article>
     </div>
-    <p id="availabilityPreviewNote">We accept up to ${Math.max(1, Number(shopSettings.max_orders_per_date || 2))} orders per production day. Fully booked dates are hidden automatically.</p>
+    <p id="availabilityPreviewNote">Most production days accept ${Math.max(1, Number(shopSettings.max_orders_per_date || 2))} orders. Some dates may have extra or fewer slots.</p>
+    <button id="refreshAvailabilityBtn" class="availability-refresh-btn" type="button">Refresh availability</button>
   </div>
 </section>
 
@@ -1090,22 +1091,22 @@ ${requestedPreviewProductKey ? `
   <div class="photo-keepsake-dialog">
     <button id="closePhotoKeepsakeModal" type="button" class="photo-modal-close" aria-label="Close">×</button>
     <p class="section-eyebrow">AI Photo Keepsake</p>
-    <h2 id="photoKeepsakeTitle">Turn a photo into printable artwork</h2>
-    <p>We simplify one clear subject into bold, limited-colour artwork. You approve the preview before it enters your cart.</p>
+    <h2 id="photoKeepsakeTitle">Turn your photo into a keepsake</h2>
+    <p>Upload one clear photo and we’ll turn the main subject into simple artwork for your keychain. You can approve it or try another version.</p>
 
     <div class="photo-keepsake-grid">
       <section>
         <label class="photo-upload-zone" for="photoKeepsakeInput">
           <input id="photoKeepsakeInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-          <span>Upload one clear photo</span>
-          <small>JPG, PNG or WebP · maximum 8 MB · one person, pet or object works best</small>
+          <span>Choose a clear photo</span>
+          <small>A bright photo with one person, pet or object works best · maximum 8 MB</small>
           <img id="photoOriginalPreview" class="hidden" alt="Your uploaded photo preview">
         </label>
 
         <div class="photo-option-grid">
           <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="object">Object or keepsake</option></select></label>
-          <label><span>Maximum colours</span><select id="photoColourCount"><option value="2">2 colours · easiest to print</option><option value="3">3 colours</option><option value="4" selected>4 colours · full AMS palette</option></select></label>
-          <label><span>Short label</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
+          <label><span>Artwork detail</span><select id="photoColourCount"><option value="2">Simple · 2 colours</option><option value="3">Balanced · 3 colours</option><option value="4" selected>More detail · 4 colours</option></select></label>
+          <label><span>Name for this design</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
         </div>
 
@@ -1117,7 +1118,7 @@ ${requestedPreviewProductKey ? `
         </div>
 
         <label class="photo-permission-check"><input id="photoPermissionCheck" type="checkbox"><span>I own this photo or have permission to use it, including permission from the person or guardian shown.</span></label>
-        <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I understand the photo will be privately sent to an AI service to create this artwork and retained for up to 30 days for production support.</span></label>
+        <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I agree to private AI processing of this photo. It may be kept for up to 30 days so Little Keeps can make my order.</span></label>
         <button id="generatePhotoArtworkBtn" type="button" class="photo-generate-btn">Create My Artwork</button>
         <p id="photoGenerationStatus" class="hint" aria-live="polite"></p>
       </section>
@@ -1126,11 +1127,11 @@ ${requestedPreviewProductKey ? `
         <div id="photoResultPlaceholder"><span>✦</span><strong>Your simplified artwork will appear here</strong><small>No payment is taken when you generate a preview.</small></div>
         <img id="photoArtworkResult" class="hidden" alt="AI simplified printable artwork preview">
         <div id="photoResultActions" class="photo-result-actions hidden">
-          <button id="regeneratePhotoArtworkBtn" type="button">Try Another Version</button>
+          <div class="photo-retry-action"><button id="regeneratePhotoArtworkBtn" type="button">Try Another Version</button><small id="photoAttemptStatus">Up to 5 previews per hour</small></div>
           <button id="addPhotoArtworkToCartBtn" type="button">Approve & Add to Cart</button>
         </div>
         <div id="photoMappedPalette" class="photo-mapped-palette hidden"></div>
-        <p class="photo-proof-note">AI previews still receive a manual printability check. Tiny details may be simplified further before production.</p>
+        <p class="photo-proof-note">We check every design before making it. Very tiny details may be adjusted so your finished keychain looks neat.</p>
       </section>
     </div>
   </div>
@@ -2465,6 +2466,8 @@ const photoResultPlaceholder = document.getElementById("photoResultPlaceholder")
 const photoArtworkResult = document.getElementById("photoArtworkResult");
 const photoResultActions = document.getElementById("photoResultActions");
 const photoMappedPalette = document.getElementById("photoMappedPalette");
+const photoAttemptStatus = document.getElementById("photoAttemptStatus");
+const refreshAvailabilityBtn = document.getElementById("refreshAvailabilityBtn");
 const orderNotes = document.getElementById("orderNotes");
 const submitOrderBtn = document.getElementById("submitOrderBtn");
 const confirmFinalOrderDetails = document.getElementById("confirmFinalOrderDetails");
@@ -3000,10 +3003,11 @@ function getFirstPickupDateAfter(readyDate) {
   return readyDate;
 }
 
-function renderAvailabilityPreview() {
+async function renderAvailabilityPreview() {
   const standardDate = document.getElementById("availabilityStandardDate");
   const pickupDate = document.getElementById("availabilityPickupDate");
   const bulkDate = document.getElementById("availabilityBulkDate");
+  const note = document.getElementById("availabilityPreviewNote");
   if (!standardDate || !pickupDate || !bulkDate) return;
 
   const standardReady = alignToProductionDay(
@@ -3015,6 +3019,17 @@ function renderAvailabilityPreview() {
   standardDate.textContent = formatEstimateDate(standardReady);
   pickupDate.textContent = formatEstimateDate(firstPickup);
   bulkDate.textContent = formatEstimateDate(firstBulk);
+
+  const { data, error } = await supabase.rpc("check_needed_by_date", {
+    p_date: toLocalDateString(standardReady),
+    p_quantity: 1
+  });
+  if (!error && data?.allowed && note) {
+    const limit = Math.max(0, Number(data.order_limit || 0));
+    const used = Math.max(0, Number(data.orders || 0));
+    const remaining = Math.max(0, limit - used);
+    note.textContent = `${remaining} of ${limit} order slot${limit === 1 ? "" : "s"} remain on the next available production day. Daily limits may vary.`;
+  }
 }
 
 function isCalendarDateUnavailable(date, mode) {
@@ -3754,6 +3769,8 @@ let editingPendingOrder = false;
 let pendingOrderEditableUntil = 0;
 let currentSubmissionId = crypto.randomUUID();
 let currentSubmissionOrderRef = "";
+let photoRetryAvailableAt = 0;
+let photoRetryTimer = null;
 let photoKeepsakeState = {
   file: null,
   inputDataUrl: "",
@@ -7966,11 +7983,11 @@ function renderPhotoMappedPalette(palette = photoKeepsakeState.filamentPalette) 
   const normalized = normalizePhotoFilamentPalette(palette);
   photoMappedPalette.classList.toggle("hidden", !normalized.length);
   photoMappedPalette.innerHTML = normalized.length ? `
-    <strong>Your print will use these available filaments</strong>
+    <strong>Your finished keychain colours</strong>
     <div>${normalized.map(item => `
-      <span><i style="background:${item.hex}"></i>${escapePresetText(item.name)} · ${item.material_type}</span>
+      <span><i style="background:${item.hex}"></i>${escapePresetText(item.name)}</span>
     `).join("")}</div>
-    <small>The backing automatically reuses one of these colours, so the complete keychain stays within four AMS slots.</small>
+    <small>The preview and finished print use these exact colour choices. Screen colours may look slightly different in person.</small>
   ` : "";
 }
 
@@ -7989,6 +8006,100 @@ async function mapPhotoPreviewToAvailableFilaments(artworkUrl, colourCount, pale
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
   const centres = getArtworkColourClusters(pixels, colourCount);
   return mapArtworkClustersToFilaments(centres, palette);
+}
+
+async function recolourPhotoPreview(artworkUrl, filamentPalette) {
+  const palette = normalizePhotoFilamentPalette(filamentPalette).map(item => ({
+    ...item,
+    rgb: [
+      Number.parseInt(item.hex.slice(1, 3), 16),
+      Number.parseInt(item.hex.slice(3, 5), 16),
+      Number.parseInt(item.hex.slice(5, 7), 16)
+    ]
+  }));
+  if (!palette.length) throw new Error("The selected print colours could not be applied.");
+
+  const response = await fetch(artworkUrl);
+  if (!response.ok) throw new Error("The generated preview could not be prepared.");
+  const bitmap = await createImageBitmap(await response.blob());
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+
+  for (let index = 0; index < image.data.length; index += 4) {
+    if (image.data[index + 3] < 24) continue;
+    let closest = palette[0];
+    let closestDistance = Infinity;
+    palette.forEach(option => {
+      const red = image.data[index] - option.rgb[0];
+      const green = image.data[index + 1] - option.rgb[1];
+      const blue = image.data[index + 2] - option.rgb[2];
+      const distance = red * red + green * green + blue * blue;
+      if (distance < closestDistance) {
+        closest = option;
+        closestDistance = distance;
+      }
+    });
+    image.data[index] = closest.rgb[0];
+    image.data[index + 1] = closest.rgb[1];
+    image.data[index + 2] = closest.rgb[2];
+  }
+
+  context.putImageData(image, 0, 0);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("The exact print-colour preview could not be saved.");
+  return blob;
+}
+
+function formatPhotoRetryTime(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  if (safeSeconds <= 90) return "about 1 minute";
+  if (safeSeconds < 3600) return `about ${Math.ceil(safeSeconds / 60)} minutes`;
+  const hours = Math.ceil(safeSeconds / 3600);
+  return `about ${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+function updatePhotoAttemptStatus(details = {}) {
+  if (!photoAttemptStatus) return;
+  const remaining = Number(details.attempts_remaining);
+  if (!Number.isFinite(remaining)) {
+    photoAttemptStatus.textContent = "Up to 5 previews per hour";
+    return;
+  }
+  if (remaining <= 0) {
+    const retrySeconds = Number(details.retry_after_seconds) || Math.max(
+      60,
+      Math.ceil((new Date(details.retry_at || Date.now()).getTime() - Date.now()) / 1000)
+    );
+    photoAttemptStatus.textContent = `0 of 5 previews left · try again in ${formatPhotoRetryTime(retrySeconds)}`;
+    photoRetryAvailableAt = Date.now() + retrySeconds * 1000;
+    generatePhotoArtworkBtn.disabled = true;
+    regeneratePhotoArtworkBtn.disabled = true;
+    clearTimeout(photoRetryTimer);
+    photoRetryTimer = setTimeout(() => {
+      photoRetryAvailableAt = 0;
+      generatePhotoArtworkBtn.disabled = false;
+      regeneratePhotoArtworkBtn.disabled = false;
+      updatePhotoAttemptStatus();
+    }, Math.min(retrySeconds * 1000 + 500, 2147483647));
+    return;
+  }
+  photoRetryAvailableAt = 0;
+  photoAttemptStatus.textContent = `${remaining} of 5 previews left this hour`;
+}
+
+async function getPhotoFunctionErrorDetails(error) {
+  try {
+    const response = error?.context;
+    if (response?.clone) return await response.clone().json();
+  } catch {
+    // Use the normal error message below when the response body is unavailable.
+  }
+  return {};
 }
 
 function openPhotoKeepsakeStudio() {
@@ -8060,37 +8171,63 @@ async function generatePhotoKeepsakeArtwork() {
         client_token: currentSubmissionId
       }
     });
-    if (error) throw error;
+    if (error) {
+      const details = await getPhotoFunctionErrorDetails(error);
+      updatePhotoAttemptStatus(details);
+      const friendlyError = new Error(details.error || error.message || "The preview could not be created.");
+      friendlyError.details = details;
+      throw friendlyError;
+    }
     if (!data?.artwork_url || !data?.artwork_path) {
       throw new Error(data?.error || "The artwork service did not return a preview.");
     }
+    updatePhotoAttemptStatus(data);
 
     const filamentPalette = await mapPhotoPreviewToAvailableFilaments(
       data.artwork_url,
       Number(photoColourCount.value),
       availableFilamentPalette
     );
+    const exactColourArtwork = await recolourPhotoPreview(
+      data.artwork_url,
+      filamentPalette
+    );
+    if (!data.recolour_token) {
+      throw new Error("The exact print-colour preview could not be saved. Please try again.");
+    }
+    const { error: recolourError } = await supabase.storage
+      .from("customer-artwork")
+      .uploadToSignedUrl(
+        data.artwork_path,
+        data.recolour_token,
+        exactColourArtwork,
+        { contentType: "image/png", upsert: true }
+      );
+    if (recolourError) throw recolourError;
+    const exactArtworkUrl = new URL(data.artwork_url);
+    exactArtworkUrl.searchParams.set("preview", String(Date.now()));
     Object.assign(photoKeepsakeState, {
       originalPath: data.original_path || "",
       artworkPath: data.artwork_path,
-      artworkUrl: data.artwork_url,
+      artworkUrl: exactArtworkUrl.toString(),
       generationId: data.generation_id || "",
       filamentPalette
     });
-    photoArtworkResult.src = data.artwork_url;
+    photoArtworkResult.src = exactArtworkUrl.toString();
     photoArtworkResult.classList.remove("hidden");
     photoResultPlaceholder.classList.add("hidden");
     photoResultActions.classList.remove("hidden");
     renderPhotoMappedPalette(filamentPalette);
-    photoGenerationStatus.textContent = "Preview ready and matched to your available Little Keeps filaments.";
+    photoGenerationStatus.textContent = "Preview ready in the exact colours available for your keychain.";
   } catch (error) {
     console.error("Unable to generate photo keepsake artwork:", error);
     photoGenerationStatus.textContent =
-      error?.context?.body?.error || error?.message ||
+      error?.details?.error || error?.message ||
       "The AI studio is not configured yet. Please try again later.";
   } finally {
-    generatePhotoArtworkBtn.disabled = false;
-    regeneratePhotoArtworkBtn.disabled = false;
+    const rateLimited = photoRetryAvailableAt > Date.now();
+    generatePhotoArtworkBtn.disabled = rateLimited;
+    regeneratePhotoArtworkBtn.disabled = rateLimited;
   }
 }
 
@@ -8179,6 +8316,17 @@ addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
 photoNfcEnabled?.addEventListener("change", () => {
   photoNfcFields?.classList.toggle("hidden", !photoNfcEnabled.checked);
   if (photoNfcEnabled.checked && photoSubjectType?.value === "pet") photoNfcType.value = "pet";
+});
+refreshAvailabilityBtn?.addEventListener("click", async () => {
+  const previous = refreshAvailabilityBtn.textContent;
+  refreshAvailabilityBtn.disabled = true;
+  refreshAvailabilityBtn.textContent = "Refreshing…";
+  await setupNeededByCalendar();
+  refreshAvailabilityBtn.textContent = "Availability updated ✓";
+  setTimeout(() => {
+    refreshAvailabilityBtn.disabled = false;
+    refreshAvailabilityBtn.textContent = previous;
+  }, 1400);
 });
 
 document
