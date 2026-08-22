@@ -1538,34 +1538,6 @@ Chloe</textarea>
           </div>
         </div>
 
-        <div class="nfc-addon-card">
-          <label class="nfc-addon-toggle" for="nfcEnabledToggle">
-            <input id="nfcEnabledToggle" type="checkbox">
-            <span>
-              <strong>Add tap-to-open NFC</strong>
-              <small>+<span id="nfcAddonPrice">S$2.50</span> per keychain · works with most modern phones</small>
-            </span>
-          </label>
-          <div id="nfcAddonFields" class="nfc-addon-fields hidden">
-            <label>
-              <span>What should it open?</span>
-              <select id="nfcContentType">
-                <option value="guardian">Guardian contact</option>
-                <option value="pet">Pet owner contact</option>
-                <option value="contact">Contact card</option>
-                <option value="social">Social media or portfolio</option>
-                <option value="website">Website or custom link</option>
-                <option value="wifi">Wi-Fi details page</option>
-              </select>
-            </label>
-            <label>
-              <span>Link to program into the NFC tag</span>
-              <input id="nfcPayload" type="url" inputmode="url" maxlength="500" placeholder="https://...">
-            </label>
-            <p id="nfcGuidance" class="nfc-guidance">For a child, use a guardian contact page with only the information needed to return the item. Avoid home addresses, birth dates and private medical information.</p>
-          </div>
-        </div>
-
         <div class="special-colour-note">
           <div class="special-colour-icon">♡</div>
 
@@ -2431,12 +2403,6 @@ const giftingBagQuantityInput = document.getElementById("giftingBagQuantity");
 const giftingBagDecrease = document.getElementById("giftingBagDecrease");
 const giftingBagIncrease = document.getElementById("giftingBagIncrease");
 const giftingBagStockStatus = document.getElementById("giftingBagStockStatus");
-const nfcEnabledToggle = document.getElementById("nfcEnabledToggle");
-const nfcAddonFields = document.getElementById("nfcAddonFields");
-const nfcContentType = document.getElementById("nfcContentType");
-const nfcPayload = document.getElementById("nfcPayload");
-const nfcGuidance = document.getElementById("nfcGuidance");
-const nfcAddonPrice = document.getElementById("nfcAddonPrice");
 const photoKeepsakeModal = document.getElementById("photoKeepsakeModal");
 const closePhotoKeepsakeModal = document.getElementById("closePhotoKeepsakeModal");
 const photoKeepsakeInput = document.getElementById("photoKeepsakeInput");
@@ -3904,14 +3870,11 @@ function calculatePrice(design, name = "") {
     capColourCount: getUniqueColourCount(design.caps),
     letterColourCount: getUniqueColourCount(design.letters)
   });
-  const nfcPrice = design?.nfcEnabled
-    ? Math.max(0, Number(shopSettings.nfc_addon_price ?? 2.5))
-    : 0;
   const photoVariantPrice =
     activeProduct.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker"
       ? Math.max(0, Number(shopSettings.photo_clicker_addon_price ?? 3))
       : 0;
-  return roundMoney(productPrice + nfcPrice + photoVariantPrice);
+  return roundMoney(productPrice + photoVariantPrice);
 }
 
 function getUnitPriceBreakdown(design, name = "") {
@@ -3950,14 +3913,6 @@ function getUnitPriceBreakdown(design, name = "") {
       addOn: true
     });
   });
-
-  if (design?.nfcEnabled) {
-    rows.push({
-      label: "Tap-to-open NFC tag",
-      amount: Math.max(0, Number(shopSettings.nfc_addon_price ?? 2.5)),
-      addOn: true
-    });
-  }
 
   if (activeProduct.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker") {
     rows.push({
@@ -5626,34 +5581,6 @@ function updateStandardFontSizeButtons() {
   });
 }
 
-const NFC_GUIDANCE = {
-  guardian: "For a child, use a guardian contact page with only the information needed to return the item. Avoid home addresses, birth dates and private medical information.",
-  pet: "A pet profile can include the pet’s name, owner contact and urgent care notes. Avoid publishing your full home address.",
-  contact: "Use a public contact-card link so the recipient can update it later without reprogramming the tag.",
-  social: "Paste one public Instagram, TikTok, portfolio or link-in-bio URL.",
-  website: "Paste the full public page beginning with https://.",
-  wifi: "Use a page or QR destination you control. Do not paste a raw Wi-Fi password into a public link."
-};
-
-function updateNfcOptions() {
-  const design = getActiveDesign();
-  const enabled = Boolean(design.nfcEnabled);
-  if (nfcEnabledToggle) nfcEnabledToggle.checked = enabled;
-  nfcAddonFields?.classList.toggle("hidden", !enabled);
-  if (nfcContentType) nfcContentType.value = design.nfcType || "guardian";
-  if (nfcPayload && document.activeElement !== nfcPayload) {
-    nfcPayload.value = design.nfcPayload || "";
-  }
-  if (nfcGuidance) {
-    nfcGuidance.textContent = NFC_GUIDANCE[design.nfcType] || NFC_GUIDANCE.website;
-  }
-  if (nfcAddonPrice) {
-    nfcAddonPrice.textContent = displaySettingMoney(
-      Math.max(0, Number(shopSettings.nfc_addon_price ?? 2.5))
-    );
-  }
-}
-
 function setStandardFontSize(size) {
   const normalized = Number(size);
   if (!STANDARD_FONT_SIZES.includes(normalized)) return;
@@ -5673,31 +5600,6 @@ function setStandardFontSize(size) {
 
 document.querySelectorAll("[data-standard-font-size]").forEach(button => {
   button.addEventListener("click", () => setStandardFontSize(button.dataset.standardFontSize));
-});
-
-nfcEnabledToggle?.addEventListener("change", () => {
-  const design = getActiveDesign();
-  design.nfcEnabled = nfcEnabledToggle.checked;
-  if (applyAllToggle.checked) globalDesign.nfcEnabled = design.nfcEnabled;
-  draftHasMeaningfulChanges = true;
-  refreshUI();
-  saveDraft();
-});
-
-nfcContentType?.addEventListener("change", () => {
-  const design = getActiveDesign();
-  design.nfcType = nfcContentType.value;
-  if (applyAllToggle.checked) globalDesign.nfcType = design.nfcType;
-  updateNfcOptions();
-  saveDraft();
-});
-
-nfcPayload?.addEventListener("input", () => {
-  const design = getActiveDesign();
-  design.nfcPayload = nfcPayload.value.trim();
-  if (applyAllToggle.checked) globalDesign.nfcPayload = design.nfcPayload;
-  draftHasMeaningfulChanges = true;
-  saveDraft();
 });
 
 function setLetterOrientation(orientation) {
@@ -6529,11 +6431,6 @@ async function submitOrderOnce() {
 
         design: {
           font_size_mm: getStandardFontSize(design),
-          nfc: design.nfcEnabled ? {
-            enabled: true,
-            content_type: design.nfcType || "website",
-            payload: String(design.nfcPayload || "").trim()
-          } : { enabled: false },
           photo: design.photo ? {
             original_path: design.photo.originalPath || "",
             artwork_path: design.photo.artworkPath || "",
@@ -6853,7 +6750,6 @@ function refreshUI() {
   updateBaseShapeButtons();
   updateLetterOrientationButtons();
   updateStandardFontSizeButtons();
-  updateNfcOptions();
   updateGiftingBagOptions();
   updateCartDisplay();
   updateTurnaroundMessaging();
@@ -6990,11 +6886,6 @@ function serializeSharedGroupBasket() {
       quantity: getItemQuantity(item),
       design: {
         font_size_mm: getStandardFontSize(design),
-        nfc: design.nfcEnabled ? {
-          enabled: true,
-          content_type: design.nfcType || "website",
-          payload: String(design.nfcPayload || "").trim()
-        } : { enabled: false },
         photo: design.photo || null,
         base_shape: design.baseShape || "ribbed",
         letter_orientation: design.letterOrientation || "vertical",
@@ -7751,28 +7642,9 @@ function proceedToCheckout() {
   });
 }
 
-function getInvalidNfcItem() {
-  return names.find(item => {
-    const design = getDesign(item);
-    if (!design.nfcEnabled) return false;
-    try {
-      const url = new URL(String(design.nfcPayload || ""));
-      return url.protocol !== "https:";
-    } catch {
-      return true;
-    }
-  });
-}
-
 nextBtn.onclick = async () => {
   if (!names.length) {
     alert("Please enter at least one name.");
-    return;
-  }
-
-  const invalidNfcItem = getInvalidNfcItem();
-  if (invalidNfcItem) {
-    alert(`Add a complete https:// link for the NFC tag on ${invalidNfcItem.name || "this keychain"}.`);
     return;
   }
 
@@ -8847,16 +8719,9 @@ function validateForm() {
     let valid = true;
     let message = "";
 
-    const invalidNfcItem = getInvalidNfcItem();
-
     if (isProductPreview) {
         valid = false;
         message = "Private preview mode - checkout is disabled.";
-    }
-
-    else if (invalidNfcItem) {
-        valid = false;
-        message = `Add a complete https:// link for the NFC tag on ${invalidNfcItem.name || "this keychain"}.`;
     }
 
     else if (!customerName.value.trim()) {

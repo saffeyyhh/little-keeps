@@ -2509,47 +2509,6 @@ body {
   font-weight: 750;
 }
 
-.nfc-assembly-tag {
-  color: #276a52;
-  background: #dff4ea;
-}
-
-.assembly-nfc-instruction {
-  margin: 12px 0;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px 10px;
-  border: 1px solid #bfe2d3;
-  border-radius: 13px;
-  background: #f1faf6;
-}
-
-.assembly-nfc-instruction strong {
-  grid-column: 1 / -1;
-  color: #285b46;
-  font-size: 12px;
-}
-
-.assembly-nfc-instruction code {
-  min-width: 0;
-  overflow: hidden;
-  color: #4e6e60;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.assembly-nfc-instruction button {
-  padding: 6px 9px;
-  border: 0;
-  border-radius: 8px;
-  color: #fff;
-  background: #3f8d6b;
-  font-weight: 800;
-  cursor: pointer;
-}
-
 .assembly-complete-tag {
   color: #287049;
   background: #dff4e7;

@@ -610,11 +610,6 @@ const hardwareItems = [
     category: "Packaging"
   },
   {
-    itemName: "NTAG215 NFC Wet Label (25 mm)",
-    label: "NTAG215 NFC Wet Label · 25 mm",
-    category: "Hardware"
-  },
-  {
     itemName: "White Thickened Courier Bag (28 × 40 cm)",
     label: "White Thickened Courier Bag · 28 × 40 cm",
     category: "Packaging"
@@ -1656,7 +1651,6 @@ function renderSettingsWorkspace() {
           <div class="settings-fields two-columns">
             ${settingNumber("delivery_fee", "Delivery fee ($)", "0.10")}
             ${settingNumber("free_delivery_threshold", "Free delivery from ($)", "0.10")}
-            ${settingNumber("nfc_addon_price", "NFC add-on per keychain ($)", "0.10")}
           </div>
           <p class="hint">Product prices are managed separately above.</p>
         </section>
@@ -2121,8 +2115,7 @@ async function saveShopSettings(event) {
     "bulk_order_quantity",
     "standard_min_working_days", "standard_max_working_days", "large_min_working_days",
     "large_max_working_days", "rush_fee_small", "rush_fee_large", "rush_max_missing_parts",
-    "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock",
-    "nfc_addon_price"
+    "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock"
   ];
   const updates = { id: 1 };
   numberFields.forEach(name => { updates[name] = Number(form.get(name)); });
@@ -4801,7 +4794,6 @@ function renderOrders(orders) {
           `}
 
           ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
-          ${item.design?.nfc?.enabled ? `<span class="assembly-tag nfc-assembly-tag">NFC</span>` : ""}
         </div>
 
         ${photoProduct ? `
@@ -5690,11 +5682,6 @@ async function loadInventoryItems() {
         id: 6,
         qty: 20,
         category: "Packaging"
-      },
-      "NTAG215 NFC Wet Label (25 mm)": {
-        id: 7,
-        qty: 50,
-        category: "Hardware"
       },
       "White Thickened Courier Bag (28 × 40 cm)": {
         id: 8,
@@ -6885,7 +6872,6 @@ function getOrderInventoryNeeds(order) {
         add(getCustomNameInventoryName(order, item, itemIndex), 1);
         add("Metal Large D Ring", 1);
       }
-      if (design.nfc?.enabled) add("NTAG215 NFC Wet Label (25 mm)", 1);
       return;
     }
 
@@ -6893,7 +6879,6 @@ function getOrderInventoryNeeds(order) {
       add(getPhotoKeepsakeInventoryName(order, item, itemIndex), 1);
       add("Metal Large D Ring", 1);
       if (design.photo?.variant === "clicker") add("Mechanical Switch", 1);
-      if (design.nfc?.enabled) add("NTAG215 NFC Wet Label (25 mm)", 1);
       return;
     }
 
@@ -6942,7 +6927,6 @@ function getOrderInventoryNeeds(order) {
       add("Mechanical Switch", letters.length);
       add("Metal Large D Ring", 1);
     }
-    if (design.nfc?.enabled) add("NTAG215 NFC Wet Label (25 mm)", 1);
   });
   add(
     "Gifting Bag",
@@ -7526,7 +7510,7 @@ window.generatePhotoKeepsakeStls = async function(orderId, itemIndex, button, or
     const backingFilament = parts.mappedPalette[parts.backingPaletteIndex] || parts.mappedPalette[0];
     const files = [{
       blob: exportGeometryStl(parts.backing),
-      filename: `${reference}_${label}_00-BACKING_${safeProductionFileName(backingFilament.name, "filament")}_${backingFilament.material_type}_1.6mm.stl`
+      filename: `${reference}_${label}_00-BACKING_${safeProductionFileName(backingFilament.name, "filament")}_${backingFilament.material_type}_1.6mm_0.4MM-NOZZLE.stl`
     }];
     parts.colours.forEach((geometry, index) => {
       if (!geometry) return;
@@ -7535,7 +7519,7 @@ window.generatePhotoKeepsakeStls = async function(orderId, itemIndex, button, or
         blob: exportGeometryStl(geometry),
         filename:
           `${reference}_${label}_${String(index + 1).padStart(2, "0")}-` +
-          `${safeProductionFileName(filament.name, "filament")}_${filament.material_type}_${filament.hex.slice(1)}.stl`
+          `${safeProductionFileName(filament.name, "filament")}_${filament.material_type}_${filament.hex.slice(1)}_0.4MM-NOZZLE.stl`
       });
     });
     files.forEach((file, index) => {
@@ -7547,7 +7531,8 @@ window.generatePhotoKeepsakeStls = async function(orderId, itemIndex, button, or
     alert(
       `STL pack ready at approximately ${parts.widthMm.toFixed(1)} × ${parts.heightMm.toFixed(1)} mm.\n\n` +
       "Import every STL together as one object with multiple parts, assign the matching filament colours, and keep their positions unchanged. " +
-      `Set ${Math.max(1, Number(orderedQuantity) || 1)} cop${Number(orderedQuantity) === 1 ? "y" : "ies"} in your slicer. Inspect the keyring hole and small details before printing.`
+      `Set ${Math.max(1, Number(orderedQuantity) || 1)} cop${Number(orderedQuantity) === 1 ? "y" : "ies"} in your slicer. ` +
+      "Use a 0.4 mm nozzle with the matching printer/nozzle preset and Arachne wall generator. Inspect the keyring hole and small details before printing."
     );
   } catch (error) {
     console.error("Unable to generate photo keepsake STL files:", error);
@@ -7565,7 +7550,7 @@ window.startPhotoKeepsakePrint = async function(orderId, itemIndex, itemName, qu
   const item = order?.order_data?.[Number(itemIndex)];
   if (!order || !item) return;
   if (!confirm(
-    `Start printing ${item.name || "this photo keepsake"}?\n\nConfirm you checked the artwork for connected shapes, minimum wall thickness and a safe keyring/clicker area in your slicer.`
+    `Start printing ${item.name || "this photo keepsake"}?\n\nConfirm you sliced it with the 0.4 mm nozzle preset and Arachne wall generator, then checked connected shapes, minimum wall thickness and the keyring area.`
   )) return;
   await window.startProductionJob(itemName, Math.max(1, Number(quantity) || 1), "Base");
 };
@@ -9098,7 +9083,6 @@ async function renderAssemblyQueue() {
             `}
 
             ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
-            ${item.design?.nfc?.enabled ? `<span class="assembly-tag nfc-assembly-tag">NFC · ${escapeAdminHtml(item.design.nfc.content_type || "link")}</span>` : ""}
             ${baseOnly ? `<span class="assembly-tag">${item.base_assembled ? "Base assembled & set aside" : "Base parts ready"}</span>` : ""}
           </div>
         </div>
@@ -9112,14 +9096,6 @@ async function renderAssemblyQueue() {
           <div class="mini-chain">${createAssemblyMiniPreview(item.name, item.design)}</div>
           ${createAssemblyColourGuide(item.name, item.design)}
         `}
-
-        ${item.design?.nfc?.enabled ? `
-          <div class="assembly-nfc-instruction">
-            <strong>Program NFC before closing the keychain</strong>
-            <code>${escapeAdminHtml(item.design.nfc.payload || "No link saved")}</code>
-            <button type="button" onclick='navigator.clipboard.writeText(${JSON.stringify(String(item.design.nfc.payload || ""))}); this.textContent="Copied ✓"'>Copy NFC Link</button>
-          </div>
-        ` : ""}
 
         ${
           completed
@@ -9413,6 +9389,7 @@ async function renderInventoryWorkspace() {
   );
 
   const allNormalItems = Object.entries(inventoryItems)
+    .filter(([itemName]) => itemName !== "NTAG215 NFC Wet Label (25 mm)")
     .map(([itemName, item]) => ({
       itemName,
       qty: Number(item.qty || 0),
@@ -9738,7 +9715,7 @@ async function renderInventoryWorkspace() {
       ${section(
         "hardware",
         "Hardware & packaging",
-        "Hardware, NFC labels, gifting bags and delivery packaging.",
+        "Keychain hardware, gifting bags and delivery packaging.",
         hardwareRows,
         true
       )}
@@ -11476,7 +11453,7 @@ async function renderProductionPlanner(orders) {
                     <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : `${row.fontSize} mm letters`}</strong>
                   </header>
                   ${row.isPhoto ? `
-                    <div class="photo-printability-warning"><strong>Manual printability check required</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · inspect connected shapes and minimum wall thickness.</span></div>
+                    <div class="photo-printability-warning"><strong>Use the 0.4 mm nozzle preset</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · use Arachne walls, then inspect connected shapes, minimum wall thickness and the keyring hole before printing.</span></div>
                     ${normalizePhotoFilamentPalette(row.photo.filament_palette).length ? `
                       <div class="custom-print-colours">
                         ${normalizePhotoFilamentPalette(row.photo.filament_palette).map(filament => `
