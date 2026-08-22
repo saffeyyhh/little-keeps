@@ -36,6 +36,7 @@ import {
   STANDARD_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
   calculateProductUnitPrice,
+  formatProductUnitsSold,
   getProductByKey,
   getProductDisplayPrice,
   normalizeProductCatalog
@@ -280,6 +281,18 @@ try {
   productCatalog = normalizeProductCatalog(data);
 } catch (error) {
   console.warn("Using the built-in product catalogue:", error);
+}
+
+let modularUnitsSold = null;
+try {
+  const { data, error } = await supabase.rpc("get_product_units_sold", {
+    p_product_key: MODULAR_PRODUCT_KEY
+  });
+  if (error) throw error;
+  const total = Math.max(0, Math.floor(Number(data)));
+  if (Number.isFinite(total)) modularUnitsSold = total;
+} catch (error) {
+  console.warn("Unable to load the public product sales count:", error);
 }
 
 let previewProduct = requestedPreviewProductKey
@@ -972,6 +985,7 @@ ${requestedPreviewProductKey ? `
           loading="eager"
         >
         <span class="product-card-badge">Available now</span>
+        ${modularUnitsSold > 0 ? `<span class="product-card-sales-badge">${formatProductUnitsSold(modularUnitsSold)}</span>` : ""}
       </div>
 
       <div class="product-card-content">

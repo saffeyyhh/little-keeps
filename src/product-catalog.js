@@ -3,6 +3,11 @@ export const SOLID_PRODUCT_KEY = "solid-clicky-keychain";
 export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 
+export function formatProductUnitsSold(value) {
+  const units = Math.max(0, Math.floor(Number(value) || 0));
+  return `${units.toLocaleString("en-SG")} keychain${units === 1 ? "" : "s"} sold ♡`;
+}
+
 export const DEFAULT_PRODUCT_CATALOG = [
   {
     product_key: MODULAR_PRODUCT_KEY,

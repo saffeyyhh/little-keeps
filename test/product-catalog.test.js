@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DEFAULT_PRODUCT_CATALOG,
+  formatProductUnitsSold,
   MODULAR_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
   SOLID_PRODUCT_KEY,
@@ -12,6 +13,11 @@ import {
   getProductByKey,
   normalizeProductCatalog
 } from "../src/product-catalog.js";
+
+test("formats product social proof by keychain quantity", () => {
+  assert.equal(formatProductUnitsSold(1), "1 keychain sold ♡");
+  assert.equal(formatProductUnitsSold(248), "248 keychains sold ♡");
+});
 
 test("keeps launch-ready products live and unfinished products safely hidden", () => {
   const catalogue = normalizeProductCatalog([]);
