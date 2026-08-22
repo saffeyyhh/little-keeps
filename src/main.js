@@ -1397,7 +1397,6 @@ Chloe</textarea>
             <input id="aiDesignBrief" maxlength="300" placeholder="e.g. cute purple birthday gift for a cat lover">
             <button id="aiDesignHelperBtn" type="button">Suggest Ideas</button>
           </div>
-          <small>Suggestions only use colours currently marked in stock. Your website still controls the final price.</small>
           <p id="aiDesignHelperStatus" aria-live="polite"></p>
           <div id="aiDesignSuggestions" class="ai-design-suggestions hidden"></div>
         </div>
@@ -4233,7 +4232,7 @@ function applyAiDesignSuggestion(index) {
 async function checkPhotoSuitability(imageDataUrl) {
   if (!photoSuitabilityCheck) return;
   photoSuitabilityCheck.className = "photo-suitability-check is-checking";
-  photoSuitabilityCheck.innerHTML = "<strong>Checking your photo…</strong><span>Looking at lighting and how clearly the main subject shows.</span>";
+  photoSuitabilityCheck.innerHTML = "<strong>Checking your photo…</strong>";
   try {
     const { data, error } = await supabase.functions.invoke("little-keeps-ai", {
       body: {
@@ -4246,17 +4245,14 @@ async function checkPhotoSuitability(imageDataUrl) {
       const details = await getPhotoFunctionErrorDetails(error);
       throw new Error(details.error || error.message);
     }
-    const rating = ["great", "okay", "difficult"].includes(data?.rating) ? data.rating : "okay";
-    const tips = (Array.isArray(data?.tips) ? data.tips : []).slice(0, 3);
-    photoSuitabilityCheck.className = `photo-suitability-check is-${rating}`;
-    photoSuitabilityCheck.innerHTML = `
-      <strong>${escapePresetText(data?.heading || "Photo checked")}</strong>
-      <span>${escapePresetText(data?.summary || "You can continue with this photo.")}</span>
-      ${tips.length ? `<ul>${tips.map(tip => `<li>${escapePresetText(tip)}</li>`).join("")}</ul>` : ""}
-    `;
+    const suitable = Boolean(data?.suitable);
+    photoSuitabilityCheck.className = `photo-suitability-check ${suitable ? "is-great" : "is-difficult"}`;
+    photoSuitabilityCheck.innerHTML = suitable
+      ? "<strong>✓ This photo should work well.</strong>"
+      : "<strong>Try another photo for a clearer result.</strong>";
   } catch (error) {
-    photoSuitabilityCheck.className = "photo-suitability-check is-neutral";
-    photoSuitabilityCheck.innerHTML = "<strong>Photo check unavailable</strong><span>You can still create a preview. We will check the finished artwork before making it.</span>";
+    photoSuitabilityCheck.className = "photo-suitability-check hidden";
+    photoSuitabilityCheck.innerHTML = "";
   }
 }
 

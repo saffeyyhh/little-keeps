@@ -372,6 +372,7 @@ document.querySelector("#app").innerHTML = `
       <footer>
         <button id="generateAiMessage" type="button">Create Draft</button>
         <button id="copyAiMessage" type="button">Copy Message</button>
+        <button id="openAiMessageWhatsApp" type="button">Open WhatsApp</button>
       </footer>
     </form>
   </dialog>
@@ -3482,6 +3483,10 @@ function getDuePresentation(order) {
     return { className: "is-complete", label: "Completed" };
   }
 
+  if (["Pending Pickup", "Pending Delivery", "Out for Delivery"].includes(order.status)) {
+    return { className: "", label: "" };
+  }
+
   const days = getDaysUntil(order.needed_by);
 
   if (days === null) {
@@ -4479,7 +4484,6 @@ function renderOrders(orders) {
     const keychainCount = getOrderKeychainCount(order);
     const giftingBagCount = getOrderGiftingBagCount(order);
     const characterCount = getOrderCharacterCount(order);
-    const whatsappHref = getWhatsAppHref(order.customer_phone);
     const routeGroup = getDeliveryRouteGroup(
       order.delivery_address
     );
@@ -4526,7 +4530,7 @@ function renderOrders(orders) {
           <h3>${customerName}</h3>
           <div class="order-summary-badges">
             <span class="order-status-badge">${escapeAdminHtml(order.status || "-")}</span>
-            <span class="due-badge ${due.className}">${escapeAdminHtml(due.label)}</span>
+            ${due.label ? `<span class="due-badge ${due.className}">${escapeAdminHtml(due.label)}</span>` : ""}
             ${order.archived_at ? `<span class="archive-badge">Archived</span>` : ""}
           </div>
           ${renderProgressBar(order, true)}
@@ -4690,12 +4694,6 @@ function renderOrders(orders) {
           </button>
         ` : ""}
 
-        ${whatsappHref ? `
-          <a href="${whatsappHref}" target="_blank" rel="noopener">
-            WhatsApp
-          </a>
-        ` : ""}
-
         <button type="button" onclick='window.openAiMessageWriter(${JSON.stringify(orderId)})'>
           Write Message ✨
         </button>
@@ -4703,30 +4701,6 @@ function renderOrders(orders) {
         ${!["Completed", "Refunded", "Cancelled"].includes(order.status) ? `
           <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(orderId)})'>
             Edit Customer &amp; Fulfilment
-          </button>
-        ` : ""}
-
-        ${whatsappHref &&
-          order.collection_method !== "delivery" &&
-          !["Completed", "Refunded", "Cancelled", "Rejected"].includes(order.status) ? `
-          <button
-            type="button"
-            class="approve-request-action"
-            onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(orderId)}, this)'
-          >
-            WhatsApp: Offer Earlier Pickup
-          </button>
-        ` : ""}
-
-        ${whatsappHref &&
-          order.collection_method !== "delivery" &&
-          order.status === "Pending Pickup" ? `
-          <button
-            type="button"
-            class="approve-request-action"
-            onclick='window.copyPickupWhatsAppReminder(${JSON.stringify(orderId)}, this)'
-          >
-            Copy Pickup Reminder
           </button>
         ` : ""}
 
@@ -4979,12 +4953,6 @@ function renderFulfilmentWorkspace(orders) {
               <button type="button" onclick='window.copyEasyParcelReceiver(${JSON.stringify(String(order.id))}, this)'>Copy courier details</button>
               ${!order.easyparcel_shipment_number ? `<button type="button" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>Print hand-delivery label</button>` : ""}
             ` : ""}
-            ${order.collection_method !== "delivery" && getWhatsAppHref(order.customer_phone) ? `
-              <button type="button" onclick='window.offerEarlierPickupWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Offer earlier pickup</button>
-            ` : ""}
-            ${order.status === "Out for Delivery" && !order.easyparcel_shipment_number ? `
-              <button type="button" onclick='window.copyHandDeliveredWhatsApp(${JSON.stringify(String(order.id))}, this)'>WhatsApp: Delivered</button>
-            ` : ""}
             ${order.customer_email && (
               order.collection_method === "delivery"
                 ? !order.easyparcel_shipment_number && ["Out for Delivery", "Completed"].includes(order.status)
@@ -5055,12 +5023,15 @@ window.openAiMessageWriter = function(id) {
     groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
   if (!order || !aiMessageWriterDialog) return;
   aiMessageWriterDialog.dataset.orderId = String(order.id);
+  aiMessageWriterDialog.dataset.whatsappHref = getWhatsAppHref(order.customer_phone);
   document.getElementById("aiMessageWriterOrderRef").textContent =
     `${order.order_ref || "Order"} · ${order.customer_name || "Customer"}`;
   aiMessageType.value = "general WhatsApp order update";
   aiMessageNote.value = "";
   aiMessageDraft.value = "";
   aiMessageWriterStatus.textContent = "Nothing is sent automatically. Check the draft before copying.";
+  const whatsappButton = document.getElementById("openAiMessageWhatsApp");
+  whatsappButton.disabled = !aiMessageWriterDialog.dataset.whatsappHref;
   aiMessageWriterDialog.showModal();
 };
 
@@ -5121,6 +5092,18 @@ document.getElementById("copyAiMessage")?.addEventListener("click", async event 
     document.execCommand("copy");
     aiMessageWriterStatus.textContent = "Copied. Nothing has been sent automatically.";
   }
+});
+
+document.getElementById("openAiMessageWhatsApp")?.addEventListener("click", () => {
+  const href = aiMessageWriterDialog?.dataset.whatsappHref;
+  if (!href) {
+    aiMessageWriterStatus.textContent = "This order does not have a valid WhatsApp number.";
+    return;
+  }
+  const message = String(aiMessageDraft?.value || "").trim();
+  const url = new URL(href);
+  if (message) url.searchParams.set("text", message);
+  window.open(url.toString(), "_blank", "noopener,noreferrer");
 });
 
 window.copyFulfilmentContact = async function(id, type, button) {

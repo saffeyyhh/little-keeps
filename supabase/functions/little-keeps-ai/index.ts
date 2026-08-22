@@ -132,12 +132,9 @@ const photoSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    rating: { type: "string", enum: ["great", "okay", "difficult"] },
-    heading: { type: "string" },
-    summary: { type: "string" },
-    tips: { type: "array", maxItems: 3, items: { type: "string" } }
+    suitable: { type: "boolean" }
   },
-  required: ["rating", "heading", "summary", "tips"]
+  required: ["suitable"]
 };
 
 const messageSchema = {
@@ -200,14 +197,14 @@ Deno.serve(async request => {
       }
       const result = await respondWithSchema(
         openAiKey,
-        "You assess whether a customer photo will simplify well into cute, flat-colour artwork for a small 60 mm FDM-printed keychain. Be encouraging and practical. Focus only on visibility, lighting, one clear main subject, obstruction, contrast and tiny details. Do not mention technical printer settings.",
+        "Decide only whether this photo is suitable for simplifying into recognizable flat-colour artwork for a small keychain. Return true when there is one clearly visible main subject with enough light and separation. Return false when the subject is unclear, too dark, heavily obstructed or too small. Do not provide an explanation.",
         [{ role: "user", content: [
           { type: "input_text", text: `Check this ${subjectType} photo before artwork generation.` },
           { type: "input_image", image_url: imageDataUrl, detail: "low" }
         ] }],
         "little_keeps_photo_check",
         photoSchema,
-        450
+        80
       );
       return json(result, 200, request);
     }
