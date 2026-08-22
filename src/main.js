@@ -11,6 +11,11 @@ import emailjs from "@emailjs/browser";
 import flatpickr from "flatpickr";
 import "flatpickr/dist/flatpickr.min.css";
 import {
+  getArtworkColourClusters,
+  mapArtworkClustersToFilaments,
+  normalizePhotoFilamentPalette
+} from "./photo-palette.js";
+import {
   calculateGiftingBagTotal,
   formatDateRange,
   getCustomerDueDate,
@@ -1077,7 +1082,7 @@ document.querySelector("#app").innerHTML = `
 
         <div class="photo-option-grid">
           <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="object">Object or keepsake</option></select></label>
-          <label><span>Maximum colours</span><select id="photoColourCount"><option value="2">2 colours · easiest to print</option><option value="3" selected>3 colours</option><option value="4">4 colours</option></select></label>
+          <label><span>Maximum colours</span><select id="photoColourCount"><option value="2">2 colours · easiest to print</option><option value="3">3 colours</option><option value="4" selected>4 colours · full AMS palette</option></select></label>
           <label><span>Short label</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
         </div>
@@ -1102,6 +1107,7 @@ document.querySelector("#app").innerHTML = `
           <button id="regeneratePhotoArtworkBtn" type="button">Try Another Version</button>
           <button id="addPhotoArtworkToCartBtn" type="button">Approve & Add to Cart</button>
         </div>
+        <div id="photoMappedPalette" class="photo-mapped-palette hidden"></div>
         <p class="photo-proof-note">AI previews still receive a manual printability check. Tiny details may be simplified further before production.</p>
       </section>
     </div>
@@ -2436,6 +2442,7 @@ const photoGenerationStatus = document.getElementById("photoGenerationStatus");
 const photoResultPlaceholder = document.getElementById("photoResultPlaceholder");
 const photoArtworkResult = document.getElementById("photoArtworkResult");
 const photoResultActions = document.getElementById("photoResultActions");
+const photoMappedPalette = document.getElementById("photoMappedPalette");
 const orderNotes = document.getElementById("orderNotes");
 const submitOrderBtn = document.getElementById("submitOrderBtn");
 const confirmFinalOrderDetails = document.getElementById("confirmFinalOrderDetails");
@@ -3708,7 +3715,8 @@ let photoKeepsakeState = {
   originalPath: "",
   artworkPath: "",
   artworkUrl: "",
-  generationId: ""
+  generationId: "",
+  filamentPalette: []
 };
 
 let cartHasItems = false;
@@ -5771,7 +5779,7 @@ function getDesignDescription(design) {
 
 function getDesignColourSummary(design) {
   if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
-    return `Up to ${Number(design.photo?.colourCount || 3)} printable colours · final printability check included`;
+    return `Up to ${Number(design.photo?.colourCount || 4)} stocked filament colours · final printability check included`;
   }
   const uniqueNames = values => Array.from(new Set((values || []).map(getColourName))).join(", ");
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
@@ -6034,7 +6042,7 @@ function renderReviewOrder() {
           const item = names[selectedIndex];
           const design = getDesign(item);
           photoKeepsakeLabel.value = item?.name || "";
-          photoColourCount.value = String(design.photo?.colourCount || 3);
+          photoColourCount.value = String(design.photo?.colourCount || 4);
           photoSubjectType.value = design.photo?.subjectType || "person";
           photoKeepsakeQuantity.value = String(getItemQuantity(item));
           photoNfcEnabled.checked = Boolean(design.nfcEnabled);
@@ -6045,13 +6053,17 @@ function renderReviewOrder() {
             originalPath: design.photo?.originalPath || "",
             artworkPath: design.photo?.artworkPath || "",
             artworkUrl: design.photo?.artworkUrl || "",
-            generationId: design.photo?.generationId || ""
+            generationId: design.photo?.generationId || "",
+            filamentPalette: normalizePhotoFilamentPalette(
+              design.photo?.filamentPalette || design.photo?.filament_palette
+            )
           });
           if (design.photo?.artworkUrl) {
             photoArtworkResult.src = design.photo.artworkUrl;
             photoArtworkResult.classList.remove("hidden");
             photoResultPlaceholder.classList.add("hidden");
             photoResultActions.classList.remove("hidden");
+            renderPhotoMappedPalette();
           }
           openPhotoKeepsakeStudio();
           return;
@@ -6467,8 +6479,11 @@ async function submitOrderOnce() {
             artwork_url: design.photo.artworkUrl || "",
             generation_id: design.photo.generationId || "",
             subject_type: design.photo.subjectType || "person",
-            colour_count: Number(design.photo.colourCount || 3),
+            colour_count: Number(design.photo.colourCount || 4),
             variant: design.photo.variant || "classic",
+            filament_palette: normalizePhotoFilamentPalette(
+              design.photo.filamentPalette || design.photo.filament_palette
+            ),
             printability_status: "needs_review"
           } : null,
           letter_orientation: design.letterOrientation || "vertical",
@@ -7564,7 +7579,7 @@ window.editCartItem = function(index) {
     const item = names[index];
     const design = getDesign(item);
     photoKeepsakeLabel.value = item?.name || "";
-    photoColourCount.value = String(design.photo?.colourCount || 3);
+    photoColourCount.value = String(design.photo?.colourCount || 4);
     photoSubjectType.value = design.photo?.subjectType || "person";
     photoKeepsakeQuantity.value = String(getItemQuantity(item));
     photoNfcEnabled.checked = Boolean(design.nfcEnabled);
@@ -7575,13 +7590,17 @@ window.editCartItem = function(index) {
       originalPath: design.photo?.originalPath || "",
       artworkPath: design.photo?.artworkPath || "",
       artworkUrl: design.photo?.artworkUrl || "",
-      generationId: design.photo?.generationId || ""
+      generationId: design.photo?.generationId || "",
+      filamentPalette: normalizePhotoFilamentPalette(
+        design.photo?.filamentPalette || design.photo?.filament_palette
+      )
     });
     if (design.photo?.artworkUrl) {
       photoArtworkResult.src = design.photo.artworkUrl;
       photoArtworkResult.classList.remove("hidden");
       photoResultPlaceholder.classList.add("hidden");
       photoResultActions.classList.remove("hidden");
+      renderPhotoMappedPalette();
     }
     openPhotoKeepsakeStudio();
     return;
@@ -7864,10 +7883,53 @@ function resetPhotoArtworkResult() {
   photoKeepsakeState.artworkPath = "";
   photoKeepsakeState.artworkUrl = "";
   photoKeepsakeState.generationId = "";
+  photoKeepsakeState.filamentPalette = [];
   photoArtworkResult?.classList.add("hidden");
   photoArtworkResult?.removeAttribute("src");
   photoResultActions?.classList.add("hidden");
   photoResultPlaceholder?.classList.remove("hidden");
+  photoMappedPalette?.classList.add("hidden");
+  if (photoMappedPalette) photoMappedPalette.innerHTML = "";
+}
+
+function getAvailablePhotoFilamentPalette() {
+  return normalizePhotoFilamentPalette(colours
+    .filter(item => item.available)
+    .map(item => ({
+      name: item.name,
+      hex: item.colour,
+      material_type: item.materialType
+    })));
+}
+
+function renderPhotoMappedPalette(palette = photoKeepsakeState.filamentPalette) {
+  if (!photoMappedPalette) return;
+  const normalized = normalizePhotoFilamentPalette(palette);
+  photoMappedPalette.classList.toggle("hidden", !normalized.length);
+  photoMappedPalette.innerHTML = normalized.length ? `
+    <strong>Your print will use these available filaments</strong>
+    <div>${normalized.map(item => `
+      <span><i style="background:${item.hex}"></i>${escapePresetText(item.name)} · ${item.material_type}</span>
+    `).join("")}</div>
+    <small>The backing automatically reuses one of these colours, so the complete keychain stays within four AMS slots.</small>
+  ` : "";
+}
+
+async function mapPhotoPreviewToAvailableFilaments(artworkUrl, colourCount, palette) {
+  const response = await fetch(artworkUrl);
+  if (!response.ok) throw new Error("The generated preview could not be colour-matched.");
+  const bitmap = await createImageBitmap(await response.blob());
+  const maxSide = 120;
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(8, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(8, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  const centres = getArtworkColourClusters(pixels, colourCount);
+  return mapArtworkClustersToFilaments(centres, palette);
 }
 
 function openPhotoKeepsakeStudio() {
@@ -7925,12 +7987,17 @@ async function generatePhotoKeepsakeArtwork() {
   try {
     const imageDataUrl = photoKeepsakeState.inputDataUrl || await preparePhotoForAi(photoKeepsakeState.file);
     photoKeepsakeState.inputDataUrl = imageDataUrl;
+    const availableFilamentPalette = getAvailablePhotoFilamentPalette();
+    if (availableFilamentPalette.length < 2) {
+      throw new Error("At least two in-stock filament colours are needed for a photo keepsake.");
+    }
     const { data, error } = await supabase.functions.invoke("generate-photo-keepsake", {
       body: {
         image_data_url: imageDataUrl,
         subject_type: photoSubjectType.value,
         colour_count: Number(photoColourCount.value),
         variant: "classic",
+        filament_palette: availableFilamentPalette,
         client_token: currentSubmissionId
       }
     });
@@ -7939,17 +8006,24 @@ async function generatePhotoKeepsakeArtwork() {
       throw new Error(data?.error || "The artwork service did not return a preview.");
     }
 
+    const filamentPalette = await mapPhotoPreviewToAvailableFilaments(
+      data.artwork_url,
+      Number(photoColourCount.value),
+      availableFilamentPalette
+    );
     Object.assign(photoKeepsakeState, {
       originalPath: data.original_path || "",
       artworkPath: data.artwork_path,
       artworkUrl: data.artwork_url,
-      generationId: data.generation_id || ""
+      generationId: data.generation_id || "",
+      filamentPalette
     });
     photoArtworkResult.src = data.artwork_url;
     photoArtworkResult.classList.remove("hidden");
     photoResultPlaceholder.classList.add("hidden");
     photoResultActions.classList.remove("hidden");
-    photoGenerationStatus.textContent = "Preview ready. Approve it or try one more version.";
+    renderPhotoMappedPalette(filamentPalette);
+    photoGenerationStatus.textContent = "Preview ready and matched to your available Little Keeps filaments.";
   } catch (error) {
     console.error("Unable to generate photo keepsake artwork:", error);
     photoGenerationStatus.textContent =
@@ -7991,7 +8065,8 @@ function addPhotoKeepsakeToCart() {
         generationId: photoKeepsakeState.generationId,
         subjectType: photoSubjectType.value,
         colourCount: Number(photoColourCount.value),
-        variant: "classic"
+        variant: "classic",
+        filamentPalette: normalizePhotoFilamentPalette(photoKeepsakeState.filamentPalette)
       },
       nfcEnabled: wantsNfc,
       nfcType: photoNfcType?.value || (photoSubjectType.value === "pet" ? "pet" : "website"),
@@ -9742,8 +9817,11 @@ window.reorderTrackedItems = function(items) {
           artworkUrl: design.photo.artwork_url || design.photo.artworkUrl || "",
           generationId: design.photo.generation_id || design.photo.generationId || "",
           subjectType: design.photo.subject_type || design.photo.subjectType || "person",
-          colourCount: Number(design.photo.colour_count || design.photo.colourCount || 3),
-          variant: design.photo.variant || "classic"
+          colourCount: Number(design.photo.colour_count || design.photo.colourCount || 4),
+          variant: design.photo.variant || "classic",
+          filamentPalette: normalizePhotoFilamentPalette(
+            design.photo.filament_palette || design.photo.filamentPalette
+          )
         } : null,
         bases: (design.bases || []).map(colour => colour?.hex || colour),
         caps: (design.caps || []).map(colour => colour?.hex || colour),

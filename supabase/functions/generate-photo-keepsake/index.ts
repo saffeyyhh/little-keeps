@@ -46,7 +46,17 @@ Deno.serve(async request => {
       ? body.subject_type
       : "person";
     const variant = "classic";
-    const colourCount = Math.min(4, Math.max(2, Number(body.colour_count) || 3));
+    const filamentPalette = (Array.isArray(body.filament_palette) ? body.filament_palette : [])
+      .slice(0, 40)
+      .flatMap((item: Record<string, unknown>) => {
+        const name = String(item?.name || "").trim().replace(/[^a-z0-9 ()&+.-]/gi, "").slice(0, 50);
+        const hex = String(item?.hex || "").trim().toUpperCase();
+        return name && /^#[0-9A-F]{6}$/.test(hex) ? [{ name, hex }] : [];
+      });
+    if (filamentPalette.length < 2) {
+      return json({ error: "At least two available filament colours are required." }, 400);
+    }
+    const colourCount = Math.min(4, filamentPalette.length, Math.max(2, Number(body.colour_count) || 4));
     const clientToken = String(body.client_token || "").slice(0, 120);
     if (!clientToken) return json({ error: "The preview session is missing. Refresh and try again." }, 400);
 
@@ -89,6 +99,7 @@ Deno.serve(async request => {
     const prompt = [
       `Transform the main ${subjectType} in this image into clean artwork specifically for a small FDM 3D-printed keychain.`,
       `Use no more than ${colourCount} flat solid colours including outlines.`,
+      `Use only colours from this available physical filament palette: ${filamentPalette.map(item => `${item.name} (${item.hex})`).join(", ")}. Choose the closest matches and do not invent any colour outside this list.`,
       "Keep the subject recognizable and charming, with bold connected shapes, smooth closed outlines, and no gradients, shadows, texture, text, logos, scenery, frame, or background.",
       "Remove tiny details and isolated specks. Every important stroke and gap must remain thick enough to print at approximately 60 mm wide; target at least 1.2 mm features.",
       "Keep the silhouette compact with a safe solid area near an upper corner for a keyring hole.",

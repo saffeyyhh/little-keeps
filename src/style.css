@@ -6152,6 +6152,12 @@ body {
 
 .photo-result-actions { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .photo-result-actions button:first-child { color: #745087; background: #f1e7f6; }
+.photo-mapped-palette { margin-top: 12px; padding: 12px; border: 1px solid #d9c7e9; border-radius: 13px; background: #fbf7ff; }
+.photo-mapped-palette > strong { display: block; margin-bottom: 8px; color: #624579; font-size: 12px; }
+.photo-mapped-palette > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.photo-mapped-palette span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 999px; color: #594d54; background: #fff; font-size: 10px; font-weight: 800; }
+.photo-mapped-palette i { width: 15px; height: 15px; border: 1px solid rgba(44, 35, 41, .18); border-radius: 50%; box-shadow: 0 1px 2px rgba(44, 35, 41, .12); }
+.photo-mapped-palette small { display: block; margin-top: 8px; color: #81747a; font-size: 10px; line-height: 1.4; }
 .photo-proof-note { margin: 12px 0 0; color: #81747a; font-size: 10px; line-height: 1.5; }
 
 .photo-design-preview {

@@ -11,6 +11,11 @@ import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import polygonClipping from "polygon-clipping";
 import {
+  getArtworkColourClusters,
+  mapArtworkClustersToFilaments,
+  normalizePhotoFilamentPalette
+} from "./photo-palette.js";
+import {
   ASSEMBLY_STAGES,
   assignPrintedKeycapsToOwners,
   buildGoogleMapsRouteUrl,
@@ -4673,7 +4678,7 @@ function renderOrders(orders) {
           ${photoProduct ? `
             <span class="assembly-tag">Photo Keepsake</span>
             <span class="assembly-tag">Classic Keychain</span>
-            <span class="assembly-tag">${Number(item.design?.photo?.colour_count || 3)} Colours</span>
+            <span class="assembly-tag">${Number(item.design?.photo?.colour_count || 4)} Stocked Colours</span>
           ` : customNameProduct ? `
             <span class="assembly-tag">Customised Name</span>
             <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
@@ -7247,78 +7252,6 @@ window.downloadPhotoKeepsakeArtwork = async function(orderId, itemIndex, button)
   }
 };
 
-function photoColourDistance(left, right) {
-  const red = left[0] - right[0];
-  const green = left[1] - right[1];
-  const blue = left[2] - right[2];
-  return red * red + green * green + blue * blue;
-}
-
-function getPhotoArtworkClusters(pixelData, colourCount) {
-  const histogram = new Map();
-  for (let index = 0; index < pixelData.length; index += 4) {
-    if (pixelData[index + 3] < 128) continue;
-    const red = Math.round(pixelData[index] / 16) * 16;
-    const green = Math.round(pixelData[index + 1] / 16) * 16;
-    const blue = Math.round(pixelData[index + 2] / 16) * 16;
-    const key = `${Math.min(255, red)},${Math.min(255, green)},${Math.min(255, blue)}`;
-    histogram.set(key, (histogram.get(key) || 0) + 1);
-  }
-
-  const colours = Array.from(histogram, ([key, count]) => ({
-    value: key.split(",").map(Number),
-    count
-  })).sort((left, right) => right.count - left.count);
-  if (!colours.length) throw new Error("The artwork has no visible printable pixels.");
-
-  const targetCount = Math.min(Math.max(2, Number(colourCount) || 3), colours.length);
-  const centres = [colours[0].value.slice()];
-  while (centres.length < targetCount) {
-    let best = colours[0];
-    let bestScore = -1;
-    colours.forEach(entry => {
-      const distance = Math.min(...centres.map(centre => photoColourDistance(entry.value, centre)));
-      const score = distance * Math.sqrt(entry.count);
-      if (score > bestScore) {
-        best = entry;
-        bestScore = score;
-      }
-    });
-    centres.push(best.value.slice());
-  }
-
-  for (let iteration = 0; iteration < 8; iteration += 1) {
-    const totals = centres.map(() => [0, 0, 0, 0]);
-    colours.forEach(entry => {
-      let closest = 0;
-      let closestDistance = Infinity;
-      centres.forEach((centre, index) => {
-        const distance = photoColourDistance(entry.value, centre);
-        if (distance < closestDistance) {
-          closest = index;
-          closestDistance = distance;
-        }
-      });
-      totals[closest][0] += entry.value[0] * entry.count;
-      totals[closest][1] += entry.value[1] * entry.count;
-      totals[closest][2] += entry.value[2] * entry.count;
-      totals[closest][3] += entry.count;
-    });
-    totals.forEach((total, index) => {
-      if (!total[3]) return;
-      centres[index] = [
-        total[0] / total[3],
-        total[1] / total[3],
-        total[2] / total[3]
-      ];
-    });
-  }
-
-  return centres.sort((left, right) =>
-    (left[0] + left[1] + left[2]) - (right[0] + right[1] + right[2])
-  );
-}
-
 function buildPhotoPixelGeometry(mask, width, height, cellSize, zStart, depth) {
   const positions = [];
   const zEnd = zStart + depth;
@@ -7364,7 +7297,7 @@ function buildPhotoPixelGeometry(mask, width, height, cellSize, zStart, depth) {
   return geometry;
 }
 
-async function preparePhotoArtworkStlParts(artworkUrl, colourCount) {
+async function preparePhotoArtworkStlParts(artworkUrl, colourCount, filamentPalette) {
   const response = await fetch(artworkUrl);
   if (!response.ok) throw new Error("The private artwork could not be downloaded.");
   const bitmap = await createImageBitmap(await response.blob());
@@ -7404,7 +7337,11 @@ async function preparePhotoArtworkStlParts(artworkUrl, colourCount) {
   context.imageSmoothingQuality = "high";
   context.drawImage(source, minX, minY, cropWidth, cropHeight, 0, 0, width, height);
   const pixels = context.getImageData(0, 0, width, height).data;
-  const centres = getPhotoArtworkClusters(pixels, colourCount);
+  const centres = getArtworkColourClusters(pixels, colourCount);
+  const mappedPalette = mapArtworkClustersToFilaments(centres, filamentPalette);
+  if (mappedPalette.length < centres.length) {
+    throw new Error("This order has no complete saved filament palette. Regenerate its artwork first.");
+  }
   const backingMask = new Uint8Array(width * height);
   const colourMasks = centres.map(() => new Uint8Array(width * height));
 
@@ -7416,7 +7353,10 @@ async function preparePhotoArtworkStlParts(artworkUrl, colourCount) {
     let closest = 0;
     let closestDistance = Infinity;
     centres.forEach((centre, centreIndex) => {
-      const distance = photoColourDistance(colour, centre);
+      const distance =
+        (colour[0] - centre[0]) ** 2 +
+        (colour[1] - centre[1]) ** 2 +
+        (colour[2] - centre[2]) ** 2;
       if (distance < closestDistance) {
         closest = centreIndex;
         closestDistance = distance;
@@ -7430,7 +7370,17 @@ async function preparePhotoArtworkStlParts(artworkUrl, colourCount) {
   const colours = colourMasks.map(mask =>
     buildPhotoPixelGeometry(mask, width, height, cellSize, 1.6, .7)
   );
-  return { backing, colours, centres, widthMm: width * cellSize, heightMm: height * cellSize };
+  const colourPixelCounts = colourMasks.map(mask =>
+    mask.reduce((sum, value) => sum + value, 0)
+  );
+  return {
+    backing,
+    colours,
+    mappedPalette,
+    backingPaletteIndex: colourPixelCounts.indexOf(Math.max(...colourPixelCounts)),
+    widthMm: width * cellSize,
+    heightMm: height * cellSize
+  };
 }
 
 window.generatePhotoKeepsakeStls = async function(orderId, itemIndex, button, orderedQuantity = 1) {
@@ -7453,23 +7403,30 @@ window.generatePhotoKeepsakeStls = async function(orderId, itemIndex, button, or
       .from("customer-artwork")
       .createSignedUrl(artworkPath, 300);
     if (error || !data?.signedUrl) throw error || new Error("Unable to open the private artwork.");
+    const savedPalette = normalizePhotoFilamentPalette(item.design?.photo?.filament_palette);
+    const unavailableColours = getUnavailableAdminColours();
+    const currentPalette = normalizePhotoFilamentPalette(ADMIN_COLOUR_OPTIONS
+      .filter(colour => colour.active !== false && !unavailableColours.has(colour.name.toLowerCase())));
     const parts = await preparePhotoArtworkStlParts(
       data.signedUrl,
-      Number(item.design?.photo?.colour_count || 3)
+      Number(item.design?.photo?.colour_count || 4),
+      savedPalette.length >= 2 ? savedPalette : currentPalette
     );
     const reference = safeProductionFileName(order.order_ref, "order");
     const label = safeProductionFileName(item.name, "photo");
+    const backingFilament = parts.mappedPalette[parts.backingPaletteIndex] || parts.mappedPalette[0];
     const files = [{
       blob: exportGeometryStl(parts.backing),
-      filename: `${reference}_${label}_00-BACKING_1.6mm.stl`
+      filename: `${reference}_${label}_00-BACKING_${safeProductionFileName(backingFilament.name, "filament")}_${backingFilament.material_type}_1.6mm.stl`
     }];
     parts.colours.forEach((geometry, index) => {
       if (!geometry) return;
-      const centre = parts.centres[index].map(value => Math.max(0, Math.min(255, Math.round(value))));
-      const hex = centre.map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
+      const filament = parts.mappedPalette[index];
       files.push({
         blob: exportGeometryStl(geometry),
-        filename: `${reference}_${label}_${String(index + 1).padStart(2, "0")}-COLOUR-${hex}.stl`
+        filename:
+          `${reference}_${label}_${String(index + 1).padStart(2, "0")}-` +
+          `${safeProductionFileName(filament.name, "filament")}_${filament.material_type}_${filament.hex.slice(1)}.stl`
       });
     });
     files.forEach((file, index) => {
@@ -9038,7 +8995,7 @@ async function renderAssemblyQueue() {
         </div>
 
         ${photoProduct ? `
-          <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 3)} colours · review in Custom Prints</div>
+          <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 4)} stocked colours · review in Custom Prints</div>
         ` : customNameProduct ? `
           <div class="assembly-standard-name-preview" style="--name-bg:${getSafePdfColour(item.design?.bases?.[0]?.hex || item.design?.bases?.[0], "#f55a74")}; --name-fg:${getSafePdfColour(item.design?.letters?.[0]?.hex || item.design?.letters?.[0], "#ffffff")}">${escapeAdminHtml(item.name || "Name")}</div>
           ${createAssemblyColourGuide(item.name, item.design)}
@@ -11410,7 +11367,14 @@ async function renderProductionPlanner(orders) {
                     <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : `${row.fontSize} mm letters`}</strong>
                   </header>
                   ${row.isPhoto ? `
-                    <div class="photo-printability-warning"><strong>Manual printability check required</strong><span>${Number(row.photo.colour_count || 3)}-colour AI artwork · inspect connected shapes and minimum wall thickness.</span></div>
+                    <div class="photo-printability-warning"><strong>Manual printability check required</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · inspect connected shapes and minimum wall thickness.</span></div>
+                    ${normalizePhotoFilamentPalette(row.photo.filament_palette).length ? `
+                      <div class="custom-print-colours">
+                        ${normalizePhotoFilamentPalette(row.photo.filament_palette).map(filament => `
+                          <span><i style="background:${filament.hex}"></i>${escapeAdminHtml(filament.name)} · ${filament.material_type}</span>
+                        `).join("")}
+                      </div>
+                    ` : `<p class="hint">Legacy preview · its colours will be matched to your currently available filament when you download the STL pack.</p>`}
                   ` : `
                     <div class="custom-print-colours">
                       <span><i style="background:${getSafePdfColour(background.hex || background, "#f55a74")}"></i>Background · ${escapeAdminHtml(background.name || "Selected colour")}</span>
