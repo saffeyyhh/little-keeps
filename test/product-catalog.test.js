@@ -9,10 +9,12 @@ import {
   PHOTO_PRODUCT_KEY,
   SOLID_PRODUCT_KEY,
   STANDARD_PRODUCT_KEY,
+  applyProductCatalogOverrides,
   applyProductStatusOverrides,
   calculateProductProductionEstimate,
   calculateProductUnitPrice,
   getProductByKey,
+  normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
   normalizeProductCatalog
 } from "../src/product-catalog.js";
@@ -151,5 +153,32 @@ test("ignores invalid product visibility overrides", () => {
     [SOLID_PRODUCT_KEY]: "coming_soon"
   }), {
     [SOLID_PRODUCT_KEY]: "coming_soon"
+  });
+});
+
+test("preserves pricing when the product table cannot save", () => {
+  const catalogue = applyProductCatalogOverrides(DEFAULT_PRODUCT_CATALOG, {
+    [PENCIL_PRODUCT_KEY]: {
+      price_visible: true,
+      usual_base_price: 10.9,
+      launch_base_price: 8.9,
+      launch_price_enabled: true
+    }
+  });
+  const pencil = getProductByKey(catalogue, PENCIL_PRODUCT_KEY);
+
+  assert.equal(pencil.price_visible, true);
+  assert.equal(pencil.usual_base_price, 10.9);
+  assert.equal(pencil.launch_base_price, 8.9);
+});
+
+test("normalizes saved product pricing overrides", () => {
+  assert.deepEqual(normalizeProductCatalogOverrides({
+    [SOLID_PRODUCT_KEY]: { price_visible: true }
+  }), {
+    [SOLID_PRODUCT_KEY]: {
+      product_key: SOLID_PRODUCT_KEY,
+      price_visible: true
+    }
   });
 });

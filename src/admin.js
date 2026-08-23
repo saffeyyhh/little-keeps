@@ -53,7 +53,9 @@ import {
 import {
   DEFAULT_PRODUCT_CATALOG,
   PENCIL_PRODUCT_KEY,
+  applyProductCatalogOverrides,
   applyProductStatusOverrides,
+  normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
   normalizeProductCatalog
 } from "./product-catalog.js";
@@ -2211,6 +2213,44 @@ async function saveShopSettings(event) {
     .split(/[\n,]+/)
     .map(value => value.trim())
     .filter(Boolean);
+  const productNumberFields = [
+    "usual_base_price",
+    "launch_base_price",
+    "included_characters",
+    "extra_character_price",
+    "extra_base_colour_price",
+    "extra_cap_colour_price",
+    "extra_letter_colour_price",
+    "maximum_characters",
+    "base_print_minutes_fixed",
+    "base_print_minutes_per_character",
+    "keycap_print_minutes_per_character",
+    "assembly_minutes_per_item",
+    "minimum_working_days",
+    "maximum_working_days"
+  ];
+  const productUpdates = adminProductCatalog.map(product => {
+    const prefix = `product:${product.product_key}:`;
+    const productUpdate = {
+      ...product,
+      status: String(form.get(`${prefix}status`) || product.status),
+      launch_price_enabled: form.has(`${prefix}launch_price_enabled`),
+      price_visible: form.has(`${prefix}price_visible`),
+      production_notes: String(form.get(`${prefix}production_notes`) || "").trim(),
+      updated_at: new Date().toISOString()
+    };
+
+    productNumberFields.forEach(field => {
+      const rawValue = String(form.get(`${prefix}${field}`) ?? "").trim();
+      productUpdate[field] = ["minimum_working_days", "maximum_working_days"].includes(field) && !rawValue
+        ? null
+        : Number(rawValue);
+    });
+    return productUpdate;
+  });
+  const productCatalogOverrides = normalizeProductCatalogOverrides(
+    Object.fromEntries(productUpdates.map(product => [product.product_key, product]))
+  );
   const productStatusOverrides = normalizeProductStatusOverrides(
     Object.fromEntries(adminProductCatalog.map(product => {
       const prefix = `product:${product.product_key}:`;
@@ -2226,6 +2266,7 @@ async function saveShopSettings(event) {
     contact_whatsapp_number: String(form.get("contact_whatsapp_number") || "")
       .replace(/\D/g, "") || "6585121915",
     colour_options: normalizedColourOptions,
+    product_catalog_overrides: productCatalogOverrides,
     product_statuses: productStatusOverrides
   };
   updates.easyparcel_settings = {
@@ -2249,41 +2290,6 @@ async function saveShopSettings(event) {
 
   let productSettingsSaveFailed = false;
   if (!adminProductsLoadFailed) {
-    const productNumberFields = [
-      "usual_base_price",
-      "launch_base_price",
-      "included_characters",
-      "extra_character_price",
-      "extra_base_colour_price",
-      "extra_cap_colour_price",
-      "extra_letter_colour_price",
-      "maximum_characters",
-      "base_print_minutes_fixed",
-      "base_print_minutes_per_character",
-      "keycap_print_minutes_per_character",
-      "assembly_minutes_per_item",
-      "minimum_working_days",
-      "maximum_working_days"
-    ];
-    const productUpdates = adminProductCatalog.map(product => {
-      const prefix = `product:${product.product_key}:`;
-      const productUpdate = {
-        ...product,
-        status: String(form.get(`${prefix}status`) || product.status),
-        launch_price_enabled: form.has(`${prefix}launch_price_enabled`),
-        price_visible: form.has(`${prefix}price_visible`),
-        production_notes: String(form.get(`${prefix}production_notes`) || "").trim(),
-        updated_at: new Date().toISOString()
-      };
-
-      productNumberFields.forEach(field => {
-        const rawValue = String(form.get(`${prefix}${field}`) ?? "").trim();
-        productUpdate[field] = ["minimum_working_days", "maximum_working_days"].includes(field) && !rawValue
-          ? null
-          : Number(rawValue);
-      });
-      return productUpdate;
-    });
     let { data: savedProducts, error: productsError } = await supabase
       .from("product_catalog")
       .upsert(productUpdates, { onConflict: "product_key" })
@@ -2301,6 +2307,7 @@ async function saveShopSettings(event) {
 
     if (productsError) {
       console.error("Unable to save product settings:", productsError);
+      adminProductCatalog = applyProductCatalogOverrides(adminProductCatalog, productCatalogOverrides);
       adminProductCatalog = applyProductStatusOverrides(adminProductCatalog, productStatusOverrides);
       productSettingsSaveFailed = true;
     } else {
@@ -13805,6 +13812,9 @@ async function loadAdminSettings() {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
     ...(settingsError ? {} : (settings || {}))
   };
+  const productCatalogOverrides = normalizeProductCatalogOverrides(
+    adminShopSettings.pickup_time_options?.product_catalog_overrides
+  );
   const productStatusOverrides = normalizeProductStatusOverrides(
     adminShopSettings.pickup_time_options?.product_statuses
   );
@@ -13834,10 +13844,11 @@ async function loadAdminSettings() {
   adminCustomerReviews = reviews || [];
   adminShopClosures = closures || [];
   adminScheduleDayOverrides = dayOverrides || [];
-  adminProductCatalog = applyProductStatusOverrides(
+  adminProductCatalog = applyProductCatalogOverrides(
     normalizeProductCatalog(productsError ? [] : products),
-    productStatusOverrides
+    productCatalogOverrides
   );
+  adminProductCatalog = applyProductStatusOverrides(adminProductCatalog, productStatusOverrides);
 }
 
 async function loadEasyParcelConnectionStatus() {

@@ -22,6 +22,29 @@ export function applyProductStatusOverrides(catalog = [], value = {}) {
   }));
 }
 
+export function normalizeProductCatalogOverrides(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([productKey, settings]) => {
+      if (!productKey || !settings || typeof settings !== "object" || Array.isArray(settings)) {
+        return [];
+      }
+      return [[String(productKey), { ...settings, product_key: String(productKey) }]];
+    })
+  );
+}
+
+export function applyProductCatalogOverrides(catalog = [], value = {}) {
+  const overrides = normalizeProductCatalogOverrides(value);
+  return normalizeProductCatalog(
+    (Array.isArray(catalog) ? catalog : []).map(product => ({
+      ...product,
+      ...(overrides[product.product_key] || {}),
+      product_key: product.product_key
+    }))
+  );
+}
+
 export function formatProductUnitsSold(value) {
   const units = Math.max(0, Math.floor(Number(value) || 0));
   return `${units.toLocaleString("en-SG")} keychain${units === 1 ? "" : "s"} sold ♡`;
