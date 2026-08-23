@@ -40,10 +40,12 @@ import {
   STANDARD_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
+  applyProductStatusOverrides,
   calculateProductUnitPrice,
   formatProductUnitsSold,
   getProductByKey,
   getProductDisplayPrice,
+  normalizeProductStatusOverrides,
   normalizeProductCatalog
 } from "./product-catalog.js";
 import {
@@ -111,6 +113,7 @@ const DEFAULT_SHOP_SETTINGS = {
 
 let shopSettings = { ...DEFAULT_SHOP_SETTINGS };
 let productCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
+let productStatusOverrides = {};
 
 const DEFAULT_DESIGN_PRESETS = [
   {
@@ -254,6 +257,9 @@ try {
 
   if (error) throw error;
   if (data) shopSettings = { ...shopSettings, ...data };
+  productStatusOverrides = normalizeProductStatusOverrides(
+    shopSettings.pickup_time_options?.product_statuses
+  );
   shopSettings.colour_options = normalizeColourOptions(
     shopSettings.pickup_time_options?.colour_options || shopSettings.colour_options
   );
@@ -288,6 +294,7 @@ try {
 } catch (error) {
   console.warn("Using the built-in product catalogue:", error);
 }
+productCatalog = applyProductStatusOverrides(productCatalog, productStatusOverrides);
 
 let modularUnitsSold = null;
 try {

@@ -53,6 +53,8 @@ import {
 import {
   DEFAULT_PRODUCT_CATALOG,
   PENCIL_PRODUCT_KEY,
+  applyProductStatusOverrides,
+  normalizeProductStatusOverrides,
   normalizeProductCatalog
 } from "./product-catalog.js";
 import {
@@ -2209,6 +2211,12 @@ async function saveShopSettings(event) {
     .split(/[\n,]+/)
     .map(value => value.trim())
     .filter(Boolean);
+  const productStatusOverrides = normalizeProductStatusOverrides(
+    Object.fromEntries(adminProductCatalog.map(product => {
+      const prefix = `product:${product.product_key}:`;
+      return [product.product_key, String(form.get(`${prefix}status`) || product.status)];
+    }))
+  );
   updates.pickup_time_options = {
     ...normalizePickupTimeOptions({
     weekday: parsePickupTimes("pickup_times_weekday"),
@@ -2217,7 +2225,8 @@ async function saveShopSettings(event) {
     bulk_buffer_days: Math.max(0, Number(form.get("bulk_buffer_days") || 0)),
     contact_whatsapp_number: String(form.get("contact_whatsapp_number") || "")
       .replace(/\D/g, "") || "6585121915",
-    colour_options: normalizedColourOptions
+    colour_options: normalizedColourOptions,
+    product_statuses: productStatusOverrides
   };
   updates.easyparcel_settings = {
     sender_name: String(form.get("easyparcel_sender_name") || "").trim(),
@@ -2238,6 +2247,7 @@ async function saveShopSettings(event) {
   const { data, error } = await supabase.from("shop_settings").upsert(updates).select().single();
   if (error) console.error("Unable to save shop settings:", error);
 
+  let productSettingsSaveFailed = false;
   if (!adminProductsLoadFailed) {
     const productNumberFields = [
       "usual_base_price",
@@ -2291,11 +2301,14 @@ async function saveShopSettings(event) {
 
     if (productsError) {
       console.error("Unable to save product settings:", productsError);
-      alert("Checkout settings were saved, but product pricing could not be saved.");
-      return;
+      adminProductCatalog = applyProductStatusOverrides(adminProductCatalog, productStatusOverrides);
+      productSettingsSaveFailed = true;
+    } else {
+      adminProductCatalog = applyProductStatusOverrides(
+        normalizeProductCatalog(savedProducts),
+        productStatusOverrides
+      );
     }
-
-    adminProductCatalog = normalizeProductCatalog(savedProducts);
   }
 
   const savedShopSettings = data || { ...adminShopSettings, ...updates };
@@ -2317,8 +2330,8 @@ async function saveShopSettings(event) {
     savedShopSettings.pickup_time_options?.colour_options || normalizedColourOptions
   );
   ADMIN_COLOUR_OPTIONS = adminShopSettings.colour_options;
-  alert(error
-    ? "Product visibility saved ✓ Some other shop settings still need the latest database update."
+  alert(error || productSettingsSaveFailed
+    ? "Product visibility saved ✓ Some pricing settings still need the latest database update."
     : "Shop settings saved ✓");
   renderSettingsWorkspace();
 }
@@ -13792,6 +13805,9 @@ async function loadAdminSettings() {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
     ...(settingsError ? {} : (settings || {}))
   };
+  const productStatusOverrides = normalizeProductStatusOverrides(
+    adminShopSettings.pickup_time_options?.product_statuses
+  );
   adminShopSettings.easyparcel_settings = {
     ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
     ...(adminShopSettings.easyparcel_settings || {})
@@ -13818,7 +13834,10 @@ async function loadAdminSettings() {
   adminCustomerReviews = reviews || [];
   adminShopClosures = closures || [];
   adminScheduleDayOverrides = dayOverrides || [];
-  adminProductCatalog = normalizeProductCatalog(productsError ? [] : products);
+  adminProductCatalog = applyProductStatusOverrides(
+    normalizeProductCatalog(productsError ? [] : products),
+    productStatusOverrides
+  );
 }
 
 async function loadEasyParcelConnectionStatus() {

@@ -34,6 +34,13 @@ create table if not exists public.product_catalog (
   updated_at timestamptz not null default now()
 );
 
+-- Older installations may still have a status check that predates `hidden`.
+alter table public.product_catalog
+  drop constraint if exists product_catalog_status_check;
+alter table public.product_catalog
+  add constraint product_catalog_status_check
+  check (status in ('active', 'coming_soon', 'hidden'));
+
 insert into public.product_catalog (
   product_key,
   name,

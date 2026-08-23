@@ -3,6 +3,24 @@ export const SOLID_PRODUCT_KEY = "solid-clicky-keychain";
 export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
+const PRODUCT_STATUSES = new Set(["active", "coming_soon", "hidden"]);
+
+export function normalizeProductStatusOverrides(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([productKey, status]) => [String(productKey), String(status)])
+      .filter(([productKey, status]) => productKey && PRODUCT_STATUSES.has(status))
+  );
+}
+
+export function applyProductStatusOverrides(catalog = [], value = {}) {
+  const overrides = normalizeProductStatusOverrides(value);
+  return (Array.isArray(catalog) ? catalog : []).map(product => ({
+    ...product,
+    status: overrides[product.product_key] || product.status
+  }));
+}
 
 export function formatProductUnitsSold(value) {
   const units = Math.max(0, Math.floor(Number(value) || 0));

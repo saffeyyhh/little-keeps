@@ -9,9 +9,11 @@ import {
   PHOTO_PRODUCT_KEY,
   SOLID_PRODUCT_KEY,
   STANDARD_PRODUCT_KEY,
+  applyProductStatusOverrides,
   calculateProductProductionEstimate,
   calculateProductUnitPrice,
   getProductByKey,
+  normalizeProductStatusOverrides,
   normalizeProductCatalog
 } from "../src/product-catalog.js";
 
@@ -132,4 +134,22 @@ test("keeps optional product lead times empty unless configured", () => {
 
   assert.equal(modular.minimum_working_days, null);
   assert.equal(modular.maximum_working_days, null);
+});
+
+test("applies saved product visibility independently of pricing", () => {
+  const catalogue = applyProductStatusOverrides(DEFAULT_PRODUCT_CATALOG, {
+    [PENCIL_PRODUCT_KEY]: "hidden"
+  });
+
+  assert.equal(getProductByKey(catalogue, PENCIL_PRODUCT_KEY).status, "hidden");
+  assert.equal(getProductByKey(catalogue, MODULAR_PRODUCT_KEY).status, "active");
+});
+
+test("ignores invalid product visibility overrides", () => {
+  assert.deepEqual(normalizeProductStatusOverrides({
+    [PENCIL_PRODUCT_KEY]: "deleted",
+    [SOLID_PRODUCT_KEY]: "coming_soon"
+  }), {
+    [SOLID_PRODUCT_KEY]: "coming_soon"
+  });
 });
