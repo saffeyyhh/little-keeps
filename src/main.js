@@ -1493,7 +1493,6 @@ Chloe</textarea>
               <p>Every character gets its own clicky block. Choose colours for the pencil ends, blocks, tops and characters.</p>
             </div>
           </div>
-          <div class="pencil-raised-note"><strong>Raised characters</strong><span>Letters and symbols sit neatly on top.</span></div>
           <div class="pencil-ending-options" role="group" aria-label="Choose the pencil ending">
             <button type="button" class="active" data-pencil-ending-style="eraser"><strong>Eraser</strong><span>Includes the metal band</span></button>
             <button type="button" data-pencil-ending-style="endCap"><strong>End cap</strong><span>A simple rounded finish</span></button>
@@ -1502,11 +1501,10 @@ Chloe</textarea>
             <button type="button" data-pencil-part-tab="eraser" data-pencil-ending-group="eraser">Eraser</button>
             <button type="button" data-pencil-part-tab="ferrule" data-pencil-ending-group="eraser">Metal band</button>
             <button type="button" data-pencil-part-tab="endCap" data-pencil-ending-group="endCap">End cap</button>
-            <button type="button" data-pencil-part-tab="wood">Wood</button>
             <button type="button" data-pencil-part-tab="tip">Pencil tip</button>
           </div>
           <div class="pencil-part-colour-panels">
-            ${["eraser", "ferrule", "endCap", "wood", "tip"].map(part => `
+            ${["eraser", "ferrule", "endCap", "tip"].map(part => `
               <div class="pencil-part-colour-panel" data-pencil-part-panel="${part}" hidden>
                 <div class="pencil-colour-swatches">${renderPencilColourSwatches(part)}</div>
               </div>
@@ -4024,7 +4022,7 @@ function normalizePencilDesign(value = {}) {
     endingStyle: value.endingStyle === "endCap" ? "endCap" : "eraser",
     eraser: value.eraser || CLASSIC_PENCIL_COLOURS.eraser,
     ferrule: value.ferrule || CLASSIC_PENCIL_COLOURS.ferrule,
-    wood: value.wood || CLASSIC_PENCIL_COLOURS.wood,
+    wood: CLASSIC_PENCIL_COLOURS.wood,
     tip: value.tip || CLASSIC_PENCIL_COLOURS.tip,
     endCap: value.endCap || CLASSIC_PENCIL_COLOURS.endCap
   };
@@ -4445,7 +4443,7 @@ function randomiseArticulatedColours() {
       ...design.pencil,
       eraser: randomPartColour(),
       ferrule: randomPartColour(),
-      wood: randomPartColour(),
+      wood: CLASSIC_PENCIL_COLOURS.wood,
       tip: randomPartColour(),
       endCap: randomPartColour()
     });
@@ -6058,8 +6056,8 @@ function updatePencilControls() {
   });
 
   const availableParts = design.pencil.endingStyle === "endCap"
-    ? ["endCap", "wood", "tip"]
-    : ["eraser", "ferrule", "wood", "tip"];
+    ? ["endCap", "tip"]
+    : ["eraser", "ferrule", "tip"];
   if (!availableParts.includes(activePencilColourPart)) {
     activePencilColourPart = availableParts[0];
   }
@@ -7354,6 +7352,23 @@ function refreshUI() {
   renderReviewOrder();
 }
 
+// Manual 3D preview alignment controls for the pencil product.
+// Adjust only these values when fine-tuning how the STL pieces meet.
+const PENCIL_PREVIEW_LAYOUT = Object.freeze({
+  blockPitch: 30,
+  topOffsetY: 0,
+  characterHeight: 22.2,
+  noseOffsetX: 0,
+  tipOffsetX: 0,
+  ferruleOffsetX: 0,
+  eraserOffsetX: 0,
+  endCapOffsetX: 16,
+  rotationX: Math.PI / 2 - 0.22,
+  rotationY: 0.08,
+  rotationZ: -0.04,
+  cameraDistanceScale: 1.55
+});
+
 async function buildPencilClickerPreview(item, design) {
   const thisBuildNumber = ++previewBuildNumber;
   const pencil = normalizePencilDesign(design.pencil);
@@ -7378,7 +7393,7 @@ async function buildPencilClickerPreview(item, design) {
       getStandardPreviewFont()
     ]);
 
-    const blockPitch = 30;
+    const blockPitch = PENCIL_PREVIEW_LAYOUT.blockPitch;
     const firstBlockX = -((cleanName.length - 1) * blockPitch) / 2;
     const lastBlockX = firstBlockX + (cleanName.length - 1) * blockPitch;
 
@@ -7394,7 +7409,7 @@ async function buildPencilClickerPreview(item, design) {
       pencilGroup.add(body);
 
       const top = new THREE.Mesh(topGeometry.clone(), createMat(topColour));
-      top.position.x = x;
+      top.position.set(x, PENCIL_PREVIEW_LAYOUT.topOffsetY, 0);
       pencilGroup.add(top);
 
       const special = specialKeycaps[character];
@@ -7427,29 +7442,29 @@ async function buildPencilClickerPreview(item, design) {
 
       const characterMesh = new THREE.Mesh(characterGeometry, createMat(characterColour));
       characterMesh.rotation.x = -Math.PI / 2;
-      characterMesh.position.set(x, 22.2, 0);
+      characterMesh.position.set(x, PENCIL_PREVIEW_LAYOUT.characterHeight, 0);
       pencilGroup.add(characterMesh);
     }
 
     const nose = new THREE.Mesh(noseGeometry, createMat(pencil.wood));
-    nose.position.x = firstBlockX;
+    nose.position.x = firstBlockX + PENCIL_PREVIEW_LAYOUT.noseOffsetX;
     pencilGroup.add(nose);
 
     const tip = new THREE.Mesh(tipGeometry, createMat(pencil.tip));
-    tip.position.x = firstBlockX;
+    tip.position.x = firstBlockX + PENCIL_PREVIEW_LAYOUT.tipOffsetX;
     pencilGroup.add(tip);
 
     if (pencil.endingStyle === "endCap") {
       const endCap = new THREE.Mesh(endCapGeometry, createMat(pencil.endCap));
-      endCap.position.x = lastBlockX + 16;
+      endCap.position.x = lastBlockX + PENCIL_PREVIEW_LAYOUT.endCapOffsetX;
       pencilGroup.add(endCap);
     } else {
       const ferrule = new THREE.Mesh(ferruleGeometry, createMat(pencil.ferrule));
-      ferrule.position.x = lastBlockX;
+      ferrule.position.x = lastBlockX + PENCIL_PREVIEW_LAYOUT.ferruleOffsetX;
       pencilGroup.add(ferrule);
 
       const eraser = new THREE.Mesh(eraserGeometry, createMat(pencil.eraser));
-      eraser.position.x = lastBlockX;
+      eraser.position.x = lastBlockX + PENCIL_PREVIEW_LAYOUT.eraserOffsetX;
       pencilGroup.add(eraser);
     }
 
@@ -7467,10 +7482,14 @@ async function buildPencilClickerPreview(item, design) {
 
     keychain.add(pencilGroup);
     keychain.position.set(0, 0, 0);
-    keychain.rotation.set(Math.PI / 2 - 0.22, 0.08, -0.04);
+    keychain.rotation.set(
+      PENCIL_PREVIEW_LAYOUT.rotationX,
+      PENCIL_PREVIEW_LAYOUT.rotationY,
+      PENCIL_PREVIEW_LAYOUT.rotationZ
+    );
     controls.target.set(0, 0, 0);
     camera.fov = 35;
-    camera.position.set(0, 8, Math.max(135, size.x * 1.55));
+    camera.position.set(0, 8, Math.max(135, size.x * PENCIL_PREVIEW_LAYOUT.cameraDistanceScale));
     camera.updateProjectionMatrix();
     controls.update();
   } catch (error) {
