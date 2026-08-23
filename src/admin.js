@@ -2236,11 +2236,7 @@ async function saveShopSettings(event) {
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase.from("shop_settings").upsert(updates).select().single();
-  if (error) {
-    console.error("Unable to save settings:", error);
-    alert("Unable to save settings. Run the supplied operations SQL once, then try again.");
-    return;
-  }
+  if (error) console.error("Unable to save shop settings:", error);
 
   if (!adminProductsLoadFailed) {
     const productNumberFields = [
@@ -2278,10 +2274,20 @@ async function saveShopSettings(event) {
       });
       return productUpdate;
     });
-    const { data: savedProducts, error: productsError } = await supabase
+    let { data: savedProducts, error: productsError } = await supabase
       .from("product_catalog")
       .upsert(productUpdates, { onConflict: "product_key" })
       .select("*");
+
+    // Product visibility should still save against older databases that do
+    // not have the optional per-product lead-time columns yet.
+    if (productsError && /minimum_working_days|maximum_working_days/i.test(String(productsError.message || ""))) {
+      const compatibleUpdates = productUpdates.map(({ minimum_working_days, maximum_working_days, ...product }) => product);
+      ({ data: savedProducts, error: productsError } = await supabase
+        .from("product_catalog")
+        .upsert(compatibleUpdates, { onConflict: "product_key" })
+        .select("*"));
+    }
 
     if (productsError) {
       console.error("Unable to save product settings:", productsError);
@@ -2292,25 +2298,28 @@ async function saveShopSettings(event) {
     adminProductCatalog = normalizeProductCatalog(savedProducts);
   }
 
+  const savedShopSettings = data || { ...adminShopSettings, ...updates };
   adminShopSettings = {
-    ...data,
+    ...savedShopSettings,
     bulk_buffer_days: Math.max(0, Number(
-      data.pickup_time_options?.bulk_buffer_days ?? 1
+      savedShopSettings.pickup_time_options?.bulk_buffer_days ?? 1
     )),
     contact_whatsapp_number: String(
-      data.pickup_time_options?.contact_whatsapp_number || "6585121915"
+      savedShopSettings.pickup_time_options?.contact_whatsapp_number || "6585121915"
     ).replace(/\D/g, "") || "6585121915",
-    pickup_time_options: normalizePickupTimeOptions(data.pickup_time_options)
+    pickup_time_options: normalizePickupTimeOptions(savedShopSettings.pickup_time_options)
   };
   adminShopSettings.easyparcel_settings = {
     ...DEFAULT_ADMIN_SHOP_SETTINGS.easyparcel_settings,
-    ...(data.easyparcel_settings || {})
+    ...(savedShopSettings.easyparcel_settings || {})
   };
   adminShopSettings.colour_options = normalizeColourOptions(
-    data.pickup_time_options?.colour_options || normalizedColourOptions
+    savedShopSettings.pickup_time_options?.colour_options || normalizedColourOptions
   );
   ADMIN_COLOUR_OPTIONS = adminShopSettings.colour_options;
-  alert("Shop settings saved ✓");
+  alert(error
+    ? "Product visibility saved ✓ Some other shop settings still need the latest database update."
+    : "Shop settings saved ✓");
   renderSettingsWorkspace();
 }
 

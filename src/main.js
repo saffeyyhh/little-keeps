@@ -4041,6 +4041,7 @@ const designInspiration =
   document.getElementById("designInspiration");
 
 const geometryCache = {};
+const uncenteredGeometryCache = {};
 
 function generateOrderRef() {
   const date = new Date();
@@ -5181,6 +5182,25 @@ function loadSTL(path) {
         geometry.computeVertexNormals();
         geometry.center();
         geometryCache[path] = geometry;
+        resolve(geometry.clone());
+      },
+      undefined,
+      reject
+    );
+  });
+}
+
+function loadUncenteredSTL(path) {
+  if (uncenteredGeometryCache[path]) {
+    return Promise.resolve(uncenteredGeometryCache[path].clone());
+  }
+
+  return new Promise((resolve, reject) => {
+    loader.load(
+      path,
+      geometry => {
+        geometry.computeVertexNormals();
+        uncenteredGeometryCache[path] = geometry;
         resolve(geometry.clone());
       },
       undefined,
@@ -7258,6 +7278,87 @@ function refreshUI() {
   renderReviewOrder();
 }
 
+async function buildPencilClickerPreview(item, design) {
+  const thisBuildNumber = ++previewBuildNumber;
+  const pencil = normalizePencilDesign(design.pencil);
+  const partColours = {
+    body: design.bases?.[0] || "#FEC600",
+    top: design.caps?.[0] || "#ffffff",
+    eraser: pencil.eraser,
+    ferrule: pencil.ferrule,
+    nose: pencil.wood,
+    tip: pencil.tip,
+    "end-cap": pencil.endCap
+  };
+
+  clearKeychainPreview();
+  canvas.classList.remove("hidden");
+  document.getElementById("pencilDesignPreview")?.classList.add("hidden");
+  photoDesignPreview?.classList.add("hidden");
+  previewLoading?.classList.remove("hidden");
+
+  try {
+    const pencilGroup = new THREE.Group();
+    await Promise.all(Object.entries(partColours).map(async ([part, colour]) => {
+      const geometry = await loadUncenteredSTL(`/models/pencil/${part}.stl`);
+      pencilGroup.add(new THREE.Mesh(geometry, createMat(colour)));
+    }));
+
+    const cleanName = String(item.name || "NAME").trim().toUpperCase().slice(0, 10);
+    if (cleanName) {
+      const font = await getStandardPreviewFont();
+      const fontSize = Math.min(5.2, 27 / Math.max(1, cleanName.length * 0.62));
+      const nameGeometry = new TextGeometry(cleanName, {
+        font,
+        size: fontSize,
+        depth: pencil.textStyle === "flat" ? 0.35 : 0.9,
+        curveSegments: 6,
+        bevelEnabled: false
+      });
+      nameGeometry.center();
+      const nameMesh = new THREE.Mesh(
+        nameGeometry,
+        createMat(design.letters?.[0] || "#30282d")
+      );
+      // The licensed blank top faces out along +Y in the source model.
+      nameMesh.rotation.x = -Math.PI / 2;
+      nameMesh.position.set(0, 22.15, 0);
+      pencilGroup.add(nameMesh);
+    }
+
+    const bounds = new THREE.Box3().setFromObject(pencilGroup);
+    const centre = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    bounds.getCenter(centre);
+    bounds.getSize(size);
+    pencilGroup.position.sub(centre);
+
+    if (thisBuildNumber !== previewBuildNumber) {
+      disposePreviewObject(pencilGroup);
+      return;
+    }
+
+    keychain.add(pencilGroup);
+    keychain.position.set(0, 0, 0);
+    keychain.rotation.set(Math.PI / 2 - 0.22, 0.08, -0.04);
+    controls.target.set(0, 0, 0);
+    camera.fov = 35;
+    camera.position.set(0, 8, Math.max(135, size.x * 1.55));
+    camera.updateProjectionMatrix();
+    controls.update();
+  } catch (error) {
+    console.error("Unable to build pencil clicker preview:", error);
+    const pencilPreview = document.getElementById("pencilDesignPreview");
+    canvas.classList.add("hidden");
+    if (pencilPreview) {
+      pencilPreview.classList.remove("hidden");
+      pencilPreview.innerHTML = "<p>Preview is temporarily unavailable. Your colour choices are still saved.</p>";
+    }
+  } finally {
+    if (thisBuildNumber === previewBuildNumber) previewLoading?.classList.add("hidden");
+  }
+}
+
 function buildSelectedPreview() {
   if (!names.length) {
     previewBuildNumber += 1;
@@ -7272,27 +7373,7 @@ function buildSelectedPreview() {
   const design = getDesign(item);
 
   if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
-    previewBuildNumber += 1;
-    clearKeychainPreview();
-    previewLoading?.classList.add("hidden");
-    photoDesignPreview?.classList.add("hidden");
-    canvas.classList.add("hidden");
-    const pencilPreview = document.getElementById("pencilDesignPreview");
-    const pencil = normalizePencilDesign(design.pencil);
-    if (pencilPreview) {
-      pencilPreview.classList.remove("hidden");
-      pencilPreview.innerHTML = `
-        <div class="pencil-preview-object ${pencil.textStyle === "flat" ? "is-flat-text" : ""}" style="--pencil-body:${design.bases?.[0] || "#FEC600"}; --pencil-name:${design.letters?.[0] || "#30282d"}; --pencil-clicker:${design.caps?.[0] || "#ffffff"}; --pencil-eraser:${pencil.eraser}; --pencil-ferrule:${pencil.ferrule}; --pencil-wood:${pencil.wood}; --pencil-tip:${pencil.tip}; --pencil-end:${pencil.endCap};">
-          <span class="pencil-keyring-hole"></span>
-          <span class="pencil-preview-eraser"></span>
-          <span class="pencil-preview-ferrule"></span>
-          <span class="pencil-preview-body"><b>${escapePresetText(String(item.name || "NAME").toUpperCase())}</b><i>click</i></span>
-          <span class="pencil-preview-wood"></span>
-          <span class="pencil-preview-tip"></span>
-        </div>
-        <p>Colours update as you customise each part.</p>
-      `;
-    }
+    buildPencilClickerPreview(item, design);
     return;
   }
 
