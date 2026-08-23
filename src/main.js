@@ -1530,6 +1530,24 @@ Chloe</textarea>
             `).join("")}
           </div>
           <p class="pencil-options-note">Each character block includes its own clicker and switch.</p>
+          <div class="pencil-pricing-guide">
+            <div class="pencil-pricing-guide-heading">
+              <div>
+                <span>Clear pricing</span>
+                <strong>How pencil pricing works</strong>
+              </div>
+              <b>From ${displaySettingMoney(getProductDisplayPrice(pencilProduct))}</b>
+            </div>
+            <p>It follows the same pricing structure as our Chunky Modular Clicky Keychain.</p>
+            <div class="pencil-pricing-guide-rows">
+              <span><b>Starting price</b><em>Includes up to ${Number(pencilProduct.included_characters || 0)} character blocks</em></span>
+              <span><b>Extra character</b><em>+${displaySettingMoney(pencilProduct.extra_character_price)} each, up to ${Number(pencilProduct.maximum_characters || 10)}</em></span>
+              <span><b>Extra block colour</b><em>+${displaySettingMoney(pencilProduct.extra_base_colour_price)} per additional colour</em></span>
+              <span><b>Extra top colour</b><em>+${displaySettingMoney(pencilProduct.extra_cap_colour_price)} per additional colour</em></span>
+              <span><b>Extra character colour</b><em>+${displaySettingMoney(pencilProduct.extra_letter_colour_price)} per additional colour</em></span>
+            </div>
+            <small>One block colour, one top colour and one character colour are included. Your chosen eraser or end cap is included too.</small>
+          </div>
         </div>
 
         <div class="random-colour-card clicky-only-option">

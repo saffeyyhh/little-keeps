@@ -5334,6 +5334,45 @@ body {
 .pencil-colour-swatch span { overflow: hidden; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .pencil-colour-swatch.active { border-color: #8b5bb3; background: #f7f0fc; box-shadow: inset 0 0 0 1px #8b5bb3; }
 .pencil-options-note { margin: 12px 0 0; color: #7f7079; font-size: 10px; }
+.pencil-pricing-guide {
+  margin-top: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dcc9eb;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #fff, #f8f1fd);
+}
+.pencil-pricing-guide-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.pencil-pricing-guide-heading > div { display: grid; gap: 2px; }
+.pencil-pricing-guide-heading span {
+  color: #9a4772;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.pencil-pricing-guide-heading strong { color: #4f3d55; font-size: 14px; }
+.pencil-pricing-guide-heading > b { color: #b8396b; font-size: 17px; white-space: nowrap; }
+.pencil-pricing-guide > p,
+.pencil-pricing-guide > small { margin: 0; color: #786779; font-size: 10px; line-height: 1.45; }
+.pencil-pricing-guide-rows { display: grid; gap: 6px; }
+.pencil-pricing-guide-rows span {
+  padding-top: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  border-top: 1px solid #eadcf2;
+  color: #66546a;
+  font-size: 10px;
+}
+.pencil-pricing-guide-rows b { color: #4f3d55; }
+.pencil-pricing-guide-rows em { font-style: normal; text-align: right; }
 
 .pencil-design-preview {
   min-height: 430px;

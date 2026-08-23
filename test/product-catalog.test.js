@@ -47,7 +47,29 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   assert.equal(pencil.name, "Custom Pencil Clicker Keychain");
   assert.equal(pencil.status, "coming_soon");
   assert.equal(pencil.price_visible, false);
+  assert.equal(pencil.included_characters, 6);
+  assert.equal(pencil.extra_character_price, 0.2);
+  assert.equal(pencil.extra_base_colour_price, 0.5);
+  assert.equal(pencil.extra_cap_colour_price, 0.3);
+  assert.equal(pencil.extra_letter_colour_price, 0.2);
   assert.equal(pencil.maximum_characters, 10);
+});
+
+test("upgrades the pencil's original flat pricing to the main clicky structure", () => {
+  const pencil = getProductByKey(normalizeProductCatalog([{
+    product_key: PENCIL_PRODUCT_KEY,
+    included_characters: 10,
+    extra_character_price: 0,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0
+  }]), PENCIL_PRODUCT_KEY);
+
+  assert.equal(pencil.included_characters, 6);
+  assert.equal(pencil.extra_character_price, 0.2);
+  assert.equal(pencil.extra_base_colour_price, 0.5);
+  assert.equal(pencil.extra_cap_colour_price, 0.3);
+  assert.equal(pencil.extra_letter_colour_price, 0.2);
 });
 
 test("upgrades the old modular product name without changing custom names", () => {

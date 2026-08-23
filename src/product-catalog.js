@@ -196,14 +196,14 @@ export const DEFAULT_PRODUCT_CATALOG = [
     launch_base_price: 7.9,
     launch_price_enabled: true,
     launch_price_ends_at: null,
-    included_characters: 10,
-    extra_character_price: 0,
+    included_characters: 6,
+    extra_character_price: 0.2,
     included_base_colours: 1,
     included_cap_colours: 1,
     included_letter_colours: 1,
-    extra_base_colour_price: 0,
-    extra_cap_colour_price: 0,
-    extra_letter_colour_price: 0,
+    extra_base_colour_price: 0.5,
+    extra_cap_colour_price: 0.3,
+    extra_letter_colour_price: 0.2,
     minimum_characters: 1,
     maximum_characters: 10,
     base_print_minutes_fixed: 90,
@@ -288,6 +288,18 @@ export function normalizeProductCatalog(rows = []) {
       }
       if (product.production_notes === "Prepare in the licensed Clickify 3D Custom Pencil Clicker project. Confirm body, name, eraser, ferrule, wood, tip, end-cap and lettering-style choices before slicing.") {
         product.production_notes = fallback.production_notes;
+      }
+      const usesOriginalFlatPricing = Number(product.included_characters) === 10 &&
+        Number(product.extra_character_price) === 0 &&
+        Number(product.extra_base_colour_price) === 0 &&
+        Number(product.extra_cap_colour_price) === 0 &&
+        Number(product.extra_letter_colour_price) === 0;
+      if (usesOriginalFlatPricing) {
+        product.included_characters = fallback.included_characters;
+        product.extra_character_price = fallback.extra_character_price;
+        product.extra_base_colour_price = fallback.extra_base_colour_price;
+        product.extra_cap_colour_price = fallback.extra_cap_colour_price;
+        product.extra_letter_colour_price = fallback.extra_letter_colour_price;
       }
     }
 
