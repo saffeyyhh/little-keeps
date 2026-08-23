@@ -5216,16 +5216,18 @@ function renderSlots(containerId, colours, type) {
   }
 }
 
-function loadSTL(path) {
-  if (geometryCache[path]) return Promise.resolve(geometryCache[path].clone());
+function loadSTL(path, options = {}) {
+  const preservePosition = options.preservePosition === true;
+  const cacheKey = preservePosition ? `${path}::preserved` : path;
+  if (geometryCache[cacheKey]) return Promise.resolve(geometryCache[cacheKey].clone());
 
   return new Promise((resolve, reject) => {
     loader.load(
       path,
       geometry => {
         geometry.computeVertexNormals();
-        geometry.center();
-        geometryCache[path] = geometry;
+        if (!preservePosition) geometry.center();
+        geometryCache[cacheKey] = geometry;
         resolve(geometry.clone());
       },
       undefined,
@@ -7366,19 +7368,17 @@ async function buildPencilClickerPreview(item, design) {
   try {
     const pencilGroup = new THREE.Group();
     const [bodyGeometry, topGeometry, noseGeometry, tipGeometry, ferruleGeometry, eraserGeometry, endCapGeometry, font] = await Promise.all([
-      loadSTL("/models/pencil/body.stl"),
-      loadSTL("/models/pencil/top.stl"),
-      loadSTL("/models/pencil/nose.stl"),
-      loadSTL("/models/pencil/tip.stl"),
-      loadSTL("/models/pencil/ferrule.stl"),
-      loadSTL("/models/pencil/eraser.stl"),
-      loadSTL("/models/pencil/end-cap.stl"),
+      loadSTL("/models/pencil/body.stl", { preservePosition: true }),
+      loadSTL("/models/pencil/top.stl", { preservePosition: true }),
+      loadSTL("/models/pencil/nose.stl", { preservePosition: true }),
+      loadSTL("/models/pencil/tip.stl", { preservePosition: true }),
+      loadSTL("/models/pencil/ferrule.stl", { preservePosition: true }),
+      loadSTL("/models/pencil/eraser.stl", { preservePosition: true }),
+      loadSTL("/models/pencil/end-cap.stl", { preservePosition: true }),
       getStandardPreviewFont()
     ]);
 
-    // Slightly overlap neighbouring bodies so their internal connector pegs
-    // stay hidden, matching the fully assembled pencil.
-    const blockPitch = 27.5;
+    const blockPitch = 30;
     const firstBlockX = -((cleanName.length - 1) * blockPitch) / 2;
     const lastBlockX = firstBlockX + (cleanName.length - 1) * blockPitch;
 
@@ -7394,7 +7394,7 @@ async function buildPencilClickerPreview(item, design) {
       pencilGroup.add(body);
 
       const top = new THREE.Mesh(topGeometry.clone(), createMat(topColour));
-      top.position.set(x, 18.5, 0);
+      top.position.x = x;
       pencilGroup.add(top);
 
       const special = specialKeycaps[character];
@@ -7432,24 +7432,24 @@ async function buildPencilClickerPreview(item, design) {
     }
 
     const nose = new THREE.Mesh(noseGeometry, createMat(pencil.wood));
-    nose.position.x = firstBlockX - 26.5;
+    nose.position.x = firstBlockX;
     pencilGroup.add(nose);
 
     const tip = new THREE.Mesh(tipGeometry, createMat(pencil.tip));
-    tip.position.x = firstBlockX - 40;
+    tip.position.x = firstBlockX;
     pencilGroup.add(tip);
 
     if (pencil.endingStyle === "endCap") {
       const endCap = new THREE.Mesh(endCapGeometry, createMat(pencil.endCap));
-      endCap.position.x = lastBlockX + 24;
+      endCap.position.x = lastBlockX + 16;
       pencilGroup.add(endCap);
     } else {
       const ferrule = new THREE.Mesh(ferruleGeometry, createMat(pencil.ferrule));
-      ferrule.position.x = lastBlockX + 28.5;
+      ferrule.position.x = lastBlockX;
       pencilGroup.add(ferrule);
 
       const eraser = new THREE.Mesh(eraserGeometry, createMat(pencil.eraser));
-      eraser.position.x = lastBlockX + 51.5;
+      eraser.position.x = lastBlockX;
       pencilGroup.add(eraser);
     }
 
