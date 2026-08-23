@@ -7355,14 +7355,16 @@ function refreshUI() {
 // Manual 3D preview alignment controls for the pencil product.
 // Adjust only these values when fine-tuning how the STL pieces meet.
 const PENCIL_PREVIEW_LAYOUT = Object.freeze({
-  blockPitch: 30,
-  topOffsetY: 0,
-  characterHeight: 22.2,
-  noseOffsetX: 0,
-  tipOffsetX: 0,
-  ferruleOffsetX: 0,
-  eraserOffsetX: 0,
-  endCapOffsetX: 16,
+  blockPitch: 26,
+  topOffsetX: 2.8,
+  topOffsetY: -6,
+  characterOffsetX: 0,
+  characterHeight: 17.2,
+  noseOffsetX: 4,
+  tipOffsetX: 6,
+  ferruleOffsetX: -5,
+  eraserOffsetX: -11,
+  endCapOffsetX: 10,
   rotationX: Math.PI / 2 - 0.22,
   rotationY: 0.08,
   rotationZ: -0.04,
@@ -7409,7 +7411,11 @@ async function buildPencilClickerPreview(item, design) {
       pencilGroup.add(body);
 
       const top = new THREE.Mesh(topGeometry.clone(), createMat(topColour));
-      top.position.set(x, PENCIL_PREVIEW_LAYOUT.topOffsetY, 0);
+      top.position.set(
+        x + PENCIL_PREVIEW_LAYOUT.topOffsetX,
+        PENCIL_PREVIEW_LAYOUT.topOffsetY,
+        0
+      );
       pencilGroup.add(top);
 
       const special = specialKeycaps[character];
@@ -7442,7 +7448,11 @@ async function buildPencilClickerPreview(item, design) {
 
       const characterMesh = new THREE.Mesh(characterGeometry, createMat(characterColour));
       characterMesh.rotation.x = -Math.PI / 2;
-      characterMesh.position.set(x, PENCIL_PREVIEW_LAYOUT.characterHeight, 0);
+      characterMesh.position.set(
+        x + PENCIL_PREVIEW_LAYOUT.topOffsetX + PENCIL_PREVIEW_LAYOUT.characterOffsetX,
+        PENCIL_PREVIEW_LAYOUT.characterHeight,
+        0
+      );
       pencilGroup.add(characterMesh);
     }
 
