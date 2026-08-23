@@ -64,6 +64,7 @@ import {
   DEFAULT_COLOUR_OPTIONS,
   normalizeColourOptions
 } from "./colour-catalog.js";
+import { getPencilCharacterStlName } from "./pencil-characters.js";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
@@ -11740,6 +11741,7 @@ async function renderProductionPlanner(orders) {
                             <span><i style="background:${getSafePdfColour(body.hex || body, "#f7c948")}"></i>Body · ${escapeAdminHtml(body.name || "Selected")}</span>
                             <span><i style="background:${getSafePdfColour(top.hex || top, "#ffffff")}"></i>Top · ${escapeAdminHtml(top.name || "Selected")}</span>
                             <span><i style="background:${getSafePdfColour(character.hex || character, "#30282d")}"></i>Character · ${escapeAdminHtml(character.name || "Selected")}</span>
+                            <span>STL · ${escapeAdminHtml(getPencilCharacterStlName(block.character) || "Unsupported character - check order")}</span>
                           </div>
                         `;
                       }).join("")}

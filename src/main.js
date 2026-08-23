@@ -56,6 +56,11 @@ import {
 } from "./colour-catalog.js";
 import { normalizeAiDesignSuggestions } from "./ai-logic.js";
 import {
+  PENCIL_ICON_CATEGORIES,
+  PENCIL_SYMBOLS,
+  sanitizePencilCharacters
+} from "./pencil-characters.js";
+import {
   calculatePromoDiscount,
   getPromoEligibility as assessPromoEligibility,
   normalizePromoCode
@@ -3790,6 +3795,9 @@ async function findAutomaticAvailableDate() {
 }
 
 function sanitizeName(name) {
+  if (activeProduct?.product_key === PENCIL_PRODUCT_KEY) {
+    return sanitizePencilCharacters(name);
+  }
   return Array.from(name || "")
     .map(char => /[a-z]/i.test(char) ? char.toUpperCase() : char)
     .filter(char => /[A-Z0-9]/.test(char) || specialKeycaps[char])
@@ -4354,6 +4362,9 @@ async function requestAiDesignSuggestions() {
     hex: item.colour,
     material: item.materialType
   }));
+  const allowedIcons = activeProduct.product_key === PENCIL_PRODUCT_KEY
+    ? Object.keys(PENCIL_SYMBOLS)
+    : iconChoices;
   aiDesignHelperBtn.disabled = true;
   aiDesignHelperBtn.textContent = "Thinking…";
   aiDesignHelperStatus.textContent = "Matching ideas to the colours currently in stock…";
@@ -4365,14 +4376,14 @@ async function requestAiDesignSuggestions() {
         brief,
         product_name: activeProduct.name,
         palette,
-        icons: iconChoices
+        icons: allowedIcons
       }
     });
     if (error) {
       const details = await getPhotoFunctionErrorDetails(error);
       throw new Error(details.error || error.message || "Suggestions are unavailable right now.");
     }
-    const suggestions = normalizeAiDesignSuggestions(data?.suggestions, palette, iconChoices);
+    const suggestions = normalizeAiDesignSuggestions(data?.suggestions, palette, allowedIcons);
     if (!suggestions.length) throw new Error("No in-stock combinations were returned. Please try again.");
     renderAiDesignSuggestions(suggestions);
     aiDesignHelperStatus.textContent = "Choose one, or keep your current design.";
@@ -8645,7 +8656,7 @@ function updateProductCustomiser() {
   if (productCharacterLimitNotice) {
     productCharacterLimitNotice.hidden = !(isSolidClicker || isPencilClicker);
     productCharacterLimitNotice.textContent = isPencilClicker
-      ? "One separate clicky pencil block per letter, number or supported symbol. Maximum 10 blocks."
+      ? "One clicky block per letter, number or symbol. Maximum 10 blocks. Only the symbols shown below are available for this pencil."
       : isSolidClicker
         ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
         : "";
@@ -8673,6 +8684,7 @@ function updateProductCustomiser() {
   }
 
   updatePencilControls();
+  renderIconPicker();
 
   updateNames();
 }
@@ -10223,6 +10235,9 @@ function renderIconPicker() {
 
     container.innerHTML = "";
 
+    const pencilPicker = activeProduct?.product_key === PENCIL_PRODUCT_KEY;
+    const iconMap = pencilPicker ? PENCIL_SYMBOLS : specialKeycaps;
+    const categories = pencilPicker ? PENCIL_ICON_CATEGORIES : ICON_CATEGORIES;
     const tabs = document.createElement("div");
     tabs.className = "icon-category-tabs";
     tabs.setAttribute("role", "tablist");
@@ -10248,8 +10263,8 @@ function renderIconPicker() {
 
     const showCategory = categoryKey => {
       const category =
-        ICON_CATEGORIES.find(item => item.key === categoryKey) ||
-        ICON_CATEGORIES[0];
+        categories.find(item => item.key === categoryKey) ||
+        categories[0];
 
       tabs.querySelectorAll(".icon-category-tab").forEach(tab => {
         const isActive = tab.dataset.iconCategory === category.key;
@@ -10260,10 +10275,10 @@ function renderIconPicker() {
       grid.innerHTML = "";
 
       category.icons
-        .filter(icon => specialKeycaps[icon])
+        .filter(icon => iconMap[icon])
         .forEach(icon => {
           const button = document.createElement("button");
-          const iconName = specialKeycaps[icon];
+          const iconName = iconMap[icon];
 
           button.type = "button";
           button.className = "icon-btn";
@@ -10279,7 +10294,7 @@ function renderIconPicker() {
       }
     };
 
-    ICON_CATEGORIES.forEach(category => {
+    categories.forEach(category => {
       const tab = document.createElement("button");
       tab.type = "button";
       tab.className = "icon-category-tab";
@@ -10291,7 +10306,7 @@ function renderIconPicker() {
     });
 
     container.append(tabs, grid);
-    showCategory("popular");
+    showCategory(pencilPicker ? "all" : "popular");
   }
 
   buildPicker(singlePicker, singleName);
