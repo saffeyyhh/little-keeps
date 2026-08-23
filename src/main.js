@@ -1490,13 +1490,10 @@ Chloe</textarea>
           <div class="customisation-title">
             <div>
               <h3>Personalise Your Pencil</h3>
-              <p>Every character gets its own clicky block. Choose the finish and colours for the pencil ends, blocks, tops and characters.</p>
+              <p>Every character gets its own clicky block. Choose colours for the pencil ends, blocks, tops and characters.</p>
             </div>
           </div>
-          <div class="pencil-style-options" role="group" aria-label="Pencil lettering style">
-            <button type="button" class="active" data-pencil-text-style="raised"><strong>Raised</strong><span>Letters sit on top</span></button>
-            <button type="button" data-pencil-text-style="flat"><strong>Inlaid</strong><span>Flatter two-colour finish</span></button>
-          </div>
+          <div class="pencil-raised-note"><strong>Raised characters</strong><span>Letters and symbols sit neatly on top.</span></div>
           <div class="pencil-ending-options" role="group" aria-label="Choose the pencil ending">
             <button type="button" class="active" data-pencil-ending-style="eraser"><strong>Eraser</strong><span>Includes the metal band</span></button>
             <button type="button" data-pencil-ending-style="endCap"><strong>End cap</strong><span>A simple rounded finish</span></button>
@@ -4023,7 +4020,7 @@ let globalDesign = {
 
 function normalizePencilDesign(value = {}) {
   return {
-    textStyle: value.textStyle === "flat" ? "flat" : "raised",
+    textStyle: "raised",
     endingStyle: value.endingStyle === "endCap" ? "endCap" : "eraser",
     eraser: value.eraser || CLASSIC_PENCIL_COLOURS.eraser,
     ferrule: value.ferrule || CLASSIC_PENCIL_COLOURS.ferrule,
@@ -6048,12 +6045,6 @@ function updatePencilControls() {
   const design = getActiveDesign();
   design.pencil = normalizePencilDesign(design.pencil);
 
-  document.querySelectorAll("[data-pencil-text-style]").forEach(button => {
-    const active = button.dataset.pencilTextStyle === design.pencil.textStyle;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
-
   document.querySelectorAll("[data-pencil-ending-style]").forEach(button => {
     const active = button.dataset.pencilEndingStyle === design.pencil.endingStyle;
     button.classList.toggle("active", active);
@@ -6106,11 +6097,6 @@ function updatePencilChoice(part, value) {
 }
 
 document.getElementById("pencilClickerOptions")?.addEventListener("click", event => {
-  const styleButton = event.target.closest("[data-pencil-text-style]");
-  if (styleButton) {
-    updatePencilChoice("textStyle", styleButton.dataset.pencilTextStyle);
-    return;
-  }
   const endingButton = event.target.closest("[data-pencil-ending-style]");
   if (endingButton) {
     updatePencilChoice("endingStyle", endingButton.dataset.pencilEndingStyle);
@@ -6296,7 +6282,7 @@ function getDesignDescription(design) {
   }
 
   if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
-    return `${normalizePencilDesign(design.pencil).textStyle === "flat" ? "Inlaid" : "Raised"} characters · One clicker block per character`;
+    return "Raised characters · One clicker block per character";
   }
 
   return `${
@@ -7432,7 +7418,7 @@ async function buildPencilClickerPreview(item, design) {
         characterGeometry = new TextGeometry(character, {
           font,
           size: 12,
-          depth: pencil.textStyle === "flat" ? 0.3 : 1,
+          depth: 1,
           curveSegments: 6,
           bevelEnabled: false
         });
