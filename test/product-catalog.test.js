@@ -169,6 +169,20 @@ test("applies saved product visibility independently of pricing", () => {
   assert.equal(getProductByKey(catalogue, MODULAR_PRODUCT_KEY).status, "active");
 });
 
+test("always shows pricing when a product is available", () => {
+  const catalogue = applyProductStatusOverrides(normalizeProductCatalog([{
+    product_key: PENCIL_PRODUCT_KEY,
+    status: "coming_soon",
+    price_visible: false
+  }]), {
+    [PENCIL_PRODUCT_KEY]: "active"
+  });
+
+  const pencil = getProductByKey(catalogue, PENCIL_PRODUCT_KEY);
+  assert.equal(pencil.status, "active");
+  assert.equal(pencil.price_visible, true);
+});
+
 test("ignores invalid product visibility overrides", () => {
   assert.deepEqual(normalizeProductStatusOverrides({
     [PENCIL_PRODUCT_KEY]: "deleted",

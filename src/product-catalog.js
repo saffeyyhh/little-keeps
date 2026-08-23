@@ -16,10 +16,14 @@ export function normalizeProductStatusOverrides(value = {}) {
 
 export function applyProductStatusOverrides(catalog = [], value = {}) {
   const overrides = normalizeProductStatusOverrides(value);
-  return (Array.isArray(catalog) ? catalog : []).map(product => ({
-    ...product,
-    status: overrides[product.product_key] || product.status
-  }));
+  return (Array.isArray(catalog) ? catalog : []).map(product => {
+    const status = overrides[product.product_key] || product.status;
+    return {
+      ...product,
+      status,
+      price_visible: status === "active" ? true : product.price_visible
+    };
+  });
 }
 
 export function normalizeProductCatalogOverrides(value = {}) {
@@ -316,7 +320,7 @@ export function normalizeProductCatalog(rows = []) {
     });
 
     product.launch_price_enabled = product.launch_price_enabled !== false;
-    product.price_visible = product.price_visible === true;
+    product.price_visible = product.status === "active" || product.price_visible === true;
     return product;
   });
 
