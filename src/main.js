@@ -7390,7 +7390,9 @@ async function buildPencilClickerPreview(item, design) {
       getStandardPreviewFont()
     ]);
 
-    const blockPitch = 30;
+    // Slightly overlap neighbouring bodies so their internal connector pegs
+    // stay hidden, matching the fully assembled pencil.
+    const blockPitch = 27.5;
     const firstBlockX = -((cleanName.length - 1) * blockPitch) / 2;
     const lastBlockX = firstBlockX + (cleanName.length - 1) * blockPitch;
 
@@ -7443,15 +7445,12 @@ async function buildPencilClickerPreview(item, design) {
       pencilGroup.add(characterMesh);
     }
 
-    const noseX = firstBlockX - 26.5;
-    const tipX = noseX - 13.5;
-
     const nose = new THREE.Mesh(noseGeometry, createMat(pencil.wood));
-    nose.position.x = noseX;
+    nose.position.x = firstBlockX - 26.5;
     pencilGroup.add(nose);
 
     const tip = new THREE.Mesh(tipGeometry, createMat(pencil.tip));
-    tip.position.x = tipX;
+    tip.position.x = firstBlockX - 40;
     pencilGroup.add(tip);
 
     if (pencil.endingStyle === "endCap") {
@@ -7459,14 +7458,12 @@ async function buildPencilClickerPreview(item, design) {
       endCap.position.x = lastBlockX + 24;
       pencilGroup.add(endCap);
     } else {
-      const ferruleX = lastBlockX + 29.5;
-      const eraserX = ferruleX + 23;
       const ferrule = new THREE.Mesh(ferruleGeometry, createMat(pencil.ferrule));
-      ferrule.position.x = ferruleX;
+      ferrule.position.x = lastBlockX + 28.5;
       pencilGroup.add(ferrule);
 
       const eraser = new THREE.Mesh(eraserGeometry, createMat(pencil.eraser));
-      eraser.position.x = eraserX;
+      eraser.position.x = lastBlockX + 51.5;
       pencilGroup.add(eraser);
     }
 
@@ -7484,13 +7481,10 @@ async function buildPencilClickerPreview(item, design) {
 
     keychain.add(pencilGroup);
     keychain.position.set(0, 0, 0);
-    keychain.rotation.set(Math.PI / 2 - 0.1, 0, 0);
+    keychain.rotation.set(Math.PI / 2 - 0.22, 0.08, -0.04);
     controls.target.set(0, 0, 0);
     camera.fov = 35;
-    const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
-    const fitHeightDistance = size.y / (2 * Math.tan(halfFov));
-    const fitWidthDistance = size.x / (2 * Math.tan(halfFov) * Math.max(camera.aspect, 0.45));
-    camera.position.set(0, 8, Math.max(135, fitHeightDistance, fitWidthDistance) * 1.2);
+    camera.position.set(0, 8, Math.max(135, size.x * 1.55));
     camera.updateProjectionMatrix();
     controls.update();
   } catch (error) {

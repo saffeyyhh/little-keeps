@@ -5398,37 +5398,6 @@ body {
   gap: 18px;
 }
 
-@media (min-width: 1021px) {
-  .product-customiser {
-    grid-template-columns: minmax(0, 1.12fr) minmax(420px, .88fr);
-    gap: 22px;
-  }
-
-  .preview-column {
-    display: block;
-    min-width: 0;
-  }
-
-  .preview-sticky {
-    position: sticky;
-    z-index: 20;
-    top: 92px;
-    display: grid;
-    gap: 10px;
-  }
-
-  .preview-card,
-  .preview-tip,
-  .design-inspiration,
-  .options-column {
-    order: initial;
-  }
-
-  .design-inspiration {
-    margin-top: 18px;
-  }
-}
-
 .preview-card {
   border-radius: 24px;
 }
