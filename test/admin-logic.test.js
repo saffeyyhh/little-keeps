@@ -752,6 +752,10 @@ test("combines shared group designs while preserving each contributor", () => {
             content_type: "pet",
             payload: "https://example.com/milo"
           },
+          pencil: {
+            textStyle: "raised",
+            eraser: "#f18db2"
+          },
           bases: ["#ffffff"],
           caps: ["#f55a74"],
           letters: ["#332d30"]
@@ -775,6 +779,10 @@ test("combines shared group designs while preserving each contributor", () => {
         nfcType: "pet",
         nfcPayload: "https://example.com/milo",
         photo: null,
+        pencil: {
+          textStyle: "raised",
+          eraser: "#f18db2"
+        },
         bases: ["#ffffff"],
         caps: ["#f55a74"],
         letters: ["#332d30"]
@@ -792,6 +800,7 @@ test("combines shared group designs while preserving each contributor", () => {
         nfcType: "guardian",
         nfcPayload: "",
         photo: null,
+        pencil: null,
         bases: [],
         caps: [],
         letters: []

@@ -5,6 +5,7 @@ import {
   DEFAULT_PRODUCT_CATALOG,
   formatProductUnitsSold,
   MODULAR_PRODUCT_KEY,
+  PENCIL_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
   SOLID_PRODUCT_KEY,
   STANDARD_PRODUCT_KEY,
@@ -25,6 +26,7 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   const solid = getProductByKey(catalogue, SOLID_PRODUCT_KEY);
   const standard = getProductByKey(catalogue, STANDARD_PRODUCT_KEY);
   const photo = getProductByKey(catalogue, PHOTO_PRODUCT_KEY);
+  const pencil = getProductByKey(catalogue, PENCIL_PRODUCT_KEY);
 
   assert.equal(modular.name, "Chunky Modular Clicky Keychain");
   assert.equal(modular.status, "active");
@@ -38,6 +40,10 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   assert.equal(photo.price_visible, false);
   assert.equal(photo.minimum_working_days, 4);
   assert.equal(photo.maximum_working_days, 5);
+  assert.equal(pencil.name, "Custom Pencil Clicker Keychain");
+  assert.equal(pencil.status, "coming_soon");
+  assert.equal(pencil.price_visible, false);
+  assert.equal(pencil.maximum_characters, 10);
 });
 
 test("upgrades the old modular product name without changing custom names", () => {

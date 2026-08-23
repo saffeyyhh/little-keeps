@@ -52,6 +52,7 @@ import {
 } from "./admin-logic.js";
 import {
   DEFAULT_PRODUCT_CATALOG,
+  PENCIL_PRODUCT_KEY,
   normalizeProductCatalog
 } from "./product-catalog.js";
 import {
@@ -1626,6 +1627,7 @@ function renderSettingsWorkspace() {
             ${adminProductCatalog.map(product => {
               const prefix = `product:${product.product_key}:`;
               const isSolidDraft = product.product_key === "solid-clicky-keychain";
+              const isPencilDraft = product.product_key === PENCIL_PRODUCT_KEY;
 
               return `
                 <article class="product-settings-card ${product.status === "active" ? "is-active" : ""}">
@@ -1648,6 +1650,9 @@ function renderSettingsWorkspace() {
 
                   ${isSolidDraft ? `
                     <p class="product-draft-note">Draft suggestion: S$3.80 launch, then S$4.50. Keep pricing hidden until the test prints are timed.</p>
+                  ` : ""}
+                  ${isPencilDraft ? `
+                    <p class="product-draft-note">Draft suggestion: S$7.90 launch, then S$9.90. Keep it Coming soon until you confirm the full pencil print time and final price.</p>
                   ` : ""}
 
                   <div class="settings-fields two-columns">
@@ -4788,6 +4793,7 @@ function renderOrders(orders) {
     const letterOrientation = getLetterOrientation(item.design);
     const photoProduct = isPhotoKeepsake(order, item);
     const customNameProduct = isCustomNameKeychain(order, item);
+    const pencilProduct = isPencilClicker(order, item);
 
     return `
       <div class="order-preview-item">
@@ -4804,6 +4810,9 @@ function renderOrders(orders) {
             <span class="assembly-tag">Photo Keepsake</span>
             <span class="assembly-tag">Classic Keychain</span>
             <span class="assembly-tag">${Number(item.design?.photo?.colour_count || 4)} Stocked Colours</span>
+          ` : pencilProduct ? `
+            <span class="assembly-tag">Custom Pencil Clicker</span>
+            <span class="assembly-tag">${String(item.design?.pencil?.text_style || "raised") === "flat" ? "Inlaid Name" : "Raised Name"}</span>
           ` : customNameProduct ? `
             <span class="assembly-tag">Customised Name</span>
             <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
@@ -4821,6 +4830,8 @@ function renderOrders(orders) {
 
         ${photoProduct ? `
           <div class="assembly-photo-summary">Private artwork saved · download the STL pack under Production → Custom Prints</div>
+        ` : pencilProduct ? `
+          <div class="assembly-photo-summary">All pencil-part colours saved · prepare and track it under Production → Custom Prints</div>
         ` : customNameProduct ? `
           <div class="assembly-standard-name-preview" style="--name-bg:${getSafePdfColour(item.design?.bases?.[0]?.hex || item.design?.bases?.[0], "#f55a74")}; --name-fg:${getSafePdfColour(item.design?.letters?.[0]?.hex || item.design?.letters?.[0], "#ffffff")}">${escapeAdminHtml(item.name || "Name")}</div>
         ` : `
@@ -5742,6 +5753,14 @@ fulfilmentEditorForm.addEventListener("submit", async event => {
 
 function isSolidClickyKeychain(order, item) {
   return String(item?.product_key || order?.product_key || "") === "solid-clicky-keychain";
+}
+
+function isPencilClicker(order, item) {
+  return String(item?.product_key || order?.product_key || "") === PENCIL_PRODUCT_KEY;
+}
+
+function getPencilClickerInventoryName(order, item, itemIndex = 0) {
+  return `Custom Pencil Clicker - ${order.order_ref || order.id || "Order"} - ${itemIndex + 1} - ${item.name || "Name"}`;
 }
 
 function getSolidBaseShape(characterCount) {
@@ -6741,6 +6760,23 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
 
       if (!design) return;
 
+      if (isPencilClicker(order, item)) {
+        customItems.push({
+          order,
+          item,
+          itemIndex,
+          itemName: getPencilClickerInventoryName(order, item, itemIndex),
+          name: item.name || "Custom pencil",
+          fontSize: 0,
+          isPencil: true,
+          pencil: design.pencil || {},
+          background: design.bases?.[0],
+          clicker: design.caps?.[0],
+          lettering: design.letters?.[0]
+        });
+        return;
+      }
+
       if (isCustomNameKeychain(order, item)) {
         customItems.push({
           order,
@@ -6876,6 +6912,11 @@ function getOrderPrintableInventoryNeeds(order) {
 
       if (isCustomNameKeychain(order, item)) {
         addNeed(getCustomNameInventoryName(order, item, itemIndex));
+        return;
+      }
+
+      if (isPencilClicker(order, item)) {
+        addNeed(getPencilClickerInventoryName(order, item, itemIndex));
         return;
       }
 
@@ -8713,6 +8754,16 @@ async function generateOrderStls(id, button) {
     return;
   }
 
+  const pencilItems = (order.order_data || [])
+    .map((item, itemIndex) => ({ item, itemIndex }))
+    .filter(({ item }) => !item.assembly_completed && isPencilClicker(order, item));
+  if (pencilItems.length) {
+    alert(
+      `This order contains ${pencilItems.length} Custom Pencil Clicker${pencilItems.length === 1 ? "" : "s"}.\n\nOpen Production → Custom Prints for the exact names, part colours and lettering styles, then prepare them in your licensed Clickify 3D pencil project.`
+    );
+    return;
+  }
+
   const customNameItems = (order.order_data || [])
     .map((item, itemIndex) => ({ item, itemIndex }))
     .filter(({ item }) => !item.assembly_completed && isCustomNameKeychain(order, item));
@@ -9205,6 +9256,7 @@ async function renderAssemblyQueue() {
     );
     const customNameProduct = String(item.product_key || order.product_key || "") === "standard-name-keychain";
     const photoProduct = String(item.product_key || order.product_key || "") === "ai-photo-keepsake";
+    const pencilProduct = String(item.product_key || order.product_key || "") === PENCIL_PRODUCT_KEY;
 
     return `
       <div class="assembly-item ${completed ? "is-complete" : ""} ${!completed && !baseOnly ? "is-selectable" : ""}">
@@ -9238,6 +9290,9 @@ async function renderAssemblyQueue() {
             ${photoProduct ? `
               <span class="assembly-tag">Photo Keepsake</span>
               <span class="assembly-tag">${item.design?.photo?.variant === "clicker" ? "Clicker" : "Classic"}</span>
+            ` : pencilProduct ? `
+              <span class="assembly-tag">Custom Pencil Clicker</span>
+              <span class="assembly-tag">${String(item.design?.pencil?.text_style || "raised") === "flat" ? "Inlaid Name" : "Raised Name"}</span>
             ` : customNameProduct ? `
               <span class="assembly-tag">Customised Name</span>
               <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
@@ -9254,6 +9309,8 @@ async function renderAssemblyQueue() {
 
         ${photoProduct ? `
           <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 4)} stocked colours · review in Custom Prints</div>
+        ` : pencilProduct ? `
+          <div class="assembly-photo-summary">Licensed pencil project · all part colours are listed in Production → Custom Prints</div>
         ` : customNameProduct ? `
           <div class="assembly-standard-name-preview" style="--name-bg:${getSafePdfColour(item.design?.bases?.[0]?.hex || item.design?.bases?.[0], "#f55a74")}; --name-fg:${getSafePdfColour(item.design?.letters?.[0]?.hex || item.design?.letters?.[0], "#ffffff")}">${escapeAdminHtml(item.name || "Name")}</div>
           ${createAssemblyColourGuide(item.name, item.design)}
@@ -9294,6 +9351,8 @@ async function renderAssemblyQueue() {
                   Mark Base Assembled & Set Aside
                 </button>
               `}
+            ` : pencilProduct ? `
+              <p class="hint">This is one order-specific pencil print. Reprepare the full item from Production → Custom Prints if any printed part needs replacing.</p>
             ` : `
               <details class="assembly-reprint-controls">
                 <summary>Bad print? Send a part back to Production</summary>
@@ -11603,11 +11662,15 @@ async function renderProductionPlanner(orders) {
 
         <div class="production-queue-section ${productionQueueView === "custom" ? "" : "hidden"}">
           <h3>Order-Specific Custom Prints</h3>
-          <p class="hint">Name keychains include two generated STLs. Photo keepsakes include private artwork that must pass your slicer check before printing.</p>
+          <p class="hint">Name keychains use generated STLs, photo keepsakes use private artwork, and pencil clickers are prepared in your licensed Clickify 3D project.</p>
           <div class="custom-print-grid">
             ${customPrintRows.map(row => {
               const background = row.background || {};
               const lettering = row.lettering || {};
+              const clicker = row.clicker || {};
+              const pencil = row.pencil || {};
+              const pencilColour = value => value?.hex || value || "#d9d9d9";
+              const pencilName = (value, fallback) => value?.name || fallback;
               return `
                 <article class="custom-print-card">
                   <header>
@@ -11615,7 +11678,7 @@ async function renderProductionPlanner(orders) {
                       <span>${escapeAdminHtml(row.order.order_ref || "No reference")}</span>
                       <h4>${escapeAdminHtml(row.name)}</h4>
                     </div>
-                    <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : `${row.fontSize} mm letters`}</strong>
+                    <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : row.isPencil ? "Licensed Pencil Clicker" : `${row.fontSize} mm letters`}</strong>
                   </header>
                   ${row.isPhoto ? `
                     <div class="photo-printability-warning"><strong>Use the 0.4 mm nozzle preset</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · use Arachne walls, then inspect connected shapes, minimum wall thickness and the keyring hole before printing.</span></div>
@@ -11626,6 +11689,21 @@ async function renderProductionPlanner(orders) {
                         `).join("")}
                       </div>
                     ` : `<p class="hint">Legacy preview · its colours will be matched to your currently available filament when you download the STL pack.</p>`}
+                  ` : row.isPencil ? `
+                    <div class="pencil-production-guide">
+                      <strong>Prepare in Clickify 3D - Custom Pencil Clicker.3mf</strong>
+                      <span>${String(pencil.text_style || "raised") === "flat" ? "Inlaid / flat" : "Raised"} name · keyring hole included</span>
+                    </div>
+                    <div class="custom-print-colours pencil-production-colours">
+                      <span><i style="background:${getSafePdfColour(background.hex || background, "#f7c948")}"></i>Body · ${escapeAdminHtml(background.name || "Selected colour")}</span>
+                      <span><i style="background:${getSafePdfColour(clicker.hex || clicker, "#ffffff")}"></i>Clicker · ${escapeAdminHtml(clicker.name || "Selected colour")}</span>
+                      <span><i style="background:${getSafePdfColour(lettering.hex || lettering, "#30282d")}"></i>Name · ${escapeAdminHtml(lettering.name || "Selected colour")}</span>
+                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.eraser), "#f18db2")}"></i>Eraser · ${escapeAdminHtml(pencilName(pencil.eraser, "Selected colour"))}</span>
+                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.ferrule), "#c9c7ce")}"></i>Band · ${escapeAdminHtml(pencilName(pencil.ferrule, "Selected colour"))}</span>
+                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.wood), "#e8bd8d")}"></i>Wood · ${escapeAdminHtml(pencilName(pencil.wood, "Selected colour"))}</span>
+                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.tip), "#393139")}"></i>Tip · ${escapeAdminHtml(pencilName(pencil.tip, "Selected colour"))}</span>
+                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.end_cap), "#ffffff")}"></i>End cap · ${escapeAdminHtml(pencilName(pencil.end_cap, "Selected colour"))}</span>
+                    </div>
                   ` : `
                     <div class="custom-print-colours">
                       <span><i style="background:${getSafePdfColour(background.hex || background, "#f55a74")}"></i>Background · ${escapeAdminHtml(background.name || "Selected colour")}</span>
@@ -11638,6 +11716,8 @@ async function renderProductionPlanner(orders) {
                       <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download Private Artwork</button>
                       <button type="button" onclick='window.generatePhotoKeepsakeStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)}, ${row.need})'>Checked · Start Printing × ${row.need}</button>
+                    ` : row.isPencil ? `
+                      <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, ${row.need}, "Custom")'>Prepared · Start Printing × ${row.need}</button>
                     ` : `
                       <button type="button" onclick='window.generateCustomNameKeychainStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download 2 STLs</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, 1, "Base")'>Start Printing</button>

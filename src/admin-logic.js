@@ -796,6 +796,7 @@ export function flattenSharedGroupContributions(contributions = []) {
           nfcType: item.design?.nfc?.content_type || "guardian",
           nfcPayload: item.design?.nfc?.payload || "",
           photo: item.design?.photo || null,
+          pencil: item.design?.pencil || null,
           bases: Array.isArray(item.design?.bases) ? item.design.bases : [],
           caps: Array.isArray(item.design?.caps) ? item.design.caps : [],
           letters: Array.isArray(item.design?.letters) ? item.design.letters : []

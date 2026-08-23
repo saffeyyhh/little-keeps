@@ -2,6 +2,7 @@ export const MODULAR_PRODUCT_KEY = "modular-clicky-keychain";
 export const SOLID_PRODUCT_KEY = "solid-clicky-keychain";
 export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
+export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
 
 export function formatProductUnitsSold(value) {
   const units = Math.max(0, Math.floor(Number(value) || 0));
@@ -142,6 +143,37 @@ export const DEFAULT_PRODUCT_CATALOG = [
     sort_order: 40,
     image_path: null,
     production_notes: "AI artwork requires a printability check before slicing. Keep this product coming soon until the OpenAI secret and storage migration are installed."
+  },
+  {
+    product_key: PENCIL_PRODUCT_KEY,
+    name: "Custom Pencil Clicker Keychain",
+    eyebrow: "A pencil made completely yours",
+    description: "Personalise the name, lettering style and every pencil part colour, finished with one satisfying clicker.",
+    status: "coming_soon",
+    price_visible: false,
+    usual_base_price: 9.9,
+    launch_base_price: 7.9,
+    launch_price_enabled: true,
+    launch_price_ends_at: null,
+    included_characters: 10,
+    extra_character_price: 0,
+    included_base_colours: 1,
+    included_cap_colours: 1,
+    included_letter_colours: 1,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0,
+    minimum_characters: 1,
+    maximum_characters: 10,
+    base_print_minutes_fixed: 90,
+    base_print_minutes_per_character: 0,
+    keycap_print_minutes_per_character: 0,
+    assembly_minutes_per_item: 10,
+    minimum_working_days: null,
+    maximum_working_days: null,
+    sort_order: 25,
+    image_path: null,
+    production_notes: "Prepare in the licensed Clickify 3D Custom Pencil Clicker project. Confirm body, name, eraser, ferrule, wood, tip, end-cap and lettering-style choices before slicing."
   }
 ];
 

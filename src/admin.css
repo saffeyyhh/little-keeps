@@ -5149,6 +5149,18 @@ a {
   font-size: 10px;
 }
 
+.pencil-production-guide {
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d9c4eb;
+  border-radius: 12px;
+  color: #5e4772;
+  background: #faf6ff;
+}
+.pencil-production-guide span { color: #796d80; font-size: 11px; }
+.pencil-production-colours { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
 .assembly-photo-summary,
 .assembly-standard-name-preview {
   margin: 12px 0;

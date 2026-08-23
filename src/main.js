@@ -39,6 +39,7 @@ import {
   SOLID_PRODUCT_KEY,
   STANDARD_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
+  PENCIL_PRODUCT_KEY,
   calculateProductUnitPrice,
   formatProductUnitsSold,
   getProductByKey,
@@ -485,6 +486,7 @@ const standardProduct = getProductByKey(
   STANDARD_PRODUCT_KEY
 );
 const photoProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
+const pencilProduct = getProductByKey(productCatalog, PENCIL_PRODUCT_KEY);
 
 let activeProduct = modularProduct;
 
@@ -541,6 +543,9 @@ const solidCardPrice = solidProduct.price_visible
 const photoCardPrice = photoProduct.price_visible
   ? `From ${displaySettingMoney(getProductDisplayPrice(photoProduct))}`
   : "Pricing coming soon";
+const pencilCardPrice = pencilProduct.price_visible
+  ? `From ${displaySettingMoney(getProductDisplayPrice(pencilProduct))}`
+  : "Pricing coming soon";
 const deliveryFeeSetting = getSettingNumber("delivery_fee", 2.5);
 const freeDeliveryThreshold = getSettingNumber("free_delivery_threshold", 50);
 const maxOrdersPerDate = Math.max(
@@ -561,6 +566,13 @@ const rushFeeLarge = Math.max(rushFeeSmall, getSettingNumber("rush_fee_large", 8
 
 function displaySettingMoney(value) {
   return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function renderPencilColourOptions() {
+  return shopSettings.colour_options
+    .filter(colour => colour.active && !unavailableColourNames.has(String(colour.name).toLowerCase()))
+    .map(colour => `<option value="${escapePresetText(colour.hex)}">${escapePresetText(colour.name)} · ${escapePresetText(colour.material_type || "BASIC")}</option>`)
+    .join("");
 }
 
 document.querySelector("#app").innerHTML = `
@@ -983,6 +995,7 @@ ${requestedPreviewProductKey ? `
   <div class="product-card-grid">
   ${modularProduct.status !== "hidden" ? `
     <article class="product-card product-card-current">
+      <span class="authorised-seller-ribbon">Authorised Seller</span>
       <div class="product-card-visual">
         <img
           src="/images/modular-clicky-keychain.jpg"
@@ -1009,6 +1022,7 @@ ${requestedPreviewProductKey ? `
 
   ${solidProduct.status !== "hidden" ? `
     <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+      <span class="authorised-seller-ribbon">Authorised Seller</span>
       <div class="product-card-visual mystery-product-visual" aria-hidden="true">
         <div class="mystery-solid-base">
           <i></i><i></i><i></i><b>ABC</b>
@@ -1031,6 +1045,29 @@ ${requestedPreviewProductKey ? `
         ${solidProduct.status === "active" ? `
           <button type="button" data-product-key="${SOLID_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>
         ` : `<button type="button" disabled>Coming soon</button>`}
+      </div>
+    </article>
+  ` : ""}
+
+  ${pencilProduct.status !== "hidden" ? `
+    <article class="product-card pencil-product-card ${pencilProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${pencilProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+      <span class="authorised-seller-ribbon">Authorised Seller</span>
+      <div class="product-card-visual pencil-product-visual" aria-hidden="true">
+        <div class="pencil-card-art">
+          <i class="pencil-card-eraser"></i><i class="pencil-card-ferrule"></i><b>LITTLE KEEPS</b><i class="pencil-card-wood"></i><i class="pencil-card-tip"></i>
+        </div>
+        <span class="product-card-badge">${pencilProduct.status === "active" ? "Available now" : "Coming soon"}</span>
+      </div>
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(pencilProduct.eyebrow)}</small>
+          <h3>${escapePresetText(pencilProduct.name)}</h3>
+        </div>
+        <p>${escapePresetText(pencilProduct.description)}</p>
+        <span class="product-card-price">${escapePresetText(pencilCardPrice)}</span>
+        ${pencilProduct.status === "active"
+          ? `<button type="button" data-product-key="${PENCIL_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>`
+          : `<button type="button" disabled>Coming soon</button>`}
       </div>
     </article>
   ` : ""}
@@ -1347,6 +1384,7 @@ Chloe</textarea>
     <section class="preview-column">
       <div class="preview-sticky">
         <div class="preview-card">
+          <span id="authorisedSellerRibbon" class="authorised-seller-ribbon authorised-seller-ribbon-preview">Authorised Seller</span>
           <div class="preview-card-heading">
             <div>
               <h2>Your Keychain</h2>
@@ -1365,6 +1403,7 @@ Chloe</textarea>
           <div class="preview-canvas-wrap">
             <canvas id="previewCanvas"></canvas>
             <img id="photoDesignPreview" class="photo-design-preview hidden" alt="Your approved photo keepsake artwork">
+            <div id="pencilDesignPreview" class="pencil-design-preview hidden" aria-label="Custom pencil clicker preview"></div>
 
             <div id="previewLoading" class="preview-loading">
               <div class="preview-loading-spinner"></div>
@@ -1434,6 +1473,27 @@ Chloe</textarea>
             <button type="button" data-standard-font-size="30"><strong>Large</strong><span>30 mm letters</span></button>
           </div>
           <p class="standard-size-note">Longer names become wider. Please check the live length before adding to cart.</p>
+        </div>
+
+        <div id="pencilClickerOptions" class="pencil-clicker-options" style="display:none">
+          <div class="customisation-title">
+            <div>
+              <h3>Personalise Your Pencil</h3>
+              <p>Choose the lettering finish and every small pencil part. Body and name colours are selected below.</p>
+            </div>
+          </div>
+          <div class="pencil-style-options" role="group" aria-label="Pencil lettering style">
+            <button type="button" class="active" data-pencil-text-style="raised"><strong>Raised</strong><span>Letters sit on top</span></button>
+            <button type="button" data-pencil-text-style="flat"><strong>Inlaid</strong><span>Flatter two-colour finish</span></button>
+          </div>
+          <div class="pencil-part-fields">
+            <label><span>Eraser</span><select data-pencil-colour="eraser">${renderPencilColourOptions()}</select></label>
+            <label><span>Metal band</span><select data-pencil-colour="ferrule">${renderPencilColourOptions()}</select></label>
+            <label><span>Wood</span><select data-pencil-colour="wood">${renderPencilColourOptions()}</select></label>
+            <label><span>Pencil tip</span><select data-pencil-colour="tip">${renderPencilColourOptions()}</select></label>
+            <label><span>End cap</span><select data-pencil-colour="endCap">${renderPencilColourOptions()}</select></label>
+          </div>
+          <p class="pencil-options-note">Includes the clicker, switch and keyring hole.</p>
         </div>
 
         <div class="random-colour-card clicky-only-option">
@@ -2388,6 +2448,7 @@ const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
 const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
 const randomiseMultipleColours = document.getElementById("randomiseMultipleColours");
 const randomColourOptionsSummary = document.getElementById("randomColourOptionsSummary");
+const randomColourOptions = document.getElementById("randomColourOptions");
 const randomColourOptionsTitle = document.getElementById("randomColourOptionsTitle");
 const randomColourOptionsText = document.getElementById("randomColourOptionsText");
 const randomBaseColourFee = document.getElementById("randomBaseColourFee");
@@ -3765,6 +3826,15 @@ function getApproximateKeychainSize(
     };
   }
 
+  if (productKey === PENCIL_PRODUCT_KEY) {
+    return {
+      characterCount,
+      lengthCm: 14.5,
+      heightCm: 2.8,
+      thicknessCm: 2.8
+    };
+  }
+
   if (productKey === SOLID_PRODUCT_KEY) {
     const slotPitchMm = 20.5;
     const solidBaseLengthMm = 25.88 + Math.max(0, characterCount - 1) * slotPitchMm;
@@ -3869,6 +3939,14 @@ let globalDesign = {
   nfcEnabled: false,
   nfcType: "guardian",
   nfcPayload: "",
+  pencil: {
+    textStyle: "raised",
+    eraser: available[3] || available[0],
+    ferrule: available[4] || available[0],
+    wood: available[5] || available[0],
+    tip: available[6] || available[0],
+    endCap: available[1] || available[0]
+  },
 
   bases: [
     available[0]
@@ -3882,6 +3960,17 @@ let globalDesign = {
     available[2] || available[0]
   ]
 };
+
+function normalizePencilDesign(value = {}) {
+  return {
+    textStyle: value.textStyle === "flat" ? "flat" : "raised",
+    eraser: value.eraser || available[3] || available[0],
+    ferrule: value.ferrule || available[4] || available[0],
+    wood: value.wood || available[5] || available[0],
+    tip: value.tip || available[6] || available[0],
+    endCap: value.endCap || available[1] || available[0]
+  };
+}
 
 const BASE_SHAPES = {
   ribbed: {
@@ -4051,6 +4140,16 @@ function renderColourChargeNotices() {
   ].forEach(([id, selectedColours, includedCount, extraPrice, label]) => {
     const element = document.getElementById(id);
     if (!element) return;
+    if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+      const pencilLabels = {
+        baseColourPriceNotice: "Choose one pencil body colour.",
+        capColourPriceNotice: "Choose one clicker colour.",
+        letterColourPriceNotice: "Choose one name colour."
+      };
+      element.classList.remove("has-charge");
+      element.textContent = pencilLabels[id];
+      return;
+    }
     if (id === "baseColourPriceNotice" && activeProduct.product_key === SOLID_PRODUCT_KEY) {
       element.classList.remove("has-charge");
       element.textContent = "The compact solid base is one piece and uses one base colour.";
@@ -4081,6 +4180,7 @@ function getActiveDesign() {
       nfcEnabled: Boolean(globalDesign.nfcEnabled),
       nfcType: globalDesign.nfcType || "guardian",
       nfcPayload: globalDesign.nfcPayload || "",
+      pencil: normalizePencilDesign(globalDesign.pencil),
       bases: [...globalDesign.bases],
       caps: [...globalDesign.caps],
       letters: [...globalDesign.letters]
@@ -4277,15 +4377,29 @@ function randomiseArticulatedColours() {
     allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
   const design = getActiveDesign();
-  const solidProduct = activeProduct.product_key === SOLID_PRODUCT_KEY;
-  design.bases = solidProduct ? selected.bases.slice(0, 1) : selected.bases;
-  design.caps = selected.caps;
-  design.letters = selected.letters;
+  const singleColourParts = [SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY].includes(activeProduct.product_key);
+  design.bases = singleColourParts ? selected.bases.slice(0, 1) : selected.bases;
+  design.caps = activeProduct.product_key === PENCIL_PRODUCT_KEY ? selected.caps.slice(0, 1) : selected.caps;
+  design.letters = activeProduct.product_key === PENCIL_PRODUCT_KEY ? selected.letters.slice(0, 1) : selected.letters;
+  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+    const randomPartColour = () => availableHexes[Math.floor(Math.random() * availableHexes.length)] || available[0];
+    design.pencil = normalizePencilDesign({
+      ...design.pencil,
+      eraser: randomPartColour(),
+      ferrule: randomPartColour(),
+      wood: randomPartColour(),
+      tip: randomPartColour(),
+      endCap: randomPartColour()
+    });
+  }
 
   if (applyAllToggle.checked) {
     globalDesign.bases = [...design.bases];
-    globalDesign.caps = [...selected.caps];
-    globalDesign.letters = [...selected.letters];
+    globalDesign.caps = [...design.caps];
+    globalDesign.letters = [...design.letters];
+    if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+      globalDesign.pencil = normalizePencilDesign(design.pencil);
+    }
     names.forEach(item => { item.custom = null; });
   }
 
@@ -4319,8 +4433,9 @@ function randomiseColourPart(part) {
   });
   const property = part === "base" ? "bases" : part === "cap" ? "caps" : "letters";
   const design = getActiveDesign();
-  design[property] = activeProduct.product_key === SOLID_PRODUCT_KEY && part === "base"
-    ? selected.bases.slice(0, 1)
+  const fixedPencilPart = activeProduct.product_key === PENCIL_PRODUCT_KEY;
+  design[property] = (activeProduct.product_key === SOLID_PRODUCT_KEY && part === "base") || fixedPencilPart
+    ? selected[property].slice(0, 1)
     : [...selected[property]];
 
   if (applyAllToggle.checked) {
@@ -4702,8 +4817,10 @@ function addColourToDesign(type, colour) {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isSolidProduct =
     activeProduct.product_key === SOLID_PRODUCT_KEY;
+  const isPencilProduct =
+    activeProduct.product_key === PENCIL_PRODUCT_KEY;
 
-  if (isStandardProduct || (isSolidProduct && type === "base")) {
+  if (isStandardProduct || isPencilProduct || (isSolidProduct && type === "base")) {
     if (type === "base") {
       design.bases = [colour];
     }
@@ -4712,8 +4829,10 @@ function addColourToDesign(type, colour) {
       design.letters = [colour];
     }
 
-    // Normal keychains do not use caps.
-    if (type === "cap") return;
+    if (type === "cap") {
+      if (isPencilProduct) design.caps = [colour];
+      else return;
+    }
   } else {
     if (type === "base") design.bases.push(colour);
     if (type === "cap") design.caps.push(colour);
@@ -4979,10 +5098,12 @@ function removeColourFromDesign(type, index) {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
     activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
+  const isFixedPencilPart =
+    activeProduct.product_key === PENCIL_PRODUCT_KEY;
 
   // Standard keychains must always keep one background
   // colour and one name colour.
-  if (isStandardProduct || isFixedSolidBase) return;
+  if (isStandardProduct || isFixedSolidBase || isFixedPencilPart) return;
 
   const design = getActiveDesign();
 
@@ -5028,8 +5149,10 @@ function renderSlots(containerId, colours, type) {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
     activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
+  const isFixedPencilPart =
+    activeProduct.product_key === PENCIL_PRODUCT_KEY;
 
-  if (!isStandardProduct && !isFixedSolidBase) {
+  if (!isStandardProduct && !isFixedSolidBase && !isFixedPencilPart) {
     slot.title = "Click to remove this colour";
     slot.onclick = () => removeColourFromDesign(type, index);
   } else {
@@ -5164,6 +5287,7 @@ function getDesign(item) {
     nfcType: item.custom.nfcType || "guardian",
     nfcPayload: item.custom.nfcPayload || "",
     photo: item.custom.photo || null,
+    pencil: normalizePencilDesign(item.custom.pencil || globalDesign.pencil),
 
     bases:
       item.custom.bases ||
@@ -5743,6 +5867,7 @@ function updateNames() {
               nfcPayload: previousItem.custom.nfcPayload || "",
 
               photo: previousItem.custom.photo || null,
+              pencil: normalizePencilDesign(previousItem.custom.pencil || globalDesign.pencil),
 
               bases: [...previousItem.custom.bases],
               caps: [...previousItem.custom.caps],
@@ -5792,6 +5917,7 @@ function updateNames() {
               nfcPayload: previousItem.custom.nfcPayload || "",
 
               photo: previousItem.custom.photo || null,
+              pencil: normalizePencilDesign(previousItem.custom.pencil || globalDesign.pencil),
 
               bases: [...previousItem.custom.bases],
               caps: [...previousItem.custom.caps],
@@ -5867,6 +5993,48 @@ function updateStandardFontSizeButtons() {
   });
 }
 
+function updatePencilControls() {
+  if (activeProduct.product_key !== PENCIL_PRODUCT_KEY) return;
+  const design = getActiveDesign();
+  design.pencil = normalizePencilDesign(design.pencil);
+
+  document.querySelectorAll("[data-pencil-text-style]").forEach(button => {
+    const active = button.dataset.pencilTextStyle === design.pencil.textStyle;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+
+  document.querySelectorAll("[data-pencil-colour]").forEach(select => {
+    const part = select.dataset.pencilColour;
+    if (design.pencil[part]) select.value = design.pencil[part];
+  });
+}
+
+function updatePencilChoice(part, value) {
+  if (activeProduct.product_key !== PENCIL_PRODUCT_KEY) return;
+  const current = normalizePencilDesign(getActiveDesign().pencil);
+  current[part] = value;
+
+  if (applyAllToggle.checked) {
+    globalDesign.pencil = current;
+    names.forEach(item => { item.custom = null; });
+  } else {
+    getActiveDesign().pencil = current;
+  }
+
+  draftHasMeaningfulChanges = true;
+  refreshUI();
+  buildSelectedPreview();
+  saveDraft();
+}
+
+document.querySelectorAll("[data-pencil-text-style]").forEach(button => {
+  button.addEventListener("click", () => updatePencilChoice("textStyle", button.dataset.pencilTextStyle));
+});
+document.querySelectorAll("[data-pencil-colour]").forEach(select => {
+  select.addEventListener("change", () => updatePencilChoice(select.dataset.pencilColour, select.value));
+});
+
 function setStandardFontSize(size) {
   const normalized = Number(size);
   if (!STANDARD_FONT_SIZES.includes(normalized)) return;
@@ -5933,6 +6101,7 @@ function setBaseShape(shape) {
         nfcEnabled: Boolean(globalDesign.nfcEnabled),
         nfcType: globalDesign.nfcType || "guardian",
         nfcPayload: globalDesign.nfcPayload || "",
+        pencil: normalizePencilDesign(globalDesign.pencil),
         bases: [...globalDesign.bases],
         caps: [...globalDesign.caps],
         letters: [...globalDesign.letters]
@@ -5987,6 +6156,15 @@ function createMiniPreview(name, design) {
     `;
   }
 
+  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+    const pencil = normalizePencilDesign(design.pencil);
+    return `
+      <div class="mini-pencil-preview" style="--pencil-body:${design.bases?.[0] || "#FEC600"}; --pencil-name:${design.letters?.[0] || "#30282d"}; --pencil-eraser:${pencil.eraser}; --pencil-ferrule:${pencil.ferrule}; --pencil-wood:${pencil.wood}; --pencil-tip:${pencil.tip};">
+        <i></i><b>${escapePresetText(String(name || "NAME").toUpperCase())}</b><span></span>
+      </div>
+    `;
+  }
+
   return Array.from(sanitizeName(name))
     .map((letter, i) => {
       const base = design.bases[i % design.bases.length];
@@ -6017,6 +6195,10 @@ function getDesignDescription(design) {
     return "Flat background · Raised name";
   }
 
+  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+    return `${normalizePencilDesign(design.pencil).textStyle === "flat" ? "Inlaid" : "Raised"} name · Custom pencil clicker`;
+  }
+
   return `${
     design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"
   } · ${
@@ -6033,6 +6215,10 @@ function getDesignColourSummary(design) {
   const uniqueNames = values => Array.from(new Set((values || []).map(getColourName))).join(", ");
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
     return `Background: ${uniqueNames(design.bases)} · Name: ${uniqueNames(design.letters)}`;
+  }
+  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+    const pencil = normalizePencilDesign(design.pencil);
+    return `Body: ${uniqueNames(design.bases)} · Clicker: ${uniqueNames(design.caps)} · Name: ${uniqueNames(design.letters)} · Eraser: ${getColourName(pencil.eraser)} · Band: ${getColourName(pencil.ferrule)} · Wood: ${getColourName(pencil.wood)} · Tip: ${getColourName(pencil.tip)}`;
   }
   return `Bases: ${uniqueNames(design.bases)} · Caps: ${uniqueNames(design.caps)} · Letters: ${uniqueNames(design.letters)}`;
 }
@@ -6140,7 +6326,21 @@ function updatePreviewColourLegend() {
   const selectedItem = names[selectedIndex];
   const design = selectedItem ? getDesign(selectedItem) : globalDesign;
 const parts =
-  activeProduct.product_key === STANDARD_PRODUCT_KEY
+  activeProduct.product_key === PENCIL_PRODUCT_KEY
+    ? (() => {
+        const pencil = normalizePencilDesign(design.pencil);
+        return [
+          { label: "Pencil body", colours: design.bases?.slice(0, 1) || [] },
+          { label: "Clicker", colours: design.caps?.slice(0, 1) || [] },
+          { label: "Name", colours: design.letters?.slice(0, 1) || [] },
+          { label: "Eraser", colours: [pencil.eraser] },
+          { label: "Metal band", colours: [pencil.ferrule] },
+          { label: "Wood", colours: [pencil.wood] },
+          { label: "Tip", colours: [pencil.tip] },
+          { label: "End cap", colours: [pencil.endCap] }
+        ];
+      })()
+    : activeProduct.product_key === STANDARD_PRODUCT_KEY
     ? [
         {
           label: "Background",
@@ -6717,6 +6917,22 @@ async function submitOrderOnce() {
 
         design: {
           font_size_mm: getStandardFontSize(design),
+          pencil: activeProduct.product_key === PENCIL_PRODUCT_KEY ? (() => {
+            const pencil = normalizePencilDesign(design.pencil);
+            const detail = hex => ({
+              name: getColourName(hex),
+              material_type: getColourMaterial(hex),
+              hex
+            });
+            return {
+              text_style: pencil.textStyle,
+              eraser: detail(pencil.eraser),
+              ferrule: detail(pencil.ferrule),
+              wood: detail(pencil.wood),
+              tip: detail(pencil.tip),
+              end_cap: detail(pencil.endCap)
+            };
+          })() : null,
           photo: design.photo ? {
             original_path: design.photo.originalPath || "",
             artwork_path: design.photo.artworkPath || "",
@@ -7048,11 +7264,40 @@ function buildSelectedPreview() {
     clearKeychainPreview();
     previewLoading?.classList.add("hidden");
     photoDesignPreview?.classList.add("hidden");
+    document.getElementById("pencilDesignPreview")?.classList.add("hidden");
     return;
   }
 
   const item = names[selectedIndex];
   const design = getDesign(item);
+
+  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+    previewBuildNumber += 1;
+    clearKeychainPreview();
+    previewLoading?.classList.add("hidden");
+    photoDesignPreview?.classList.add("hidden");
+    canvas.classList.add("hidden");
+    const pencilPreview = document.getElementById("pencilDesignPreview");
+    const pencil = normalizePencilDesign(design.pencil);
+    if (pencilPreview) {
+      pencilPreview.classList.remove("hidden");
+      pencilPreview.innerHTML = `
+        <div class="pencil-preview-object ${pencil.textStyle === "flat" ? "is-flat-text" : ""}" style="--pencil-body:${design.bases?.[0] || "#FEC600"}; --pencil-name:${design.letters?.[0] || "#30282d"}; --pencil-clicker:${design.caps?.[0] || "#ffffff"}; --pencil-eraser:${pencil.eraser}; --pencil-ferrule:${pencil.ferrule}; --pencil-wood:${pencil.wood}; --pencil-tip:${pencil.tip}; --pencil-end:${pencil.endCap};">
+          <span class="pencil-keyring-hole"></span>
+          <span class="pencil-preview-eraser"></span>
+          <span class="pencil-preview-ferrule"></span>
+          <span class="pencil-preview-body"><b>${escapePresetText(String(item.name || "NAME").toUpperCase())}</b><i>click</i></span>
+          <span class="pencil-preview-wood"></span>
+          <span class="pencil-preview-tip"></span>
+        </div>
+        <p>Colours update as you customise each part.</p>
+      `;
+    }
+    return;
+  }
+
+  canvas.classList.remove("hidden");
+  document.getElementById("pencilDesignPreview")?.classList.add("hidden");
 
   if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
     previewBuildNumber += 1;
@@ -7173,6 +7418,7 @@ function serializeSharedGroupBasket() {
       design: {
         font_size_mm: getStandardFontSize(design),
         photo: design.photo || null,
+        pencil: normalizePencilDesign(design.pencil),
         base_shape: design.baseShape || "ribbed",
         letter_orientation: design.letterOrientation || "vertical",
         bases: [...design.bases],
@@ -7188,6 +7434,7 @@ function restoreSharedGroupItems(contributions = []) {
     ...item,
     custom: {
       ...item.custom,
+      pencil: normalizePencilDesign(item.custom.pencil || globalDesign.pencil),
       bases: item.custom.bases.length ? item.custom.bases : [...globalDesign.bases],
       caps: item.custom.caps.length ? item.custom.caps : [...globalDesign.caps],
       letters: item.custom.letters.length ? item.custom.letters : [...globalDesign.letters]
@@ -8032,12 +8279,23 @@ function updateProductCustomiser() {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isSolidClicker =
     activeProduct.product_key === SOLID_PRODUCT_KEY;
+  const isPencilClicker =
+    activeProduct.product_key === PENCIL_PRODUCT_KEY;
 
-  if (isSolidClicker) {
+  if (isSolidClicker || isPencilClicker) {
     globalDesign.bases = globalDesign.bases.slice(0, 1);
+    if (isPencilClicker) {
+      globalDesign.caps = globalDesign.caps.slice(0, 1);
+      globalDesign.letters = globalDesign.letters.slice(0, 1);
+    }
     names.forEach(item => {
       if (item.custom?.bases?.length) {
         item.custom.bases = item.custom.bases.slice(0, 1);
+      }
+      if (isPencilClicker && item.custom) {
+        item.custom.caps = (item.custom.caps || globalDesign.caps).slice(0, 1);
+        item.custom.letters = (item.custom.letters || globalDesign.letters).slice(0, 1);
+        item.custom.pencil = normalizePencilDesign(item.custom.pencil || globalDesign.pencil);
       }
     });
   }
@@ -8056,6 +8314,15 @@ function updateProductCustomiser() {
     "standard-product-selected",
     isNormalKeychain
   );
+  document.body.classList.toggle(
+    "pencil-product-selected",
+    isPencilClicker
+  );
+
+  document.getElementById("authorisedSellerRibbon")?.classList.toggle(
+    "hidden",
+    ![MODULAR_PRODUCT_KEY, SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY].includes(activeProduct.product_key)
+  );
 
   const standardOptions =
     document.getElementById("standardKeychainOptions");
@@ -8063,6 +8330,11 @@ function updateProductCustomiser() {
   if (standardOptions) {
     standardOptions.style.display =
       isNormalKeychain ? "block" : "none";
+  }
+
+  const pencilOptions = document.getElementById("pencilClickerOptions");
+  if (pencilOptions) {
+    pencilOptions.style.display = isPencilClicker ? "block" : "none";
   }
 
   document
@@ -8075,7 +8347,11 @@ function updateProductCustomiser() {
   const baseShapeSection = document.getElementById("clickyBaseShapeSection");
   if (baseShapeSection) {
     baseShapeSection.style.display =
-      isNormalKeychain || isSolidClicker ? "none" : "";
+      isNormalKeychain || isSolidClicker || isPencilClicker ? "none" : "";
+  }
+  const orientationSection = document.getElementById("clickyOrientationSection");
+  if (orientationSection) {
+    orientationSection.style.display = isNormalKeychain || isPencilClicker ? "none" : "";
   }
 
   const baseHeading = document.getElementById("baseColourPartLabel");
@@ -8085,6 +8361,8 @@ function updateProductCustomiser() {
     baseHeading.textContent =
       isNormalKeychain
         ? "Background"
+        : isPencilClicker
+          ? "Pencil Body"
         : "Base";
   }
 
@@ -8092,8 +8370,13 @@ function updateProductCustomiser() {
     letterHeading.textContent =
       isNormalKeychain
         ? "Name"
+        : isPencilClicker
+          ? "Name"
         : "Letter";
   }
+
+  const capHeading = document.querySelector('[data-colour-part-tab="cap"] span');
+  if (capHeading) capHeading.textContent = isPencilClicker ? "Clicker / Eraser" : "Cap";
 
   if (isNormalKeychain) {
     document.querySelector('[data-colour-part-tab="base"]')?.click();
@@ -8106,15 +8389,19 @@ function updateProductCustomiser() {
 
   // Emoji icons can use more than one UTF-16 unit, so the input receives
   // extra room while updateNames enforces the real character count.
-  singleName.maxLength = isSolidClicker ? nameLimit * 4 : nameLimit;
-  nameList.maxLength = (isSolidClicker ? nameLimit * 4 : nameLimit) * 250;
+  singleName.maxLength = (isSolidClicker || isPencilClicker) ? nameLimit * 4 : nameLimit;
+  nameList.maxLength = ((isSolidClicker || isPencilClicker) ? nameLimit * 4 : nameLimit) * 250;
 
   if (productCharacterLimitNotice) {
-    productCharacterLimitNotice.hidden = !isSolidClicker;
-    productCharacterLimitNotice.textContent = isSolidClicker
-      ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
-      : "";
+    productCharacterLimitNotice.hidden = !(isSolidClicker || isPencilClicker);
+    productCharacterLimitNotice.textContent = isPencilClicker
+      ? "Maximum 10 letters, numbers or supported symbols on your pencil."
+      : isSolidClicker
+        ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
+        : "";
   }
+
+  if (randomColourOptions) randomColourOptions.style.display = isPencilClicker ? "none" : "";
 
   if (randomColourOptionsSummary) {
     randomColourOptionsSummary.textContent = isSolidClicker
@@ -8134,6 +8421,8 @@ function updateProductCustomiser() {
   if (randomBaseColourFee) {
     randomBaseColourFee.hidden = isSolidClicker;
   }
+
+  updatePencilControls();
 
   updateNames();
 }
@@ -9367,6 +9656,7 @@ function saveDraft() {
 
   const draft = {
     orderType,
+    activeProductKey: activeProduct.product_key,
     names,
     selectedIndex,
     globalDesign,
@@ -9427,6 +9717,11 @@ continueDraftBtn.onclick = () => {
 
   orderType =
     draftData.orderType || "single";
+
+  activeProduct = getProductByKey(
+    productCatalog,
+    draftData.activeProductKey || MODULAR_PRODUCT_KEY
+  );
 
   names =
     Array.isArray(draftData.names)
@@ -10276,6 +10571,10 @@ window.downloadPickupCalendar = function(details) {
 };
 
 window.reorderTrackedItems = function(items) {
+  const reorderProductKey = String(items?.[0]?.product_key || "");
+  if (reorderProductKey) {
+    activeProduct = getProductByKey(productCatalog, reorderProductKey);
+  }
   const restored = (items || []).map(item => {
     const design = item.design || {};
     return {
@@ -10302,6 +10601,14 @@ window.reorderTrackedItems = function(items) {
             design.photo.filament_palette || design.photo.filamentPalette
           )
         } : null,
+        pencil: design.pencil ? normalizePencilDesign({
+          textStyle: design.pencil.text_style || design.pencil.textStyle,
+          eraser: design.pencil.eraser?.hex || design.pencil.eraser,
+          ferrule: design.pencil.ferrule?.hex || design.pencil.ferrule,
+          wood: design.pencil.wood?.hex || design.pencil.wood,
+          tip: design.pencil.tip?.hex || design.pencil.tip,
+          endCap: design.pencil.end_cap?.hex || design.pencil.endCap?.hex || design.pencil.endCap
+        }) : normalizePencilDesign(globalDesign.pencil),
         bases: (design.bases || []).map(colour => colour?.hex || colour),
         caps: (design.caps || []).map(colour => colour?.hex || colour),
         letters: (design.letters || []).map(colour => colour?.hex || colour)
@@ -10320,6 +10627,7 @@ window.reorderTrackedItems = function(items) {
     nameList.value = restored.map(item => item.name).join("\n");
   }
   selectedIndex = 0;
+  updateProductCustomiser();
   refreshUI();
   buildSelectedPreview();
   setStorefrontView("design", { scrollTo: "designArea" });
