@@ -7398,7 +7398,7 @@ function refreshUI() {
 // Manual 3D preview alignment controls for the pencil product.
 // Adjust only these values when fine-tuning how the STL pieces meet.
 const PENCIL_PREVIEW_LAYOUT = Object.freeze({
-  blockPitch: 26,
+  blockPitch: 27,
   topOffsetX: 2.8,
   topOffsetY: -6,
   characterOffsetX: 0,
