@@ -3827,13 +3827,16 @@ function getActiveProductCharacterLimit() {
     1,
     Number(activeProduct?.maximum_characters) || 10
   );
-  return activeProduct?.product_key === SOLID_PRODUCT_KEY
+  return [SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY].includes(activeProduct?.product_key)
     ? Math.min(10, configuredLimit)
     : configuredLimit;
 }
 
 function limitKeychainName(value) {
-  return Array.from(String(value || ""))
+  const normalized = activeProduct?.product_key === PENCIL_PRODUCT_KEY
+    ? sanitizePencilCharacters(value)
+    : String(value || "");
+  return Array.from(normalized)
     .slice(0, getActiveProductCharacterLimit())
     .join("");
 }
@@ -4151,6 +4154,34 @@ function createMat(colour) {
     roughness: 0.42,
     metalness: 0
   });
+}
+
+function createPencilSymbolMesh(character, colour) {
+  const symbolCanvas = document.createElement("canvas");
+  symbolCanvas.width = 256;
+  symbolCanvas.height = 256;
+  const context = symbolCanvas.getContext("2d");
+  context.clearRect(0, 0, 256, 256);
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.font = '190px "Arial Unicode MS", "Apple Symbols", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  context.fillStyle = "#ffffff";
+  context.fillText(character, 128, 134);
+  context.globalCompositeOperation = "source-in";
+  context.fillStyle = colour;
+  context.fillRect(0, 0, 256, 256);
+
+  const texture = new THREE.CanvasTexture(symbolCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Mesh(
+    new THREE.PlaneGeometry(15, 15),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      alphaTest: 0.05,
+      side: THREE.DoubleSide
+    })
+  );
 }
 
 function getUniqueColourCount(colours) {
@@ -5516,7 +5547,10 @@ function disposePreviewObject(object) {
         ? child.material
         : [child.material];
 
-      materials.forEach(material => material.dispose());
+      materials.forEach(material => {
+        material.map?.dispose();
+        material.dispose();
+      });
     }
   });
 }
@@ -7461,25 +7495,11 @@ async function buildPencilClickerPreview(item, design) {
       );
       pencilGroup.add(top);
 
-      const special = specialKeycaps[character];
-      let characterGeometry = null;
-      if (special) {
-        try {
-          const modularCap = await loadSTL(`/models/keycap - ${special}.stl`);
-          characterGeometry = splitCapGeometry(modularCap).letter;
-          characterGeometry.center();
-          characterGeometry.computeBoundingBox();
-          const iconSize = new THREE.Vector3();
-          characterGeometry.boundingBox?.getSize(iconSize);
-          const iconScale = 12 / Math.max(iconSize.x || 1, iconSize.y || 1);
-          characterGeometry.scale(iconScale, iconScale, iconScale);
-        } catch (error) {
-          console.warn(`Using text fallback for pencil symbol ${character}:`, error);
-        }
-      }
-
-      if (!characterGeometry) {
-        characterGeometry = new TextGeometry(character, {
+      let characterMesh;
+      if (PENCIL_SYMBOLS[character]) {
+        characterMesh = createPencilSymbolMesh(character, characterColour);
+      } else {
+        const characterGeometry = new TextGeometry(character, {
           font,
           size: 12,
           depth: 1,
@@ -7487,9 +7507,9 @@ async function buildPencilClickerPreview(item, design) {
           bevelEnabled: false
         });
         characterGeometry.center();
+        characterMesh = new THREE.Mesh(characterGeometry, createMat(characterColour));
       }
 
-      const characterMesh = new THREE.Mesh(characterGeometry, createMat(characterColour));
       characterMesh.rotation.x = -Math.PI / 2;
       characterMesh.position.set(
         x + PENCIL_PREVIEW_LAYOUT.topOffsetX + PENCIL_PREVIEW_LAYOUT.characterOffsetX,
