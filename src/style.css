@@ -5275,13 +5275,15 @@ body {
 }
 
 .pencil-style-options,
-.pencil-part-fields {
+.pencil-ending-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
 }
-.pencil-style-options { margin: 13px 0; }
-.pencil-style-options button {
+.pencil-style-options { margin: 13px 0 9px; }
+.pencil-ending-options { margin-bottom: 14px; }
+.pencil-style-options button,
+.pencil-ending-options button {
   min-height: 58px;
   padding: 10px;
   display: grid;
@@ -5292,10 +5294,50 @@ body {
   background: #fff;
   cursor: pointer;
 }
-.pencil-style-options button.active { border-color: #8b5bb3; color: #6d4590; background: #f3eafb; box-shadow: inset 0 0 0 1px #8b5bb3; }
-.pencil-style-options span { color: #87798b; font-size: 9px; }
-.pencil-part-fields label { display: grid; gap: 5px; color: #665761; font-size: 10px; font-weight: 850; }
-.pencil-part-fields select { width: 100%; min-width: 0; padding: 10px; border: 1px solid #dfd0da; border-radius: 11px; background: #fff; }
+.pencil-style-options button.active,
+.pencil-ending-options button.active { border-color: #8b5bb3; color: #6d4590; background: #f3eafb; box-shadow: inset 0 0 0 1px #8b5bb3; }
+.pencil-style-options span,
+.pencil-ending-options span { color: #87798b; font-size: 9px; }
+.pencil-part-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.pencil-part-tabs button {
+  min-width: max-content;
+  padding: 9px 12px;
+  border: 1px solid #dfd0e7;
+  border-radius: 999px;
+  color: #685a6d;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+.pencil-part-tabs button.active { border-color: #8b5bb3; color: #6d4590; background: #f3eafb; }
+.pencil-part-colour-panels { margin-top: 10px; }
+.pencil-colour-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 7px;
+}
+.pencil-colour-swatch {
+  min-width: 0;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #e5d9e0;
+  border-radius: 11px;
+  color: #64565f;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.pencil-colour-swatch i { width: 24px; height: 24px; border: 1px solid rgba(0,0,0,.12); border-radius: 50%; }
+.pencil-colour-swatch span { overflow: hidden; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.pencil-colour-swatch.active { border-color: #8b5bb3; background: #f7f0fc; box-shadow: inset 0 0 0 1px #8b5bb3; }
 .pencil-options-note { margin: 12px 0 0; color: #7f7079; font-size: 10px; }
 
 .pencil-design-preview {
@@ -5337,12 +5379,13 @@ body {
 }
 .mini-pencil-preview > span { width: 28px; flex: 0 0 28px; background: linear-gradient(90deg, var(--pencil-tip) 0 18%, var(--pencil-wood) 18%); clip-path: polygon(0 50%, 100% 0, 100% 100%); }
 .mini-pencil-preview > i { width: 29px; flex: 0 0 29px; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, var(--pencil-ferrule) 0 48%, var(--pencil-eraser) 48%); }
+.mini-pencil-preview > i.is-end-cap { width: 22px; flex-basis: 22px; background: var(--pencil-end-cap); }
 .mini-pencil-preview > b { min-width: 20px; flex: 1; display: grid; place-items: center; padding: 3px; background: var(--pencil-block); font-size: 10px; font-style: normal; }
 .mini-pencil-preview > b + b { border-left: 1px solid rgba(47, 37, 45, .16); }
 .mini-pencil-preview > b em { display: grid; width: 100%; height: 100%; place-items: center; border-radius: 5px; color: var(--pencil-character); background: var(--pencil-top); font-style: normal; font-weight: 950; line-height: 1; }
 
 @media (max-width: 620px) {
-  .pencil-part-fields { grid-template-columns: 1fr; }
+  .pencil-colour-swatches { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pencil-design-preview { min-height: 300px; padding: 22px 12px; }
   .pencil-preview-object { height: 62px; }
   .pencil-preview-eraser { width: 29px; }
@@ -5353,6 +5396,37 @@ body {
 
 .product-customiser {
   gap: 18px;
+}
+
+@media (min-width: 1021px) {
+  .product-customiser {
+    grid-template-columns: minmax(0, 1.12fr) minmax(420px, .88fr);
+    gap: 22px;
+  }
+
+  .preview-column {
+    display: block;
+    min-width: 0;
+  }
+
+  .preview-sticky {
+    position: sticky;
+    z-index: 20;
+    top: 92px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .preview-card,
+  .preview-tip,
+  .design-inspiration,
+  .options-column {
+    order: initial;
+  }
+
+  .design-inspiration {
+    margin-top: 18px;
+  }
 }
 
 .preview-card {

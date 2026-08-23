@@ -568,10 +568,21 @@ function displaySettingMoney(value) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
 
-function renderPencilColourOptions() {
+function renderPencilColourSwatches(part) {
   return shopSettings.colour_options
     .filter(colour => colour.active && !unavailableColourNames.has(String(colour.name).toLowerCase()))
-    .map(colour => `<option value="${escapePresetText(colour.hex)}">${escapePresetText(colour.name)} · ${escapePresetText(colour.material_type || "BASIC")}</option>`)
+    .map(colour => `
+      <button
+        type="button"
+        class="pencil-colour-swatch"
+        data-pencil-colour="${part}"
+        data-pencil-colour-value="${escapePresetText(colour.hex)}"
+        title="${escapePresetText(colour.name)} · ${escapePresetText(colour.material_type || "BASIC")}"
+      >
+        <i style="background:${escapePresetText(colour.hex)}"></i>
+        <span>${escapePresetText(colour.name)}</span>
+      </button>
+    `)
     .join("");
 }
 
@@ -1433,6 +1444,7 @@ Chloe</textarea>
           Drag the preview to rotate your keychain.
         </p>
       </div>
+      </div>
 
       <div id="designInspiration" class="design-inspiration">
         <h3>Need inspiration? ✨</h3>
@@ -1450,7 +1462,6 @@ Chloe</textarea>
         </div>
 
         <p id="inspirationStatus" class="inspiration-status" aria-live="polite"></p>
-      </div>
       </div>
     </section>
 
@@ -1486,12 +1497,23 @@ Chloe</textarea>
             <button type="button" class="active" data-pencil-text-style="raised"><strong>Raised</strong><span>Letters sit on top</span></button>
             <button type="button" data-pencil-text-style="flat"><strong>Inlaid</strong><span>Flatter two-colour finish</span></button>
           </div>
-          <div class="pencil-part-fields">
-            <label><span>Eraser</span><select data-pencil-colour="eraser">${renderPencilColourOptions()}</select></label>
-            <label><span>Metal band</span><select data-pencil-colour="ferrule">${renderPencilColourOptions()}</select></label>
-            <label><span>Wood</span><select data-pencil-colour="wood">${renderPencilColourOptions()}</select></label>
-            <label><span>Pencil tip</span><select data-pencil-colour="tip">${renderPencilColourOptions()}</select></label>
-            <label><span>End cap</span><select data-pencil-colour="endCap">${renderPencilColourOptions()}</select></label>
+          <div class="pencil-ending-options" role="group" aria-label="Choose the pencil ending">
+            <button type="button" class="active" data-pencil-ending-style="eraser"><strong>Eraser</strong><span>Includes the metal band</span></button>
+            <button type="button" data-pencil-ending-style="endCap"><strong>End cap</strong><span>A simple rounded finish</span></button>
+          </div>
+          <div class="pencil-part-tabs" role="tablist" aria-label="Pencil part colours">
+            <button type="button" data-pencil-part-tab="eraser" data-pencil-ending-group="eraser">Eraser</button>
+            <button type="button" data-pencil-part-tab="ferrule" data-pencil-ending-group="eraser">Metal band</button>
+            <button type="button" data-pencil-part-tab="endCap" data-pencil-ending-group="endCap">End cap</button>
+            <button type="button" data-pencil-part-tab="wood">Wood</button>
+            <button type="button" data-pencil-part-tab="tip">Pencil tip</button>
+          </div>
+          <div class="pencil-part-colour-panels">
+            ${["eraser", "ferrule", "endCap", "wood", "tip"].map(part => `
+              <div class="pencil-part-colour-panel" data-pencil-part-panel="${part}" hidden>
+                <div class="pencil-colour-swatches">${renderPencilColourSwatches(part)}</div>
+              </div>
+            `).join("")}
           </div>
           <p class="pencil-options-note">Each character block includes its own clicker and switch.</p>
         </div>
@@ -3932,6 +3954,43 @@ function getAvailableColours() {
 const available = getAvailableColours();
 if (!available.length) available.push("#FFFFFF");
 
+function getPencilDefaultColour(name, fallback) {
+  return colours.find(colour =>
+    colour.available && String(colour.name).toLowerCase() === String(name).toLowerCase()
+  )?.colour || fallback || available[0];
+}
+
+const CLASSIC_PENCIL_COLOURS = {
+  block: getPencilDefaultColour("Sunflower Yellow", available[1]),
+  top: getPencilDefaultColour("Sunflower Yellow", available[1]),
+  character: getPencilDefaultColour("Jade White", available[0]),
+  eraser: getPencilDefaultColour("Pink", available[3]),
+  ferrule: getPencilDefaultColour("Blue Grey", available[4]),
+  wood: getPencilDefaultColour("Desert Tan", available[5]),
+  tip: getPencilDefaultColour("Black", available[6]),
+  endCap: getPencilDefaultColour("Sunflower Yellow", available[1])
+};
+
+let classicPencilDefaultsApplied = false;
+
+function applyClassicPencilDefaults() {
+  if (classicPencilDefaultsApplied) return;
+  classicPencilDefaultsApplied = true;
+  globalDesign.bases = [CLASSIC_PENCIL_COLOURS.block];
+  globalDesign.caps = [CLASSIC_PENCIL_COLOURS.top];
+  globalDesign.letters = [CLASSIC_PENCIL_COLOURS.character];
+  globalDesign.pencil = normalizePencilDesign({
+    textStyle: "raised",
+    endingStyle: "eraser",
+    eraser: CLASSIC_PENCIL_COLOURS.eraser,
+    ferrule: CLASSIC_PENCIL_COLOURS.ferrule,
+    wood: CLASSIC_PENCIL_COLOURS.wood,
+    tip: CLASSIC_PENCIL_COLOURS.tip,
+    endCap: CLASSIC_PENCIL_COLOURS.endCap
+  });
+  names.forEach(item => { item.custom = null; });
+}
+
 let globalDesign = {
   baseShape: "ribbed",
   letterOrientation: "vertical",
@@ -3941,11 +4000,12 @@ let globalDesign = {
   nfcPayload: "",
   pencil: {
     textStyle: "raised",
-    eraser: available[3] || available[0],
-    ferrule: available[4] || available[0],
-    wood: available[5] || available[0],
-    tip: available[6] || available[0],
-    endCap: available[1] || available[0]
+    endingStyle: "eraser",
+    eraser: CLASSIC_PENCIL_COLOURS.eraser,
+    ferrule: CLASSIC_PENCIL_COLOURS.ferrule,
+    wood: CLASSIC_PENCIL_COLOURS.wood,
+    tip: CLASSIC_PENCIL_COLOURS.tip,
+    endCap: CLASSIC_PENCIL_COLOURS.endCap
   },
 
   bases: [
@@ -3964,11 +4024,12 @@ let globalDesign = {
 function normalizePencilDesign(value = {}) {
   return {
     textStyle: value.textStyle === "flat" ? "flat" : "raised",
-    eraser: value.eraser || available[3] || available[0],
-    ferrule: value.ferrule || available[4] || available[0],
-    wood: value.wood || available[5] || available[0],
-    tip: value.tip || available[6] || available[0],
-    endCap: value.endCap || available[1] || available[0]
+    endingStyle: value.endingStyle === "endCap" ? "endCap" : "eraser",
+    eraser: value.eraser || CLASSIC_PENCIL_COLOURS.eraser,
+    ferrule: value.ferrule || CLASSIC_PENCIL_COLOURS.ferrule,
+    wood: value.wood || CLASSIC_PENCIL_COLOURS.wood,
+    tip: value.tip || CLASSIC_PENCIL_COLOURS.tip,
+    endCap: value.endCap || CLASSIC_PENCIL_COLOURS.endCap
   };
 }
 
@@ -5980,6 +6041,8 @@ function updateStandardFontSizeButtons() {
   });
 }
 
+let activePencilColourPart = "eraser";
+
 function updatePencilControls() {
   if (activeProduct.product_key !== PENCIL_PRODUCT_KEY) return;
   const design = getActiveDesign();
@@ -5991,9 +6054,36 @@ function updatePencilControls() {
     button.setAttribute("aria-pressed", String(active));
   });
 
-  document.querySelectorAll("[data-pencil-colour]").forEach(select => {
-    const part = select.dataset.pencilColour;
-    if (design.pencil[part]) select.value = design.pencil[part];
+  document.querySelectorAll("[data-pencil-ending-style]").forEach(button => {
+    const active = button.dataset.pencilEndingStyle === design.pencil.endingStyle;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+
+  document.querySelectorAll("[data-pencil-ending-group]").forEach(element => {
+    element.hidden = element.dataset.pencilEndingGroup !== design.pencil.endingStyle;
+  });
+
+  const availableParts = design.pencil.endingStyle === "endCap"
+    ? ["endCap", "wood", "tip"]
+    : ["eraser", "ferrule", "wood", "tip"];
+  if (!availableParts.includes(activePencilColourPart)) {
+    activePencilColourPart = availableParts[0];
+  }
+
+  document.querySelectorAll("[data-pencil-part-tab]").forEach(button => {
+    const active = button.dataset.pencilPartTab === activePencilColourPart;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll("[data-pencil-part-panel]").forEach(panel => {
+    panel.hidden = panel.dataset.pencilPartPanel !== activePencilColourPart;
+  });
+  document.querySelectorAll("[data-pencil-colour-value]").forEach(button => {
+    const part = button.dataset.pencilColour;
+    const active = String(button.dataset.pencilColourValue).toLowerCase() === String(design.pencil[part]).toLowerCase();
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
 }
 
@@ -6015,11 +6105,27 @@ function updatePencilChoice(part, value) {
   saveDraft();
 }
 
-document.querySelectorAll("[data-pencil-text-style]").forEach(button => {
-  button.addEventListener("click", () => updatePencilChoice("textStyle", button.dataset.pencilTextStyle));
-});
-document.querySelectorAll("[data-pencil-colour]").forEach(select => {
-  select.addEventListener("change", () => updatePencilChoice(select.dataset.pencilColour, select.value));
+document.getElementById("pencilClickerOptions")?.addEventListener("click", event => {
+  const styleButton = event.target.closest("[data-pencil-text-style]");
+  if (styleButton) {
+    updatePencilChoice("textStyle", styleButton.dataset.pencilTextStyle);
+    return;
+  }
+  const endingButton = event.target.closest("[data-pencil-ending-style]");
+  if (endingButton) {
+    updatePencilChoice("endingStyle", endingButton.dataset.pencilEndingStyle);
+    return;
+  }
+  const partTab = event.target.closest("[data-pencil-part-tab]");
+  if (partTab) {
+    activePencilColourPart = partTab.dataset.pencilPartTab;
+    updatePencilControls();
+    return;
+  }
+  const colourButton = event.target.closest("[data-pencil-colour-value]");
+  if (colourButton) {
+    updatePencilChoice(colourButton.dataset.pencilColour, colourButton.dataset.pencilColourValue);
+  }
 });
 
 function setStandardFontSize(size) {
@@ -6154,7 +6260,7 @@ function createMiniPreview(name, design) {
       .join("");
     return `
       <div class="mini-pencil-preview" style="--pencil-eraser:${pencil.eraser}; --pencil-ferrule:${pencil.ferrule}; --pencil-wood:${pencil.wood}; --pencil-tip:${pencil.tip};">
-        <span></span>${blocks}<i></i>
+        <span></span>${blocks}<i class="${pencil.endingStyle === "endCap" ? "is-end-cap" : ""}" style="--pencil-end-cap:${pencil.endCap}"></i>
       </div>
     `;
   }
@@ -6212,7 +6318,10 @@ function getDesignColourSummary(design) {
   }
   if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
     const pencil = normalizePencilDesign(design.pencil);
-    return `Body: ${uniqueNames(design.bases)} · Clicker: ${uniqueNames(design.caps)} · Name: ${uniqueNames(design.letters)} · Eraser: ${getColourName(pencil.eraser)} · Band: ${getColourName(pencil.ferrule)} · Wood: ${getColourName(pencil.wood)} · Tip: ${getColourName(pencil.tip)}`;
+    const ending = pencil.endingStyle === "endCap"
+      ? `End cap: ${getColourName(pencil.endCap)}`
+      : `Eraser: ${getColourName(pencil.eraser)} · Band: ${getColourName(pencil.ferrule)}`;
+    return `Blocks: ${uniqueNames(design.bases)} · Tops: ${uniqueNames(design.caps)} · Characters: ${uniqueNames(design.letters)} · ${ending} · Wood: ${getColourName(pencil.wood)} · Tip: ${getColourName(pencil.tip)}`;
   }
   return `Bases: ${uniqueNames(design.bases)} · Caps: ${uniqueNames(design.caps)} · Letters: ${uniqueNames(design.letters)}`;
 }
@@ -6327,11 +6436,14 @@ const parts =
           { label: "Pencil blocks", colours: design.bases || [] },
           { label: "Clicker tops", colours: design.caps || [] },
           { label: "Characters", colours: design.letters || [] },
-          { label: "Eraser", colours: [pencil.eraser] },
-          { label: "Metal band", colours: [pencil.ferrule] },
+          ...(pencil.endingStyle === "endCap"
+            ? [{ label: "End cap", colours: [pencil.endCap] }]
+            : [
+                { label: "Eraser", colours: [pencil.eraser] },
+                { label: "Metal band", colours: [pencil.ferrule] }
+              ]),
           { label: "Wood", colours: [pencil.wood] },
-          { label: "Tip", colours: [pencil.tip] },
-          { label: "End cap", colours: [pencil.endCap] }
+          { label: "Tip", colours: [pencil.tip] }
         ];
       })()
     : activeProduct.product_key === STANDARD_PRODUCT_KEY
@@ -6920,6 +7032,7 @@ async function submitOrderOnce() {
             });
             return {
               text_style: pencil.textStyle,
+              ending_style: pencil.endingStyle,
               eraser: detail(pencil.eraser),
               ferrule: detail(pencil.ferrule),
               wood: detail(pencil.wood),
@@ -7246,6 +7359,7 @@ function refreshUI() {
   updateBaseShapeButtons();
   updateLetterOrientationButtons();
   updateStandardFontSizeButtons();
+  updatePencilControls();
   updateGiftingBagOptions();
   updateCartDisplay();
   updateTurnaroundMessaging();
@@ -7265,13 +7379,14 @@ async function buildPencilClickerPreview(item, design) {
 
   try {
     const pencilGroup = new THREE.Group();
-    const [bodyGeometry, topGeometry, noseGeometry, tipGeometry, ferruleGeometry, eraserGeometry, font] = await Promise.all([
+    const [bodyGeometry, topGeometry, noseGeometry, tipGeometry, ferruleGeometry, eraserGeometry, endCapGeometry, font] = await Promise.all([
       loadSTL("/models/pencil/body.stl"),
       loadSTL("/models/pencil/top.stl"),
       loadSTL("/models/pencil/nose.stl"),
       loadSTL("/models/pencil/tip.stl"),
       loadSTL("/models/pencil/ferrule.stl"),
       loadSTL("/models/pencil/eraser.stl"),
+      loadSTL("/models/pencil/end-cap.stl"),
       getStandardPreviewFont()
     ]);
 
@@ -7330,8 +7445,6 @@ async function buildPencilClickerPreview(item, design) {
 
     const noseX = firstBlockX - 26.5;
     const tipX = noseX - 13.5;
-    const ferruleX = lastBlockX + 29.5;
-    const eraserX = ferruleX + 23;
 
     const nose = new THREE.Mesh(noseGeometry, createMat(pencil.wood));
     nose.position.x = noseX;
@@ -7341,21 +7454,21 @@ async function buildPencilClickerPreview(item, design) {
     tip.position.x = tipX;
     pencilGroup.add(tip);
 
-    const endRing = new THREE.Mesh(
-      new THREE.CylinderGeometry(15, 15, 3, 48),
-      createMat(pencil.endCap)
-    );
-    endRing.rotation.z = Math.PI / 2;
-    endRing.position.x = lastBlockX + 16.5;
-    pencilGroup.add(endRing);
+    if (pencil.endingStyle === "endCap") {
+      const endCap = new THREE.Mesh(endCapGeometry, createMat(pencil.endCap));
+      endCap.position.x = lastBlockX + 24;
+      pencilGroup.add(endCap);
+    } else {
+      const ferruleX = lastBlockX + 29.5;
+      const eraserX = ferruleX + 23;
+      const ferrule = new THREE.Mesh(ferruleGeometry, createMat(pencil.ferrule));
+      ferrule.position.x = ferruleX;
+      pencilGroup.add(ferrule);
 
-    const ferrule = new THREE.Mesh(ferruleGeometry, createMat(pencil.ferrule));
-    ferrule.position.x = ferruleX;
-    pencilGroup.add(ferrule);
-
-    const eraser = new THREE.Mesh(eraserGeometry, createMat(pencil.eraser));
-    eraser.position.x = eraserX;
-    pencilGroup.add(eraser);
+      const eraser = new THREE.Mesh(eraserGeometry, createMat(pencil.eraser));
+      eraser.position.x = eraserX;
+      pencilGroup.add(eraser);
+    }
 
     const bounds = new THREE.Box3().setFromObject(pencilGroup);
     const centre = new THREE.Vector3();
@@ -7371,10 +7484,13 @@ async function buildPencilClickerPreview(item, design) {
 
     keychain.add(pencilGroup);
     keychain.position.set(0, 0, 0);
-    keychain.rotation.set(Math.PI / 2 - 0.22, 0.08, -0.04);
+    keychain.rotation.set(Math.PI / 2 - 0.1, 0, 0);
     controls.target.set(0, 0, 0);
     camera.fov = 35;
-    camera.position.set(0, 8, Math.max(135, size.x * 1.55));
+    const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+    const fitHeightDistance = size.y / (2 * Math.tan(halfFov));
+    const fitWidthDistance = size.x / (2 * Math.tan(halfFov) * Math.max(camera.aspect, 0.45));
+    camera.position.set(0, 8, Math.max(135, fitHeightDistance, fitWidthDistance) * 1.2);
     camera.updateProjectionMatrix();
     controls.update();
   } catch (error) {
@@ -9006,6 +9122,10 @@ document
           productKey
         );
 
+        if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+          applyClassicPencilDefaults();
+        }
+
         updateProductCustomiser();
       }
 
@@ -9025,6 +9145,7 @@ if (isProductPreview && previewProduct) {
   if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
     openPhotoKeepsakeStudio();
   } else {
+    if (activeProduct.product_key === PENCIL_PRODUCT_KEY) applyClassicPencilDefaults();
     updateProductCustomiser();
     setStorefrontView("design", { instant: true, scroll: false });
   }
@@ -10714,6 +10835,7 @@ window.reorderTrackedItems = function(items) {
         } : null,
         pencil: design.pencil ? normalizePencilDesign({
           textStyle: design.pencil.text_style || design.pencil.textStyle,
+          endingStyle: design.pencil.ending_style || design.pencil.endingStyle,
           eraser: design.pencil.eraser?.hex || design.pencil.eraser,
           ferrule: design.pencil.ferrule?.hex || design.pencil.ferrule,
           wood: design.pencil.wood?.hex || design.pencil.wood,

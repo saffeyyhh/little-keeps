@@ -11707,7 +11707,7 @@ async function renderProductionPlanner(orders) {
                   ` : row.isPencil ? `
                     <div class="pencil-production-guide">
                       <strong>Prepare in Clickify 3D - Custom Pencil Clicker.3mf</strong>
-                      <span>${String(pencil.text_style || "raised") === "flat" ? "Inlaid / flat" : "Raised"} characters · one Pencil Body and matching top per character</span>
+                      <span>${String(pencil.text_style || "raised") === "flat" ? "Inlaid / flat" : "Raised"} characters · ${String(pencil.ending_style || "eraser") === "endCap" ? "end cap" : "eraser + metal band"} · one Pencil Body and matching top per character</span>
                     </div>
                     <div class="pencil-character-plan">
                       ${(row.blocks || []).map((block, index) => {
@@ -11725,11 +11725,14 @@ async function renderProductionPlanner(orders) {
                       }).join("")}
                     </div>
                     <div class="custom-print-colours pencil-production-colours">
-                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.eraser), "#f18db2")}"></i>Eraser · ${escapeAdminHtml(pencilName(pencil.eraser, "Selected colour"))}</span>
-                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.ferrule), "#c9c7ce")}"></i>Band · ${escapeAdminHtml(pencilName(pencil.ferrule, "Selected colour"))}</span>
+                      ${String(pencil.ending_style || "eraser") === "endCap" ? `
+                        <span><i style="background:${getSafePdfColour(pencilColour(pencil.end_cap), "#ffffff")}"></i>End cap · ${escapeAdminHtml(pencilName(pencil.end_cap, "Selected colour"))}</span>
+                      ` : `
+                        <span><i style="background:${getSafePdfColour(pencilColour(pencil.eraser), "#f18db2")}"></i>Eraser · ${escapeAdminHtml(pencilName(pencil.eraser, "Selected colour"))}</span>
+                        <span><i style="background:${getSafePdfColour(pencilColour(pencil.ferrule), "#c9c7ce")}"></i>Band · ${escapeAdminHtml(pencilName(pencil.ferrule, "Selected colour"))}</span>
+                      `}
                       <span><i style="background:${getSafePdfColour(pencilColour(pencil.wood), "#e8bd8d")}"></i>Wood · ${escapeAdminHtml(pencilName(pencil.wood, "Selected colour"))}</span>
                       <span><i style="background:${getSafePdfColour(pencilColour(pencil.tip), "#393139")}"></i>Tip · ${escapeAdminHtml(pencilName(pencil.tip, "Selected colour"))}</span>
-                      <span><i style="background:${getSafePdfColour(pencilColour(pencil.end_cap), "#ffffff")}"></i>End cap · ${escapeAdminHtml(pencilName(pencil.end_cap, "Selected colour"))}</span>
                     </div>
                   ` : `
                     <div class="custom-print-colours">
