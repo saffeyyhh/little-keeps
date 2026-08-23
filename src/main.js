@@ -1479,7 +1479,7 @@ Chloe</textarea>
           <div class="customisation-title">
             <div>
               <h3>Personalise Your Pencil</h3>
-              <p>Choose the lettering finish and every small pencil part. Body and name colours are selected below.</p>
+              <p>Every character gets its own clicky block. Choose the finish and colours for the pencil ends, blocks, tops and characters.</p>
             </div>
           </div>
           <div class="pencil-style-options" role="group" aria-label="Pencil lettering style">
@@ -1493,7 +1493,7 @@ Chloe</textarea>
             <label><span>Pencil tip</span><select data-pencil-colour="tip">${renderPencilColourOptions()}</select></label>
             <label><span>End cap</span><select data-pencil-colour="endCap">${renderPencilColourOptions()}</select></label>
           </div>
-          <p class="pencil-options-note">Includes the clicker, switch and keyring hole.</p>
+          <p class="pencil-options-note">Each character block includes its own clicker and switch.</p>
         </div>
 
         <div class="random-colour-card clicky-only-option">
@@ -3829,9 +3829,9 @@ function getApproximateKeychainSize(
   if (productKey === PENCIL_PRODUCT_KEY) {
     return {
       characterCount,
-      lengthCm: 14.5,
-      heightCm: 2.8,
-      thicknessCm: 2.8
+      lengthCm: characterCount ? (characterCount * 30 + 80) / 10 : 0,
+      heightCm: 3.4,
+      thicknessCm: 3
     };
   }
 
@@ -4041,7 +4041,6 @@ const designInspiration =
   document.getElementById("designInspiration");
 
 const geometryCache = {};
-const uncenteredGeometryCache = {};
 
 function generateOrderRef() {
   const date = new Date();
@@ -4143,9 +4142,9 @@ function renderColourChargeNotices() {
     if (!element) return;
     if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
       const pencilLabels = {
-        baseColourPriceNotice: "Choose one pencil body colour.",
-        capColourPriceNotice: "Choose one clicker colour.",
-        letterColourPriceNotice: "Choose one name colour."
+        baseColourPriceNotice: "Add more colours to alternate the pencil blocks.",
+        capColourPriceNotice: "Add more colours to alternate the clicker tops.",
+        letterColourPriceNotice: "Add more colours to alternate the letters and symbols."
       };
       element.classList.remove("has-charge");
       element.textContent = pencilLabels[id];
@@ -4378,10 +4377,10 @@ function randomiseArticulatedColours() {
     allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
   const design = getActiveDesign();
-  const singleColourParts = [SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY].includes(activeProduct.product_key);
+  const singleColourParts = activeProduct.product_key === SOLID_PRODUCT_KEY;
   design.bases = singleColourParts ? selected.bases.slice(0, 1) : selected.bases;
-  design.caps = activeProduct.product_key === PENCIL_PRODUCT_KEY ? selected.caps.slice(0, 1) : selected.caps;
-  design.letters = activeProduct.product_key === PENCIL_PRODUCT_KEY ? selected.letters.slice(0, 1) : selected.letters;
+  design.caps = selected.caps;
+  design.letters = selected.letters;
   if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
     const randomPartColour = () => availableHexes[Math.floor(Math.random() * availableHexes.length)] || available[0];
     design.pencil = normalizePencilDesign({
@@ -4434,8 +4433,7 @@ function randomiseColourPart(part) {
   });
   const property = part === "base" ? "bases" : part === "cap" ? "caps" : "letters";
   const design = getActiveDesign();
-  const fixedPencilPart = activeProduct.product_key === PENCIL_PRODUCT_KEY;
-  design[property] = (activeProduct.product_key === SOLID_PRODUCT_KEY && part === "base") || fixedPencilPart
+  design[property] = activeProduct.product_key === SOLID_PRODUCT_KEY && part === "base"
     ? selected[property].slice(0, 1)
     : [...selected[property]];
 
@@ -4818,10 +4816,7 @@ function addColourToDesign(type, colour) {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isSolidProduct =
     activeProduct.product_key === SOLID_PRODUCT_KEY;
-  const isPencilProduct =
-    activeProduct.product_key === PENCIL_PRODUCT_KEY;
-
-  if (isStandardProduct || isPencilProduct || (isSolidProduct && type === "base")) {
+  if (isStandardProduct || (isSolidProduct && type === "base")) {
     if (type === "base") {
       design.bases = [colour];
     }
@@ -4830,10 +4825,7 @@ function addColourToDesign(type, colour) {
       design.letters = [colour];
     }
 
-    if (type === "cap") {
-      if (isPencilProduct) design.caps = [colour];
-      else return;
-    }
+    if (type === "cap") return;
   } else {
     if (type === "base") design.bases.push(colour);
     if (type === "cap") design.caps.push(colour);
@@ -5099,12 +5091,9 @@ function removeColourFromDesign(type, index) {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
     activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
-  const isFixedPencilPart =
-    activeProduct.product_key === PENCIL_PRODUCT_KEY;
-
   // Standard keychains must always keep one background
   // colour and one name colour.
-  if (isStandardProduct || isFixedSolidBase || isFixedPencilPart) return;
+  if (isStandardProduct || isFixedSolidBase) return;
 
   const design = getActiveDesign();
 
@@ -5150,10 +5139,7 @@ function renderSlots(containerId, colours, type) {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
     activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
-  const isFixedPencilPart =
-    activeProduct.product_key === PENCIL_PRODUCT_KEY;
-
-  if (!isStandardProduct && !isFixedSolidBase && !isFixedPencilPart) {
+  if (!isStandardProduct && !isFixedSolidBase) {
     slot.title = "Click to remove this colour";
     slot.onclick = () => removeColourFromDesign(type, index);
   } else {
@@ -5182,25 +5168,6 @@ function loadSTL(path) {
         geometry.computeVertexNormals();
         geometry.center();
         geometryCache[path] = geometry;
-        resolve(geometry.clone());
-      },
-      undefined,
-      reject
-    );
-  });
-}
-
-function loadUncenteredSTL(path) {
-  if (uncenteredGeometryCache[path]) {
-    return Promise.resolve(uncenteredGeometryCache[path].clone());
-  }
-
-  return new Promise((resolve, reject) => {
-    loader.load(
-      path,
-      geometry => {
-        geometry.computeVertexNormals();
-        uncenteredGeometryCache[path] = geometry;
         resolve(geometry.clone());
       },
       undefined,
@@ -6178,9 +6145,16 @@ function createMiniPreview(name, design) {
 
   if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
     const pencil = normalizePencilDesign(design.pencil);
+    const blocks = Array.from(sanitizeName(name || "A"))
+      .map((character, index) => `
+        <b style="--pencil-block:${design.bases[index % design.bases.length]}; --pencil-top:${design.caps[index % design.caps.length]}; --pencil-character:${design.letters[index % design.letters.length]}">
+          <em>${displayIcon(character)}</em>
+        </b>
+      `)
+      .join("");
     return `
-      <div class="mini-pencil-preview" style="--pencil-body:${design.bases?.[0] || "#FEC600"}; --pencil-name:${design.letters?.[0] || "#30282d"}; --pencil-eraser:${pencil.eraser}; --pencil-ferrule:${pencil.ferrule}; --pencil-wood:${pencil.wood}; --pencil-tip:${pencil.tip};">
-        <i></i><b>${escapePresetText(String(name || "NAME").toUpperCase())}</b><span></span>
+      <div class="mini-pencil-preview" style="--pencil-eraser:${pencil.eraser}; --pencil-ferrule:${pencil.ferrule}; --pencil-wood:${pencil.wood}; --pencil-tip:${pencil.tip};">
+        <span></span>${blocks}<i></i>
       </div>
     `;
   }
@@ -6216,7 +6190,7 @@ function getDesignDescription(design) {
   }
 
   if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
-    return `${normalizePencilDesign(design.pencil).textStyle === "flat" ? "Inlaid" : "Raised"} name · Custom pencil clicker`;
+    return `${normalizePencilDesign(design.pencil).textStyle === "flat" ? "Inlaid" : "Raised"} characters · One clicker block per character`;
   }
 
   return `${
@@ -6350,9 +6324,9 @@ const parts =
     ? (() => {
         const pencil = normalizePencilDesign(design.pencil);
         return [
-          { label: "Pencil body", colours: design.bases?.slice(0, 1) || [] },
-          { label: "Clicker", colours: design.caps?.slice(0, 1) || [] },
-          { label: "Name", colours: design.letters?.slice(0, 1) || [] },
+          { label: "Pencil blocks", colours: design.bases || [] },
+          { label: "Clicker tops", colours: design.caps || [] },
+          { label: "Characters", colours: design.letters || [] },
           { label: "Eraser", colours: [pencil.eraser] },
           { label: "Metal band", colours: [pencil.ferrule] },
           { label: "Wood", colours: [pencil.wood] },
@@ -7281,15 +7255,7 @@ function refreshUI() {
 async function buildPencilClickerPreview(item, design) {
   const thisBuildNumber = ++previewBuildNumber;
   const pencil = normalizePencilDesign(design.pencil);
-  const partColours = {
-    body: design.bases?.[0] || "#FEC600",
-    top: design.caps?.[0] || "#ffffff",
-    eraser: pencil.eraser,
-    ferrule: pencil.ferrule,
-    nose: pencil.wood,
-    tip: pencil.tip,
-    "end-cap": pencil.endCap
-  };
+  const cleanName = Array.from(sanitizeName(item.name || "A")).slice(0, 10);
 
   clearKeychainPreview();
   canvas.classList.remove("hidden");
@@ -7299,32 +7265,97 @@ async function buildPencilClickerPreview(item, design) {
 
   try {
     const pencilGroup = new THREE.Group();
-    await Promise.all(Object.entries(partColours).map(async ([part, colour]) => {
-      const geometry = await loadUncenteredSTL(`/models/pencil/${part}.stl`);
-      pencilGroup.add(new THREE.Mesh(geometry, createMat(colour)));
-    }));
+    const [bodyGeometry, topGeometry, noseGeometry, tipGeometry, ferruleGeometry, eraserGeometry, font] = await Promise.all([
+      loadSTL("/models/pencil/body.stl"),
+      loadSTL("/models/pencil/top.stl"),
+      loadSTL("/models/pencil/nose.stl"),
+      loadSTL("/models/pencil/tip.stl"),
+      loadSTL("/models/pencil/ferrule.stl"),
+      loadSTL("/models/pencil/eraser.stl"),
+      getStandardPreviewFont()
+    ]);
 
-    const cleanName = String(item.name || "NAME").trim().toUpperCase().slice(0, 10);
-    if (cleanName) {
-      const font = await getStandardPreviewFont();
-      const fontSize = Math.min(5.2, 27 / Math.max(1, cleanName.length * 0.62));
-      const nameGeometry = new TextGeometry(cleanName, {
-        font,
-        size: fontSize,
-        depth: pencil.textStyle === "flat" ? 0.35 : 0.9,
-        curveSegments: 6,
-        bevelEnabled: false
-      });
-      nameGeometry.center();
-      const nameMesh = new THREE.Mesh(
-        nameGeometry,
-        createMat(design.letters?.[0] || "#30282d")
-      );
-      // The licensed blank top faces out along +Y in the source model.
-      nameMesh.rotation.x = -Math.PI / 2;
-      nameMesh.position.set(0, 22.15, 0);
-      pencilGroup.add(nameMesh);
+    const blockPitch = 30;
+    const firstBlockX = -((cleanName.length - 1) * blockPitch) / 2;
+    const lastBlockX = firstBlockX + (cleanName.length - 1) * blockPitch;
+
+    for (let index = 0; index < cleanName.length; index += 1) {
+      const character = cleanName[index];
+      const x = firstBlockX + index * blockPitch;
+      const bodyColour = design.bases[index % design.bases.length];
+      const topColour = design.caps[index % design.caps.length];
+      const characterColour = design.letters[index % design.letters.length];
+
+      const body = new THREE.Mesh(bodyGeometry.clone(), createMat(bodyColour));
+      body.position.x = x;
+      pencilGroup.add(body);
+
+      const top = new THREE.Mesh(topGeometry.clone(), createMat(topColour));
+      top.position.set(x, 18.5, 0);
+      pencilGroup.add(top);
+
+      const special = specialKeycaps[character];
+      let characterGeometry = null;
+      if (special) {
+        try {
+          const modularCap = await loadSTL(`/models/keycap - ${special}.stl`);
+          characterGeometry = splitCapGeometry(modularCap).letter;
+          characterGeometry.center();
+          characterGeometry.computeBoundingBox();
+          const iconSize = new THREE.Vector3();
+          characterGeometry.boundingBox?.getSize(iconSize);
+          const iconScale = 12 / Math.max(iconSize.x || 1, iconSize.y || 1);
+          characterGeometry.scale(iconScale, iconScale, iconScale);
+        } catch (error) {
+          console.warn(`Using text fallback for pencil symbol ${character}:`, error);
+        }
+      }
+
+      if (!characterGeometry) {
+        characterGeometry = new TextGeometry(character, {
+          font,
+          size: 12,
+          depth: pencil.textStyle === "flat" ? 0.3 : 1,
+          curveSegments: 6,
+          bevelEnabled: false
+        });
+        characterGeometry.center();
+      }
+
+      const characterMesh = new THREE.Mesh(characterGeometry, createMat(characterColour));
+      characterMesh.rotation.x = -Math.PI / 2;
+      characterMesh.position.set(x, 22.2, 0);
+      pencilGroup.add(characterMesh);
     }
+
+    const noseX = firstBlockX - 26.5;
+    const tipX = noseX - 13.5;
+    const ferruleX = lastBlockX + 29.5;
+    const eraserX = ferruleX + 23;
+
+    const nose = new THREE.Mesh(noseGeometry, createMat(pencil.wood));
+    nose.position.x = noseX;
+    pencilGroup.add(nose);
+
+    const tip = new THREE.Mesh(tipGeometry, createMat(pencil.tip));
+    tip.position.x = tipX;
+    pencilGroup.add(tip);
+
+    const endRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(15, 15, 3, 48),
+      createMat(pencil.endCap)
+    );
+    endRing.rotation.z = Math.PI / 2;
+    endRing.position.x = lastBlockX + 16.5;
+    pencilGroup.add(endRing);
+
+    const ferrule = new THREE.Mesh(ferruleGeometry, createMat(pencil.ferrule));
+    ferrule.position.x = ferruleX;
+    pencilGroup.add(ferrule);
+
+    const eraser = new THREE.Mesh(eraserGeometry, createMat(pencil.eraser));
+    eraser.position.x = eraserX;
+    pencilGroup.add(eraser);
 
     const bounds = new THREE.Box3().setFromObject(pencilGroup);
     const centre = new THREE.Vector3();
@@ -8363,19 +8394,18 @@ function updateProductCustomiser() {
   const isPencilClicker =
     activeProduct.product_key === PENCIL_PRODUCT_KEY;
 
-  if (isSolidClicker || isPencilClicker) {
+  if (isSolidClicker) {
     globalDesign.bases = globalDesign.bases.slice(0, 1);
-    if (isPencilClicker) {
-      globalDesign.caps = globalDesign.caps.slice(0, 1);
-      globalDesign.letters = globalDesign.letters.slice(0, 1);
-    }
     names.forEach(item => {
       if (item.custom?.bases?.length) {
         item.custom.bases = item.custom.bases.slice(0, 1);
       }
-      if (isPencilClicker && item.custom) {
-        item.custom.caps = (item.custom.caps || globalDesign.caps).slice(0, 1);
-        item.custom.letters = (item.custom.letters || globalDesign.letters).slice(0, 1);
+    });
+  }
+
+  if (isPencilClicker) {
+    names.forEach(item => {
+      if (item.custom) {
         item.custom.pencil = normalizePencilDesign(item.custom.pencil || globalDesign.pencil);
       }
     });
@@ -8443,7 +8473,7 @@ function updateProductCustomiser() {
       isNormalKeychain
         ? "Background"
         : isPencilClicker
-          ? "Pencil Body"
+          ? "Pencil Blocks"
         : "Base";
   }
 
@@ -8452,12 +8482,12 @@ function updateProductCustomiser() {
       isNormalKeychain
         ? "Name"
         : isPencilClicker
-          ? "Name"
+          ? "Characters"
         : "Letter";
   }
 
   const capHeading = document.querySelector('[data-colour-part-tab="cap"] span');
-  if (capHeading) capHeading.textContent = isPencilClicker ? "Clicker / Eraser" : "Cap";
+  if (capHeading) capHeading.textContent = isPencilClicker ? "Clicker Tops" : "Cap";
 
   if (isNormalKeychain) {
     document.querySelector('[data-colour-part-tab="base"]')?.click();
@@ -8476,13 +8506,13 @@ function updateProductCustomiser() {
   if (productCharacterLimitNotice) {
     productCharacterLimitNotice.hidden = !(isSolidClicker || isPencilClicker);
     productCharacterLimitNotice.textContent = isPencilClicker
-      ? "Maximum 10 letters, numbers or supported symbols on your pencil."
+      ? "One separate clicky pencil block per letter, number or supported symbol. Maximum 10 blocks."
       : isSolidClicker
         ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
         : "";
   }
 
-  if (randomColourOptions) randomColourOptions.style.display = isPencilClicker ? "none" : "";
+  if (randomColourOptions) randomColourOptions.style.display = "";
 
   if (randomColourOptionsSummary) {
     randomColourOptionsSummary.textContent = isSolidClicker

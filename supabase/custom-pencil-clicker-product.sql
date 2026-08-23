@@ -33,7 +33,7 @@ values (
   'custom-pencil-clicker',
   'Custom Pencil Clicker Keychain',
   'A pencil made completely yours',
-  'Personalise the name, lettering style and every pencil part colour, finished with one satisfying clicker.',
+  'Build a pencil with one satisfying clicky block per letter, number or symbol, then personalise every colour.',
   'coming_soon',
   false,
   9.90,
@@ -54,7 +54,7 @@ values (
   0,
   10,
   null,
-  'Prepare in the licensed Clickify 3D Custom Pencil Clicker project. Confirm body, name, eraser, ferrule, wood, tip, end-cap and lettering-style choices before slicing.',
+  'Prepare one licensed Clickify 3D Pencil Body and matching Flat/Raised top per character. Confirm block, top, character, eraser, ferrule, wood, tip and end-cap colours before slicing.',
   25
 )
 on conflict (product_key) do nothing;

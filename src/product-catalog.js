@@ -148,7 +148,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     product_key: PENCIL_PRODUCT_KEY,
     name: "Custom Pencil Clicker Keychain",
     eyebrow: "A pencil made completely yours",
-    description: "Personalise the name, lettering style and every pencil part colour, finished with one satisfying clicker.",
+    description: "Build a pencil with one satisfying clicky block per letter, number or symbol, then personalise every colour.",
     status: "coming_soon",
     price_visible: false,
     usual_base_price: 9.9,
@@ -173,7 +173,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     maximum_working_days: null,
     sort_order: 25,
     image_path: null,
-    production_notes: "Prepare in the licensed Clickify 3D Custom Pencil Clicker project. Confirm body, name, eraser, ferrule, wood, tip, end-cap and lettering-style choices before slicing."
+    production_notes: "Prepare one licensed Clickify 3D Pencil Body and matching Flat/Raised top per character. Confirm block, top, character, eraser, ferrule, wood, tip and end-cap colours before slicing."
   }
 ];
 
@@ -237,6 +237,15 @@ export function normalizeProductCatalog(rows = []) {
       product.minimum_characters = 1;
       product.maximum_characters = Math.min(10, Math.max(1, Number(product.maximum_characters) || 10));
       if (!product.production_notes || product.production_notes.startsWith("Draft pricing only")) {
+        product.production_notes = fallback.production_notes;
+      }
+    }
+
+    if (fallback.product_key === PENCIL_PRODUCT_KEY) {
+      if (product.description === "Personalise the name, lettering style and every pencil part colour, finished with one satisfying clicker.") {
+        product.description = fallback.description;
+      }
+      if (product.production_notes === "Prepare in the licensed Clickify 3D Custom Pencil Clicker project. Confirm body, name, eraser, ferrule, wood, tip, end-cap and lettering-style choices before slicing.") {
         product.production_notes = fallback.production_notes;
       }
     }

@@ -5329,16 +5329,17 @@ body {
 .pencil-keyring-hole { position: absolute; z-index: 2; top: -20px; left: 23px; width: 28px; height: 28px; border: 8px solid var(--pencil-end); border-radius: 50%; background: #fff9fb; box-shadow: 0 4px 10px rgba(69, 42, 56, .14); }
 
 .mini-pencil-preview {
-  --pencil-body:#f7c948;
   width: min(100%, 250px);
   height: 34px;
   display: flex;
   align-items: stretch;
   filter: drop-shadow(0 5px 5px rgba(65,45,55,.16));
 }
-.mini-pencil-preview i { width: 24px; border-radius: 8px 0 0 8px; background: linear-gradient(90deg, var(--pencil-eraser) 0 55%, var(--pencil-ferrule) 55%); }
-.mini-pencil-preview b { min-width: 0; flex: 1; display: grid; place-items: center; overflow: hidden; color: var(--pencil-name); background: var(--pencil-body); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.mini-pencil-preview span { width: 25px; background: linear-gradient(90deg, var(--pencil-wood) 0 72%, var(--pencil-tip) 72%); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.mini-pencil-preview > span { width: 28px; flex: 0 0 28px; background: linear-gradient(90deg, var(--pencil-tip) 0 18%, var(--pencil-wood) 18%); clip-path: polygon(0 50%, 100% 0, 100% 100%); }
+.mini-pencil-preview > i { width: 29px; flex: 0 0 29px; border-radius: 0 10px 10px 0; background: linear-gradient(90deg, var(--pencil-ferrule) 0 48%, var(--pencil-eraser) 48%); }
+.mini-pencil-preview > b { min-width: 20px; flex: 1; display: grid; place-items: center; padding: 3px; background: var(--pencil-block); font-size: 10px; font-style: normal; }
+.mini-pencil-preview > b + b { border-left: 1px solid rgba(47, 37, 45, .16); }
+.mini-pencil-preview > b em { display: grid; width: 100%; height: 100%; place-items: center; border-radius: 5px; color: var(--pencil-character); background: var(--pencil-top); font-style: normal; font-weight: 950; line-height: 1; }
 
 @media (max-width: 620px) {
   .pencil-part-fields { grid-template-columns: 1fr; }

@@ -5160,6 +5160,34 @@ a {
 }
 .pencil-production-guide span { color: #796d80; font-size: 11px; }
 .pencil-production-colours { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.pencil-character-plan {
+  margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 8px;
+}
+.pencil-character-plan > div {
+  padding: 9px;
+  display: grid;
+  gap: 5px;
+  border: 1px solid #eadde5;
+  border-radius: 10px;
+  background: #fff;
+}
+.pencil-character-plan strong { color: #473542; }
+.pencil-character-plan span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #6f626a;
+  font-size: 10px;
+}
+.pencil-character-plan i {
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(0, 0, 0, .12);
+  border-radius: 4px;
+}
 
 .assembly-photo-summary,
 .assembly-standard-name-preview {

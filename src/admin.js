@@ -4821,7 +4821,7 @@ function renderOrders(orders) {
             <span class="assembly-tag">${Number(item.design?.photo?.colour_count || 4)} Stocked Colours</span>
           ` : pencilProduct ? `
             <span class="assembly-tag">Custom Pencil Clicker</span>
-            <span class="assembly-tag">${String(item.design?.pencil?.text_style || "raised") === "flat" ? "Inlaid Name" : "Raised Name"}</span>
+            <span class="assembly-tag">${String(item.design?.pencil?.text_style || "raised") === "flat" ? "Inlaid Characters" : "Raised Characters"}</span>
           ` : customNameProduct ? `
             <span class="assembly-tag">Customised Name</span>
             <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
@@ -6781,7 +6781,13 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
           pencil: design.pencil || {},
           background: design.bases?.[0],
           clicker: design.caps?.[0],
-          lettering: design.letters?.[0]
+          lettering: design.letters?.[0],
+          blocks: letters.map((character, index) => ({
+            character,
+            body: design.bases?.[index % Math.max(1, design.bases?.length || 1)],
+            top: design.caps?.[index % Math.max(1, design.caps?.length || 1)],
+            lettering: design.letters?.[index % Math.max(1, design.letters?.length || 1)]
+          }))
         });
         return;
       }
@@ -9301,7 +9307,7 @@ async function renderAssemblyQueue() {
               <span class="assembly-tag">${item.design?.photo?.variant === "clicker" ? "Clicker" : "Classic"}</span>
             ` : pencilProduct ? `
               <span class="assembly-tag">Custom Pencil Clicker</span>
-              <span class="assembly-tag">${String(item.design?.pencil?.text_style || "raised") === "flat" ? "Inlaid Name" : "Raised Name"}</span>
+              <span class="assembly-tag">${String(item.design?.pencil?.text_style || "raised") === "flat" ? "Inlaid Characters" : "Raised Characters"}</span>
             ` : customNameProduct ? `
               <span class="assembly-tag">Customised Name</span>
               <span class="assembly-tag">${Number(item.design?.font_size_mm || 24)} mm Letters</span>
@@ -11701,12 +11707,24 @@ async function renderProductionPlanner(orders) {
                   ` : row.isPencil ? `
                     <div class="pencil-production-guide">
                       <strong>Prepare in Clickify 3D - Custom Pencil Clicker.3mf</strong>
-                      <span>${String(pencil.text_style || "raised") === "flat" ? "Inlaid / flat" : "Raised"} name · keyring hole included</span>
+                      <span>${String(pencil.text_style || "raised") === "flat" ? "Inlaid / flat" : "Raised"} characters · one Pencil Body and matching top per character</span>
+                    </div>
+                    <div class="pencil-character-plan">
+                      ${(row.blocks || []).map((block, index) => {
+                        const body = block.body || {};
+                        const top = block.top || {};
+                        const character = block.lettering || {};
+                        return `
+                          <div>
+                            <strong>${index + 1}. ${escapeAdminHtml(block.character)}</strong>
+                            <span><i style="background:${getSafePdfColour(body.hex || body, "#f7c948")}"></i>Body · ${escapeAdminHtml(body.name || "Selected")}</span>
+                            <span><i style="background:${getSafePdfColour(top.hex || top, "#ffffff")}"></i>Top · ${escapeAdminHtml(top.name || "Selected")}</span>
+                            <span><i style="background:${getSafePdfColour(character.hex || character, "#30282d")}"></i>Character · ${escapeAdminHtml(character.name || "Selected")}</span>
+                          </div>
+                        `;
+                      }).join("")}
                     </div>
                     <div class="custom-print-colours pencil-production-colours">
-                      <span><i style="background:${getSafePdfColour(background.hex || background, "#f7c948")}"></i>Body · ${escapeAdminHtml(background.name || "Selected colour")}</span>
-                      <span><i style="background:${getSafePdfColour(clicker.hex || clicker, "#ffffff")}"></i>Clicker · ${escapeAdminHtml(clicker.name || "Selected colour")}</span>
-                      <span><i style="background:${getSafePdfColour(lettering.hex || lettering, "#30282d")}"></i>Name · ${escapeAdminHtml(lettering.name || "Selected colour")}</span>
                       <span><i style="background:${getSafePdfColour(pencilColour(pencil.eraser), "#f18db2")}"></i>Eraser · ${escapeAdminHtml(pencilName(pencil.eraser, "Selected colour"))}</span>
                       <span><i style="background:${getSafePdfColour(pencilColour(pencil.ferrule), "#c9c7ce")}"></i>Band · ${escapeAdminHtml(pencilName(pencil.ferrule, "Selected colour"))}</span>
                       <span><i style="background:${getSafePdfColour(pencilColour(pencil.wood), "#e8bd8d")}"></i>Wood · ${escapeAdminHtml(pencilName(pencil.wood, "Selected colour"))}</span>
