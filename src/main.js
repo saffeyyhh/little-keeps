@@ -550,21 +550,6 @@ const featuredPromoOffer = featuredPromo
 const displayedBasePrice = launchPriceEnabled
   ? launchBasePrice
   : usualBasePrice;
-const modularCardPrice = modularProduct.price_visible
-  ? `From ${displaySettingMoney(getProductDisplayPrice(modularProduct))}`
-  : "Pricing soon";
-const solidCardPrice = solidProduct.price_visible
-  ? `From ${displaySettingMoney(getProductDisplayPrice(solidProduct))}`
-  : "Pricing coming soon";
-  const standardCardPrice = standardProduct.price_visible
-  ? displaySettingMoney(getProductDisplayPrice(standardProduct))
-  : "Price coming soon";
-const photoCardPrice = photoProduct.price_visible
-  ? `From ${displaySettingMoney(getProductDisplayPrice(photoProduct))}`
-  : "Pricing coming soon";
-const pencilCardPrice = pencilProduct.price_visible
-  ? `From ${displaySettingMoney(getProductDisplayPrice(pencilProduct))}`
-  : "Pricing coming soon";
 const deliveryFeeSetting = getSettingNumber("delivery_fee", 2.5);
 const freeDeliveryThreshold = getSettingNumber("free_delivery_threshold", 50);
 const maxOrdersPerDate = Math.max(
@@ -585,6 +570,72 @@ const rushFeeLarge = Math.max(rushFeeSmall, getSettingNumber("rush_fee_large", 8
 
 function displaySettingMoney(value) {
   return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function isProductLaunchOfferActive(product, now = Date.now()) {
+  if (product?.launch_price_enabled === false) return false;
+  const deadline = Date.parse(String(product?.launch_price_ends_at || ""));
+  return !Number.isFinite(deadline) || now < deadline;
+}
+
+function renderProductCardPrice(product) {
+  if (!product?.price_visible) {
+    return '<span class="product-card-price is-pending">Pricing coming soon</span>';
+  }
+  const current = getProductDisplayPrice(product);
+  const usual = Number(product.usual_base_price || 0);
+  const launch = Number(product.launch_base_price || 0);
+  const launchActive = isProductLaunchOfferActive(product) && launch < usual;
+  return `
+    <span class="product-card-price ${launchActive ? "has-launch-price" : ""}">
+      ${launchActive ? `<small>Launch</small><del>${displaySettingMoney(usual)}</del>` : ""}
+      <strong>From ${displaySettingMoney(current)}</strong>
+    </span>
+  `;
+}
+
+function getProductPricingPartLabels(product) {
+  if (product.product_key === PENCIL_PRODUCT_KEY) {
+    return { character: "character block", base: "block", cap: "top", letter: "character" };
+  }
+  if (product.product_key === STANDARD_PRODUCT_KEY) {
+    return { character: "character", base: "background", cap: "", letter: "name" };
+  }
+  return { character: "character", base: "base", cap: "cap", letter: "letter or icon" };
+}
+
+function renderProductPricingGuideMarkup(product, { compact = false, showHeading = true } = {}) {
+  const labels = getProductPricingPartLabels(product);
+  const includedCharacters = Math.max(0, Number(product.included_characters) || 0);
+  const maximumCharacters = Math.max(includedCharacters, Number(product.maximum_characters) || includedCharacters);
+  const current = getProductDisplayPrice(product);
+  const usual = Number(product.usual_base_price || current);
+  const launchActive = isProductLaunchOfferActive(product) && current < usual;
+  const extraColours = [
+    [labels.base, Number(product.extra_base_colour_price || 0)],
+    [labels.cap, Number(product.extra_cap_colour_price || 0)],
+    [labels.letter, Number(product.extra_letter_colour_price || 0)]
+  ].filter(([label, amount]) => label && amount > 0);
+
+  return `
+    ${showHeading ? `<div class="product-pricing-guide-heading">
+      <div><span>Pricing guide</span><strong>${escapePresetText(product.name)}</strong></div>
+      <div class="product-guide-price ${launchActive ? "has-launch-price" : ""}">
+        ${launchActive ? `<small>Launch price</small><del>${displaySettingMoney(usual)}</del>` : `<small>Starting from</small>`}
+        <b>${displaySettingMoney(current)}</b>
+      </div>
+    </div>` : ""}
+    <div class="product-pricing-guide-rows">
+      <span><b>Starting price</b><em>Includes up to ${includedCharacters} ${labels.character}${includedCharacters === 1 ? "" : "s"}</em></span>
+      ${Number(product.extra_character_price || 0) > 0 && maximumCharacters > includedCharacters ? `
+        <span><b>Extra ${labels.character}</b><em>+${displaySettingMoney(product.extra_character_price)} each · maximum ${maximumCharacters}</em></span>
+      ` : ""}
+      ${extraColours.map(([label, amount]) => `
+        <span><b>Extra ${escapePresetText(label)} colour</b><em>+${displaySettingMoney(amount)} per additional colour</em></span>
+      `).join("")}
+    </div>
+    ${compact ? "" : `<small>Only selected add-ons are charged. Your exact total updates live as you design.</small>`}
+  `;
 }
 
 function renderPencilColourSwatches(part) {
@@ -919,77 +970,21 @@ ${requestedPreviewProductKey ? `
 
     </div>
 
-    <div class="hero-offer-card">
-      <div class="hero-offer-top">
-        <div>
-          <span class="hero-bestseller-pill">Little Keeps favourite</span>
-          <p>Personalised</p>
-          <strong>Chunky Modular Clicky Keychains</strong>
-        </div>
-
-        <div class="hero-price-badge">
-          ${launchPriceEnabled ? `
-            <small>Launch price</small>
-            <span class="usual-price">${displaySettingMoney(usualBasePrice)}</span>
-            <span class="promo-price">${displaySettingMoney(launchBasePrice)}</span>
-            <span class="promo-saving">
-              Save ${displaySettingMoney(Math.max(0, usualBasePrice - launchBasePrice))}
-            </span>
-          ` : `
-            <small>From</small>
-            <span class="promo-price">${displaySettingMoney(usualBasePrice)}</span>
-          `}
-        </div>
+    <div class="hero-offer-card hero-showcase-card">
+      <span class="hero-bestseller-pill">Made to order in Singapore</span>
+      <div class="hero-showcase-art" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i>
+        <b>LITTLE</b>
       </div>
-
-      <div class="hero-included-list">
-        <p class="hero-card-label">Included in the price</p>
-
-        <span class="character-inclusion">✓ Up to ${modularProduct.included_characters} characters</span>
-        <span>✓ 1 base, 1 cap and 1 letter/icon colour</span>
-        <span>✓ Clicky switches and keyring</span>
+      <div class="hero-showcase-copy">
+        <strong>Make it unmistakably yours.</strong>
+        <p>Choose a product, personalise every detail and see it before ordering.</p>
       </div>
-
-      <details class="hero-more-details">
-        <summary>Size &amp; extras</summary>
-
-        <div class="hero-pricing-guide">
-          <p>Approximate size</p>
-
-          <div class="hero-price-row">
-            <span>Each character block</span>
-            <strong>3.5 × 2.7 cm</strong>
-          </div>
-
-          <div class="hero-price-row">
-            <span>Letters, numbers and icons</span>
-            <strong>1 character each</strong>
-          </div>
-
-          <p style="margin-top:14px;">Optional additions</p>
-
-          <div class="hero-price-row">
-            <span>Each character after ${modularProduct.included_characters}</span>
-            <strong>+${displaySettingMoney(modularProduct.extra_character_price)}</strong>
-          </div>
-
-          <div class="hero-price-row">
-            <span>Extra base colour</span>
-            <strong>+${displaySettingMoney(modularProduct.extra_base_colour_price)}</strong>
-          </div>
-
-          <div class="hero-price-row">
-            <span>Extra cap colour</span>
-            <strong>+${displaySettingMoney(modularProduct.extra_cap_colour_price)}</strong>
-          </div>
-
-          <div class="hero-price-row">
-            <span>Extra letter/icon colour</span>
-            <strong>+${displaySettingMoney(modularProduct.extra_letter_colour_price)}</strong>
-          </div>
-
-        </div>
-      </details>
+      <div class="hero-showcase-points">
+        <span>Live preview</span>
+        <span>Made by hand</span>
+        <span>Group orders</span>
+      </div>
     </div>
   </div>
 
@@ -1042,7 +1037,7 @@ ${requestedPreviewProductKey ? `
           <h3>${escapePresetText(modularProduct.name)}</h3>
         </div>
         <p>${escapePresetText(modularProduct.description)}</p>
-        <span class="product-card-price">${escapePresetText(modularCardPrice)}</span>
+        ${renderProductCardPrice(modularProduct)}
         <button type="button" data-product-key="${MODULAR_PRODUCT_KEY}" data-view-target="design">
           Design yours <span>→</span>
         </button>
@@ -1068,9 +1063,7 @@ ${requestedPreviewProductKey ? `
 
         <p>${escapePresetText(solidProduct.description)}</p>
 
-        <span class="product-card-price">
-          ${escapePresetText(solidCardPrice)}
-        </span>
+        ${renderProductCardPrice(solidProduct)}
 
         ${solidProduct.status === "active" ? `
           <button type="button" data-product-key="${SOLID_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>
@@ -1094,7 +1087,7 @@ ${requestedPreviewProductKey ? `
           <h3>${escapePresetText(pencilProduct.name)}</h3>
         </div>
         <p>${escapePresetText(pencilProduct.description)}</p>
-        <span class="product-card-price">${escapePresetText(pencilCardPrice)}</span>
+        ${renderProductCardPrice(pencilProduct)}
         ${pencilProduct.status === "active"
           ? `<button type="button" data-product-key="${PENCIL_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>`
           : `<button type="button" disabled>Coming soon</button>`}
@@ -1103,7 +1096,7 @@ ${requestedPreviewProductKey ? `
   ` : ""}
 
   ${standardProduct.status !== "hidden" ? `
-    <article class="product-card product-card-coming" aria-disabled="true">
+    <article class="product-card ${standardProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${standardProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <div class="product-card-visual mystery-product-visual" aria-hidden="true">
         <div class="mystery-solid-base">
           <i></i><i></i><i></i><b>ABC</b>
@@ -1124,9 +1117,7 @@ ${requestedPreviewProductKey ? `
 
         <p>${escapePresetText(standardProduct.description)}</p>
 
-        <span class="product-card-price">
-          ${escapePresetText(standardCardPrice)}
-        </span>
+        ${renderProductCardPrice(standardProduct)}
 
         ${
           standardProduct.status === "active"
@@ -1161,7 +1152,7 @@ ${requestedPreviewProductKey ? `
           <h3>${escapePresetText(photoProduct.name)}</h3>
         </div>
         <p>${escapePresetText(photoProduct.description)}</p>
-        <span class="product-card-price">${escapePresetText(photoCardPrice)}</span>
+        ${renderProductCardPrice(photoProduct)}
         ${photoProduct.status === "active"
           ? `<button type="button" data-photo-product-start>Upload your photo <span>→</span></button>`
           : `<button type="button" disabled>Coming soon</button>`}
@@ -1182,6 +1173,10 @@ ${requestedPreviewProductKey ? `
 
     <div class="photo-keepsake-grid">
       <section>
+        <details class="product-pricing-guide photo-product-pricing-guide">
+          <summary><span>Pricing guide</span><strong>From ${displaySettingMoney(getProductDisplayPrice(photoProduct))}</strong></summary>
+          <div>${renderProductPricingGuideMarkup(photoProduct, { showHeading: false })}</div>
+        </details>
         <label class="photo-upload-zone" for="photoKeepsakeInput">
           <input id="photoKeepsakeInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
           <span>Choose a clear photo</span>
@@ -1530,25 +1525,12 @@ Chloe</textarea>
             `).join("")}
           </div>
           <p class="pencil-options-note">Each character block includes its own clicker and switch.</p>
-          <div class="pencil-pricing-guide">
-            <div class="pencil-pricing-guide-heading">
-              <div>
-                <span>Clear pricing</span>
-                <strong>How pencil pricing works</strong>
-              </div>
-              <b>From ${displaySettingMoney(getProductDisplayPrice(pencilProduct))}</b>
-            </div>
-            <p>It follows the same pricing structure as our Chunky Modular Clicky Keychain.</p>
-            <div class="pencil-pricing-guide-rows">
-              <span><b>Starting price</b><em>Includes up to ${Number(pencilProduct.included_characters || 0)} character blocks</em></span>
-              <span><b>Extra character</b><em>+${displaySettingMoney(pencilProduct.extra_character_price)} each, up to ${Number(pencilProduct.maximum_characters || 10)}</em></span>
-              <span><b>Extra block colour</b><em>+${displaySettingMoney(pencilProduct.extra_base_colour_price)} per additional colour</em></span>
-              <span><b>Extra top colour</b><em>+${displaySettingMoney(pencilProduct.extra_cap_colour_price)} per additional colour</em></span>
-              <span><b>Extra character colour</b><em>+${displaySettingMoney(pencilProduct.extra_letter_colour_price)} per additional colour</em></span>
-            </div>
-            <small>One block colour, one top colour and one character colour are included. Your chosen eraser or end cap is included too.</small>
-          </div>
         </div>
+
+        <details id="productPricingGuide" class="product-pricing-guide">
+          <summary><span>Pricing guide</span><strong id="productPricingGuideSummary">From ${displaySettingMoney(getProductDisplayPrice(modularProduct))}</strong></summary>
+          <div id="productPricingGuideBody">${renderProductPricingGuideMarkup(modularProduct, { showHeading: false })}</div>
+        </details>
 
         <div class="random-colour-card clicky-only-option">
           <div class="random-colour-main">
@@ -1568,8 +1550,8 @@ Chloe</textarea>
                 <strong id="randomColourOptionsTitle">Use more than one colour per part</strong>
                 <span id="randomColourOptionsText">This may alternate base, cap and letter/icon colours. Add-ons apply only if extra colours are used:</span>
                 <span id="randomBaseColourFee">+${displaySettingMoney(modularProduct.extra_base_colour_price)} per extra base colour,</span>
-                <span>+${displaySettingMoney(modularProduct.extra_cap_colour_price)} per extra cap colour and</span>
-                <span>+${displaySettingMoney(modularProduct.extra_letter_colour_price)} per extra letter/icon colour.</span>
+                <span id="randomCapColourFee">+${displaySettingMoney(modularProduct.extra_cap_colour_price)} per extra cap colour and</span>
+                <span id="randomLetterColourFee">+${displaySettingMoney(modularProduct.extra_letter_colour_price)} per extra letter/icon colour.</span>
               </span>
             </label>
           </details>
@@ -2506,6 +2488,8 @@ const randomColourOptions = document.getElementById("randomColourOptions");
 const randomColourOptionsTitle = document.getElementById("randomColourOptionsTitle");
 const randomColourOptionsText = document.getElementById("randomColourOptionsText");
 const randomBaseColourFee = document.getElementById("randomBaseColourFee");
+const randomCapColourFee = document.getElementById("randomCapColourFee");
+const randomLetterColourFee = document.getElementById("randomLetterColourFee");
 const randomiseBaseColoursBtn = document.getElementById("randomiseBaseColoursBtn");
 const randomiseCapColoursBtn = document.getElementById("randomiseCapColoursBtn");
 const randomiseLetterColoursBtn = document.getElementById("randomiseLetterColoursBtn");
@@ -8636,6 +8620,17 @@ function updateProductCustomiser() {
     pencilOptions.style.display = isPencilClicker ? "block" : "none";
   }
 
+  const pricingGuide = document.getElementById("productPricingGuide");
+  const pricingGuideSummary = document.getElementById("productPricingGuideSummary");
+  const pricingGuideBody = document.getElementById("productPricingGuideBody");
+  if (pricingGuide) pricingGuide.hidden = activeProduct.product_key === PHOTO_PRODUCT_KEY;
+  if (pricingGuideSummary) {
+    pricingGuideSummary.textContent = `From ${displaySettingMoney(getProductDisplayPrice(activeProduct))}`;
+  }
+  if (pricingGuideBody) {
+    pricingGuideBody.innerHTML = renderProductPricingGuideMarkup(activeProduct, { showHeading: false });
+  }
+
   document
     .querySelectorAll(".clicky-only-option")
     .forEach(section => {
@@ -8718,7 +8713,16 @@ function updateProductCustomiser() {
       : "This may alternate base, cap and letter/icon colours. Add-ons apply only if extra colours are used:";
   }
   if (randomBaseColourFee) {
-    randomBaseColourFee.hidden = isSolidClicker;
+    randomBaseColourFee.hidden = isSolidClicker || Number(activeProduct.extra_base_colour_price || 0) <= 0;
+    randomBaseColourFee.textContent = `+${displaySettingMoney(activeProduct.extra_base_colour_price)} per extra ${isPencilClicker ? "block" : "base"} colour,`;
+  }
+  if (randomCapColourFee) {
+    randomCapColourFee.hidden = Number(activeProduct.extra_cap_colour_price || 0) <= 0;
+    randomCapColourFee.textContent = `+${displaySettingMoney(activeProduct.extra_cap_colour_price)} per extra ${isPencilClicker ? "top" : "cap"} colour and`;
+  }
+  if (randomLetterColourFee) {
+    randomLetterColourFee.hidden = Number(activeProduct.extra_letter_colour_price || 0) <= 0;
+    randomLetterColourFee.textContent = `+${displaySettingMoney(activeProduct.extra_letter_colour_price)} per extra ${isPencilClicker ? "character" : "letter/icon"} colour.`;
   }
 
   updatePencilControls();
