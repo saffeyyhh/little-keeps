@@ -1648,53 +1648,89 @@ function renderSettingsWorkspace() {
                     </select>
                   </header>
 
-                  <div class="product-preview-actions">
-                    <button type="button" onclick="window.openProductPreview('${escapeAdminHtml(product.product_key)}')">Open private preview</button>
-                    <button type="button" onclick="window.copyProductPreviewLink('${escapeAdminHtml(product.product_key)}', this)">Copy preview link</button>
-                  </div>
+                  <details class="product-settings-editor">
+                    <summary>
+                      <span>Edit pricing and production</span>
+                      <small>${formatMoney(product.usual_base_price)} usual · ${Math.max(0, Number(product.included_characters) || 0)} characters included · +${formatMoney(product.extra_character_price)} after</small>
+                    </summary>
+                    <div class="product-settings-editor-body">
+                      <div class="product-preview-actions">
+                        <button type="button" onclick="window.openProductPreview('${escapeAdminHtml(product.product_key)}')">Open private preview</button>
+                        <button type="button" onclick="window.copyProductPreviewLink('${escapeAdminHtml(product.product_key)}', this)">Copy preview link</button>
+                      </div>
 
-                  ${isSolidDraft ? `
-                    <p class="product-draft-note">Draft suggestion: S$3.80 launch, then S$4.50. Keep pricing hidden until the test prints are timed.</p>
-                  ` : ""}
-                  ${isPencilDraft ? `
-                    <p class="product-draft-note">Draft suggestion: S$7.90 launch, then S$9.90. Keep it Coming soon until you confirm the full pencil print time and final price.</p>
-                  ` : ""}
+                      ${isSolidDraft ? `
+                        <p class="product-draft-note">Draft suggestion: S$3.80 launch, then S$4.50. Keep pricing hidden until the test prints are timed.</p>
+                      ` : ""}
+                      ${isPencilDraft ? `
+                        <p class="product-draft-note">Draft suggestion: S$7.90 launch, then S$9.90. Keep it Coming soon until you confirm the full pencil print time and final price.</p>
+                      ` : ""}
 
-                  <div class="settings-fields two-columns">
-                    ${productNumberField(product, "usual_base_price", "Usual price ($)")}
-                    ${productNumberField(product, "launch_base_price", "Launch price ($)")}
-                    ${productNumberField(product, "included_characters", "Characters included", "1")}
-                    ${productNumberField(product, "extra_character_price", "Extra character ($)")}
-                    ${productNumberField(product, "extra_base_colour_price", "Extra base colour ($)")}
-                    ${productNumberField(product, "extra_cap_colour_price", "Extra cap colour ($)")}
-                    ${productNumberField(product, "extra_letter_colour_price", "Extra letter colour ($)")}
-                    ${productNumberField(product, "maximum_characters", "Maximum characters", "1")}
-                  </div>
+                      <section class="product-price-group">
+                        <div class="product-price-group-heading">
+                          <strong>1. Starting price</strong>
+                          <small>The amount customers see before optional add-ons.</small>
+                        </div>
+                        <div class="settings-fields two-columns">
+                          ${productNumberField(product, "usual_base_price", "Usual price ($)")}
+                          ${productNumberField(product, "launch_base_price", "Launch price ($)")}
+                        </div>
+                        <div class="product-price-toggles">
+                          <label class="settings-toggle">
+                            <input name="${escapeAdminHtml(prefix)}launch_price_enabled" type="checkbox" ${checked(product.launch_price_enabled)}>
+                            Use launch price
+                          </label>
+                          <label class="settings-toggle">
+                            <input name="${escapeAdminHtml(prefix)}price_visible" type="checkbox" ${checked(product.price_visible)}>
+                            Show pricing to customers
+                          </label>
+                        </div>
+                      </section>
 
-                  <div class="product-timing-settings">
-                    <strong>Production timing</strong>
-                    <div class="settings-fields two-columns">
-                      ${productNumberField(product, "base_print_minutes_fixed", "Base fixed minutes")}
-                      ${productNumberField(product, "base_print_minutes_per_character", "Base minutes / character")}
-                      ${productNumberField(product, "keycap_print_minutes_per_character", "Keycap minutes / character")}
-                      ${productNumberField(product, "assembly_minutes_per_item", "Assembly minutes / item")}
-                      ${productNumberField(product, "minimum_working_days", "Minimum working days", "1")}
-                      ${productNumberField(product, "maximum_working_days", "Maximum working days", "1")}
+                      <section class="product-price-group">
+                        <div class="product-price-group-heading">
+                          <strong>2. Character pricing</strong>
+                          <small>Keep six included, then charge only for longer names.</small>
+                        </div>
+                        <div class="settings-fields three-columns product-character-pricing-fields">
+                          ${productNumberField(product, "included_characters", "Characters included", "1")}
+                          ${productNumberField(product, "maximum_characters", "Maximum characters", "1")}
+                          ${productNumberField(product, "extra_character_price", "Each extra character ($)")}
+                        </div>
+                      </section>
+
+                      <section class="product-price-group">
+                        <div class="product-price-group-heading">
+                          <strong>3. Mixed-colour add-ons</strong>
+                          <small>One colour for each part is included. These apply only when a customer uses multiple colours within that same part.</small>
+                        </div>
+                        <div class="settings-fields three-columns">
+                          ${productNumberField(product, "extra_base_colour_price", "Extra base colour ($)")}
+                          ${productNumberField(product, "extra_cap_colour_price", "Extra cap colour ($)")}
+                          ${productNumberField(product, "extra_letter_colour_price", "Extra letter/icon colour ($)")}
+                        </div>
+                      </section>
+
+                      <details class="product-advanced-settings">
+                        <summary>Advanced production timing</summary>
+                        <div class="product-timing-settings">
+                          <div class="settings-fields two-columns">
+                            ${productNumberField(product, "base_print_minutes_fixed", "Base fixed minutes")}
+                            ${productNumberField(product, "base_print_minutes_per_character", "Base minutes / character")}
+                            ${productNumberField(product, "keycap_print_minutes_per_character", "Keycap minutes / character")}
+                            ${productNumberField(product, "assembly_minutes_per_item", "Assembly minutes / item")}
+                            ${productNumberField(product, "minimum_working_days", "Minimum working days", "1")}
+                            ${productNumberField(product, "maximum_working_days", "Maximum working days", "1")}
+                          </div>
+                        </div>
+                      </details>
+
+                      <label class="settings-field">
+                        <span>Production notes</span>
+                        <textarea name="${escapeAdminHtml(prefix)}production_notes" rows="3">${escapeAdminHtml(product.production_notes || "")}</textarea>
+                      </label>
                     </div>
-                  </div>
-
-                  <label class="settings-toggle">
-                    <input name="${escapeAdminHtml(prefix)}launch_price_enabled" type="checkbox" ${checked(product.launch_price_enabled)}>
-                    Use launch price
-                  </label>
-                  <label class="settings-toggle">
-                    <input name="${escapeAdminHtml(prefix)}price_visible" type="checkbox" ${checked(product.price_visible)}>
-                    Show price on product card
-                  </label>
-                  <label class="settings-field">
-                    <span>Production notes</span>
-                    <textarea name="${escapeAdminHtml(prefix)}production_notes" rows="3">${escapeAdminHtml(product.production_notes || "")}</textarea>
-                  </label>
+                  </details>
                 </article>
               `;
             }).join("")}

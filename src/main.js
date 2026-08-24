@@ -606,6 +606,7 @@ function getProductPricingPartLabels(product) {
 
 function renderProductPricingGuideMarkup(product, { compact = false, showHeading = true } = {}) {
   const labels = getProductPricingPartLabels(product);
+  const isPhotoProduct = product.product_key === PHOTO_PRODUCT_KEY;
   const includedCharacters = Math.max(0, Number(product.included_characters) || 0);
   const maximumCharacters = Math.max(includedCharacters, Number(product.maximum_characters) || includedCharacters);
   const current = getProductDisplayPrice(product);
@@ -616,6 +617,18 @@ function renderProductPricingGuideMarkup(product, { compact = false, showHeading
     [labels.cap, Number(product.extra_cap_colour_price || 0)],
     [labels.letter, Number(product.extra_letter_colour_price || 0)]
   ].filter(([label, amount]) => label && amount > 0);
+  const includedColourParts = [
+    [labels.base, Number(product.included_base_colours || 0)],
+    [labels.cap, Number(product.included_cap_colours || 0)],
+    [labels.letter, Number(product.included_letter_colours || 0)]
+  ].filter(([label, count]) => label && count > 0).map(([label]) => label);
+  const includedColourChoices = includedColourParts.map(part => `one ${part} colour`);
+  const includedColourPhrase = includedColourChoices.length > 1
+    ? `${includedColourChoices.slice(0, -1).join(", ")} and ${includedColourChoices.at(-1)}`
+    : includedColourChoices[0] || "one colour";
+  const includedSummary = isPhotoProduct
+    ? "Includes artwork preparation and one finished keepsake."
+    : `Includes up to ${includedCharacters} ${labels.character}${includedCharacters === 1 ? "" : "s"}.`;
 
   return `
     ${showHeading ? `<div class="product-pricing-guide-heading">
@@ -625,16 +638,27 @@ function renderProductPricingGuideMarkup(product, { compact = false, showHeading
         <b>${displaySettingMoney(current)}</b>
       </div>
     </div>` : ""}
-    <div class="product-pricing-guide-rows">
-      <span><b>Starting price</b><em>${displaySettingMoney(current)} · includes up to ${includedCharacters} ${labels.character}${includedCharacters === 1 ? "" : "s"}</em></span>
-      ${Number(product.extra_character_price || 0) > 0 && maximumCharacters > includedCharacters ? `
-        <span><b>Extra ${labels.character}</b><em>+${displaySettingMoney(product.extra_character_price)} each · maximum ${maximumCharacters}</em></span>
-      ` : ""}
-      ${extraColours.map(([label, amount]) => `
-        <span><b>Extra ${escapePresetText(label)} colour</b><em>+${displaySettingMoney(amount)} per additional colour</em></span>
-      `).join("")}
+    <div class="pricing-guide-included">
+      <div><span>Starting price</span><strong>${displaySettingMoney(current)}</strong></div>
+      <p>${includedSummary}</p>
     </div>
-    ${compact ? "" : `<small>Only selected add-ons are charged. Your exact total updates live as you design.</small>`}
+    <div class="product-pricing-guide-rows pricing-guide-character-rows">
+      ${Number(product.extra_character_price || 0) > 0 && maximumCharacters > includedCharacters ? `
+        <span><b>Characters ${includedCharacters + 1}-${maximumCharacters}</b><em>+${displaySettingMoney(product.extra_character_price)} each</em></span>
+      ` : ""}
+    </div>
+    ${extraColours.length ? `
+      <div class="pricing-guide-colour-note">
+        <strong>Your first colours are included</strong>
+        <p>Choose ${escapePresetText(includedColourPhrase)} at no extra cost. You only pay when you mix or alternate colours within the same part.</p>
+      </div>
+      <div class="pricing-guide-colour-addons">
+        ${extraColours.map(([label, amount]) => `
+          <span><b>Extra ${escapePresetText(label)} colour</b><em>+${displaySettingMoney(amount)} each</em></span>
+        `).join("")}
+      </div>
+    ` : ""}
+    ${compact ? "" : `<small>Your exact total updates automatically while you design.</small>`}
   `;
 }
 

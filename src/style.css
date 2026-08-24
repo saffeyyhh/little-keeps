@@ -5447,7 +5447,18 @@ body {
 .product-guide-price del { color: #9f8b94; font-size: 11px; }
 .product-guide-price b { color: #b8396b; font-size: 17px; }
 .product-pricing-guide > div > small { display: block; margin-top: 10px; color: #786779; font-size: 10px; line-height: 1.45; }
+.pricing-guide-included {
+  padding: 11px 12px;
+  border: 1px solid #f0cede;
+  border-radius: 12px;
+  background: #fff7fa;
+}
+.pricing-guide-included > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pricing-guide-included span { color: #725664; font-size: 10px; font-weight: 850; }
+.pricing-guide-included strong { color: #c63e73; font-size: 18px; }
+.pricing-guide-included p { margin: 3px 0 0; color: #77646d; font-size: 10px; line-height: 1.45; }
 .product-pricing-guide-rows { display: grid; gap: 6px; }
+.pricing-guide-character-rows:not(:empty) { margin-top: 10px; }
 .product-pricing-guide-rows span {
   padding-top: 6px;
   display: grid;
@@ -5460,6 +5471,29 @@ body {
 .product-pricing-guide-rows span:first-child { padding-top: 0; border-top: 0; }
 .product-pricing-guide-rows b { color: #4f3d55; }
 .product-pricing-guide-rows em { font-style: normal; text-align: right; }
+.pricing-guide-colour-note {
+  margin-top: 11px;
+  padding: 10px 11px;
+  border-radius: 11px;
+  color: #625269;
+  background: #f4eef9;
+}
+.pricing-guide-colour-note strong { display: block; font-size: 10px; }
+.pricing-guide-colour-note p { margin: 3px 0 0; font-size: 9px; line-height: 1.5; }
+.pricing-guide-colour-addons { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px; }
+.pricing-guide-colour-addons span {
+  padding: 7px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #ead9f2;
+  border-radius: 999px;
+  color: #67566d;
+  background: #fff;
+  font-size: 9px;
+}
+.pricing-guide-colour-addons b { font-weight: 750; }
+.pricing-guide-colour-addons em { color: #b03d6d; font-style: normal; font-weight: 900; }
 .photo-product-pricing-guide { margin: 0 0 14px; }
 
 .pencil-design-preview {
