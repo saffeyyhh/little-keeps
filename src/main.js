@@ -626,7 +626,7 @@ function renderProductPricingGuideMarkup(product, { compact = false, showHeading
       </div>
     </div>` : ""}
     <div class="product-pricing-guide-rows">
-      <span><b>Starting price</b><em>Includes up to ${includedCharacters} ${labels.character}${includedCharacters === 1 ? "" : "s"}</em></span>
+      <span><b>Starting price</b><em>${displaySettingMoney(current)} · includes up to ${includedCharacters} ${labels.character}${includedCharacters === 1 ? "" : "s"}</em></span>
       ${Number(product.extra_character_price || 0) > 0 && maximumCharacters > includedCharacters ? `
         <span><b>Extra ${labels.character}</b><em>+${displaySettingMoney(product.extra_character_price)} each · maximum ${maximumCharacters}</em></span>
       ` : ""}
@@ -635,6 +635,16 @@ function renderProductPricingGuideMarkup(product, { compact = false, showHeading
       `).join("")}
     </div>
     ${compact ? "" : `<small>Only selected add-ons are charged. Your exact total updates live as you design.</small>`}
+  `;
+}
+
+function renderProductCardPricingGuide(product) {
+  if (!product?.price_visible) return "";
+  return `
+    <details class="product-pricing-guide product-card-pricing-guide">
+      <summary><span>View pricing guide</span></summary>
+      <div>${renderProductPricingGuideMarkup(product, { compact: true, showHeading: false })}</div>
+    </details>
   `;
 }
 
@@ -1040,6 +1050,7 @@ ${requestedPreviewProductKey ? `
         </div>
         <p>${escapePresetText(modularProduct.description)}</p>
         ${renderProductCardPrice(modularProduct)}
+        ${renderProductCardPricingGuide(modularProduct)}
         <button type="button" data-product-key="${MODULAR_PRODUCT_KEY}" data-view-target="design">
           Design yours <span>→</span>
         </button>
@@ -1066,6 +1077,7 @@ ${requestedPreviewProductKey ? `
         <p>${escapePresetText(solidProduct.description)}</p>
 
         ${renderProductCardPrice(solidProduct)}
+        ${renderProductCardPricingGuide(solidProduct)}
 
         ${solidProduct.status === "active" ? `
           <button type="button" data-product-key="${SOLID_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>
@@ -1090,6 +1102,7 @@ ${requestedPreviewProductKey ? `
         </div>
         <p>${escapePresetText(pencilProduct.description)}</p>
         ${renderProductCardPrice(pencilProduct)}
+        ${renderProductCardPricingGuide(pencilProduct)}
         ${pencilProduct.status === "active"
           ? `<button type="button" data-product-key="${PENCIL_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>`
           : `<button type="button" disabled>Coming soon</button>`}
@@ -1120,6 +1133,7 @@ ${requestedPreviewProductKey ? `
         <p>${escapePresetText(standardProduct.description)}</p>
 
         ${renderProductCardPrice(standardProduct)}
+        ${renderProductCardPricingGuide(standardProduct)}
 
         ${
           standardProduct.status === "active"
@@ -1155,6 +1169,7 @@ ${requestedPreviewProductKey ? `
         </div>
         <p>${escapePresetText(photoProduct.description)}</p>
         ${renderProductCardPrice(photoProduct)}
+        ${renderProductCardPricingGuide(photoProduct)}
         ${photoProduct.status === "active"
           ? `<button type="button" data-photo-product-start>Upload your photo <span>→</span></button>`
           : `<button type="button" disabled>Coming soon</button>`}

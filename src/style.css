@@ -4889,6 +4889,24 @@ body {
 .product-card-price strong { color: #d7467d; font-size: 14px; }
 .product-card-price.is-pending { color: #9b7d89; }
 
+.product-card-pricing-guide {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  border-color: #eadce5;
+  background: #fffafb;
+}
+
+.product-card-pricing-guide > summary {
+  min-height: 40px;
+  padding: 9px 12px;
+  color: #725664;
+  font-size: 10px;
+}
+
+.product-card-pricing-guide > div {
+  padding: 11px 12px 12px;
+}
+
 .product-card-content button {
   grid-column: 2;
   grid-row: 1;
