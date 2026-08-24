@@ -971,10 +971,12 @@ ${requestedPreviewProductKey ? `
     </div>
 
     <div class="hero-offer-card hero-showcase-card">
-      <span class="hero-bestseller-pill">Made to order in Singapore</span>
-      <div class="hero-showcase-art" aria-hidden="true">
-        <i></i><i></i><i></i><i></i><i></i><i></i>
-        <b>LITTLE</b>
+      <div class="hero-showcase-photo">
+        <img
+          src="/images/modular-clicky-keychain.jpg"
+          alt="Colourful personalised Little Keeps clicky keychains"
+        />
+        <span class="hero-bestseller-pill">Made to order in Singapore</span>
       </div>
       <div class="hero-showcase-copy">
         <strong>Make it unmistakably yours.</strong>
