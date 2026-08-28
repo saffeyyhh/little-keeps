@@ -3,6 +3,8 @@ export const SOLID_PRODUCT_KEY = "solid-clicky-keychain";
 export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
+export const READY_MADE_PRODUCT_TYPE = "ready_made";
+export const CUSTOM_PRODUCT_TYPE = "custom";
 const PRODUCT_STATUSES = new Set(["active", "coming_soon", "hidden"]);
 
 export function normalizeProductStatusOverrides(value = {}) {
@@ -241,8 +243,28 @@ const numericFields = [
   "assembly_minutes_per_item",
   "minimum_working_days",
   "maximum_working_days",
-  "sort_order"
+  "sort_order",
+  "stock_quantity"
 ];
+
+export function normalizeProductOptions(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  return source
+    .map(option => ({
+      name: String(option?.name || "").trim(),
+      values: Array.from(new Set(
+        (Array.isArray(option?.values) ? option.values : [])
+          .map(item => String(item || "").trim())
+          .filter(Boolean)
+      ))
+    }))
+    .filter(option => option.name && option.values.length)
+    .slice(0, 5);
+}
+
+export function isReadyMadeProduct(product) {
+  return product?.product_type === READY_MADE_PRODUCT_TYPE;
+}
 
 export function normalizeProductCatalog(rows = []) {
   const savedByKey = new Map(
@@ -316,18 +338,57 @@ export function normalizeProductCatalog(rows = []) {
         return;
       }
       const value = Number(product[field]);
-      product[field] = Number.isFinite(value) ? value : fallback[field];
+      product[field] = Number.isFinite(value) ? value : (fallback[field] ?? 0);
     });
 
     product.launch_price_enabled = product.launch_price_enabled !== false;
     product.price_visible = product.status === "active" || product.price_visible === true;
+    product.product_type = product.product_type || CUSTOM_PRODUCT_TYPE;
+    product.options = normalizeProductOptions(product.options);
+    product.gallery_paths = Array.isArray(product.gallery_paths)
+      ? product.gallery_paths.filter(Boolean)
+      : [];
     return product;
   });
 
   const knownKeys = new Set(defaults.map(product => product.product_key));
   const additional = (Array.isArray(rows) ? rows : [])
     .filter(row => row?.product_key && !knownKeys.has(String(row.product_key)))
-    .map(row => ({ ...row }));
+    .map(row => {
+      const product = {
+        eyebrow: "Ready-made collection",
+        description: "A small-batch Little Keeps design, made in Singapore.",
+        status: "hidden",
+        price_visible: true,
+        usual_base_price: 0,
+        launch_base_price: 0,
+        launch_price_enabled: false,
+        included_characters: 999,
+        extra_character_price: 0,
+        included_base_colours: 1,
+        included_cap_colours: 1,
+        included_letter_colours: 1,
+        extra_base_colour_price: 0,
+        extra_cap_colour_price: 0,
+        extra_letter_colour_price: 0,
+        minimum_characters: 1,
+        maximum_characters: 999,
+        product_type: READY_MADE_PRODUCT_TYPE,
+        stock_quantity: 0,
+        options: [],
+        gallery_paths: [],
+        ...row
+      };
+      numericFields.forEach(field => {
+        const value = Number(product[field]);
+        product[field] = Number.isFinite(value) ? value : 0;
+      });
+      product.options = normalizeProductOptions(product.options);
+      product.gallery_paths = Array.isArray(product.gallery_paths)
+        ? product.gallery_paths.filter(Boolean)
+        : [];
+      return product;
+    });
 
   return [...defaults, ...additional].sort(
     (left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0)

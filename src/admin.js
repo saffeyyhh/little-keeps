@@ -54,11 +54,14 @@ import {
 import {
   DEFAULT_PRODUCT_CATALOG,
   PENCIL_PRODUCT_KEY,
+  READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
-  normalizeProductCatalog
+  normalizeProductCatalog,
+  normalizeProductOptions,
+  isReadyMadeProduct
 } from "./product-catalog.js";
 import {
   COLOUR_MATERIAL_TYPES,
@@ -1567,6 +1570,97 @@ function connectAdminColourInputs(row) {
   });
 }
 
+function parseProductOptionsText(value = "") {
+  return normalizeProductOptions(
+    String(value || "").split(/\n+/).map(line => {
+      const [name, ...choiceParts] = line.split(":");
+      return {
+        name: String(name || "").trim(),
+        values: choiceParts.join(":").split(",").map(item => item.trim())
+      };
+    })
+  );
+}
+
+function makeProductKey(name = "product") {
+  const slug = String(name || "product").toLowerCase().normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 44) || "product";
+  return `ready-${slug}-${Date.now().toString(36)}`;
+}
+
+async function uploadProductImage(file, productKey) {
+  if (!file) return "";
+  if (!/^image\/(jpeg|png|webp)$/i.test(file.type) || file.size > 8 * 1024 * 1024) {
+    throw new Error("Use a JPG, PNG or WebP image up to 8 MB.");
+  }
+  const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const path = `${productKey}/${crypto.randomUUID()}.${extension}`;
+  const { error } = await supabase.storage.from("product-images").upload(path, file, {
+    cacheControl: "3600", contentType: file.type, upsert: false
+  });
+  if (error) throw error;
+  return supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
+}
+
+window.createReadyMadeProduct = async function(button) {
+  const name = document.getElementById("newProductName")?.value.trim();
+  const price = Number(document.getElementById("newProductPrice")?.value);
+  const file = document.getElementById("newProductImage")?.files?.[0];
+  if (!name || !Number.isFinite(price) || price < 0 || !file) {
+    alert("Add a product name, valid price and cover photo first.");
+    return;
+  }
+  const productKey = makeProductKey(name);
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Uploading photo…";
+  try {
+    const imagePath = await uploadProductImage(file, productKey);
+    const product = {
+      product_key: productKey, product_type: READY_MADE_PRODUCT_TYPE, name,
+      sku: document.getElementById("newProductSku")?.value.trim() || "",
+      eyebrow: "Ready-made collection",
+      description: document.getElementById("newProductDescription")?.value.trim() || "A small-batch Little Keeps design, made in Singapore.",
+      status: "hidden", price_visible: true,
+      usual_base_price: price, launch_base_price: price, launch_price_enabled: false,
+      included_characters: 999, extra_character_price: 0,
+      included_base_colours: 1, included_cap_colours: 1, included_letter_colours: 1,
+      extra_base_colour_price: 0, extra_cap_colour_price: 0, extra_letter_colour_price: 0,
+      minimum_characters: 1, maximum_characters: 999,
+      base_print_minutes_fixed: 0, base_print_minutes_per_character: 0,
+      keycap_print_minutes_per_character: 0, assembly_minutes_per_item: 0,
+      stock_quantity: Math.max(0, Math.floor(Number(document.getElementById("newProductStock")?.value) || 0)),
+      options: parseProductOptionsText(document.getElementById("newProductOptions")?.value),
+      gallery_paths: [imagePath], image_path: imagePath, featured: false,
+      production_notes: "Ready-made listing: prepare the selected variant and quantity.",
+      sort_order: Math.max(50, ...adminProductCatalog.map(item => Number(item.sort_order) || 0)) + 10,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase.from("product_catalog").upsert(product).select().single();
+    if (error) throw error;
+    adminProductCatalog = normalizeProductCatalog([...adminProductCatalog, data]);
+    renderSettingsWorkspace();
+    alert("Product draft created ✓ It is hidden until you publish it.");
+  } catch (error) {
+    console.error("Unable to create product listing:", error);
+    alert(`Unable to create the listing.\n\n${error.message || error}\n\nRun ready-made-product-listings.sql if this is the first listing.`);
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+};
+
+window.deleteReadyMadeProduct = async function(productKey) {
+  const product = adminProductCatalog.find(item => item.product_key === productKey);
+  if (!product || !confirm(`Delete ${product.name}? This removes the listing from the shop.`)) return;
+  const { error } = await supabase.from("product_catalog").delete().eq("product_key", productKey);
+  if (error) {
+    alert(`Unable to delete this listing.\n\n${error.message || error}`);
+    return;
+  }
+  adminProductCatalog = adminProductCatalog.filter(item => item.product_key !== productKey);
+  renderSettingsWorkspace();
+};
+
 function renderSettingsWorkspace() {
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
@@ -1591,6 +1685,9 @@ function renderSettingsWorkspace() {
     </label>
   `;
   };
+  const productOptionsText = product => normalizeProductOptions(product.options)
+    .map(option => `${option.name}: ${option.values.join(", ")}`)
+    .join("\n");
 
   ordersContainer.innerHTML = `
     <form id="shopSettingsForm" class="settings-workspace">
@@ -1633,11 +1730,33 @@ function renderSettingsWorkspace() {
             </div>
           ` : ""}
 
+          <details class="new-product-listing" open>
+            <summary>
+              <span><b>＋ Add a ready-made design</b><small>Create a normal shop listing with a photo, stock and selectable options.</small></span>
+            </summary>
+            <div class="new-product-listing-body">
+              <div class="settings-fields two-columns">
+                <label class="settings-field"><span>Product name</span><input id="newProductName" maxlength="80" placeholder="e.g. Strawberry Cat Bag Tag"></label>
+                <label class="settings-field"><span>SKU (optional)</span><input id="newProductSku" maxlength="40" placeholder="e.g. CAT-STRAWBERRY"></label>
+                <label class="settings-field"><span>Price (S$)</span><input id="newProductPrice" type="number" min="0" step="0.10" placeholder="8.90"></label>
+                <label class="settings-field"><span>Opening stock</span><input id="newProductStock" type="number" min="0" step="1" value="0"></label>
+              </div>
+              <label class="settings-field"><span>Short description</span><textarea id="newProductDescription" rows="2" maxlength="240" placeholder="What makes this design special?"></textarea></label>
+              <label class="settings-field"><span>Product photo</span><input id="newProductImage" type="file" accept="image/jpeg,image/png,image/webp"><small>Square or 4:5 photos look best · up to 8 MB.</small></label>
+              <label class="settings-field"><span>Options (optional)</span><textarea id="newProductOptions" rows="3" placeholder="Size: Small, Large&#10;Finish: Keychain, Bag tag"></textarea><small>One option per line. Put the choices after a colon, separated by commas.</small></label>
+              <div class="new-product-actions">
+                <button id="createReadyMadeProductBtn" class="ready-btn" type="button" onclick="window.createReadyMadeProduct(this)">Create hidden draft</button>
+                <span class="hint">It stays hidden until you review the listing and change it to Available.</span>
+              </div>
+            </div>
+          </details>
+
           <div class="product-settings-grid">
             ${adminProductCatalog.map(product => {
               const prefix = `product:${product.product_key}:`;
               const isSolidDraft = product.product_key === "solid-clicky-keychain";
               const isPencilDraft = product.product_key === PENCIL_PRODUCT_KEY;
+              const isReadyMade = isReadyMadeProduct(product);
 
               return `
                 <article class="product-settings-card ${product.status === "active" ? "is-active" : ""}">
@@ -1669,6 +1788,25 @@ function renderSettingsWorkspace() {
                       ` : ""}
                       ${isPencilDraft ? `
                         <p class="product-draft-note">Draft suggestion: S$7.90 launch, then S$9.90. Keep it Coming soon until you confirm the full pencil print time and final price.</p>
+                      ` : ""}
+
+                      ${isReadyMade ? `
+                        <section class="product-price-group ready-made-listing-fields">
+                          <div class="product-price-group-heading"><strong>Listing details</strong><small>These appear on the shop card and product window.</small></div>
+                          ${product.image_path ? `<img class="product-admin-cover" src="${escapeAdminHtml(product.image_path)}" alt="${escapeAdminHtml(product.name)}">` : ""}
+                          <div class="settings-fields two-columns">
+                            <label class="settings-field"><span>Product name</span><input name="${escapeAdminHtml(prefix)}name" maxlength="80" value="${escapeAdminHtml(product.name)}"></label>
+                            <label class="settings-field"><span>SKU</span><input name="${escapeAdminHtml(prefix)}sku" maxlength="40" value="${escapeAdminHtml(product.sku || "")}"></label>
+                            <label class="settings-field"><span>Collection label</span><input name="${escapeAdminHtml(prefix)}eyebrow" maxlength="60" value="${escapeAdminHtml(product.eyebrow || "Ready-made collection")}"></label>
+                            ${productNumberField(product, "stock_quantity", "Available stock", "1")}
+                          </div>
+                          <label class="settings-field"><span>Description</span><textarea name="${escapeAdminHtml(prefix)}description" rows="3" maxlength="240">${escapeAdminHtml(product.description || "")}</textarea></label>
+                          <label class="settings-field"><span>Change cover photo</span><input type="file" accept="image/jpeg,image/png,image/webp" data-product-image="${escapeAdminHtml(product.product_key)}"></label>
+                          <input name="${escapeAdminHtml(prefix)}image_path" type="hidden" value="${escapeAdminHtml(product.image_path || "")}">
+                          <label class="settings-field"><span>Options</span><textarea name="${escapeAdminHtml(prefix)}options" rows="4" placeholder="Size: Small, Large">${escapeAdminHtml(productOptionsText(product))}</textarea><small>Example: Colour: Pink, Blue</small></label>
+                          <label class="settings-toggle"><input name="${escapeAdminHtml(prefix)}featured" type="checkbox" ${checked(product.featured)}> Feature this product</label>
+                          <button type="button" class="delete-product-btn" onclick="window.deleteReadyMadeProduct('${escapeAdminHtml(product.product_key)}')">Delete draft/listing</button>
+                        </section>
                       ` : ""}
 
                       <section class="product-price-group">
@@ -2269,8 +2407,25 @@ async function saveShopSettings(event) {
     "keycap_print_minutes_per_character",
     "assembly_minutes_per_item",
     "minimum_working_days",
-    "maximum_working_days"
+    "maximum_working_days",
+    "stock_quantity"
   ];
+  for (const product of adminProductCatalog.filter(isReadyMadeProduct)) {
+    const input = Array.from(event.currentTarget.querySelectorAll("[data-product-image]"))
+      .find(element => element.dataset.productImage === product.product_key);
+    const file = input?.files?.[0];
+    if (!file) continue;
+    try {
+      const imagePath = await uploadProductImage(file, product.product_key);
+      const fieldName = `product:${product.product_key}:image_path`;
+      const hidden = event.currentTarget.elements.namedItem(fieldName);
+      if (hidden) hidden.value = imagePath;
+      form.set(fieldName, imagePath);
+    } catch (error) {
+      alert(`Unable to upload the photo for ${product.name}.\n\n${error.message || error}`);
+      return;
+    }
+  }
   const productUpdates = adminProductCatalog.map(product => {
     const prefix = `product:${product.product_key}:`;
     const productUpdate = {
@@ -2281,6 +2436,17 @@ async function saveShopSettings(event) {
       production_notes: String(form.get(`${prefix}production_notes`) || "").trim(),
       updated_at: new Date().toISOString()
     };
+
+    if (isReadyMadeProduct(product)) {
+      productUpdate.name = String(form.get(`${prefix}name`) || product.name).trim();
+      productUpdate.sku = String(form.get(`${prefix}sku`) || "").trim();
+      productUpdate.eyebrow = String(form.get(`${prefix}eyebrow`) || "Ready-made collection").trim();
+      productUpdate.description = String(form.get(`${prefix}description`) || "").trim();
+      productUpdate.image_path = String(form.get(`${prefix}image_path`) || product.image_path || "").trim();
+      productUpdate.gallery_paths = productUpdate.image_path ? [productUpdate.image_path] : [];
+      productUpdate.options = parseProductOptionsText(form.get(`${prefix}options`));
+      productUpdate.featured = form.has(`${prefix}featured`);
+    }
 
     productNumberFields.forEach(field => {
       const rawValue = String(form.get(`${prefix}${field}`) ?? "").trim();
@@ -4865,6 +5031,10 @@ function renderOrders(orders) {
     const photoProduct = isPhotoKeepsake(order, item);
     const customNameProduct = isCustomNameKeychain(order, item);
     const pencilProduct = isPencilClicker(order, item);
+    const readyMadeProduct = isReadyMadeOrderItem(item);
+    const readyMadeSelections = Object.entries(item.design?.ready_made?.selections || {})
+      .map(([label, value]) => `${label}: ${value}`)
+      .join(" · ");
 
     return `
       <div class="order-preview-item">
@@ -4877,7 +5047,10 @@ function renderOrders(orders) {
             </span>
           ` : ""}
 
-          ${photoProduct ? `
+          ${readyMadeProduct ? `
+            <span class="assembly-tag">Ready-made design</span>
+            <span class="assembly-tag">× ${Math.max(1, Number(item.quantity) || 1)}</span>
+          ` : photoProduct ? `
             <span class="assembly-tag">Photo Keepsake</span>
             <span class="assembly-tag">Classic Keychain</span>
             <span class="assembly-tag">${Number(item.design?.photo?.colour_count || 4)} Stocked Colours</span>
@@ -4899,7 +5072,12 @@ function renderOrders(orders) {
           ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
         </div>
 
-        ${photoProduct ? `
+        ${readyMadeProduct ? `
+          <div class="assembly-ready-made-summary">
+            ${item.design?.ready_made?.image_path ? `<img src="${escapeAdminHtml(item.design.ready_made.image_path)}" alt="">` : ""}
+            <span>${escapeAdminHtml(readyMadeSelections || "No options selected")}</span>
+          </div>
+        ` : photoProduct ? `
           <div class="assembly-photo-summary">Private artwork saved · download the STL pack under Production → Custom Prints</div>
         ` : pencilProduct ? `
           <div class="assembly-photo-summary">All pencil-part colours saved · prepare and track it under Production → Custom Prints</div>
@@ -5828,6 +6006,10 @@ function isSolidClickyKeychain(order, item) {
 
 function isPencilClicker(order, item) {
   return String(item?.product_key || order?.product_key || "") === PENCIL_PRODUCT_KEY;
+}
+
+function isReadyMadeOrderItem(item) {
+  return item?.product_type === READY_MADE_PRODUCT_TYPE || Boolean(item?.design?.ready_made);
 }
 
 function getPencilClickerInventoryName(order, item, itemIndex = 0) {
@@ -6893,6 +7075,7 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
     );
 
     items.forEach((item, itemIndex) => {
+      if (isReadyMadeOrderItem(item)) return;
       const cleanName = item.clean_name || item.name || "";
       const letters = Array.from(cleanName);
       const design = item.design;
@@ -7049,6 +7232,7 @@ function getOrderPrintableInventoryNeeds(order) {
   (order.order_data || [])
     .filter(item => !item.assembly_completed)
     .forEach((item, itemIndex) => {
+      if (isReadyMadeOrderItem(item)) return;
       const characters = Array.from(
         item.clean_name || sanitizeName(item.name || "")
       );
@@ -12670,6 +12854,9 @@ async function generateCustomerOrderPdf(order, items) {
 
   items.forEach((item, index) => {
     const design = item.design || {};
+    const readyMadeProduct = isReadyMadeOrderItem(item);
+    const readyMadeSelections = Object.entries(design.ready_made?.selections || {})
+      .map(([label, value]) => `${label}: ${value}`);
     const bases = Array.isArray(design.bases) && design.bases.length
       ? design.bases
       : ["#f6a9c2"];
@@ -12679,7 +12866,9 @@ async function generateCustomerOrderPdf(order, items) {
     const letters = Array.isArray(design.letters) && design.letters.length
       ? design.letters
       : ["#332d30"];
-    const baseShape = isSolidClickyKeychain(order, item)
+    const baseShape = readyMadeProduct
+      ? "Ready-made design"
+      : isSolidClickyKeychain(order, item)
       ? `${getBaseShapeLabel(getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length))} Base`
       : design.base_shape?.label || (design.base_shape?.key === "bubbly" ? "Bubbly Base" : "Ribbed Base");
     const letterOrientation = getLetterOrientation(design);
@@ -12687,11 +12876,19 @@ async function generateCustomerOrderPdf(order, items) {
     const baseNames = getPdfColourNames(bases);
     const capNames = getPdfColourNames(caps);
     const letterNames = getPdfColourNames(letters);
-    const characters = Array.from(
+    const characters = readyMadeProduct ? [] : Array.from(
       item.clean_name || sanitizeName(item.name || "")
     );
     const iconLegend = getPdfIconLegend(item);
-    const colourLines = [
+    const colourLines = readyMadeProduct ? [
+      ...(item.group_contributor_name
+        ? [`Group member: ${getCompactPdfText(item.group_contributor_name)}`]
+        : []),
+      ...(readyMadeSelections.length
+        ? readyMadeSelections.map(selection => getCompactPdfText(selection))
+        : ["Options: None selected"]),
+      `Quantity: ${Math.max(1, Number(item.quantity) || 1)}`
+    ] : [
       ...(item.group_contributor_name
         ? pdf.splitTextToSize(
             `Group member: ${getCompactPdfText(item.group_contributor_name)}`,
@@ -12727,7 +12924,7 @@ async function generateCustomerOrderPdf(order, items) {
           )
         : [])
     ];
-    const cardHeight = 34 + colourLines.length * 3.8;
+    const cardHeight = (readyMadeProduct ? 22 : 34) + colourLines.length * 3.8;
 
     addPageIfNeeded(cardHeight + 5);
     pdf.setFillColor(255, 255, 255);
@@ -12754,7 +12951,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);
     pdf.text(
-      getCompactPdfText(`${baseShape} · ${letterOrientationLabel}`),
+      getCompactPdfText(readyMadeProduct ? baseShape : `${baseShape} · ${letterOrientationLabel}`),
       margin + 5,
       y + 12
     );
@@ -12823,7 +13020,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setTextColor(...muted);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.5);
-    pdf.text(colourLines, margin + 5, y + 31);
+    pdf.text(colourLines, margin + 5, y + (readyMadeProduct ? 18 : 31));
     y += cardHeight + 5;
   });
 

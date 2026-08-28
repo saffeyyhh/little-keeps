@@ -40,6 +40,7 @@ import {
   STANDARD_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
+  READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
   calculateProductUnitPrice,
@@ -48,7 +49,9 @@ import {
   getProductDisplayPrice,
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
-  normalizeProductCatalog
+  normalizeProductCatalog,
+  normalizeProductOptions,
+  isReadyMadeProduct
 } from "./product-catalog.js";
 import {
   DEFAULT_COLOUR_OPTIONS,
@@ -506,6 +509,7 @@ const standardProduct = getProductByKey(
 );
 const photoProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
 const pencilProduct = getProductByKey(productCatalog, PENCIL_PRODUCT_KEY);
+const readyMadeProducts = productCatalog.filter(isReadyMadeProduct);
 
 let activeProduct = modularProduct;
 
@@ -589,7 +593,7 @@ function renderProductCardPrice(product) {
   return `
     <span class="product-card-price ${launchActive ? "has-launch-price" : ""}">
       ${launchActive ? `<small>Launch</small><del>${displaySettingMoney(usual)}</del>` : ""}
-      <strong>From ${displaySettingMoney(current)}</strong>
+      <strong>${isReadyMadeProduct(product) ? "" : "From "}${displaySettingMoney(current)}</strong>
     </span>
   `;
 }
@@ -669,6 +673,30 @@ function renderProductCardPricingGuide(product) {
       <summary><span>View pricing guide</span></summary>
       <div>${renderProductPricingGuideMarkup(product, { compact: true, showHeading: false })}</div>
     </details>
+  `;
+}
+
+function renderReadyMadeProductCard(product) {
+  if (product.status === "hidden") return "";
+  const soldOut = Number(product.stock_quantity || 0) <= 0;
+  const unavailable = product.status !== "active" || soldOut;
+  return `
+    <article class="product-card ready-made-product-card ${unavailable ? "product-card-coming" : "product-card-current"}">
+      <div class="product-card-visual">
+        ${product.image_path
+          ? `<img src="${escapePresetText(product.image_path)}" alt="${escapePresetText(product.name)}" loading="lazy">`
+          : `<div class="ready-made-image-placeholder">Little Keeps</div>`}
+        <span class="product-card-badge">${soldOut ? "Sold out" : product.status === "active" ? "Ready to order" : "Coming soon"}</span>
+      </div>
+      <div class="product-card-content">
+        <div><small>${escapePresetText(product.eyebrow || "Ready-made collection")}</small><h3>${escapePresetText(product.name)}</h3></div>
+        <p>${escapePresetText(product.description || "A small-batch Little Keeps design.")}</p>
+        ${renderProductCardPrice(product)}
+        <button type="button" data-ready-product="${escapePresetText(product.product_key)}" ${unavailable ? "disabled" : ""}>
+          ${soldOut ? "Sold out" : product.status === "active" ? "Choose options" : "Coming soon"}<span>→</span>
+        </button>
+      </div>
+    </article>
   `;
 }
 
@@ -849,7 +877,7 @@ ${requestedPreviewProductKey ? `
       data-view-target="design"
     >
       <span>✿</span>
-      Design Your Keychain
+      Create a Custom Piece
     </button>
 
     <button
@@ -913,7 +941,7 @@ ${requestedPreviewProductKey ? `
   <div class="cart-drawer-header">
     <div>
       <p class="side-menu-eyebrow">Your order</p>
-      <h2>Shopping Cart ♡</h2>
+      <h2>Your Cart</h2>
     </div>
 
     <button
@@ -970,16 +998,16 @@ ${requestedPreviewProductKey ? `
   <div class="hero-inner">
     <div class="hero-copy">
       <p class="hero-eyebrow">
-        Made especially for you
+        Thoughtfully made in Singapore
       </p>
 
       <h1>
-        Tiny keepsakes,
-        <span>made personal.</span>
+        Small things,
+        <span>made special.</span>
       </h1>
 
       <p class="hero-description">
-        Design a clicky keychain in your favourite colours.
+        Personalised gifts and cheerful little designs, made in small batches just for you.
       </p>
 
       <div class="hero-actions">
@@ -988,7 +1016,7 @@ ${requestedPreviewProductKey ? `
           type="button"
           class="hero-button"
         >
-          View Products
+          Shop the collection
           <span>→</span>
         </button>
 
@@ -1013,13 +1041,13 @@ ${requestedPreviewProductKey ? `
         <span class="hero-bestseller-pill">Made to order in Singapore</span>
       </div>
       <div class="hero-showcase-copy">
-        <strong>Make it unmistakably yours.</strong>
-        <p>Choose a product, personalise every detail and see it before ordering.</p>
+        <strong>Designed with care. Made to keep.</strong>
+        <p>Choose a ready-made favourite or create something completely personal.</p>
       </div>
       <div class="hero-showcase-points">
-        <span>Live preview</span>
-        <span>Made by hand</span>
-        <span>Group orders</span>
+        <span>Made in Singapore</span>
+        <span>Small-batch quality</span>
+        <span>Personalised for you</span>
       </div>
     </div>
   </div>
@@ -1049,8 +1077,8 @@ ${requestedPreviewProductKey ? `
 
 <section id="productsSection" class="products-section" data-store-view="shop" aria-labelledby="productsHeading">
   <div class="products-heading">
-    <p class="section-eyebrow">Our Products</p>
-    <h2 id="productsHeading">Choose your little keep</h2>
+    <p class="section-eyebrow">The Little Keeps collection</p>
+    <h2 id="productsHeading">Find something made for you</h2>
   </div>
 
   <div class="product-card-grid">
@@ -1201,9 +1229,18 @@ ${requestedPreviewProductKey ? `
     </article>
   ` : ""}
 
+  ${readyMadeProducts.map(renderReadyMadeProductCard).join("")}
+
 </div>
   </div>
 </section>
+
+<div id="readyMadeProductModal" class="ready-made-product-modal hidden" role="dialog" aria-modal="true" aria-labelledby="readyMadeProductTitle">
+  <div class="ready-made-product-dialog">
+    <button id="closeReadyMadeProductModal" class="photo-modal-close" type="button" aria-label="Close">×</button>
+    <div id="readyMadeProductModalContent"></div>
+  </div>
+</div>
 
 <div id="photoKeepsakeModal" class="photo-keepsake-modal hidden" role="dialog" aria-modal="true" aria-labelledby="photoKeepsakeTitle">
   <div class="photo-keepsake-dialog">
@@ -2026,7 +2063,7 @@ Chloe</textarea>
 
         <div class="review-summary">
           <p>
-            Total keychains:
+            Total items:
             <strong id="reviewCount">0</strong>
           </p>
 
@@ -2589,6 +2626,9 @@ const giftingBagQuantityInput = document.getElementById("giftingBagQuantity");
 const giftingBagDecrease = document.getElementById("giftingBagDecrease");
 const giftingBagIncrease = document.getElementById("giftingBagIncrease");
 const giftingBagStockStatus = document.getElementById("giftingBagStockStatus");
+const readyMadeProductModal = document.getElementById("readyMadeProductModal");
+const closeReadyMadeProductModal = document.getElementById("closeReadyMadeProductModal");
+const readyMadeProductModalContent = document.getElementById("readyMadeProductModalContent");
 const photoKeepsakeModal = document.getElementById("photoKeepsakeModal");
 const closePhotoKeepsakeModal = document.getElementById("closePhotoKeepsakeModal");
 const photoKeepsakeInput = document.getElementById("photoKeepsakeInput");
@@ -4247,6 +4287,9 @@ function getUniqueColourCount(colours) {
 }
 
 function calculatePrice(design, name = "", product = activeProduct) {
+  if (isReadyMadeProduct(product)) {
+    return roundMoney(getProductDisplayPrice(product));
+  }
   const characterCount = Array.from(sanitizeName(name)).length;
 
   const productPrice = calculateProductUnitPrice({
@@ -4264,6 +4307,10 @@ function calculatePrice(design, name = "", product = activeProduct) {
 }
 
 function getUnitPriceBreakdown(design, name = "", product = activeProduct) {
+  if (isReadyMadeProduct(product)) {
+    const unitTotal = roundMoney(getProductDisplayPrice(product));
+    return { rows: [{ label: "Product price", amount: unitTotal, addOn: false }], unitTotal };
+  }
   const characterCount = Array.from(sanitizeName(name)).length;
   const includedCharacters = Math.max(0, Number(product.included_characters) || 0);
   const extraCharacters = Math.max(0, characterCount - includedCharacters);
@@ -6342,6 +6389,9 @@ horizontalLetterBtn.onclick = () => {
 };
 
 function createMiniPreview(name, design, product = activeProduct) {
+  if (isReadyMadeProduct(product)) {
+    return `<div class="mini-ready-made"><img src="${escapePresetText(design.readyMade?.imagePath || product.image_path || "")}" alt="${escapePresetText(product.name)}"></div>`;
+  }
   if (product.product_key === PHOTO_PRODUCT_KEY && design.photo?.artworkUrl) {
     return `<div class="mini-photo-keepsake"><img src="${escapePresetText(design.photo.artworkUrl)}" alt="${escapePresetText(name)} artwork"></div>`;
   }
@@ -6402,6 +6452,12 @@ function createMiniPreview(name, design, product = activeProduct) {
 }
 
 function getDesignDescription(design, product = activeProduct) {
+  if (isReadyMadeProduct(product)) {
+    const selections = Object.entries(design.readyMade?.selections || {});
+    return selections.length
+      ? selections.map(([name, value]) => `${escapePresetText(name)}: ${escapePresetText(value)}`).join(" · ")
+      : "Ready-made design";
+  }
   if (product.product_key === PHOTO_PRODUCT_KEY) {
     return design.photo?.variant === "clicker"
       ? "AI simplified artwork · Clicker keychain"
@@ -6426,6 +6482,9 @@ function getDesignDescription(design, product = activeProduct) {
 }
 
 function getDesignColourSummary(design, product = activeProduct) {
+  if (isReadyMadeProduct(product)) {
+    return product.stock_quantity > 0 ? "Made in small batches" : "Made to order";
+  }
   if (product.product_key === PHOTO_PRODUCT_KEY) {
     return `Up to ${Number(design.photo?.colourCount || 4)} stocked filament colours · final printability check included`;
   }
@@ -6645,9 +6704,7 @@ function renderReviewOrder() {
 
           <p class="review-colour-summary">${getDesignColourSummary(design, product)}</p>
 
-          <p class="item-dimension-note">
-            📏 ${getApproximateSizeText(item.name, product, design)}
-          </p>
+          ${isReadyMadeProduct(product) ? "" : `<p class="item-dimension-note">📏 ${getApproximateSizeText(item.name, product, design)}</p>`}
         </div>
 
         <div class="review-line-price">
@@ -7140,6 +7197,7 @@ async function submitOrderOnce() {
       return {
         product_key: itemProduct.product_key,
         product_name: itemProduct.name,
+        product_type: itemProduct.product_type || "custom",
         name: item.name,
         clean_name: sanitizeName(item.name),
         group_contributor_name: item.groupContributorName || null,
@@ -7151,6 +7209,11 @@ async function submitOrderOnce() {
         gifting_bag_quantity: includesGiftingBag ? giftingBagQuantity : 0,
 
         design: {
+          ready_made: design.readyMade ? {
+            sku: itemProduct.sku || "",
+            image_path: design.readyMade.imagePath || itemProduct.image_path || "",
+            selections: design.readyMade.selections || {}
+          } : null,
           font_size_mm: getStandardFontSize(design),
           pencil: itemProduct.product_key === PENCIL_PRODUCT_KEY ? (() => {
             const pencil = normalizePencilDesign(design.pencil);
@@ -8323,16 +8386,16 @@ function renderCartDrawer() {
       <div class="empty-cart">
         <div class="empty-cart-icon">♡</div>
         <h3>Your cart is empty</h3>
-        <p>Design a personalised keychain to get started.</p>
+        <p>Choose a ready-made favourite or create something personal.</p>
       </div>
     `;
 
     checkoutFromCartBtn.disabled = true;
-    checkoutFromCartBtn.textContent = "Add a keychain first";
+    checkoutFromCartBtn.textContent = "Add an item first";
     sharedGroupCartBtn.classList.toggle("hidden", !activeSharedGroup?.is_owner);
     sharedGroupCartBtn.disabled = !activeSharedGroup?.is_owner;
     sharedGroupCartBtn.textContent = "Review Group Order";
-    continueShoppingBtn.textContent = "Start Designing";
+    continueShoppingBtn.textContent = "Shop Products";
     return;
   }
 
@@ -8365,9 +8428,7 @@ function renderCartDrawer() {
               <p>${escapePresetText(product.name)}</p>
               <p>${designDescription}</p>
               ${itemQuantity > 1 ? `<p>${displaySettingMoney(unitPrice)} each</p>` : ""}
-              <p class="item-dimension-note">
-                📏 ${getApproximateSizeText(item.name, product, design)}
-              </p>
+              ${isReadyMadeProduct(product) ? "" : `<p class="item-dimension-note">📏 ${getApproximateSizeText(item.name, product, design)}</p>`}
             </div>
 
             <strong class="cart-item-price">
@@ -8432,6 +8493,11 @@ window.editCartItem = function(index) {
 
   closeCartDrawer();
 
+  if (isReadyMadeProduct(activeProduct)) {
+    openReadyMadeProduct(activeProduct.product_key, item);
+    return;
+  }
+
   if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
     const design = getDesign(item);
     photoKeepsakeLabel.value = item?.name || "";
@@ -8473,6 +8539,16 @@ window.duplicateCartItem = async function(index) {
   const original = names[index];
   if (!original) return;
   activeProduct = getItemProduct(original);
+  if (isReadyMadeProduct(activeProduct)) {
+    const duplicate = JSON.parse(JSON.stringify(original));
+    names.splice(index + 1, 0, duplicate);
+    selectedIndex = index + 1;
+    draftHasMeaningfulChanges = true;
+    renderCartDrawer();
+    refreshUI();
+    saveDraft();
+    return;
+  }
   const newName = prompt("Name for the duplicated design:", original.name);
   if (newName === null) return;
   const cleanName = sanitizeName(newName);
@@ -9296,6 +9372,74 @@ function isSecureWebUrl(value) {
     return false;
   }
 }
+
+function closeReadyMadeProduct() {
+  readyMadeProductModal?.classList.add("hidden");
+  document.body.classList.remove("modal-open");
+}
+
+function openReadyMadeProduct(productKey, existingItem = null) {
+  const product = productCatalog.find(item => item.product_key === productKey);
+  if (!product || !isReadyMadeProduct(product) || !readyMadeProductModalContent) return;
+  const options = normalizeProductOptions(product.options);
+  const previousSelections = existingItem?.custom?.readyMade?.selections || {};
+  readyMadeProductModalContent.innerHTML = `
+    <div class="ready-made-product-layout">
+      <div class="ready-made-product-image">
+        ${product.image_path ? `<img src="${escapePresetText(product.image_path)}" alt="${escapePresetText(product.name)}">` : ""}
+      </div>
+      <div class="ready-made-product-details">
+        <p class="section-eyebrow">${escapePresetText(product.eyebrow || "Ready-made collection")}</p>
+        <h2 id="readyMadeProductTitle">${escapePresetText(product.name)}</h2>
+        <p>${escapePresetText(product.description || "A small-batch Little Keeps design.")}</p>
+        <strong class="ready-made-product-price">${displaySettingMoney(getProductDisplayPrice(product))}</strong>
+        <div class="ready-made-product-options">
+          ${options.map((option, index) => `
+            <label><span>${escapePresetText(option.name)}</span><select data-ready-option="${escapePresetText(option.name)}">
+              ${option.values.map(value => `<option value="${escapePresetText(value)}" ${previousSelections[option.name] === value ? "selected" : ""}>${escapePresetText(value)}</option>`).join("")}
+            </select></label>
+          `).join("")}
+          <label><span>Quantity</span><input id="readyMadeQuantity" type="number" min="1" max="${Math.max(1, Number(product.stock_quantity) || 1)}" value="${getItemQuantity(existingItem || {})}"></label>
+        </div>
+        <p class="ready-made-stock-note">${Number(product.stock_quantity)} available</p>
+        <button id="addReadyMadeToCartBtn" class="submit-btn" type="button">${existingItem ? "Update cart" : "Add to cart"}</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("addReadyMadeToCartBtn")?.addEventListener("click", () => {
+    const selections = Object.fromEntries(Array.from(readyMadeProductModalContent.querySelectorAll("[data-ready-option]")).map(select => [select.dataset.readyOption, select.value]));
+    const quantity = Math.min(Number(product.stock_quantity), normalizeItemQuantity(document.getElementById("readyMadeQuantity")?.value));
+    const design = {
+      baseShape: "ready-made", letterOrientation: "vertical", fontSize: 0,
+      bases: ["#FFFFFF"], caps: ["#FFFFFF"], letters: ["#332D30"],
+      readyMade: { selections, imagePath: product.image_path || "", sku: product.sku || "" }
+    };
+    if (existingItem) {
+      existingItem.quantity = quantity;
+      existingItem.custom = design;
+    } else {
+      names = names.filter(item => cartHasItems && item.cartAdded !== false);
+      names.push({ name: product.name, quantity, product_key: product.product_key, cartAdded: true, custom: design });
+      selectedIndex = names.length - 1;
+    }
+    cartHasItems = true;
+    draftHasMeaningfulChanges = true;
+    closeReadyMadeProduct();
+    refreshUI();
+    renderCartDrawer();
+    openCartDrawer();
+  });
+  readyMadeProductModal.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+}
+
+document.querySelectorAll("[data-ready-product]").forEach(button => {
+  button.addEventListener("click", () => openReadyMadeProduct(button.dataset.readyProduct));
+});
+closeReadyMadeProductModal?.addEventListener("click", closeReadyMadeProduct);
+readyMadeProductModal?.addEventListener("click", event => {
+  if (event.target === readyMadeProductModal) closeReadyMadeProduct();
+});
 
 document.querySelectorAll("[data-photo-product-start]").forEach(button => {
   button.addEventListener("click", openPhotoKeepsakeStudio);

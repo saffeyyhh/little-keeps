@@ -6,6 +6,7 @@ import {
   formatProductUnitsSold,
   MODULAR_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
+  READY_MADE_PRODUCT_TYPE,
   PHOTO_PRODUCT_KEY,
   SOLID_PRODUCT_KEY,
   STANDARD_PRODUCT_KEY,
@@ -16,8 +17,38 @@ import {
   getProductByKey,
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
-  normalizeProductCatalog
+  normalizeProductCatalog,
+  normalizeProductOptions,
+  isReadyMadeProduct
 } from "../src/product-catalog.js";
+
+test("normalizes ready-made product options and stock", () => {
+  const catalogue = normalizeProductCatalog([{
+    product_key: "ready-strawberry-cat",
+    product_type: READY_MADE_PRODUCT_TYPE,
+    name: "Strawberry Cat",
+    status: "active",
+    usual_base_price: "8.90",
+    launch_base_price: "8.90",
+    stock_quantity: "12",
+    options: [
+      { name: "Finish", values: ["Keychain", "Bag tag", "Keychain"] },
+      { name: "", values: ["Ignore"] }
+    ]
+  }]);
+  const product = catalogue.find(item => item.product_key === "ready-strawberry-cat");
+
+  assert.equal(isReadyMadeProduct(product), true);
+  assert.equal(product.stock_quantity, 12);
+  assert.deepEqual(product.options, [{ name: "Finish", values: ["Keychain", "Bag tag"] }]);
+});
+
+test("limits product options to usable named choices", () => {
+  assert.deepEqual(normalizeProductOptions([
+    { name: " Colour ", values: [" Pink ", "", "Blue"] },
+    null
+  ]), [{ name: "Colour", values: ["Pink", "Blue"] }]);
+});
 
 test("formats product social proof by keychain quantity", () => {
   assert.equal(formatProductUnitsSold(1), "1 keychain sold ♡");
