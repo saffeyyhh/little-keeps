@@ -593,6 +593,132 @@ body.cart-open {
   cursor: pointer;
 }
 
+.prepared-checkout-cart-btn {
+  min-height: 46px;
+  border: 1px solid #8f5869;
+  border-radius: 13px;
+  color: #fff;
+  background: #8f5869;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.prepared-checkout-modal-card {
+  width: min(620px, calc(100vw - 28px));
+  text-align: left;
+}
+
+.prepared-checkout-modal-card > p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.prepared-discount-grid {
+  margin: 18px 0;
+  display: grid;
+  grid-template-columns: 1.1fr .75fr .9fr;
+  gap: 10px;
+}
+
+.prepared-discount-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.prepared-discount-grid input,
+.prepared-discount-grid select {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+  font: inherit;
+}
+
+.prepared-checkout-result {
+  margin-top: 15px;
+  padding: 14px;
+  border: 1px solid #cfded3;
+  border-radius: 14px;
+  background: #f4faf5;
+}
+
+.prepared-checkout-result label {
+  display: block;
+  margin-bottom: 6px;
+  color: #2f6543;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.prepared-checkout-result > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.prepared-checkout-result input {
+  min-width: 0;
+  margin: 0;
+  background: #fff;
+}
+
+.prepared-checkout-result button {
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: #397451;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.prepared-checkout-result small {
+  display: block;
+  margin-top: 8px;
+  color: #557160;
+  line-height: 1.45;
+}
+
+.prepared-checkout-customer-notice {
+  margin-bottom: 17px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dfc7cd;
+  border-radius: 14px;
+  background: #fff8f6;
+}
+
+.prepared-checkout-customer-notice strong {
+  color: #7b4857;
+}
+
+.prepared-checkout-customer-notice span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body.prepared-checkout-mode [data-view-target="design"] {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .prepared-discount-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .prepared-checkout-result > div {
+    grid-template-columns: 1fr;
+  }
+}
+
 .shared-group-cart-btn:disabled {
   opacity: .5;
   cursor: not-allowed;

@@ -987,6 +987,14 @@ ${requestedPreviewProductKey ? `
     </button>
 
     <button
+      id="prepareCustomerCheckoutBtn"
+      type="button"
+      class="prepared-checkout-cart-btn hidden"
+    >
+      Send Checkout to Customer
+    </button>
+
+    <button
       id="checkoutFromCartBtn"
       type="button"
       class="submit-btn"
@@ -995,6 +1003,47 @@ ${requestedPreviewProductKey ? `
     </button>
   </div>
 </aside>
+
+<div id="preparedCheckoutModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="preparedCheckoutTitle">
+  <div class="modal-card prepared-checkout-modal-card">
+    <button id="closePreparedCheckoutBtn" type="button" class="modal-close" aria-label="Close">×</button>
+    <p class="modal-eyebrow">Prepared by Little Keeps</p>
+    <h2 id="preparedCheckoutTitle">Send this cart to your customer</h2>
+    <p>They’ll review your finished designs, fill in their details and pay from their own device.</p>
+
+    <div class="prepared-discount-grid">
+      <label>
+        <span>Discount</span>
+        <select id="preparedDiscountType">
+          <option value="none">No discount</option>
+          <option value="percent">Percentage off</option>
+          <option value="fixed">Fixed amount off</option>
+        </select>
+      </label>
+      <label>
+        <span>Value</span>
+        <input id="preparedDiscountValue" type="number" min="0" step="0.01" value="0" inputmode="decimal" disabled>
+      </label>
+      <label>
+        <span>Link expires after</span>
+        <select id="preparedCheckoutExpiry">
+          <option value="3">3 days</option>
+          <option value="7" selected>7 days</option>
+          <option value="14">14 days</option>
+          <option value="30">30 days</option>
+        </select>
+      </label>
+    </div>
+
+    <button id="createPreparedCheckoutBtn" type="button" class="submit-btn">Create Customer Checkout Link</button>
+    <p id="preparedCheckoutStatus" class="hint" aria-live="polite"></p>
+    <div id="preparedCheckoutResult" class="prepared-checkout-result hidden">
+      <label for="preparedCheckoutLink">Customer link</label>
+      <div><input id="preparedCheckoutLink" readonly><button id="copyPreparedCheckoutLinkBtn" type="button">Copy Link</button></div>
+      <small>The discount is already included. Your customer only needs to review, enter their details and pay.</small>
+    </div>
+  </div>
+</div>
 
 <section id="designScreen" class="design-screen">
 
@@ -2067,6 +2116,10 @@ Chloe</textarea>
       </div>
 
       <div class="review-box">
+        <div id="preparedCheckoutCustomerNotice" class="prepared-checkout-customer-notice hidden">
+          <strong>Little Keeps prepared this order for you ♡</strong>
+          <span>Please check every name and design below, then fill in your details to continue.</span>
+        </div>
 <h3>Order Summary</h3>
 
         <div class="review-summary">
@@ -2084,7 +2137,7 @@ Chloe</textarea>
         <div id="reviewList"></div>
       </div>
 
-      <div class="promo-box">
+      <div id="promoBox" class="promo-box">
         <h3>Have a promo code? ♡</h3>
 
         <div class="promo-code-row">
@@ -2546,6 +2599,9 @@ const PROMO_CODES = promoCodeRows.length
   : fallbackPromoCodes;
 
 let appliedPromoCode = "";
+let preparedDiscount = null;
+let preparedCheckoutMode = false;
+let preparedCheckoutToken = "";
 let verifiedLinkedOrder = null;
 
 const canvas = document.getElementById("previewCanvas");
@@ -2749,6 +2805,19 @@ const continueShoppingBtn =
 const checkoutFromCartBtn =
   document.getElementById("checkoutFromCartBtn");
 const sharedGroupCartBtn = document.getElementById("sharedGroupCartBtn");
+const prepareCustomerCheckoutBtn = document.getElementById("prepareCustomerCheckoutBtn");
+const preparedCheckoutModal = document.getElementById("preparedCheckoutModal");
+const closePreparedCheckoutBtn = document.getElementById("closePreparedCheckoutBtn");
+const preparedDiscountType = document.getElementById("preparedDiscountType");
+const preparedDiscountValue = document.getElementById("preparedDiscountValue");
+const preparedCheckoutExpiry = document.getElementById("preparedCheckoutExpiry");
+const createPreparedCheckoutBtn = document.getElementById("createPreparedCheckoutBtn");
+const preparedCheckoutStatus = document.getElementById("preparedCheckoutStatus");
+const preparedCheckoutResult = document.getElementById("preparedCheckoutResult");
+const preparedCheckoutLink = document.getElementById("preparedCheckoutLink");
+const copyPreparedCheckoutLinkBtn = document.getElementById("copyPreparedCheckoutLinkBtn");
+const preparedCheckoutCustomerNotice = document.getElementById("preparedCheckoutCustomerNotice");
+const promoBox = document.getElementById("promoBox");
 
 const orderStatusForm =
   document.getElementById("orderStatusForm");
@@ -4993,6 +5062,7 @@ function roundMoney(value) {
 }
 
 function getAppliedPromo() {
+  if (preparedDiscount) return preparedDiscount;
   return appliedPromoCode
     ? PROMO_CODES[appliedPromoCode] || null
     : null;
@@ -5033,6 +5103,7 @@ function showPromoStatus(message, type = "") {
 }
 
 function applyPromoCode() {
+  if (preparedCheckoutMode) return;
   const enteredCode = normalizePromoCode(promoCodeInput.value);
 
   if (!enteredCode) {
@@ -6853,7 +6924,7 @@ function renderReviewOrder() {
         ` : ""}
       </div>
 
-      <div class="review-item-actions">
+      ${preparedCheckoutMode ? "" : `<div class="review-item-actions">
         <button
           type="button"
           class="review-edit-btn"
@@ -6869,7 +6940,7 @@ function renderReviewOrder() {
         >
           Remove
         </button>
-      </div>
+      </div>`}
     `;
 
     reviewList.appendChild(row);
@@ -6994,7 +7065,8 @@ function renderReviewOrder() {
   if (promo) {
     const eligibility = getPromoEligibility(promo, total);
     if (!eligibility.allowed) {
-      appliedPromoCode = "";
+      if (preparedDiscount) preparedDiscount = null;
+      else appliedPromoCode = "";
       showPromoStatus(eligibility.message, "error");
       promo = null;
     }
@@ -7028,7 +7100,7 @@ function renderReviewOrder() {
     ${
       promo && discountAmount > 0
         ? `
-          <span>Promo ${appliedPromoCode} (${getPromoOfferLabel(promo)})</span>
+          <span>${preparedDiscount ? escapePresetText(preparedDiscount.label) : `Promo ${appliedPromoCode}`} (${getPromoOfferLabel(promo)})</span>
           <strong style="color:#278154;">−$${discountAmount.toFixed(2)}</strong>
 
           <span>Discounted subtotal</span>
@@ -7431,7 +7503,7 @@ async function submitOrderOnce() {
         : null,
 
     original_subtotal: roundMoney(originalSubtotal),
-    promo_code: appliedPromoCode || null,
+    promo_code: preparedDiscount?.label || appliedPromoCode || null,
     discount_amount: discountAmount,
     subtotal,
     delivery_fee: delivery,
@@ -7440,9 +7512,11 @@ async function submitOrderOnce() {
 
     payment_type: "Pending",
 
-    order_source: isManualOrder
-      ? "Manual"
-      : "Website",
+    order_source: preparedCheckoutMode
+      ? "Prepared Checkout"
+      : isManualOrder
+        ? "Manual"
+        : "Website",
 
     status: isManualOrder
       ? "Pending Payment"
@@ -7469,6 +7543,14 @@ async function submitOrderOnce() {
       "Unable to save your order. Please try again.";
 
     return;
+  }
+
+  if (preparedCheckoutMode && preparedCheckoutToken && !orderWasAlreadySaved) {
+    const { error } = await supabase.rpc("claim_prepared_checkout", {
+      p_token: preparedCheckoutToken,
+      p_order_ref: orderRef
+    });
+    if (error) console.warn("Unable to close the prepared checkout link:", error);
   }
 
   if (!editingPendingOrder && order.group_order_code && finalisingSharedGroupOwnerToken) {
@@ -8492,6 +8574,10 @@ function renderCartDrawer() {
     `$${subtotal.toFixed(2)}`;
 
   const cartEntries = getCartEntries();
+  prepareCustomerCheckoutBtn?.classList.toggle(
+    "hidden",
+    !isManualOrder || !cartHasItems || !cartEntries.length
+  );
   if (!cartHasItems || !cartEntries.length) {
     cartDrawerItems.innerHTML = `
       <div class="empty-cart">
@@ -8521,6 +8607,7 @@ function renderCartDrawer() {
   sharedGroupCartBtn.disabled = false;
   sharedGroupCartBtn.textContent = "Save My Cart to Group Order";
   continueShoppingBtn.textContent = "Continue Designing";
+  continueShoppingBtn.classList.toggle("hidden", preparedCheckoutMode);
 
   const renderCartEntry = ({ item, index }) => {
       const design = getDesign(item);
@@ -8550,7 +8637,7 @@ function renderCartDrawer() {
             ${createMiniPreview(item.name, design, product)}
           </div>
 
-          <div class="cart-item-actions">
+          ${preparedCheckoutMode ? "" : `<div class="cart-item-actions">
             <button
               type="button"
               onclick="window.editCartItem(${index})"
@@ -8572,7 +8659,7 @@ function renderCartDrawer() {
             >
               Remove
             </button>
-          </div>
+          </div>`}
         </div>
       `;
     };
@@ -8622,6 +8709,144 @@ function renderCartDrawer() {
     `);
   }
 }
+
+function normalizePreparedDiscount(type, value, label = "Little Keeps special discount") {
+  if (!['percent', 'fixed'].includes(type)) return null;
+  const numericValue = Math.max(0, Number(value) || 0);
+  if (!numericValue) return null;
+  return {
+    label: String(label || "Little Keeps special discount"),
+    discountType: type,
+    discountValue: type === "percent" ? Math.min(100, numericValue) : numericValue,
+    minimumSpend: 0,
+    startsAt: null,
+    endsAt: null
+  };
+}
+
+function openPreparedCheckoutModal() {
+  if (!isManualOrder || !getCartEntries().length) return;
+  preparedCheckoutStatus.textContent = "";
+  preparedCheckoutResult.classList.add("hidden");
+  preparedCheckoutModal.classList.remove("hidden");
+}
+
+async function createPreparedCustomerCheckout() {
+  if (!isManualOrder || !getCartEntries().length) return;
+  const discountType = preparedDiscountType.value;
+  const discount = normalizePreparedDiscount(discountType, preparedDiscountValue.value);
+  const expiresInDays = Math.max(1, Number(preparedCheckoutExpiry.value) || 7);
+  const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
+  const payload = {
+    version: 1,
+    names: getCartItems().map(item => ({ ...structuredClone(item), cartAdded: true })),
+    orderType,
+    globalDesign: structuredClone(globalDesign),
+    giftingBagQuantity,
+    randomiseMultipleColours: Boolean(randomiseMultipleColours?.checked)
+  };
+
+  createPreparedCheckoutBtn.disabled = true;
+  createPreparedCheckoutBtn.textContent = "Creating secure link…";
+  preparedCheckoutStatus.textContent = "Saving the designs and discount…";
+  preparedCheckoutResult.classList.add("hidden");
+
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      throw new Error("Please open Manual Order from the signed-in admin page, then try again.");
+    }
+    const { data, error } = await supabase
+      .from("prepared_checkouts")
+      .insert({
+        cart_data: payload,
+        discount_type: discount?.discountType || "none",
+        discount_value: discount?.discountValue || 0,
+        discount_label: discount?.label || "",
+        expires_at: expiresAt
+      })
+      .select("token")
+      .single();
+    if (error) throw error;
+    const customerUrl = new URL(window.location.origin);
+    customerUrl.searchParams.set("prepared", data.token);
+    preparedCheckoutLink.value = customerUrl.toString();
+    preparedCheckoutResult.classList.remove("hidden");
+    preparedCheckoutStatus.textContent = `Ready ✓ This link expires in ${expiresInDays} days.`;
+  } catch (error) {
+    console.error("Unable to create prepared checkout:", error);
+    preparedCheckoutStatus.textContent = error.message || "The customer link could not be created.";
+  } finally {
+    createPreparedCheckoutBtn.disabled = false;
+    createPreparedCheckoutBtn.textContent = "Create Customer Checkout Link";
+  }
+}
+
+async function loadPreparedCheckoutFromUrl() {
+  const token = String(pageUrlParams.get("prepared") || "").trim();
+  if (!token) return false;
+  draftModal.classList.add("hidden");
+  try {
+    const { data, error } = await supabase.rpc("get_prepared_checkout", { p_token: token });
+    if (error) throw error;
+    if (!data?.cart_data || !Array.isArray(data.cart_data.names)) {
+      throw new Error("This checkout link is invalid or has expired.");
+    }
+    const payload = data.cart_data;
+    names = payload.names.map(item => ({
+      ...item,
+      quantity: normalizeItemQuantity(item.quantity),
+      cartAdded: true
+    })).filter(item => item.name && item.product_key);
+    if (!names.length) throw new Error("This prepared checkout has no items.");
+    globalDesign = { ...globalDesign, ...(payload.globalDesign || {}) };
+    activeProduct = getItemProduct(names[0]);
+    orderType = names.length > 1 || payload.orderType === "group" ? "group" : "single";
+    selectedIndex = 0;
+    cartHasItems = true;
+    giftingBagQuantity = Math.max(0, Number(payload.giftingBagQuantity) || 0);
+    preparedDiscount = normalizePreparedDiscount(
+      data.discount_type,
+      data.discount_value,
+      data.discount_label || "Little Keeps special discount"
+    );
+    preparedCheckoutMode = true;
+    preparedCheckoutToken = token;
+    document.body.classList.add("prepared-checkout-mode");
+    preparedCheckoutCustomerNotice.classList.remove("hidden");
+    promoBox.classList.add("hidden");
+    singleName.value = names[0].name;
+    singleQuantity.value = String(getItemQuantity(names[0]));
+    nameList.value = formatActiveProductNames();
+    if (randomiseMultipleColours) {
+      randomiseMultipleColours.checked = Boolean(payload.randomiseMultipleColours);
+    }
+    updateProductCustomiser();
+    linkSharedBatchDesigns();
+    proceedToCheckout();
+    return true;
+  } catch (error) {
+    console.error("Unable to open prepared checkout:", error);
+    alert(error.message || "This checkout link is invalid or has expired.");
+    return false;
+  }
+}
+
+prepareCustomerCheckoutBtn?.addEventListener("click", openPreparedCheckoutModal);
+closePreparedCheckoutBtn?.addEventListener("click", () => preparedCheckoutModal.classList.add("hidden"));
+preparedCheckoutModal?.addEventListener("click", event => {
+  if (event.target === preparedCheckoutModal) preparedCheckoutModal.classList.add("hidden");
+});
+preparedDiscountType?.addEventListener("change", () => {
+  preparedDiscountValue.disabled = preparedDiscountType.value === "none";
+  if (preparedDiscountType.value === "none") preparedDiscountValue.value = "0";
+});
+createPreparedCheckoutBtn?.addEventListener("click", createPreparedCustomerCheckout);
+copyPreparedCheckoutLinkBtn?.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(preparedCheckoutLink.value);
+  copyPreparedCheckoutLinkBtn.textContent = "Copied ✓";
+  setTimeout(() => { copyPreparedCheckoutLinkBtn.textContent = "Copy Link"; }, 1400);
+});
 
 window.editCartItem = function(index) {
   selectedIndex = index;
@@ -10405,6 +10630,7 @@ function loadSharedDesignFromUrl() {
 
 function saveDraft() {
   if (
+    preparedCheckoutMode ||
     orderSubmitted ||
     !draftHasMeaningfulChanges
   ) {
@@ -11519,7 +11745,10 @@ updateCartDisplay();
 buildSelectedPreview();
 animate();
 
-if (!loadSharedDesignFromUrl()) {
+if (pageUrlParams.get("prepared")) {
+  draftModal.classList.add("hidden");
+  void loadPreparedCheckoutFromUrl();
+} else if (!loadSharedDesignFromUrl()) {
   loadDraft();
 } else {
   draftModal.classList.add("hidden");
