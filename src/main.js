@@ -1556,10 +1556,11 @@ Chloe</textarea>
             <button type="button" data-pencil-part-tab="eraser" data-pencil-ending-group="eraser">Eraser</button>
             <button type="button" data-pencil-part-tab="ferrule" data-pencil-ending-group="eraser">Metal band</button>
             <button type="button" data-pencil-part-tab="endCap" data-pencil-ending-group="endCap">End cap</button>
+            <button type="button" data-pencil-part-tab="wood">Wood</button>
             <button type="button" data-pencil-part-tab="tip">Pencil tip</button>
           </div>
           <div class="pencil-part-colour-panels">
-            ${["eraser", "ferrule", "endCap", "tip"].map(part => `
+            ${["eraser", "ferrule", "endCap", "wood", "tip"].map(part => `
               <div class="pencil-part-colour-panel" data-pencil-part-panel="${part}" hidden>
                 <div class="pencil-colour-swatches">${renderPencilColourSwatches(part)}</div>
               </div>
@@ -4090,7 +4091,7 @@ function normalizePencilDesign(value = {}) {
     endingStyle: value.endingStyle === "endCap" ? "endCap" : "eraser",
     eraser: value.eraser || CLASSIC_PENCIL_COLOURS.eraser,
     ferrule: value.ferrule || CLASSIC_PENCIL_COLOURS.ferrule,
-    wood: CLASSIC_PENCIL_COLOURS.wood,
+    wood: value.wood || CLASSIC_PENCIL_COLOURS.wood,
     tip: value.tip || CLASSIC_PENCIL_COLOURS.tip,
     endCap: value.endCap || CLASSIC_PENCIL_COLOURS.endCap
   };
@@ -6158,8 +6159,8 @@ function updatePencilControls() {
   });
 
   const availableParts = design.pencil.endingStyle === "endCap"
-    ? ["endCap", "tip"]
-    : ["eraser", "ferrule", "tip"];
+    ? ["endCap", "wood", "tip"]
+    : ["eraser", "ferrule", "wood", "tip"];
   if (!availableParts.includes(activePencilColourPart)) {
     activePencilColourPart = availableParts[0];
   }
