@@ -2075,18 +2075,20 @@ Chloe</textarea>
     <strong id="checkoutStickyTotal">$0.00</strong>
   </div>
 
-  <button
-    id="submitOrderBtn"
-    type="button"
-    class="submit-btn"
-    disabled
-  >
-    Submit Order & Continue to Payment
-  </button>
-</div>
+  <div class="checkout-submit-action">
+    <button
+      id="submitOrderBtn"
+      type="button"
+      class="submit-btn"
+      disabled
+    >
+      Submit Order & Continue to Payment
+    </button>
 
-      <p id="formStatus" class="hint"></p>
-      <p id="submitStatus" class="hint"></p>
+    <p id="formStatus" class="checkout-submit-status" aria-live="polite"></p>
+    <p id="submitStatus" class="checkout-submit-status" aria-live="polite"></p>
+  </div>
+</div>
     </section>
 
     <section

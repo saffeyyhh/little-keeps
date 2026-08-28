@@ -5189,6 +5189,58 @@ a {
   border-radius: 4px;
 }
 
+.pencil-component-queue {
+  margin: 14px 0;
+  display: grid;
+  gap: 7px;
+}
+
+.pencil-component-row {
+  padding: 9px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 58px auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #eadde5;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.pencil-component-row small {
+  display: block;
+  margin-top: 2px;
+  color: #74838a;
+  font-size: 9px;
+}
+
+.pencil-component-row input {
+  width: 58px;
+  min-width: 0;
+  padding: 7px;
+}
+
+.pencil-component-row button {
+  padding: 8px 9px;
+  white-space: nowrap;
+}
+
+.pencil-component-swatch {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(0, 0, 0, .14);
+  border-radius: 5px;
+}
+
+@media (max-width: 640px) {
+  .pencil-component-row {
+    grid-template-columns: 18px minmax(0, 1fr) 54px;
+  }
+
+  .pencil-component-row button {
+    grid-column: 2 / -1;
+  }
+}
+
 .assembly-photo-summary,
 .assembly-standard-name-preview {
   margin: 12px 0;

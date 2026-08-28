@@ -5834,6 +5834,74 @@ function getPencilClickerInventoryName(order, item, itemIndex = 0) {
   return `Custom Pencil Clicker - ${order.order_ref || order.id || "Order"} - ${itemIndex + 1} - ${item.name || "Name"}`;
 }
 
+function getPencilProductionParts(order, item, itemIndex = 0, quantity = 1) {
+  const design = item?.design || {};
+  const pencil = design.pencil || {};
+  const characters = Array.from(
+    item?.clean_name || sanitizeName(item?.name || "")
+  );
+  const bases = Array.isArray(design.bases) ? design.bases : [];
+  const caps = Array.isArray(design.caps) ? design.caps : [];
+  const letters = Array.isArray(design.letters) ? design.letters : [];
+  const multiplier = Math.max(1, Number(quantity) || 1);
+  const parts = new Map();
+  const colourName = (value, fallback) => value?.name || value?.hex || value || fallback;
+  const addPart = (type, label, itemName, qty, colour) => {
+    const existing = parts.get(itemName);
+    if (existing) {
+      existing.need += qty;
+      return;
+    }
+    parts.set(itemName, { type, label, itemName, need: qty, colour });
+  };
+
+  characters.forEach((character, index) => {
+    const body = bases[index % Math.max(1, bases.length)] || "Selected";
+    const top = caps[index % Math.max(1, caps.length)] || "Selected";
+    const lettering = letters[index % Math.max(1, letters.length)] || "Selected";
+    const bodyName = colourName(body, "Selected");
+    const topName = colourName(top, "Selected");
+    const letteringName = colourName(lettering, "Selected");
+
+    addPart(
+      "Base",
+      `Base · ${bodyName}`,
+      `Pencil Base - ${bodyName}`,
+      multiplier,
+      body
+    );
+    addPart(
+      "Keycap",
+      `Keycap ${displayIcon(character)} · ${topName} + ${letteringName}`,
+      `Pencil Keycap - ${topName} Top + ${letteringName} Character - ${character}`,
+      multiplier,
+      top
+    );
+  });
+
+  const wood = pencil.wood || "Desert Tan";
+  const tip = pencil.tip || "Black";
+  const woodName = colourName(wood, "Desert Tan");
+  const tipName = colourName(tip, "Black");
+  addPart("Wood", `Wood · ${woodName}`, `Pencil Wood - ${woodName}`, multiplier, wood);
+  addPart("Tip", `Tip · ${tipName}`, `Pencil Tip - ${tipName}`, multiplier, tip);
+
+  if (String(pencil.ending_style || "eraser") === "endCap") {
+    const endCap = pencil.end_cap || "Selected";
+    const endCapName = colourName(endCap, "Selected");
+    addPart("End cap", `End cap · ${endCapName}`, `Pencil End Cap - ${endCapName}`, multiplier, endCap);
+  } else {
+    const eraser = pencil.eraser || "Pink";
+    const ferrule = pencil.ferrule || "Blue Grey";
+    const eraserName = colourName(eraser, "Pink");
+    const ferruleName = colourName(ferrule, "Blue Grey");
+    addPart("Eraser", `Eraser · ${eraserName}`, `Pencil Eraser - ${eraserName}`, multiplier, eraser);
+    addPart("Metal", `Metal · ${ferruleName}`, `Pencil Metal - ${ferruleName}`, multiplier, ferrule);
+  }
+
+  return Array.from(parts.values());
+}
+
 function getSolidBaseShape(characterCount) {
   const slots = Math.min(10, Math.max(1, Number(characterCount) || 1));
   return `solid-${slots}`;
@@ -6844,6 +6912,7 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
           background: design.bases?.[0],
           clicker: design.caps?.[0],
           lettering: design.letters?.[0],
+          parts: getPencilProductionParts(order, item, itemIndex),
           blocks: letters.map((character, index) => ({
             character,
             body: design.bases?.[index % Math.max(1, design.bases?.length || 1)],
@@ -6919,6 +6988,7 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
               hex: baseHex,
               material: baseMaterial,
               baseShape,
+              baseFamily: solidProduct ? "compact" : "modular",
               qty: 0
             };
           }
@@ -6993,7 +7063,9 @@ function getOrderPrintableInventoryNeeds(order) {
       }
 
       if (isPencilClicker(order, item)) {
-        addNeed(getPencilClickerInventoryName(order, item, itemIndex));
+        getPencilProductionParts(order, item, itemIndex).forEach(part => {
+          addNeed(part.itemName, part.need);
+        });
         return;
       }
 
@@ -7402,6 +7474,13 @@ const PDF_ICON_CODES = {
 
 function getPdfIconCode(character) {
   return PDF_ICON_CODES[character] || "IC";
+}
+
+function getPdfIconAlias(character) {
+  const codepoints = Array.from(String(character || ""))
+    .map(value => value.codePointAt(0).toString(16))
+    .join("-");
+  return `little-keeps-icon-${codepoints || "unknown"}`;
 }
 
 function getPdfIconName(character) {
@@ -10294,6 +10373,22 @@ async function renderProductionPlanner(orders) {
   }, new Map()).values());
 
   const customPrintRows = groupedCustomItems.map(item => {
+    if (item.isPencil) {
+      const parts = (item.parts || []).map(part => {
+        const need = part.need * item.need;
+        const stock = getInventoryQty(part.itemName);
+        const tracked = getTrackedProductionQuantity(productionJobs, part.itemName);
+        const toPrint = calculateQueuedProductionQuantity(need, stock, tracked);
+        return { ...part, need, stock, tracked, toPrint };
+      });
+      return {
+        ...item,
+        parts,
+        stock: parts.reduce((sum, part) => sum + part.stock, 0),
+        tracked: parts.reduce((sum, part) => sum + part.tracked, 0),
+        toPrint: parts.reduce((sum, part) => sum + part.toPrint, 0)
+      };
+    }
     const need = item.need;
     const stock = getInventoryQty(item.itemName);
     const tracked = getTrackedProductionQuantity(productionJobs, item.itemName);
@@ -10303,11 +10398,14 @@ async function renderProductionPlanner(orders) {
 
   const baseColourGroups = Array.from(
     baseRows.reduce((groups, item) => {
-      const key = `${String(item.name || "Other").trim().toLowerCase()}|${item.material || "BASIC"}`;
+      const baseFamily = item.baseFamily || (/^solid-/.test(item.baseShape || "") ? "compact" : "modular");
+      const familyLabel = baseFamily === "compact" ? "Compact" : "Modular";
+      const key = `${baseFamily}|${String(item.name || "Other").trim().toLowerCase()}|${item.material || "BASIC"}`;
       if (!groups.has(key)) {
         groups.set(key, {
           key,
-          label: `${item.name} · ${item.material || "BASIC"} Bases`,
+          label: `${familyLabel} · ${item.name} · ${item.material || "BASIC"} Bases`,
+          baseFamily,
           baseName: item.name,
           hex: item.hex,
           rows: []
@@ -10334,6 +10432,7 @@ async function renderProductionPlanner(orders) {
 
     productionBaseStlJobs.set(stlJobId, {
       baseName: group.baseName,
+      baseFamily: group.baseFamily,
       components: group.rows.map(item => ({
         itemName: item.itemName,
         baseShape: item.baseShape || "ribbed",
@@ -11948,7 +12047,33 @@ async function renderProductionPlanner(orders) {
                       <span><i style="background:${getSafePdfColour(lettering.hex || lettering, "#ffffff")}"></i>Name · ${escapeAdminHtml(lettering.name || "Selected colour")}</span>
                     </div>
                   `}
-                  <p>Need: ${row.need} · Stock: ${row.stock}${row.tracked ? ` · Tracked: ${row.tracked}` : ""}</p>
+                  <p>${row.isPencil
+                    ? `Pencils: ${row.need} · Component pieces left: ${row.toPrint}`
+                    : `Need: ${row.need} · Stock: ${row.stock}${row.tracked ? ` · Tracked: ${row.tracked}` : ""}`}</p>
+                  ${row.isPencil ? `
+                    <div class="pencil-component-queue">
+                      ${(row.parts || []).map((part, partIndex) => `
+                        <div class="pencil-component-row">
+                          <span class="pencil-component-swatch" style="background:${getSafePdfColour(part.colour?.hex || part.colour, "#d9d9d9")}"></span>
+                          <div>
+                            <strong>${escapeAdminHtml(part.label)}</strong>
+                            <small>Need ${part.need} · Stock ${part.stock}${part.tracked ? ` · Tracked ${part.tracked}` : ""} · To print ${part.toPrint}</small>
+                          </div>
+                          <input id="pencilPartQty-${encodeURIComponent(row.itemName)}-${partIndex}" type="number" min="0" value="${part.toPrint}">
+                          <button
+                            type="button"
+                            class="ready-btn"
+                            ${part.toPrint <= 0 || productionJobsLoadFailed ? "disabled" : ""}
+                            onclick='window.startProductionJob(
+                              ${JSON.stringify(part.itemName)},
+                              document.getElementById(${JSON.stringify(`pencilPartQty-${encodeURIComponent(row.itemName)}-${partIndex}`)}).value,
+                              ${JSON.stringify(part.type === "Keycap" ? "Keycap" : "Base")}
+                            )'
+                          >Start ${escapeAdminHtml(part.type)}</button>
+                        </div>
+                      `).join("")}
+                    </div>
+                  ` : ""}
                   <div class="custom-print-actions">
                     ${row.isPhoto ? `
                       <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download Private Artwork</button>
@@ -11956,7 +12081,6 @@ async function renderProductionPlanner(orders) {
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)}, ${row.need})'>Checked · Start Printing × ${row.need}</button>
                     ` : row.isPencil ? `
                       <button type="button" onclick='window.generatePencilClickerStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
-                      <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, ${row.need}, "Custom")'>Prepared · Start Printing × ${row.need}</button>
                     ` : `
                       <button type="button" onclick='window.generateCustomNameKeychainStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download 2 STLs</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, 1, "Base")'>Start Printing</button>
@@ -12673,7 +12797,7 @@ async function generateCustomerOrderPdf(order, items) {
             blockY + 2,
             5,
             5,
-            `little-keeps-${getPdfIconCode(character)}`,
+            getPdfIconAlias(character),
             "FAST",
             letterOrientation === "horizontal" ? 90 : 0
           );

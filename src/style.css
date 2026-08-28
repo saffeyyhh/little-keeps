@@ -2300,6 +2300,26 @@ label {
   grid-column: 1 / -1;
 }
 
+.checkout-submit-action {
+  min-width: 0;
+}
+
+.checkout-submit-action .submit-btn {
+  width: 100%;
+}
+
+.checkout-submit-status {
+  margin: 6px 4px 0;
+  color: #b4234f;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.checkout-submit-status:empty {
+  display: none;
+}
+
 .checkout-screen > .secondary-btn {
   width: max-content;
 }
@@ -3810,15 +3830,21 @@ label {
     overflow: visible;
   }
 
-  .preview-column,
-  .preview-sticky {
-    display: contents;
+  .preview-column {
+    display: block;
   }
 
-  .preview-card {
+  .preview-sticky {
     position: sticky;
     top: 72px;
     z-index: 420;
+    display: block;
+  }
+
+  .preview-card {
+    position: relative;
+    top: auto;
+    z-index: auto;
     margin-bottom: 10px;
     padding: 10px;
     display: block;
@@ -5839,7 +5865,7 @@ body {
     border-radius: 22px;
   }
 
-  .preview-card {
+  .preview-sticky {
     top: 62px;
   }
 }
