@@ -3081,8 +3081,17 @@ let bulkAssessmentFingerprint = "";
 
 function getTurnaroundInfo(quantity = getTotalKeychainQuantity() || 1) {
   const safeQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
-  const productMinimum = Number(activeProduct?.minimum_working_days);
-  const productMaximum = Number(activeProduct?.maximum_working_days);
+  const turnaroundProducts = cartHasItems && getCartItems().length
+    ? getCartItems().map(getItemProduct)
+    : [activeProduct];
+  const productMinimum = Math.max(
+    0,
+    ...turnaroundProducts.map(product => Number(product?.minimum_working_days) || 0)
+  );
+  const productMaximum = Math.max(
+    0,
+    ...turnaroundProducts.map(product => Number(product?.maximum_working_days) || 0)
+  );
   if (productMinimum >= 1 || productMaximum >= 1) {
     const minDays = Math.max(1, productMinimum || productMaximum);
     const maxDays = Math.max(minDays, productMaximum || minDays);
@@ -3953,8 +3962,8 @@ function getApproximateKeychainSize(
   };
 }
 
-function getApproximateSizeText(name) {
-  const size = getApproximateKeychainSize(name, activeProduct.product_key, getActiveDesign());
+function getApproximateSizeText(name, product = activeProduct, design = getActiveDesign()) {
+  const size = getApproximateKeychainSize(name, product.product_key, design);
 
   if (!size.characterCount) {
     return "Enter a name to see its approximate finished size.";
@@ -4111,6 +4120,24 @@ const BASE_SHAPES = {
 
 let names = [];
 
+function getItemProduct(item) {
+  return getProductByKey(
+    productCatalog,
+    item?.product_key || activeProduct?.product_key || MODULAR_PRODUCT_KEY
+  );
+}
+
+function getCartEntries() {
+  if (!cartHasItems) return [];
+  return names
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.cartAdded !== false);
+}
+
+function getCartItems() {
+  return getCartEntries().map(({ item }) => item);
+}
+
 function normalizeItemQuantity(value) {
   return Math.min(250, Math.max(1, Math.floor(Number(value) || 1)));
 }
@@ -4120,7 +4147,8 @@ function getItemQuantity(item) {
 }
 
 function getTotalKeychainQuantity() {
-  return names.reduce((total, item) => total + getItemQuantity(item), 0);
+  const items = cartHasItems ? getCartItems() : names;
+  return items.reduce((total, item) => total + getItemQuantity(item), 0);
 }
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -4216,40 +4244,40 @@ function getUniqueColourCount(colours) {
   ).size;
 }
 
-function calculatePrice(design, name = "") {
+function calculatePrice(design, name = "", product = activeProduct) {
   const characterCount = Array.from(sanitizeName(name)).length;
 
   const productPrice = calculateProductUnitPrice({
-    product: activeProduct,
+    product,
     characterCount,
     baseColourCount: getUniqueColourCount(design.bases),
     capColourCount: getUniqueColourCount(design.caps),
     letterColourCount: getUniqueColourCount(design.letters)
   });
   const photoVariantPrice =
-    activeProduct.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker"
+    product.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker"
       ? Math.max(0, Number(shopSettings.photo_clicker_addon_price ?? 3))
       : 0;
   return roundMoney(productPrice + photoVariantPrice);
 }
 
-function getUnitPriceBreakdown(design, name = "") {
+function getUnitPriceBreakdown(design, name = "", product = activeProduct) {
   const characterCount = Array.from(sanitizeName(name)).length;
-  const includedCharacters = Math.max(0, Number(activeProduct.included_characters) || 0);
+  const includedCharacters = Math.max(0, Number(product.included_characters) || 0);
   const extraCharacters = Math.max(0, characterCount - includedCharacters);
   const extraBaseColours = Math.max(
     0,
-    getUniqueColourCount(design.bases) - Number(activeProduct.included_base_colours || 0)
+    getUniqueColourCount(design.bases) - Number(product.included_base_colours || 0)
   );
   const extraCapColours = Math.max(
     0,
-    getUniqueColourCount(design.caps) - Number(activeProduct.included_cap_colours || 0)
+    getUniqueColourCount(design.caps) - Number(product.included_cap_colours || 0)
   );
   const extraLetterColours = Math.max(
     0,
-    getUniqueColourCount(design.letters) - Number(activeProduct.included_letter_colours || 0)
+    getUniqueColourCount(design.letters) - Number(product.included_letter_colours || 0)
   );
-  const basePrice = getProductDisplayPrice(activeProduct);
+  const basePrice = getProductDisplayPrice(product);
   const rows = [{
     label: `Base price · includes up to ${includedCharacters} character${includedCharacters === 1 ? "" : "s"}`,
     amount: basePrice,
@@ -4257,10 +4285,10 @@ function getUnitPriceBreakdown(design, name = "") {
   }];
 
   [
-    ["Extra character", extraCharacters, Number(activeProduct.extra_character_price || 0)],
-    ["Extra base colour", extraBaseColours, Number(activeProduct.extra_base_colour_price || 0)],
-    ["Extra cap colour", extraCapColours, Number(activeProduct.extra_cap_colour_price || 0)],
-    ["Extra letter colour", extraLetterColours, Number(activeProduct.extra_letter_colour_price || 0)]
+    ["Extra character", extraCharacters, Number(product.extra_character_price || 0)],
+    ["Extra base colour", extraBaseColours, Number(product.extra_base_colour_price || 0)],
+    ["Extra cap colour", extraCapColours, Number(product.extra_cap_colour_price || 0)],
+    ["Extra letter colour", extraLetterColours, Number(product.extra_letter_colour_price || 0)]
   ].forEach(([label, quantity, unitAmount]) => {
     if (!quantity || !unitAmount) return;
     rows.push({
@@ -4270,7 +4298,7 @@ function getUnitPriceBreakdown(design, name = "") {
     });
   });
 
-  if (activeProduct.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker") {
+  if (product.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker") {
     rows.push({
       label: "Clicker keychain upgrade",
       amount: Math.max(0, Number(shopSettings.photo_clicker_addon_price ?? 3)),
@@ -4280,7 +4308,7 @@ function getUnitPriceBreakdown(design, name = "") {
 
   return {
     rows,
-    unitTotal: calculatePrice(design, name)
+    unitTotal: calculatePrice(design, name, product)
   };
 }
 
@@ -4707,9 +4735,12 @@ backBtn.onclick = () => {
 };
 
 function getOrderSubtotal() {
-  const keychainSubtotal = names.reduce(
-    (sum, item) =>
-      sum + calculatePrice(getDesign(item), item.name) * getItemQuantity(item),
+  const pricedItems = cartHasItems ? getCartItems() : names;
+  const keychainSubtotal = pricedItems.reduce(
+    (sum, item) => {
+      const product = getItemProduct(item);
+      return sum + calculatePrice(getDesign(item), item.name, product) * getItemQuantity(item);
+    },
     0
   );
 
@@ -4935,8 +4966,18 @@ function applyPromoCode() {
 function updateCartDisplay() {
   const totalKeychains = getTotalKeychainQuantity();
   const cartCount = cartHasItems ? totalKeychains : 0;
-  const currentDesignTotal = getOrderSubtotal();
-  const cartSubtotal = cartHasItems ? currentDesignTotal : 0;
+  const activeDesignItems = names.filter(item =>
+    getItemProduct(item).product_key === activeProduct.product_key &&
+    (!cartHasItems || item.cartAdded === false || item === names[selectedIndex])
+  );
+  const currentDesignTotal = roundMoney(activeDesignItems.reduce((sum, item) =>
+    sum + calculatePrice(getDesign(item), item.name, getItemProduct(item)) * getItemQuantity(item), 0
+  ));
+  const currentDesignQuantity = activeDesignItems.reduce(
+    (sum, item) => sum + getItemQuantity(item),
+    0
+  );
+  const cartSubtotal = cartHasItems ? getOrderSubtotal() : 0;
 
   headerCartCount.textContent = cartCount;
   sideCartCount.textContent = cartCount;
@@ -4949,12 +4990,14 @@ function updateCartDisplay() {
 
   if (mobileOrderSummary) {
     mobileOrderSummary.textContent =
-      `${totalKeychains} keychain${totalKeychains === 1 ? "" : "s"}`;
+      `${currentDesignQuantity} keychain${currentDesignQuantity === 1 ? "" : "s"}`;
   }
 
   if (addCartButtonLabel) {
+    const selectedItem = names[selectedIndex];
+    const isNewDesign = selectedItem?.cartAdded === false;
     addCartButtonLabel.textContent =
-      cartHasItems ? "Update Cart" : "Add to Cart";
+      cartHasItems && !isNewDesign ? "Update Cart" : "Add to Cart";
   }
 
   headerCartBtn.setAttribute(
@@ -5982,106 +6025,89 @@ async function buildKeychain(name, design) {
 function updateNames() {
   enforceNameInputLimits();
   const previousNames = [...names];
+  const activeKey = activeProduct.product_key;
+  const activePreviousNames = previousNames.filter(
+    item => (item.product_key || activeKey) === activeKey
+  );
+  const otherProductNames = previousNames.filter(
+    item => (item.product_key || activeKey) !== activeKey
+  );
+
+  const copyItemDesign = previousItem => previousItem?.custom
+    ? {
+        baseShape: previousItem.custom.baseShape || globalDesign.baseShape || "ribbed",
+        letterOrientation: previousItem.custom.letterOrientation || globalDesign.letterOrientation || "vertical",
+        fontSize: getStandardFontSize(previousItem.custom),
+        nfcEnabled: Boolean(previousItem.custom.nfcEnabled),
+        nfcType: previousItem.custom.nfcType || "guardian",
+        nfcPayload: previousItem.custom.nfcPayload || "",
+        photo: previousItem.custom.photo || null,
+        pencil: normalizePencilDesign(previousItem.custom.pencil || globalDesign.pencil),
+        bases: [...previousItem.custom.bases],
+        caps: [...previousItem.custom.caps],
+        letters: [...previousItem.custom.letters]
+      }
+    : null;
 
   if (orderType === "single") {
     const value = singleName.value.trim() || "Alicia";
-
-    const previousItem = previousNames[0];
-
-    names = [
-      {
-        name: value,
-        quantity: normalizeItemQuantity(singleQuantity?.value || previousItem?.quantity),
-        groupContributorName: previousItem?.groupContributorName || null,
-
-        // Keep the existing colours/design even when
-        // the name or icon changes.
-        custom: previousItem?.custom
-          ? {
-              baseShape:
-                previousItem.custom.baseShape ||
-                globalDesign.baseShape ||
-                "ribbed",
-
-              letterOrientation:
-                previousItem.custom.letterOrientation ||
-                globalDesign.letterOrientation ||
-                "vertical",
-
-              fontSize: getStandardFontSize(previousItem.custom),
-
-              nfcEnabled: Boolean(previousItem.custom.nfcEnabled),
-              nfcType: previousItem.custom.nfcType || "guardian",
-              nfcPayload: previousItem.custom.nfcPayload || "",
-
-              photo: previousItem.custom.photo || null,
-              pencil: normalizePencilDesign(previousItem.custom.pencil || globalDesign.pencil),
-
-              bases: [...previousItem.custom.bases],
-              caps: [...previousItem.custom.caps],
-              letters: [...previousItem.custom.letters]
-            }
-          : null
-      }
-    ];
+    const selectedItem = previousNames[selectedIndex];
+    const previousItem = (selectedItem?.product_key || activeKey) === activeKey
+      ? selectedItem
+      : activePreviousNames[0];
+    const nextItem = {
+      name: value,
+      quantity: normalizeItemQuantity(singleQuantity?.value || previousItem?.quantity),
+      product_key: activeKey,
+      cartAdded: previousItem?.cartAdded ?? (cartHasItems ? false : undefined),
+      groupContributorName: previousItem?.groupContributorName || null,
+      custom: copyItemDesign(previousItem)
+    };
+    const preservedActiveItems = activePreviousNames.filter(
+      item => item !== previousItem && item.cartAdded !== false
+    );
+    names = [...otherProductNames, ...preservedActiveItems, nextItem];
+    selectedIndex = names.length - 1;
   } else {
     const newNameValues = nameList.value
       .split("\n")
       .map(name => name.trim())
       .filter(Boolean);
 
-    names = newNameValues.map((value, index) => {
+    const activeNames = newNameValues.map((value, index) => {
       // First try matching the exact existing name.
-      const exactMatch = previousNames.find(
+      const exactMatch = activePreviousNames.find(
         item => item.name === value
       );
 
       // If the name changed because an icon was added,
       // preserve the design from the same line/index.
       const previousItem =
-        exactMatch || previousNames[index];
+        exactMatch || activePreviousNames[index];
 
       return {
         name: value,
         quantity: getItemQuantity(previousItem),
+        product_key: activeKey,
+        cartAdded: previousItem?.cartAdded ?? (cartHasItems ? false : undefined),
         groupContributorName: previousItem?.groupContributorName || null,
-
-        custom: previousItem?.custom
-          ? {
-              baseShape:
-                previousItem.custom.baseShape ||
-                globalDesign.baseShape ||
-                "ribbed",
-
-              letterOrientation:
-                previousItem.custom.letterOrientation ||
-                globalDesign.letterOrientation ||
-                "vertical",
-
-              fontSize: getStandardFontSize(previousItem.custom),
-
-              nfcEnabled: Boolean(previousItem.custom.nfcEnabled),
-              nfcType: previousItem.custom.nfcType || "guardian",
-              nfcPayload: previousItem.custom.nfcPayload || "",
-
-              photo: previousItem.custom.photo || null,
-              pencil: normalizePencilDesign(previousItem.custom.pencil || globalDesign.pencil),
-
-              bases: [...previousItem.custom.bases],
-              caps: [...previousItem.custom.caps],
-              letters: [...previousItem.custom.letters]
-            }
-          : null
+        custom: copyItemDesign(previousItem)
       };
     });
+    names = [...otherProductNames, ...activeNames];
+    selectedIndex = otherProductNames.length + Math.min(
+      Math.max(0, selectedIndex),
+      Math.max(0, activeNames.length - 1)
+    );
   }
 
   if (selectedIndex >= names.length) {
     selectedIndex = Math.max(0, names.length - 1);
   }
 
+  const activeNameCount = names.filter(item => item.product_key === activeKey).length;
   nameCount.textContent =
-    `${names.length} name${names.length === 1 ? "" : "s"}`;
+    `${activeNameCount} name${activeNameCount === 1 ? "" : "s"}`;
 
   const isGroupOrder = orderType === "group";
 
@@ -6313,12 +6339,12 @@ horizontalLetterBtn.onclick = () => {
   setLetterOrientation("horizontal");
 };
 
-function createMiniPreview(name, design) {
-  if (activeProduct.product_key === PHOTO_PRODUCT_KEY && design.photo?.artworkUrl) {
+function createMiniPreview(name, design, product = activeProduct) {
+  if (product.product_key === PHOTO_PRODUCT_KEY && design.photo?.artworkUrl) {
     return `<div class="mini-photo-keepsake"><img src="${escapePresetText(design.photo.artworkUrl)}" alt="${escapePresetText(name)} artwork"></div>`;
   }
 
-  if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
+  if (product.product_key === STANDARD_PRODUCT_KEY) {
     const backgroundColour = design.bases?.[0] || "#F55A74";
     const nameColour = design.letters?.[0] || "#FFFFFF";
     const cleanName = String(name || "Name").trim() || "Name";
@@ -6338,7 +6364,7 @@ function createMiniPreview(name, design) {
     `;
   }
 
-  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+  if (product.product_key === PENCIL_PRODUCT_KEY) {
     const pencil = normalizePencilDesign(design.pencil);
     const blocks = Array.from(sanitizeName(name || "A"))
       .map((character, index) => `
@@ -6373,18 +6399,18 @@ function createMiniPreview(name, design) {
     .join("");
 }
 
-function getDesignDescription(design) {
-  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+function getDesignDescription(design, product = activeProduct) {
+  if (product.product_key === PHOTO_PRODUCT_KEY) {
     return design.photo?.variant === "clicker"
       ? "AI simplified artwork · Clicker keychain"
       : "AI simplified artwork · Classic keychain";
   }
 
-  if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
+  if (product.product_key === STANDARD_PRODUCT_KEY) {
     return "Flat background · Raised name";
   }
 
-  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+  if (product.product_key === PENCIL_PRODUCT_KEY) {
     return "Raised characters · One clicker block per character";
   }
 
@@ -6397,15 +6423,15 @@ function getDesignDescription(design) {
   }`;
 }
 
-function getDesignColourSummary(design) {
-  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+function getDesignColourSummary(design, product = activeProduct) {
+  if (product.product_key === PHOTO_PRODUCT_KEY) {
     return `Up to ${Number(design.photo?.colourCount || 4)} stocked filament colours · final printability check included`;
   }
   const uniqueNames = values => Array.from(new Set((values || []).map(getColourName))).join(", ");
-  if (activeProduct.product_key === STANDARD_PRODUCT_KEY) {
+  if (product.product_key === STANDARD_PRODUCT_KEY) {
     return `Background: ${uniqueNames(design.bases)} · Name: ${uniqueNames(design.letters)}`;
   }
-  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+  if (product.product_key === PENCIL_PRODUCT_KEY) {
     const pencil = normalizePencilDesign(design.pencil);
     const ending = pencil.endingStyle === "endCap"
       ? `End cap: ${getColourName(pencil.endCap)}`
@@ -6419,13 +6445,15 @@ function renderNameCards() {
   nameCards.innerHTML = "";
 
   names.forEach((item, index) => {
+    const product = getItemProduct(item);
+    if (product.product_key !== activeProduct.product_key) return;
     const card = document.createElement("button");
     card.className = "student-card";
 
     if (index === selectedIndex) card.classList.add("active");
 
     const design = getDesign(item);
-    const price = calculatePrice(design, item.name);
+    const price = calculatePrice(design, item.name, product);
 
     card.innerHTML = `
       <div class="name-card-top">
@@ -6433,10 +6461,10 @@ function renderNameCards() {
         <span class="price-tag">$${price.toFixed(2)}</span>
       </div>
 
-      <p class="hint">${getDesignDescription(design)}</p>
+      <p class="hint">${getDesignDescription(design, product)}</p>
 
       <div class="mini-chain">
-        ${createMiniPreview(item.name, design)}
+        ${createMiniPreview(item.name, design, product)}
       </div>
     `;
 
@@ -6593,10 +6621,11 @@ function renderReviewOrder() {
   reviewCount.innerText = totalKeychains;
   reviewList.innerHTML = "";
 
-  names.forEach((item, index) => {
+  getCartEntries().forEach(({ item, index }) => {
     const design = getDesign(item);
-    const unitPrice = calculatePrice(design, item.name);
-    const priceBreakdown = getUnitPriceBreakdown(design, item.name);
+    const product = getItemProduct(item);
+    const unitPrice = calculatePrice(design, item.name, product);
+    const priceBreakdown = getUnitPriceBreakdown(design, item.name, product);
     const itemQuantity = getItemQuantity(item);
     const price = roundMoney(unitPrice * itemQuantity);
 
@@ -6610,12 +6639,12 @@ function renderReviewOrder() {
         <div>
           <strong>${item.name}${itemQuantity > 1 ? ` × ${itemQuantity}` : ""}</strong>
 
-          <p class="hint">${getDesignDescription(design)}</p>
+          <p class="hint"><strong>${escapePresetText(product.name)}</strong> · ${getDesignDescription(design, product)}</p>
 
-          <p class="review-colour-summary">${getDesignColourSummary(design)}</p>
+          <p class="review-colour-summary">${getDesignColourSummary(design, product)}</p>
 
           <p class="item-dimension-note">
-            📏 ${getApproximateSizeText(item.name)}
+            📏 ${getApproximateSizeText(item.name, product, design)}
           </p>
         </div>
 
@@ -6631,7 +6660,7 @@ function renderReviewOrder() {
       </div>
 
       <div class="mini-chain">
-        ${createMiniPreview(item.name, design)}
+        ${createMiniPreview(item.name, design, product)}
       </div>
 
       <div class="review-price-breakdown">
@@ -6681,9 +6710,12 @@ function renderReviewOrder() {
     .forEach(button => {
       button.addEventListener("click", () => {
         selectedIndex = Number(button.dataset.reviewEdit);
+        const selectedItem = names[selectedIndex];
+        if (!selectedItem) return;
+        activeProduct = getItemProduct(selectedItem);
 
         if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
-          const item = names[selectedIndex];
+          const item = selectedItem;
           const design = getDesign(item);
           photoKeepsakeLabel.value = item?.name || "";
           photoColourCount.value = String(design.photo?.colourCount || 4);
@@ -6709,6 +6741,10 @@ function renderReviewOrder() {
           return;
         }
 
+        orderType = "single";
+        singleName.value = selectedItem.name;
+        singleQuantity.value = String(getItemQuantity(selectedItem));
+        updateProductCustomiser();
         refreshUI();
         buildSelectedPreview();
         setStorefrontView("design", {
@@ -6746,7 +6782,7 @@ function renderReviewOrder() {
           selectedIndex = Math.max(0, names.length - 1);
         }
 
-        if (!names.length) {
+        if (!names.some(entry => entry.cartAdded !== false)) {
           cartHasItems = false;
         }
 
@@ -6973,7 +7009,8 @@ async function submitOrderOnce() {
     return;
   }
 
-  const unavailableSelections = names.reduce((allNames, item) => {
+  const checkoutItems = getCartItems();
+  const unavailableSelections = checkoutItems.reduce((allNames, item) => {
     getUnavailableDesignColours(getDesign(item)).forEach(name => {
       if (!allNames.includes(name)) allNames.push(name);
     });
@@ -7090,21 +7127,22 @@ async function submitOrderOnce() {
   const total = roundMoney(subtotal + delivery + rushFee);
 
   let expandedItemIndex = 0;
-  const orderData = names.flatMap(item => {
+  const orderData = checkoutItems.flatMap(item => {
     const design = getDesign(item);
+    const itemProduct = getItemProduct(item);
 
     return Array.from({ length: getItemQuantity(item) }, () => {
       const includesGiftingBag = expandedItemIndex === 0 && giftingBagQuantity > 0;
       expandedItemIndex += 1;
 
       return {
-        product_key: activeProduct.product_key,
-        product_name: activeProduct.name,
+        product_key: itemProduct.product_key,
+        product_name: itemProduct.name,
         name: item.name,
         clean_name: sanitizeName(item.name),
         group_contributor_name: item.groupContributorName || null,
         price: roundMoney(
-          calculatePrice(design, item.name) +
+          calculatePrice(design, item.name, itemProduct) +
           (includesGiftingBag ? giftingBagQuantity * GIFTING_BAG_PRICE : 0)
         ),
         gifting_bag: includesGiftingBag,
@@ -7112,7 +7150,7 @@ async function submitOrderOnce() {
 
         design: {
           font_size_mm: getStandardFontSize(design),
-          pencil: activeProduct.product_key === PENCIL_PRODUCT_KEY ? (() => {
+          pencil: itemProduct.product_key === PENCIL_PRODUCT_KEY ? (() => {
             const pencil = normalizePencilDesign(design.pencil);
             const detail = hex => ({
               name: getColourName(hex),
@@ -7170,7 +7208,7 @@ async function submitOrderOnce() {
   const order = {
     order_ref: orderRef,
     client_submission_id: currentSubmissionId,
-    product_key: activeProduct.product_key,
+    product_key: orderData[0]?.product_key || activeProduct.product_key,
     group_order_code:
       finalisingSharedGroupOwnerToken && activeSharedGroup?.public_code
         ? activeSharedGroup.public_code
@@ -7399,9 +7437,9 @@ async function submitOrderOnce() {
 
 function updateCollectionNote() {
 
-    const subtotal = names.reduce(
+    const subtotal = (cartHasItems ? getCartItems() : names).reduce(
         (sum, item) =>
-          sum + calculatePrice(getDesign(item), item.name) * getItemQuantity(item),
+          sum + calculatePrice(getDesign(item), item.name, getItemProduct(item)) * getItemQuantity(item),
         0
     );
 
@@ -8277,7 +8315,8 @@ function renderCartDrawer() {
   cartDrawerSubtotal.textContent =
     `$${subtotal.toFixed(2)}`;
 
-  if (!cartHasItems || !names.length) {
+  const cartEntries = getCartEntries();
+  if (!cartHasItems || !cartEntries.length) {
     cartDrawerItems.innerHTML = `
       <div class="empty-cart">
         <div class="empty-cart-icon">♡</div>
@@ -8307,23 +8346,25 @@ function renderCartDrawer() {
   sharedGroupCartBtn.textContent = "Save My Cart to Group Order";
   continueShoppingBtn.textContent = "Continue Designing";
 
-  cartDrawerItems.innerHTML = names
-    .map((item, index) => {
+  cartDrawerItems.innerHTML = cartEntries
+    .map(({ item, index }) => {
       const design = getDesign(item);
-      const unitPrice = calculatePrice(design, item.name);
+      const product = getItemProduct(item);
+      const unitPrice = calculatePrice(design, item.name, product);
       const itemQuantity = getItemQuantity(item);
       const price = roundMoney(unitPrice * itemQuantity);
-      const designDescription = getDesignDescription(design);
+      const designDescription = getDesignDescription(design, product);
 
       return `
         <div class="cart-drawer-item">
           <div class="cart-item-top">
             <div>
               <strong>${item.name}${itemQuantity > 1 ? ` × ${itemQuantity}` : ""}</strong>
+              <p>${escapePresetText(product.name)}</p>
               <p>${designDescription}</p>
               ${itemQuantity > 1 ? `<p>${displaySettingMoney(unitPrice)} each</p>` : ""}
               <p class="item-dimension-note">
-                📏 ${getApproximateSizeText(item.name)}
+                📏 ${getApproximateSizeText(item.name, product, design)}
               </p>
             </div>
 
@@ -8333,7 +8374,7 @@ function renderCartDrawer() {
           </div>
 
           <div class="mini-chain">
-            ${createMiniPreview(item.name, design)}
+            ${createMiniPreview(item.name, design, product)}
           </div>
 
           <div class="cart-item-actions">
@@ -8383,11 +8424,13 @@ function renderCartDrawer() {
 
 window.editCartItem = function(index) {
   selectedIndex = index;
+  const item = names[index];
+  if (!item) return;
+  activeProduct = getItemProduct(item);
 
   closeCartDrawer();
 
   if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
-    const item = names[index];
     const design = getDesign(item);
     photoKeepsakeLabel.value = item?.name || "";
     photoColourCount.value = String(design.photo?.colourCount || 4);
@@ -8413,6 +8456,10 @@ window.editCartItem = function(index) {
     return;
   }
 
+  orderType = "single";
+  singleName.value = item.name;
+  singleQuantity.value = String(getItemQuantity(item));
+  updateProductCustomiser();
   refreshUI();
   buildSelectedPreview();
   setStorefrontView("design", {
@@ -8423,6 +8470,7 @@ window.editCartItem = function(index) {
 window.duplicateCartItem = async function(index) {
   const original = names[index];
   if (!original) return;
+  activeProduct = getItemProduct(original);
   const newName = prompt("Name for the duplicated design:", original.name);
   if (newName === null) return;
   const cleanName = sanitizeName(newName);
@@ -8436,7 +8484,10 @@ window.duplicateCartItem = async function(index) {
   names.splice(index + 1, 0, duplicate);
   selectedIndex = index + 1;
   orderType = "group";
-  nameList.value = names.map(item => item.name).join("\n");
+  nameList.value = names
+    .filter(item => getItemProduct(item).product_key === activeProduct.product_key)
+    .map(item => item.name)
+    .join("\n");
   setOrderType("group");
   draftHasMeaningfulChanges = true;
 
@@ -8462,7 +8513,7 @@ window.removeCartItem = async function(index) {
 
   names.splice(index, 1);
 
-  if (names.length === 0) {
+  if (!names.some(item => item.cartAdded !== false)) {
     cartHasItems = false;
     selectedIndex = 0;
   } else if (selectedIndex >= names.length) {
@@ -8471,7 +8522,10 @@ window.removeCartItem = async function(index) {
 
   if (orderType === "group") {
     nameList.value =
-      names.map(item => item.name).join("\n");
+      names
+        .filter(item => (item.product_key || activeProduct.product_key) === activeProduct.product_key)
+        .map(item => item.name)
+        .join("\n");
   }
 
   refreshUI();
@@ -8481,7 +8535,7 @@ window.removeCartItem = async function(index) {
 };
 
 function proceedToCheckout() {
-  if (!cartHasItems || !names.length) {
+  if (!cartHasItems || !getCartEntries().length) {
     return;
   }
 
@@ -8507,6 +8561,12 @@ nextBtn.onclick = async () => {
     return;
   }
 
+  names.forEach(item => {
+    if ((item.product_key || activeProduct.product_key) === activeProduct.product_key) {
+      item.product_key = activeProduct.product_key;
+      item.cartAdded = true;
+    }
+  });
   cartHasItems = true;
   draftHasMeaningfulChanges = true;
 
@@ -8611,6 +8671,7 @@ function updateProductCustomiser() {
   if (isSolidClicker) {
     globalDesign.bases = globalDesign.bases.slice(0, 1);
     names.forEach(item => {
+      if ((item.product_key || activeProduct.product_key) !== activeProduct.product_key) return;
       if (item.custom?.bases?.length) {
         item.custom.bases = item.custom.bases.slice(0, 1);
       }
@@ -8619,6 +8680,7 @@ function updateProductCustomiser() {
 
   if (isPencilClicker) {
     names.forEach(item => {
+      if ((item.product_key || activeProduct.product_key) !== activeProduct.product_key) return;
       if (item.custom) {
         item.custom.pencil = normalizePencilDesign(item.custom.pencil || globalDesign.pencil);
       }
@@ -8771,6 +8833,57 @@ function updateProductCustomiser() {
   renderIconPicker();
 
   updateNames();
+}
+
+function beginProductDesign(productKey) {
+  const nextProduct = getProductByKey(productCatalog, productKey);
+  const previousProductKey = activeProduct.product_key;
+
+  names.forEach(item => {
+    if (!item.product_key) item.product_key = previousProductKey;
+    if (!item.custom) {
+      item.custom = {
+        baseShape: globalDesign.baseShape || "ribbed",
+        letterOrientation: globalDesign.letterOrientation || "vertical",
+        fontSize: getStandardFontSize(globalDesign),
+        nfcEnabled: Boolean(globalDesign.nfcEnabled),
+        nfcType: globalDesign.nfcType || "guardian",
+        nfcPayload: globalDesign.nfcPayload || "",
+        photo: globalDesign.photo || null,
+        pencil: normalizePencilDesign(globalDesign.pencil),
+        bases: [...globalDesign.bases],
+        caps: [...globalDesign.caps],
+        letters: [...globalDesign.letters]
+      };
+    }
+    if (cartHasItems && item.cartAdded !== false) item.cartAdded = true;
+  });
+  names = cartHasItems
+    ? names.filter(item => item.cartAdded !== false)
+    : [];
+
+  activeProduct = nextProduct;
+  orderType = "single";
+  singleBtn.classList.add("active");
+  groupBtn.classList.remove("active");
+  singleSection.classList.remove("hidden");
+  groupSection.classList.add("hidden");
+  singleName.value = "Alicia";
+  singleQuantity.value = "1";
+  names.push({
+    name: "Alicia",
+    quantity: 1,
+    product_key: activeProduct.product_key,
+    cartAdded: false,
+    groupContributorName: null,
+    custom: null
+  });
+  selectedIndex = names.length - 1;
+
+  if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
+    applyClassicPencilDefaults();
+  }
+  updateProductCustomiser();
 }
 
 function resetPhotoArtworkResult() {
@@ -9138,9 +9251,12 @@ function addPhotoKeepsakeToCart() {
   const label = photoKeepsakeLabel.value.trim() ||
     (photoSubjectType.value === "pet" ? "Pet Photo" : "Photo Keepsake");
   const fallbackColours = getAvailableColours();
-  names = [{
+  names = names.filter(item => cartHasItems && item.cartAdded !== false);
+  names.push({
     name: label,
     quantity: normalizeItemQuantity(photoKeepsakeQuantity?.value),
+    product_key: PHOTO_PRODUCT_KEY,
+    cartAdded: true,
     groupContributorName: null,
     custom: {
       baseShape: "photo",
@@ -9160,8 +9276,8 @@ function addPhotoKeepsakeToCart() {
         filamentPalette: normalizePhotoFilamentPalette(photoKeepsakeState.filamentPalette)
       }
     }
-  }];
-  selectedIndex = 0;
+  });
+  selectedIndex = names.length - 1;
   orderType = "single";
   cartHasItems = true;
   draftHasMeaningfulChanges = true;
@@ -9236,16 +9352,7 @@ document
       const productKey = button.dataset.productKey;
 
       if (productKey) {
-        activeProduct = getProductByKey(
-          productCatalog,
-          productKey
-        );
-
-        if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
-          applyClassicPencilDefaults();
-        }
-
-        updateProductCustomiser();
+        beginProductDesign(productKey);
       }
 
       setStorefrontView(button.dataset.viewTarget, {

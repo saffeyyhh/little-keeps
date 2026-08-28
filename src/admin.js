@@ -10,6 +10,7 @@ import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import polygonClipping from "polygon-clipping";
+import { strToU8, zipSync } from "fflate";
 import {
   getArtworkColourClusters,
   mapArtworkClustersToFilaments,
@@ -65,6 +66,10 @@ import {
   normalizeColourOptions
 } from "./colour-catalog.js";
 import { getPencilCharacterStlName } from "./pencil-characters.js";
+import {
+  buildPencilStlManifest,
+  buildPencilStlPackPlan
+} from "./pencil-stl-pack.js";
 
 const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
@@ -8787,6 +8792,138 @@ function downloadRushStl(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+let pencilProductionStlFiles = new Map();
+
+async function collectPencilStlDirectoryFiles(directoryHandle, files = new Map()) {
+  for await (const entry of directoryHandle.values()) {
+    if (entry.kind === "file" && entry.name.toLowerCase().endsWith(".stl")) {
+      files.set(entry.name, await entry.getFile());
+    } else if (entry.kind === "directory") {
+      await collectPencilStlDirectoryFiles(entry, files);
+    }
+  }
+  return files;
+}
+
+function choosePencilStlFolderWithInput() {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    let settled = false;
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".stl,model/stl";
+    input.setAttribute("webkitdirectory", "");
+    input.style.display = "none";
+    const handleWindowFocus = () => {
+      setTimeout(() => {
+        if (settled || input.files?.length) return;
+        settled = true;
+        input.remove();
+        reject(new Error("Pencil STL folder selection was cancelled."));
+      }, 500);
+    };
+    input.addEventListener("change", () => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("focus", handleWindowFocus);
+      const selected = new Map(
+        Array.from(input.files || [])
+          .filter(file => file.name.toLowerCase().endsWith(".stl"))
+          .map(file => [file.name, file])
+      );
+      input.remove();
+      if (!selected.size) reject(new Error("No STL files were selected."));
+      else resolve(selected);
+    }, { once: true });
+    window.addEventListener("focus", handleWindowFocus, { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+async function connectPencilProductionStlFolder(requiredFiles) {
+  const hasEveryFile = requiredFiles.every(name => pencilProductionStlFiles.has(name));
+  if (hasEveryFile) return pencilProductionStlFiles;
+
+  let selected;
+  if (typeof window.showDirectoryPicker === "function") {
+    try {
+      const directoryHandle = await window.showDirectoryPicker({ mode: "read" });
+      selected = await collectPencilStlDirectoryFiles(directoryHandle);
+    } catch (error) {
+      if (error?.name === "AbortError") throw new Error("Pencil STL folder selection was cancelled.");
+      selected = await choosePencilStlFolderWithInput();
+    }
+  } else {
+    selected = await choosePencilStlFolderWithInput();
+  }
+
+  pencilProductionStlFiles = selected;
+  const missing = requiredFiles.filter(name => !selected.has(name));
+  if (missing.length) {
+    throw new Error(
+      `The selected folder is missing ${missing.length} required file${missing.length === 1 ? "" : "s"}:\n${missing.join("\n")}`
+    );
+  }
+  return pencilProductionStlFiles;
+}
+
+window.generatePencilClickerStls = async function(
+  orderId,
+  itemIndex,
+  button,
+  orderedQuantity = 1
+) {
+  const order = latestOrders.find(entry => String(entry.id) === String(orderId));
+  const item = order?.order_data?.[Number(itemIndex)];
+  if (!order || !item) return alert("This pencil design could not be found.");
+
+  const previousLabel = button?.textContent || "Download STL Pack";
+  try {
+    const plan = buildPencilStlPackPlan({ order, item, quantity: orderedQuantity });
+    if (button) {
+      button.disabled = true;
+      button.textContent = pencilProductionStlFiles.size
+        ? "Packing STLs…"
+        : "Choose your STL folder…";
+    }
+
+    const sourceFiles = await connectPencilProductionStlFolder(plan.requiredFiles);
+    if (button) button.textContent = "Packing STLs…";
+
+    const zipEntries = {
+      "PRINT-MANIFEST.txt": strToU8(buildPencilStlManifest(plan))
+    };
+    for (const sourceName of plan.requiredFiles) {
+      zipEntries[`STLs/${sourceName}`] = new Uint8Array(
+        await sourceFiles.get(sourceName).arrayBuffer()
+      );
+    }
+
+    const zipBytes = zipSync(zipEntries, { level: 6 });
+    const filename = [
+      safeProductionFileName(plan.orderReference, "order"),
+      safeProductionFileName(plan.designName, "pencil"),
+      "PENCIL-STLS.zip"
+    ].join("_");
+    downloadRushStl(new Blob([zipBytes], { type: "application/zip" }), filename);
+
+    if (button) button.textContent = "Downloaded ✓";
+    alert(
+      `Pencil STL pack downloaded for ${plan.designName}.\n\n` +
+      "The ZIP contains only the required licensed source STLs plus a print manifest with every colour, quantity and character position. Your source folder stayed on this device."
+    );
+  } catch (error) {
+    console.error("Unable to prepare pencil STL pack:", error);
+    alert(`Unable to prepare this pencil STL pack.\n\n${error?.message || error}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      setTimeout(() => { button.textContent = previousLabel; }, 2800);
+    }
+  }
+};
+
 async function generateOrderStls(id, button) {
   const order = latestOrders.find(item => String(item.id) === String(id));
   if (!order) return alert("Order could not be found.");
@@ -8830,9 +8967,22 @@ async function generateOrderStls(id, button) {
     .map((item, itemIndex) => ({ item, itemIndex }))
     .filter(({ item }) => !item.assembly_completed && isPencilClicker(order, item));
   if (pencilItems.length) {
-    alert(
-      `This order contains ${pencilItems.length} Custom Pencil Clicker${pencilItems.length === 1 ? "" : "s"}.\n\nOpen Production → Custom Prints for the exact names, part colours and lettering styles, then prepare them in your licensed Clickify 3D pencil project.`
-    );
+    if (!confirm(
+      `Download the licensed STL pack for ${pencilItems.length} Custom Pencil Clicker design${pencilItems.length === 1 ? "" : "s"}?\n\nThe first time, choose your “Pencil STL” folder. It stays on this device and is not uploaded.`
+    )) return;
+    const previousLabel = button?.textContent || "Generate Order STLs";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Preparing pencil STLs…";
+    }
+    for (const { itemIndex } of pencilItems) {
+      await window.generatePencilClickerStls(String(order.id), itemIndex, null, 1);
+    }
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Downloaded ✓";
+      setTimeout(() => { button.textContent = previousLabel; }, 2200);
+    }
     return;
   }
 
@@ -11734,7 +11884,7 @@ async function renderProductionPlanner(orders) {
 
         <div class="production-queue-section ${productionQueueView === "custom" ? "" : "hidden"}">
           <h3>Order-Specific Custom Prints</h3>
-          <p class="hint">Name keychains use generated STLs, photo keepsakes use private artwork, and pencil clickers are prepared in your licensed Clickify 3D project.</p>
+          <p class="hint">Download each order-specific print pack here. For pencil clickers, connect your licensed Pencil STL folder once per admin session; the files stay on this device.</p>
           <div class="custom-print-grid">
             ${customPrintRows.map(row => {
               const background = row.background || {};
@@ -11763,8 +11913,8 @@ async function renderProductionPlanner(orders) {
                     ` : `<p class="hint">Legacy preview · its colours will be matched to your currently available filament when you download the STL pack.</p>`}
                   ` : row.isPencil ? `
                     <div class="pencil-production-guide">
-                      <strong>Prepare in Clickify 3D - Custom Pencil Clicker.3mf</strong>
-                      <span>${String(pencil.text_style || "raised") === "flat" ? "Inlaid / flat" : "Raised"} characters · ${String(pencil.ending_style || "eraser") === "endCap" ? "end cap" : "eraser + metal band"} · one Pencil Body and matching top per character</span>
+                      <strong>Order-ready licensed STL pack</strong>
+                      <span>${String(pencil.ending_style || "eraser") === "endCap" ? "End cap" : "Eraser + metal band"} · one Pencil Body, matching top and raised character per block</span>
                     </div>
                     <div class="pencil-character-plan">
                       ${(row.blocks || []).map((block, index) => {
@@ -11805,6 +11955,7 @@ async function renderProductionPlanner(orders) {
                       <button type="button" onclick='window.generatePhotoKeepsakeStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)}, ${row.need})'>Checked · Start Printing × ${row.need}</button>
                     ` : row.isPencil ? `
+                      <button type="button" onclick='window.generatePencilClickerStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, ${row.need}, "Custom")'>Prepared · Start Printing × ${row.need}</button>
                     ` : `
                       <button type="button" onclick='window.generateCustomNameKeychainStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download 2 STLs</button>
