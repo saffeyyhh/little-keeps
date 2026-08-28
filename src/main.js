@@ -68,6 +68,10 @@ import {
   getPromoEligibility as assessPromoEligibility,
   normalizePromoCode
 } from "./promo-logic.js";
+import {
+  formatDesignBatchNames,
+  parseDesignBatchNames
+} from "./design-batches.js";
 
 const pageUrlParams = new URLSearchParams(window.location.search);
 const isManualOrder = pageUrlParams.get("manual") === "true";
@@ -1441,7 +1445,7 @@ ${requestedPreviewProductKey ? `
         </div>
 
         <div id="groupSection" class="hidden">
-          <h3>Or enter everyone yourself</h3>
+          <h3>Paste your names</h3>
 
           <textarea
             id="nameList"
@@ -1452,7 +1456,11 @@ Chloe</textarea>
 
           <p id="nameCount">3 names</p>
 
-          <p class="hint">One name per line · icons optional</p>
+          <div class="batch-paste-tip">
+            <strong>Need a few different designs?</strong>
+            <span>Keep names with the same design together. Leave one blank line before the next batch.</span>
+            <code>Amy<br>Ben<br><br>Cara<br>Dan</code>
+          </div>
 
           <div
             id="groupIconPicker"
@@ -1465,14 +1473,14 @@ Chloe</textarea>
     <div id="nameCardsSection" class="card keychain-selector">
       <div class="keychain-selector-heading">
         <div>
-          <h3>Choose a Keychain to Edit</h3>
+          <h3 id="designSelectionHeading">Choose a Keychain to Edit</h3>
 
         </div>
 
         <div id="applyAllSection">
           <label class="apply-row">
             <input id="applyAllToggle" type="checkbox">
-            Use the same design for all keychains
+            Use one design for every batch
           </label>
 
           <p id="editingLabel" class="hint"></p>
@@ -2555,6 +2563,7 @@ const nameList = document.getElementById("nameList");
 const nameCount = document.getElementById("nameCount");
 const nameCards = document.getElementById("nameCards");
 const nameCardsSection = document.getElementById("nameCardsSection");
+const designSelectionHeading = document.getElementById("designSelectionHeading");
 const applyAllToggle = document.getElementById("applyAllToggle");
 const editModeText = document.getElementById("editModeText");
 const dimensionEstimate = document.getElementById("dimensionEstimate");
@@ -4161,6 +4170,59 @@ const BASE_SHAPES = {
 
 
 let names = [];
+
+function cloneCustomDesign(source = globalDesign) {
+  return {
+    baseShape: source?.baseShape || "ribbed",
+    letterOrientation: source?.letterOrientation || "vertical",
+    fontSize: getStandardFontSize(source || globalDesign),
+    nfcEnabled: Boolean(source?.nfcEnabled),
+    nfcType: source?.nfcType || "guardian",
+    nfcPayload: source?.nfcPayload || "",
+    photo: source?.photo ? structuredClone(source.photo) : null,
+    pencil: normalizePencilDesign(source?.pencil || globalDesign.pencil),
+    bases: [...(source?.bases || globalDesign.bases)],
+    caps: [...(source?.caps || globalDesign.caps)],
+    letters: [...(source?.letters || globalDesign.letters)]
+  };
+}
+
+function getActiveProductBatchGroups() {
+  const activeItems = names
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => getItemProduct(item).product_key === activeProduct.product_key);
+  const grouped = new Map();
+  activeItems.forEach(entry => {
+    const id = entry.item.designBatchId || entry.item.design_batch_id || "batch-1";
+    if (!grouped.has(id)) grouped.set(id, []);
+    grouped.get(id).push(entry);
+  });
+  return Array.from(grouped.entries()).map(([id, entries], groupIndex) => ({
+    id,
+    number: Number(entries[0]?.item?.designBatchNumber || entries[0]?.item?.design_batch_number) || groupIndex + 1,
+    entries
+  }));
+}
+
+function linkSharedBatchDesigns() {
+  const groups = getActiveProductBatchGroups();
+  if (groups.length < 2) return;
+  groups.forEach(group => {
+    const savedDesign = group.entries.find(({ item }) => item.custom)?.item.custom;
+    const sharedDesign = cloneCustomDesign(savedDesign || globalDesign);
+    group.entries.forEach(({ item }) => {
+      item.custom = sharedDesign;
+      item.designBatchId = group.id;
+      item.designBatchNumber = group.number;
+    });
+  });
+}
+
+function formatActiveProductNames() {
+  return formatDesignBatchNames(
+    names.filter(item => getItemProduct(item).product_key === activeProduct.product_key)
+  );
+}
 
 function getItemProduct(item) {
   return getProductByKey(
@@ -6083,19 +6145,7 @@ function updateNames() {
   );
 
   const copyItemDesign = previousItem => previousItem?.custom
-    ? {
-        baseShape: previousItem.custom.baseShape || globalDesign.baseShape || "ribbed",
-        letterOrientation: previousItem.custom.letterOrientation || globalDesign.letterOrientation || "vertical",
-        fontSize: getStandardFontSize(previousItem.custom),
-        nfcEnabled: Boolean(previousItem.custom.nfcEnabled),
-        nfcType: previousItem.custom.nfcType || "guardian",
-        nfcPayload: previousItem.custom.nfcPayload || "",
-        photo: previousItem.custom.photo || null,
-        pencil: normalizePencilDesign(previousItem.custom.pencil || globalDesign.pencil),
-        bases: [...previousItem.custom.bases],
-        caps: [...previousItem.custom.caps],
-        letters: [...previousItem.custom.letters]
-      }
+    ? cloneCustomDesign(previousItem.custom)
     : null;
 
   if (orderType === "single") {
@@ -6118,15 +6168,13 @@ function updateNames() {
     names = [...otherProductNames, ...preservedActiveItems, nextItem];
     selectedIndex = names.length - 1;
   } else {
-    const newNameValues = nameList.value
-      .split("\n")
-      .map(name => name.trim())
-      .filter(Boolean);
+    const parsedNames = parseDesignBatchNames(nameList.value);
 
-    const activeNames = newNameValues.map((value, index) => {
+    const activeNames = parsedNames.map((entry, index) => {
       // First try matching the exact existing name.
       const exactMatch = activePreviousNames.find(
-        item => item.name === value
+        item => item.name === entry.name &&
+          (item.designBatchId || "batch-1") === entry.designBatchId
       );
 
       // If the name changed because an icon was added,
@@ -6135,15 +6183,18 @@ function updateNames() {
         exactMatch || activePreviousNames[index];
 
       return {
-        name: value,
+        name: entry.name,
         quantity: getItemQuantity(previousItem),
         product_key: activeKey,
         cartAdded: previousItem?.cartAdded ?? (cartHasItems ? false : undefined),
         groupContributorName: previousItem?.groupContributorName || null,
+        designBatchId: entry.designBatchId,
+        designBatchNumber: entry.designBatchNumber,
         custom: copyItemDesign(previousItem)
       };
     });
     names = [...otherProductNames, ...activeNames];
+    linkSharedBatchDesigns();
     selectedIndex = otherProductNames.length + Math.min(
       Math.max(0, selectedIndex),
       Math.max(0, activeNames.length - 1)
@@ -6155,8 +6206,10 @@ function updateNames() {
   }
 
   const activeNameCount = names.filter(item => item.product_key === activeKey).length;
-  nameCount.textContent =
-    `${activeNameCount} name${activeNameCount === 1 ? "" : "s"}`;
+  const activeBatchCount = getActiveProductBatchGroups().length;
+  nameCount.textContent = `${activeNameCount} name${activeNameCount === 1 ? "" : "s"}${
+    activeBatchCount > 1 ? ` · ${activeBatchCount} design batches` : ""
+  }`;
 
   const isGroupOrder = orderType === "group";
 
@@ -6505,6 +6558,51 @@ function getDesignColourSummary(design, product = activeProduct) {
 function renderNameCards() {
   nameCards.innerHTML = "";
 
+  const batches = getActiveProductBatchGroups();
+  const useBatchCards = orderType === "group" && batches.length > 1;
+  nameCards.classList.toggle("is-batch-list", useBatchCards);
+  if (designSelectionHeading) {
+    designSelectionHeading.textContent = useBatchCards
+      ? "Choose a Design Batch to Edit"
+      : "Choose a Keychain to Edit";
+  }
+
+  if (useBatchCards) {
+    batches.forEach(batch => {
+      const representative = batch.entries[0];
+      const product = getItemProduct(representative.item);
+      const design = getDesign(representative.item);
+      const batchTotal = batch.entries.reduce(
+        (total, { item }) => total + calculatePrice(design, item.name, product) * getItemQuantity(item),
+        0
+      );
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "student-card design-batch-card";
+      if (batch.entries.some(({ index }) => index === selectedIndex)) card.classList.add("active");
+      const shownNames = batch.entries.slice(0, 8).map(({ item }) => item.name);
+      const remaining = batch.entries.length - shownNames.length;
+
+      card.innerHTML = `
+        <div class="name-card-top">
+          <span><small>Design batch ${batch.number}</small><strong>${batch.entries.length} names</strong></span>
+          <span class="price-tag">$${batchTotal.toFixed(2)}</span>
+        </div>
+        <p class="batch-name-list">${shownNames.map(escapePresetText).join(" · ")}${remaining > 0 ? ` · +${remaining} more` : ""}</p>
+        <p class="batch-shared-note">Edit once — this design applies to every name in this batch.</p>
+        <div class="mini-chain">${createMiniPreview(representative.item.name, design, product)}</div>
+      `;
+      card.onclick = () => {
+        selectedIndex = representative.index;
+        applyAllToggle.checked = false;
+        refreshUI();
+        buildSelectedPreview();
+      };
+      nameCards.appendChild(card);
+    });
+    return;
+  }
+
   names.forEach((item, index) => {
     const product = getItemProduct(item);
     if (product.product_key !== activeProduct.product_key) return;
@@ -6577,6 +6675,10 @@ function updateDimensionEstimate(name) {
 
 function updateEditModeText() {
   const selectedItem = names[selectedIndex];
+  const batches = getActiveProductBatchGroups();
+  const selectedBatch = batches.find(batch =>
+    batch.entries.some(({ index }) => index === selectedIndex)
+  );
 
   updateDimensionEstimate(selectedItem?.name || "");
 
@@ -6591,6 +6693,14 @@ function updateEditModeText() {
     return;
   }
 
+  if (orderType === "group" && batches.length > 1 && selectedBatch) {
+    editModeText.textContent =
+      `Editing Batch ${selectedBatch.number} · changes apply to all ${selectedBatch.entries.length} names`;
+    resetSelected.style.display = "block";
+    resetSelected.textContent = `Reset Batch ${selectedBatch.number}`;
+    return;
+  }
+
   editModeText.textContent = selectedItem
     ? `Currently editing: ${selectedItem.name}`
     : "Currently editing: selected keychain";
@@ -6599,6 +6709,7 @@ function updateEditModeText() {
     orderType === "group"
       ? "block"
       : "none";
+  resetSelected.textContent = "Reset Selected";
 }
 
 function updatePreviewColourLegend() {
@@ -6830,9 +6941,7 @@ function renderReviewOrder() {
         names.splice(index, 1);
 
         if (orderType === "group") {
-          nameList.value = names
-            .map(entry => entry.name)
-            .join("\n");
+          nameList.value = formatActiveProductNames();
         } else if (!names.length) {
           singleName.value = "";
         }
@@ -7200,6 +7309,8 @@ async function submitOrderOnce() {
         product_type: itemProduct.product_type || "custom",
         name: item.name,
         clean_name: sanitizeName(item.name),
+        design_batch_id: item.designBatchId || null,
+        design_batch_number: item.designBatchNumber || null,
         group_contributor_name: item.groupContributorName || null,
         price: roundMoney(
           calculatePrice(design, item.name, itemProduct) +
@@ -7895,7 +8006,7 @@ function restoreSharedGroupOwnerCart(group = activeSharedGroup, { force = false 
   groupSection.classList.toggle("hidden", orderType !== "group");
   singleName.value = restored[0].name;
   singleQuantity.value = String(restored[0].quantity);
-  nameList.value = restored.map(item => item.name).join("\n");
+  nameList.value = formatDesignBatchNames(restored);
   refreshUI();
   buildSelectedPreview();
   return true;
@@ -8316,7 +8427,7 @@ closeSharedGroupSuccessBtn.addEventListener("click", () => sharedGroupSuccessMod
 refreshSharedGroupBtn.addEventListener("click", () => loadSharedGroup(activeSharedGroupOwnerToken, { openOwner: true }));
 editSharedGroupOwnerDesignsBtn.addEventListener("click", () => {
   if (!restoreSharedGroupOwnerCart(activeSharedGroup, { force: true })) return;
-  nameList.value = names.map(item => item.name).join("\n");
+  nameList.value = formatActiveProductNames();
   setOrderType("group");
   sharedGroupOwnerModal.classList.add("hidden");
   setStorefrontView("design", { scrollTo: "designArea" });
@@ -8411,8 +8522,7 @@ function renderCartDrawer() {
   sharedGroupCartBtn.textContent = "Save My Cart to Group Order";
   continueShoppingBtn.textContent = "Continue Designing";
 
-  cartDrawerItems.innerHTML = cartEntries
-    .map(({ item, index }) => {
+  const renderCartEntry = ({ item, index }) => {
       const design = getDesign(item);
       const product = getItemProduct(item);
       const unitPrice = calculatePrice(design, item.name, product);
@@ -8465,8 +8575,36 @@ function renderCartDrawer() {
           </div>
         </div>
       `;
-    })
-    .join("");
+    };
+
+  const batchIds = Array.from(new Set(
+    cartEntries.map(({ item }) => item.designBatchId).filter(Boolean)
+  ));
+  if (batchIds.length > 1) {
+    const groupedMarkup = batchIds.map((batchId, batchIndex) => {
+      const entries = cartEntries.filter(({ item }) => item.designBatchId === batchId);
+      const batchTotal = entries.reduce((total, { item }) => {
+        const product = getItemProduct(item);
+        return total + calculatePrice(getDesign(item), item.name, product) * getItemQuantity(item);
+      }, 0);
+      return `
+        <details class="cart-design-batch" ${batchIndex === 0 ? "open" : ""}>
+          <summary>
+            <span><small>Design Batch ${entries[0]?.item?.designBatchNumber || batchIndex + 1}</small><strong>${entries.length} names</strong></span>
+            <b>$${batchTotal.toFixed(2)}</b>
+          </summary>
+          <div>${entries.map(renderCartEntry).join("")}</div>
+        </details>
+      `;
+    }).join("");
+    const unbatchedMarkup = cartEntries
+      .filter(({ item }) => !item.designBatchId)
+      .map(renderCartEntry)
+      .join("");
+    cartDrawerItems.innerHTML = groupedMarkup + unbatchedMarkup;
+  } else {
+    cartDrawerItems.innerHTML = cartEntries.map(renderCartEntry).join("");
+  }
 
   if (giftingBagQuantity > 0) {
     cartDrawerItems.insertAdjacentHTML("beforeend", `
@@ -8524,6 +8662,19 @@ window.editCartItem = function(index) {
     return;
   }
 
+  if (item.designBatchId && getActiveProductBatchGroups().length > 1) {
+    orderType = "group";
+    nameList.value = formatActiveProductNames();
+    setOrderType("group");
+    selectedIndex = names.findIndex(entry =>
+      entry.product_key === item.product_key && entry.designBatchId === item.designBatchId
+    );
+    refreshUI();
+    buildSelectedPreview();
+    setStorefrontView("design", { scrollTo: "designArea" });
+    return;
+  }
+
   orderType = "single";
   singleName.value = item.name;
   singleQuantity.value = String(getItemQuantity(item));
@@ -8562,10 +8713,7 @@ window.duplicateCartItem = async function(index) {
   names.splice(index + 1, 0, duplicate);
   selectedIndex = index + 1;
   orderType = "group";
-  nameList.value = names
-    .filter(item => getItemProduct(item).product_key === activeProduct.product_key)
-    .map(item => item.name)
-    .join("\n");
+  nameList.value = formatActiveProductNames();
   setOrderType("group");
   draftHasMeaningfulChanges = true;
 
@@ -8599,11 +8747,7 @@ window.removeCartItem = async function(index) {
   }
 
   if (orderType === "group") {
-    nameList.value =
-      names
-        .filter(item => (item.product_key || activeProduct.product_key) === activeProduct.product_key)
-        .map(item => item.name)
-        .join("\n");
+    nameList.value = formatActiveProductNames();
   }
 
   refreshUI();
@@ -9914,7 +10058,16 @@ resetSelected.onclick = () => {
   if (randomiseMultipleColours) randomiseMultipleColours.checked = false;
   if (randomiseColoursStatus) randomiseColoursStatus.textContent = "";
   if (names[selectedIndex]) {
-    names[selectedIndex].custom = null;
+    const batches = getActiveProductBatchGroups();
+    const selectedBatch = batches.find(batch =>
+      batch.entries.some(({ index }) => index === selectedIndex)
+    );
+    if (batches.length > 1 && selectedBatch) {
+      const sharedDefault = cloneCustomDesign(globalDesign);
+      selectedBatch.entries.forEach(({ item }) => { item.custom = sharedDefault; });
+    } else {
+      names[selectedIndex].custom = null;
+    }
     refreshUI();
     buildSelectedPreview();
   }
@@ -10232,7 +10385,7 @@ function loadSharedDesignFromUrl() {
     cartHasItems = true;
     singleName.value = names[0].name;
     singleQuantity.value = String(getItemQuantity(names[0]));
-    nameList.value = names.map(item => item.name).join("\n");
+    nameList.value = formatActiveProductNames();
     if (randomiseMultipleColours) {
       randomiseMultipleColours.checked = Boolean(shared.randomiseMultipleColours);
     }

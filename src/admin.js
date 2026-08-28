@@ -5046,6 +5046,7 @@ function renderOrders(orders) {
               For ${escapeAdminHtml(item.group_contributor_name)}
             </span>
           ` : ""}
+          ${item.design_batch_number ? `<span class="assembly-tag">Design Batch ${Number(item.design_batch_number)}</span>` : ""}
 
           ${readyMadeProduct ? `
             <span class="assembly-tag">Ready-made design</span>
@@ -9767,6 +9768,7 @@ async function renderAssemblyQueue() {
                 For ${escapeAdminHtml(item.group_contributor_name)}
               </span>
             ` : ""}
+            ${item.design_batch_number ? `<span class="assembly-tag">Design Batch ${Number(item.design_batch_number)}</span>` : ""}
             ${
               completed
                 ? `<span class="assembly-tag assembly-complete-tag">Completed ✓</span>`
