@@ -1418,12 +1418,25 @@ ${requestedPreviewProductKey ? `
   </div>
 </aside>
 
-<section id="designArea" class="shop-section" data-store-view="design">
+<section id="designArea" class="shop-section" data-store-view="design" data-design-step="names">
   <div class="customer-progress" aria-label="Order progress">
     <div class="customer-progress-step is-active"><span>1</span>Design</div>
     <div class="customer-progress-step"><span>2</span>Details</div>
     <div class="customer-progress-step"><span>3</span>Review</div>
     <div class="customer-progress-step"><span>4</span>Payment</div>
+  </div>
+
+  <div class="design-wizard-heading">
+    <div>
+      <p class="section-eyebrow">Create yours, one easy step at a time</p>
+      <h1 id="designWizardTitle">Add your name</h1>
+      <p id="designWizardDescription">Choose a single design or paste a list of names. Nothing is lost when you go back.</p>
+    </div>
+    <nav id="designWizardNav" class="design-wizard-nav" aria-label="Design steps">
+      <button type="button" class="is-active" data-design-wizard-step="names" aria-current="step"><span>1</span><strong>Names</strong></button>
+      <button type="button" data-design-wizard-step="style"><span>2</span><strong>Customise</strong></button>
+      <button type="button" data-design-wizard-step="preview"><span>3</span><strong>Preview</strong></button>
+    </nav>
   </div>
 
   <div class="designer-setup">
@@ -1837,6 +1850,12 @@ Chloe</textarea>
         </button>
       </div>
     </section>
+  </div>
+
+  <div id="designWizardActions" class="design-wizard-actions">
+    <button id="designWizardBackBtn" type="button" class="design-wizard-back hidden">← Back</button>
+    <p id="designWizardActionHint">Enter the name or names you want, then continue.</p>
+    <button id="designWizardNextBtn" type="button" class="design-wizard-next">Choose colours →</button>
   </div>
 
   <p id="turnaroundSummary" class="design-turnaround-note">
@@ -2602,6 +2621,7 @@ let appliedPromoCode = "";
 let preparedDiscount = null;
 let preparedCheckoutMode = false;
 let preparedCheckoutToken = "";
+let designWizardStep = "names";
 let verifiedLinkedOrder = null;
 
 const canvas = document.getElementById("previewCanvas");
@@ -2849,6 +2869,13 @@ const sharedGroupBannerText = document.getElementById("sharedGroupBannerText");
 const sharedGroupBannerAction = document.getElementById("sharedGroupBannerAction");
 
 const designScreen = document.getElementById("designScreen");
+const designArea = document.getElementById("designArea");
+const designWizardTitle = document.getElementById("designWizardTitle");
+const designWizardDescription = document.getElementById("designWizardDescription");
+const designWizardNav = document.getElementById("designWizardNav");
+const designWizardBackBtn = document.getElementById("designWizardBackBtn");
+const designWizardNextBtn = document.getElementById("designWizardNextBtn");
+const designWizardActionHint = document.getElementById("designWizardActionHint");
 const checkoutScreen = document.getElementById("checkoutScreen");
 const paymentScreen =
 document.getElementById("paymentScreen");
@@ -4909,6 +4936,7 @@ function makeSwatches(containerId, colourOptions, type) {
 }
 
 backBtn.onclick = () => {
+  setDesignWizardStep("preview", { scroll: false });
   setStorefrontView("design", {
     scrollTo: "designArea"
   });
@@ -6632,10 +6660,20 @@ function renderNameCards() {
   const batches = getActiveProductBatchGroups();
   const useBatchCards = orderType === "group" && batches.length > 1;
   nameCards.classList.toggle("is-batch-list", useBatchCards);
+  nameCardsSection?.classList.toggle(
+    "wizard-preview-single",
+    designWizardStep === "preview" && !useBatchCards
+  );
+  nameCardsSection?.closest(".designer-setup")?.classList.toggle(
+    "wizard-preview-single",
+    designWizardStep === "preview" && !useBatchCards
+  );
   if (designSelectionHeading) {
-    designSelectionHeading.textContent = useBatchCards
-      ? "Choose a Design Batch to Edit"
-      : "Choose a Keychain to Edit";
+    designSelectionHeading.textContent = designWizardStep === "preview"
+      ? "Choose a batch to preview"
+      : useBatchCards
+        ? "Choose a Design Batch to Edit"
+        : "Choose a Keychain to Edit";
   }
 
   if (useBatchCards) {
@@ -6988,6 +7026,7 @@ function renderReviewOrder() {
         updateProductCustomiser();
         refreshUI();
         buildSelectedPreview();
+        setDesignWizardStep("style", { scroll: false });
         setStorefrontView("design", {
           scrollTo: "designArea"
         });
@@ -8896,6 +8935,7 @@ window.editCartItem = function(index) {
     );
     refreshUI();
     buildSelectedPreview();
+    setDesignWizardStep("style", { scroll: false });
     setStorefrontView("design", { scrollTo: "designArea" });
     return;
   }
@@ -8906,6 +8946,7 @@ window.editCartItem = function(index) {
   updateProductCustomiser();
   refreshUI();
   buildSelectedPreview();
+  setDesignWizardStep("style", { scroll: false });
   setStorefrontView("design", {
     scrollTo: "designArea"
   });
@@ -9106,6 +9147,96 @@ function setStorefrontView(view, options = {}) {
     }
   });
 }
+
+const DESIGN_WIZARD_STEPS = ["names", "style", "preview"];
+const DESIGN_WIZARD_COPY = {
+  names: {
+    title: "Add your name",
+    description: "Choose one design or paste a list of names. For different designs, separate each batch with a blank line.",
+    hint: "Enter the name or names you want, then continue.",
+    next: "Choose colours →"
+  },
+  style: {
+    title: "Make it yours",
+    description: "Choose the style and colours. Your preview updates as you go, and you can return to the names anytime.",
+    hint: "Happy with the colours? Check the finished preview next.",
+    next: "Check preview →"
+  },
+  preview: {
+    title: "Check your design",
+    description: "Rotate the preview and check every name, colour and measurement before adding it to your cart.",
+    hint: "Your choices are saved. Go back if you want to change anything.",
+    next: ""
+  }
+};
+
+function hasCurrentProductNames() {
+  return names.some(item =>
+    getItemProduct(item).product_key === activeProduct.product_key &&
+    String(item.name || "").trim()
+  );
+}
+
+function setDesignWizardStep(nextStep, { scroll = true } = {}) {
+  const safeStep = DESIGN_WIZARD_STEPS.includes(nextStep) ? nextStep : "names";
+  if (safeStep !== "names" && !hasCurrentProductNames()) {
+    alert("Please enter at least one name before continuing.");
+    (orderType === "group" ? nameList : singleName).focus();
+    return false;
+  }
+
+  designWizardStep = safeStep;
+  const stepIndex = DESIGN_WIZARD_STEPS.indexOf(safeStep);
+  const copy = DESIGN_WIZARD_COPY[safeStep];
+  designArea.dataset.designStep = safeStep;
+  designWizardTitle.textContent = copy.title;
+  designWizardDescription.textContent = copy.description;
+  designWizardActionHint.textContent = copy.hint;
+  designWizardNextBtn.textContent = copy.next;
+  designWizardBackBtn.classList.toggle("hidden", stepIndex === 0);
+
+  designWizardNav.querySelectorAll("[data-design-wizard-step]").forEach((button, index) => {
+    const active = index === stepIndex;
+    button.classList.toggle("is-active", active);
+    button.classList.toggle("is-complete", index < stepIndex);
+    if (active) button.setAttribute("aria-current", "step");
+    else button.removeAttribute("aria-current");
+  });
+
+  if (safeStep === "preview" && previewCard?.classList.contains("mobile-collapsed")) {
+    previewCard.classList.remove("mobile-collapsed");
+    mobilePreviewToggle.textContent = "Hide Preview";
+    mobilePreviewToggle.setAttribute("aria-expanded", "true");
+  }
+
+  refreshUI();
+  buildSelectedPreview();
+  requestAnimationFrame(() => {
+    resize();
+    if (scroll) {
+      designWizardTitle.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+  return true;
+}
+
+designWizardNextBtn?.addEventListener("click", () => {
+  const currentIndex = DESIGN_WIZARD_STEPS.indexOf(designWizardStep);
+  const nextStep = DESIGN_WIZARD_STEPS[Math.min(currentIndex + 1, DESIGN_WIZARD_STEPS.length - 1)];
+  setDesignWizardStep(nextStep);
+});
+
+designWizardBackBtn?.addEventListener("click", () => {
+  const currentIndex = DESIGN_WIZARD_STEPS.indexOf(designWizardStep);
+  const previousStep = DESIGN_WIZARD_STEPS[Math.max(0, currentIndex - 1)];
+  setDesignWizardStep(previousStep);
+});
+
+designWizardNav?.addEventListener("click", event => {
+  const button = event.target.closest("[data-design-wizard-step]");
+  if (!button) return;
+  setDesignWizardStep(button.dataset.designWizardStep);
+});
 
 function updateProductCustomiser() {
   const isNormalKeychain =
@@ -9331,6 +9462,7 @@ function beginProductDesign(productKey) {
     applyClassicPencilDefaults();
   }
   updateProductCustomiser();
+  setDesignWizardStep("names", { scroll: false });
 }
 
 function resetPhotoArtworkResult() {
@@ -11734,6 +11866,7 @@ mobilePreviewToggle?.addEventListener("click", () => {
 });
 
 setOrderType("single");
+setDesignWizardStep("names", { scroll: false });
 void refreshGiftingBagStock();
 cartHasItems = false;
 draftHasMeaningfulChanges = false;
