@@ -1435,7 +1435,6 @@ ${requestedPreviewProductKey ? `
     <nav id="designWizardNav" class="design-wizard-nav" aria-label="Design steps">
       <button type="button" class="is-active" data-design-wizard-step="names" aria-current="step"><span>1</span><strong>Names</strong></button>
       <button type="button" data-design-wizard-step="style"><span>2</span><strong>Customise</strong></button>
-      <button type="button" data-design-wizard-step="preview"><span>3</span><strong>Preview</strong></button>
     </nav>
   </div>
 
@@ -4936,7 +4935,7 @@ function makeSwatches(containerId, colourOptions, type) {
 }
 
 backBtn.onclick = () => {
-  setDesignWizardStep("preview", { scroll: false });
+  setDesignWizardStep("style", { scroll: false });
   setStorefrontView("design", {
     scrollTo: "designArea"
   });
@@ -6660,20 +6659,10 @@ function renderNameCards() {
   const batches = getActiveProductBatchGroups();
   const useBatchCards = orderType === "group" && batches.length > 1;
   nameCards.classList.toggle("is-batch-list", useBatchCards);
-  nameCardsSection?.classList.toggle(
-    "wizard-preview-single",
-    designWizardStep === "preview" && !useBatchCards
-  );
-  nameCardsSection?.closest(".designer-setup")?.classList.toggle(
-    "wizard-preview-single",
-    designWizardStep === "preview" && !useBatchCards
-  );
   if (designSelectionHeading) {
-    designSelectionHeading.textContent = designWizardStep === "preview"
-      ? "Choose a batch to preview"
-      : useBatchCards
-        ? "Choose a Design Batch to Edit"
-        : "Choose a Keychain to Edit";
+    designSelectionHeading.textContent = useBatchCards
+      ? "Choose a Design Batch to Edit"
+      : "Choose a Keychain to Edit";
   }
 
   if (useBatchCards) {
@@ -9148,7 +9137,7 @@ function setStorefrontView(view, options = {}) {
   });
 }
 
-const DESIGN_WIZARD_STEPS = ["names", "style", "preview"];
+const DESIGN_WIZARD_STEPS = ["names", "style"];
 const DESIGN_WIZARD_COPY = {
   names: {
     title: "Add your name",
@@ -9158,14 +9147,8 @@ const DESIGN_WIZARD_COPY = {
   },
   style: {
     title: "Make it yours",
-    description: "Choose the style and colours. Your preview updates as you go, and you can return to the names anytime.",
-    hint: "Happy with the colours? Check the finished preview next.",
-    next: "Check preview →"
-  },
-  preview: {
-    title: "Check your design",
-    description: "Rotate the preview and check every name, colour and measurement before adding it to your cart.",
-    hint: "Your choices are saved. Go back if you want to change anything.",
+    description: "Choose the style and colours while checking the live preview. You can return to the names anytime.",
+    hint: "Check every name and colour, then add your finished design to the cart.",
     next: ""
   }
 };
@@ -9203,7 +9186,7 @@ function setDesignWizardStep(nextStep, { scroll = true } = {}) {
     else button.removeAttribute("aria-current");
   });
 
-  if (safeStep === "preview" && previewCard?.classList.contains("mobile-collapsed")) {
+  if (safeStep === "style" && previewCard?.classList.contains("mobile-collapsed")) {
     previewCard.classList.remove("mobile-collapsed");
     mobilePreviewToggle.textContent = "Hide Preview";
     mobilePreviewToggle.setAttribute("aria-expanded", "true");

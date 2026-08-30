@@ -6328,7 +6328,7 @@ body {
 .design-wizard-nav {
   padding: 5px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -6441,8 +6441,8 @@ body {
 
 #designArea[data-design-step="names"] #nameCardsSection,
 #designArea[data-design-step="names"] .product-customiser,
-#designArea:not([data-design-step="preview"]) .design-turnaround-note,
-#designArea:not([data-design-step="preview"]) .add-cart-area {
+#designArea[data-design-step="names"] .design-turnaround-note,
+#designArea[data-design-step="names"] .add-cart-area {
   display: none !important;
 }
 
@@ -6462,49 +6462,8 @@ body {
   margin-top: 0;
 }
 
-#designArea[data-design-step="preview"] .options-column,
-#designArea[data-design-step="preview"] .design-inspiration,
-#designArea[data-design-step="preview"] .preview-tip,
-#designArea[data-design-step="preview"] .design-wizard-actions {
-  display: none !important;
-}
-
-#designArea[data-design-step="preview"] .designer-setup-heading,
-#designArea[data-design-step="preview"] .setup-grid,
-#designArea[data-design-step="preview"] .designer-setup.wizard-preview-single,
-#designArea[data-design-step="preview"] #nameCardsSection.wizard-preview-single {
-  display: none !important;
-}
-
-#designArea[data-design-step="preview"] .designer-setup {
-  margin-bottom: 18px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-#designArea[data-design-step="preview"] #nameCardsSection {
-  margin-top: 0;
-}
-
-#designArea[data-design-step="preview"] #nameCardsSection .batch-shared-note {
+#designArea[data-design-step="style"] .design-wizard-actions {
   display: none;
-}
-
-#designArea[data-design-step="preview"] .product-customiser,
-#designArea[data-design-step="preview"] .preview-column,
-#designArea[data-design-step="preview"] .preview-sticky {
-  display: block;
-}
-
-#designArea[data-design-step="preview"] .preview-card {
-  max-width: 980px;
-  margin: 0 auto;
-}
-
-#designArea[data-design-step="preview"] #previewCanvas {
-  min-height: 480px;
 }
 
 @media (max-width: 760px) {
@@ -6551,9 +6510,6 @@ body {
     width: 100%;
   }
 
-  #designArea[data-design-step="preview"] #previewCanvas {
-    min-height: 330px;
-  }
 }
 
 .random-colour-card {
