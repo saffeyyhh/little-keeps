@@ -45,6 +45,7 @@ import {
   pickRandomDesignColours,
   partitionAmsCombinationsByBusyColours,
   sortEasyParcelQuotesByPrice,
+  splitAmsCombinationsByPlateCapacity,
   isEasyParcelPickupQuote,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
@@ -564,6 +565,52 @@ test("balances AMS plates across two printer lanes", () => {
     [65, 65]
   );
   assert.ok(lanes.every(lane => lane.plates.length === 2));
+});
+
+test("splits an oversized AMS colour combination into exact plate quantities", () => {
+  const combinations = splitAmsCombinationsByPlateCapacity([
+    {
+      stlJobId: "pink-white",
+      rows: [
+        { letter: "A", toPrint: 40, inputId: "qty-a" },
+        { letter: "B", toPrint: 30, inputId: "qty-b" }
+      ]
+    }
+  ], 56);
+
+  assert.equal(combinations.length, 2);
+  assert.deepEqual(
+    combinations.map(combination => combination.pieceCount),
+    [56, 14]
+  );
+  assert.deepEqual(
+    combinations.map(combination =>
+      combination.rows.map(row => [row.letter, row.toPrint])
+    ),
+    [
+      [["A", 40], ["B", 16]],
+      [["B", 14]]
+    ]
+  );
+  assert.deepEqual(
+    combinations.map(combination => combination.stlJobId),
+    ["pink-white-plate-1", "pink-white-plate-2"]
+  );
+  assert.ok(combinations.every(combination =>
+    combination.rows.every(row => row.inputId === "")
+  ));
+});
+
+test("keeps live quantity inputs for combinations that fit one plate", () => {
+  const [combination] = splitAmsCombinationsByPlateCapacity([
+    {
+      stlJobId: "pink-white",
+      rows: [{ letter: "A", toPrint: 12, inputId: "qty-a" }]
+    }
+  ], 56);
+
+  assert.equal(combination.stlJobId, "pink-white");
+  assert.equal(combination.rows[0].inputId, "qty-a");
 });
 
 test("keeps both printers running even when their plates share colours", () => {

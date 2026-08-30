@@ -47,6 +47,7 @@ import {
   normalizeAssemblyProgress,
   optimizeAmsPlateSequence,
   partitionAmsCombinationsByBusyColours,
+  splitAmsCombinationsByPlateCapacity,
   sortEasyParcelQuotesByPrice,
   isEasyParcelPickupQuote,
   validateInventoryDecrement
@@ -10832,8 +10833,25 @@ async function renderProductionPlanner(orders) {
     keycapCombinationCards,
     activeBusyColours
   );
+  const plateReadyCombinations = splitAmsCombinationsByPlateCapacity(
+    freeColourCombinations,
+    56
+  );
+
+  plateReadyCombinations.forEach(combination => {
+    if (!combination.sourceStlJobId) return;
+    const sourceJob = productionStlJobs.get(combination.sourceStlJobId);
+    if (!sourceJob) return;
+
+    productionStlJobs.set(combination.stlJobId, {
+      ...sourceJob,
+      rows: combination.rows,
+      fileName: `${sourceJob.fileName || "keycap-plate"}_plate-${combination.splitPart}`
+    });
+  });
+
   const amsLitePlates = planAmsLiteKeycapPlates(
-    freeColourCombinations
+    plateReadyCombinations
   );
   const onlinePrinters = printers.filter(printer => printer.status === "online");
   const freeAmsPrinters = getFreeAmsPrinters(
@@ -11055,7 +11073,6 @@ async function renderProductionPlanner(orders) {
           ${scheduledAmsPlates.map((plate, plateIndex) => {
             const plateId = `ams-lite-plate-${plateIndex}`;
             const colours = Array.from(plate.colours.values());
-            const overSuggestedSize = plate.pieceCount > 56;
 
             productionAmsPlateJobs.set(plateId, {
               combinationJobIds: plate.combinations.map(
@@ -11165,6 +11182,10 @@ async function renderProductionPlanner(orders) {
                         </strong>
                         <small>
                           ${combination.pieceCount} piece${combination.pieceCount === 1 ? "" : "s"}
+                          ${combination.splitTotal
+                            ? ` · Auto-split plate ${combination.splitPart} of ${combination.splitTotal}`
+                            : ""
+                          }
                         </small>
                       </div>
 
@@ -11193,13 +11214,6 @@ async function renderProductionPlanner(orders) {
                     </div>
                   `).join("")}
                 </div>
-
-                ${overSuggestedSize ? `
-                  <p class="ams-plate-warning">
-                    This group may be too crowded for one Bambu A1 plate.
-                    Download the exact combinations separately if needed.
-                  </p>
-                ` : ""}
 
                 <div class="ams-plate-actions">
                   <button

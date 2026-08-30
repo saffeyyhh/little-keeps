@@ -706,6 +706,68 @@ export function optimizeAmsPlateSequence(plates = [], slotCount = 4) {
   });
 }
 
+export function splitAmsCombinationsByPlateCapacity(
+  combinations = [],
+  maxPiecesPerPlate = 56
+) {
+  const capacity = Math.max(
+    1,
+    Math.floor(Number(maxPiecesPerPlate) || 56)
+  );
+
+  return combinations.flatMap(combination => {
+    const chunks = [];
+    let rows = [];
+    let pieceCount = 0;
+
+    const finishChunk = () => {
+      if (!pieceCount) return;
+      chunks.push({ rows, pieceCount });
+      rows = [];
+      pieceCount = 0;
+    };
+
+    (combination?.rows || []).forEach(row => {
+      let remaining = Math.max(
+        0,
+        Math.floor(Number(row?.toPrint) || 0)
+      );
+
+      while (remaining > 0) {
+        const available = capacity - pieceCount;
+        const quantity = Math.min(remaining, available);
+
+        rows.push({
+          ...row,
+          toPrint: quantity
+        });
+        pieceCount += quantity;
+        remaining -= quantity;
+
+        if (pieceCount >= capacity) finishChunk();
+      }
+    });
+
+    finishChunk();
+
+    if (chunks.length <= 1) {
+      return chunks.length
+        ? [{ ...combination, ...chunks[0] }]
+        : [];
+    }
+
+    return chunks.map((chunk, index) => ({
+      ...combination,
+      ...chunk,
+      rows: chunk.rows.map(row => ({ ...row, inputId: "" })),
+      sourceStlJobId: combination.stlJobId,
+      stlJobId: `${combination.stlJobId}-plate-${index + 1}`,
+      splitPart: index + 1,
+      splitTotal: chunks.length
+    }));
+  });
+}
+
 export function partitionAmsCombinationsByBusyColours(
   combinations = [],
   busyColourNames = []

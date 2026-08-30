@@ -1099,7 +1099,7 @@ ${requestedPreviewProductKey ? `
       </div>
       <div class="hero-showcase-points">
         <span>Made in Singapore</span>
-        <span>Small-batch quality</span>
+        <span>Checked by hand</span>
         <span>Personalised for you</span>
       </div>
     </div>
