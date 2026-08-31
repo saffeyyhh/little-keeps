@@ -1706,10 +1706,7 @@ label {
 
 .preview-card {
   padding: 20px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.9fr) minmax(260px, .72fr);
-  grid-template-rows: auto auto auto 1fr;
-  gap: 10px 16px;
+  display: block;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 26px;
@@ -1718,7 +1715,6 @@ label {
 }
 
 .preview-card-heading {
-  grid-column: 1 / -1;
   margin-bottom: 13px;
   display: flex;
   align-items: center;
@@ -1734,13 +1730,7 @@ label {
 
 .preview-canvas-wrap {
   position: relative;
-  grid-column: 1;
-  grid-row: 2 / 5;
 }
-
-.preview-colour-legend { grid-column: 2; grid-row: 2; }
-.preview-editing-text { grid-column: 2; grid-row: 3; }
-.dimension-estimate { grid-column: 2; grid-row: 4; align-self: start; }
 
 #previewCanvas {
   width: 100%;
@@ -1793,37 +1783,42 @@ label {
 }
 
 .preview-colour-legend {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .preview-colour-legend > div {
-  min-width: 0;
-  padding: 9px;
+  min-width: max-content;
+  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border: 1px solid #ead9e2;
-  border-radius: 11px;
+  border-radius: 999px;
   background: #fffafd;
 }
 
 .preview-colour-legend strong,
 .preview-colour-legend span {
-  display: block;
+  display: inline;
 }
 
 .preview-colour-legend strong {
-  margin-bottom: 4px;
+  margin: 0;
   color: #725463;
-  font-size: 9px;
+  font-size: 8px;
   text-transform: uppercase;
 }
 
 .preview-colour-legend span {
   color: #3f3037;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
-  line-height: 1.45;
+  line-height: 1.2;
 }
 
 .preview-colour-legend i {
@@ -1837,13 +1832,20 @@ label {
 }
 
 .dimension-estimate {
-  margin: 10px 0 0;
-  padding: 11px 13px;
-  border: 1px solid #efd7e1;
-  border-radius: 13px;
+  position: absolute;
+  z-index: 3;
+  top: 13px;
+  right: 13px;
+  width: min(330px, calc(100% - 26px));
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid rgba(239, 215, 225, .92);
+  border-radius: 12px;
   color: #624b55;
-  background: #fff8fb;
-  font-size: 11px;
+  background: rgba(255, 248, 251, .9);
+  box-shadow: 0 8px 22px rgba(70, 42, 53, .12);
+  backdrop-filter: blur(10px);
+  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -1852,7 +1854,7 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 9px;
+  margin-bottom: 6px;
 }
 
 .dimension-estimate-heading > span { font-weight: 850; }
@@ -1867,22 +1869,22 @@ label {
 .dimension-estimate-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
+  gap: 5px;
 }
 
 .dimension-estimate-grid > span {
   display: grid;
   gap: 2px;
-  padding: 8px;
+  padding: 5px 7px;
   border: 1px solid #eddde4;
   border-radius: 10px;
   background: #fff;
   text-align: center;
 }
 
-.dimension-estimate-grid small { color: #88747d; font-size: 9px; text-transform: uppercase; }
-.dimension-estimate-grid b { color: #553f49; font-size: 12px; }
-.dimension-estimate > p { margin: 8px 0 0; color: #806c75; font-size: 9px; }
+.dimension-estimate-grid small { color: #88747d; font-size: 8px; text-transform: uppercase; }
+.dimension-estimate-grid b { color: #553f49; font-size: 10px; }
+.dimension-estimate > p { margin: 5px 0 0; color: #806c75; font-size: 8px; }
 .dimension-estimate.is-long-name { border-color: #e9b254; background: #fff9e9; }
 .dimension-long-name-warning { color: #8b5709 !important; font-weight: 850; }
 
@@ -2037,7 +2039,17 @@ label {
   grid-column: 2;
   grid-row: 1;
   align-self: start;
+  display: flex;
+  flex-direction: column;
 }
+
+.style-controls-card > .customiser-heading { order: 0; }
+.style-controls-card > #standardKeychainOptions,
+.style-controls-card > #pencilClickerOptions { order: 1; }
+.style-controls-card > #clickyBaseShapeSection { order: 2; }
+.style-controls-card > #clickyOrientationSection { order: 3; }
+.style-controls-card > #productPricingGuide { order: 4; }
+.style-controls-card > .random-colour-card { order: 5; }
 
 .colour-options-card {
   grid-column: 1 / -1;

@@ -1601,6 +1601,16 @@ Chloe</textarea>
               <div class="preview-loading-spinner"></div>
               <strong>Loading your 3D preview…</strong>
             </div>
+
+            <div id="dimensionEstimate" class="dimension-estimate" aria-live="polite">
+              <div class="dimension-estimate-heading"><span>📏 Estimated finished size</span><strong>ALICIA</strong></div>
+              <div class="dimension-estimate-grid">
+                <span><small>Length</small><b>17.5 cm</b></span>
+                <span><small>Breadth</small><b>2.7 cm</b></span>
+                <span><small>Height</small><b>2.2 cm</b></span>
+              </div>
+              <p>Approximate measurement; slight variation may occur after assembly.</p>
+            </div>
           </div>
 
           <div id="previewColourLegend" class="preview-colour-legend" aria-live="polite"></div>
@@ -1608,16 +1618,6 @@ Chloe</textarea>
           <p id="editModeText" class="preview-editing-text">
             Currently editing: Alicia only
           </p>
-
-          <div id="dimensionEstimate" class="dimension-estimate" aria-live="polite">
-            <div class="dimension-estimate-heading"><span>📏 Estimated finished size</span><strong>ALICIA</strong></div>
-            <div class="dimension-estimate-grid">
-              <span><small>Length</small><b>17.5 cm</b></span>
-              <span><small>Breadth</small><b>2.7 cm</b></span>
-              <span><small>Height</small><b>2.2 cm</b></span>
-            </div>
-            <p>Approximate measurement; slight variation may occur after assembly.</p>
-          </div>
         </div>
 
       <div class="preview-tip">
