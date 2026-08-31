@@ -114,6 +114,8 @@ const DEFAULT_SHOP_SETTINGS = {
   stripe_enabled: false,
   status_emails_enabled: false,
   status_email_template_id: "",
+  booth_notice_enabled: false,
+  booth_notice_text: "",
   unavailable_colours: [],
   colour_options: DEFAULT_COLOUR_OPTIONS,
   promo_code: "CHILDRENSDAY",
@@ -289,6 +291,12 @@ try {
   shopSettings.contact_whatsapp_number = String(
     shopSettings.pickup_time_options?.contact_whatsapp_number || "6585121915"
   ).replace(/\D/g, "") || "6585121915";
+  shopSettings.booth_notice_enabled = Boolean(
+    shopSettings.pickup_time_options?.booth_notice_enabled
+  );
+  shopSettings.booth_notice_text = String(
+    shopSettings.pickup_time_options?.booth_notice_text || ""
+  ).trim();
   shopSettings.pickup_time_options = normalizePickupTimeOptions(
     shopSettings.pickup_time_options
   );
@@ -300,6 +308,10 @@ const contactWhatsAppNumber = String(
   shopSettings.contact_whatsapp_number || "6585121915"
 ).replace(/\D/g, "") || "6585121915";
 const contactWhatsAppUrl = `https://wa.me/${contactWhatsAppNumber}`;
+const boothNoticeEnabled = Boolean(
+  shopSettings.booth_notice_enabled && shopSettings.booth_notice_text
+);
+const boothNoticeText = String(shopSettings.booth_notice_text || "").trim();
 
 try {
   const { data, error } = await supabase
@@ -739,6 +751,14 @@ ${requestedPreviewProductKey ? `
     <span class="announcement-icon">♡</span>
     <span>Made in Singapore</span>
   </div>
+
+  ${boothNoticeEnabled ? `
+    <span class="announcement-divider"></span>
+    <div class="announcement-item announcement-booth">
+      <span class="announcement-icon">⌂</span>
+      <span><strong>${escapePresetText(boothNoticeText)}</strong></span>
+    </div>
+  ` : ""}
 
   <span class="announcement-divider"></span>
 
@@ -1628,6 +1648,7 @@ Chloe</textarea>
 
     <section class="options-column">
       <div class="card colours-card">
+        <div class="style-controls-card">
         <div class="customiser-heading">
           <h2>Choose Your Style</h2>
         </div>
@@ -1766,6 +1787,9 @@ Chloe</textarea>
           </div>
         </div>
 
+        </div>
+
+        <div class="colour-options-card">
         <div class="customisation-section colour-workspace">
           <div class="customisation-title colour-workspace-heading">
             <div>
@@ -1847,6 +1871,7 @@ Chloe</textarea>
         >
           Reset Selected Keychain
         </button>
+        </div>
       </div>
     </section>
   </div>
@@ -6693,6 +6718,7 @@ function renderNameCards() {
       card.onclick = () => {
         selectedIndex = representative.index;
         applyAllToggle.checked = false;
+        selectColourPart("base");
         refreshUI();
         buildSelectedPreview();
       };
@@ -6727,6 +6753,7 @@ function renderNameCards() {
 
     card.onclick = () => {
       selectedIndex = index;
+      selectColourPart("base");
       refreshUI();
       buildSelectedPreview();
     };
@@ -11144,28 +11171,30 @@ function renderIconPicker() {
   buildPicker(groupPicker, nameList);
 }
 
-function setupColourAccordions() {
+function selectColourPart(part = "base") {
   const tabs = Array.from(document.querySelectorAll("[data-colour-part-tab]"));
   const panels = Array.from(document.querySelectorAll("[data-colour-part-panel]"));
 
-  const selectPart = part => {
-    tabs.forEach(tab => {
-      const selected = tab.dataset.colourPartTab === part;
-      tab.classList.toggle("active", selected);
-      tab.setAttribute("aria-selected", String(selected));
-    });
-    panels.forEach(panel => {
-      const selected = panel.dataset.colourPartPanel === part;
-      panel.classList.toggle("active", selected);
-      panel.hidden = !selected;
-    });
-  };
+  tabs.forEach(tab => {
+    const selected = tab.dataset.colourPartTab === part;
+    tab.classList.toggle("active", selected);
+    tab.setAttribute("aria-selected", String(selected));
+  });
+  panels.forEach(panel => {
+    const selected = panel.dataset.colourPartPanel === part;
+    panel.classList.toggle("active", selected);
+    panel.hidden = !selected;
+  });
+}
+
+function setupColourAccordions() {
+  const tabs = Array.from(document.querySelectorAll("[data-colour-part-tab]"));
 
   tabs.forEach(tab => {
-    tab.addEventListener("click", () => selectPart(tab.dataset.colourPartTab));
+    tab.addEventListener("click", () => selectColourPart(tab.dataset.colourPartTab));
   });
 
-  selectPart("base");
+  selectColourPart("base");
 }
 
 const CUSTOMER_STATUS_STEPS = [

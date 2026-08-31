@@ -1686,7 +1686,7 @@ label {
 
 .product-customiser {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr);
   gap: 22px;
   align-items: start;
 }
@@ -1699,9 +1699,9 @@ label {
   display: contents;
 }
 
-.preview-card { order: 1; }
-.options-column { order: 2; }
-.design-inspiration { order: 3; }
+.preview-card { grid-column: 1; grid-row: 1; }
+.options-column { display: contents; }
+.design-inspiration { grid-column: 1 / -1; grid-row: 3; }
 .preview-tip { order: 4; }
 
 .preview-card {
@@ -2020,19 +2020,29 @@ label {
 }
 
 .colours-card {
-  padding: clamp(20px, 3vw, 30px);
-  display: flex;
-  flex-direction: column;
+  display: contents;
 }
 
-.colours-card > .customiser-heading { order: 0; }
-.colours-card > #clickyBaseShapeSection { order: 1; }
-.colours-card > #clickyOrientationSection { order: 2; }
-.colours-card > .random-colour-card { order: 3; }
-.colours-card > .colour-workspace { order: 4; }
-.colours-card > .special-colour-note { order: 5; }
-.colours-card > .screen-colour-note { order: 6; }
-.colours-card > .reset-btn { order: 7; }
+.style-controls-card,
+.colour-options-card {
+  min-width: 0;
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: var(--shadow-md);
+}
+
+.style-controls-card {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
+.colour-options-card {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
 
 .customiser-heading {
   margin-bottom: 8px;
@@ -3860,6 +3870,18 @@ label {
     gap: 16px;
   }
 
+  .preview-card,
+  .style-controls-card,
+  .colour-options-card,
+  .design-inspiration {
+    grid-column: 1;
+  }
+
+  .preview-card { grid-row: 1; }
+  .style-controls-card { grid-row: 2; }
+  .colour-options-card { grid-row: 3; }
+  .design-inspiration { grid-row: 4; }
+
   #previewCanvas {
     height: 380px;
     min-height: 380px;
@@ -4167,6 +4189,11 @@ label {
   }
 
   .colours-card {
+    display: contents;
+  }
+
+  .style-controls-card,
+  .colour-options-card {
     padding: 18px;
     border-radius: 22px;
   }
