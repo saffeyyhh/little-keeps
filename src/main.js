@@ -1983,7 +1983,7 @@ Chloe</textarea>
             <input id="rushOrderToggle" type="checkbox">
             <span>
               <strong>Need it sooner?</strong>
-              <small>Rush fee: +${displaySettingMoney(rushFeeSmall)} for 1–4 keychains or +${displaySettingMoney(rushFeeLarge)} for 5–9. Availability is checked before payment.</small>
+              <small>Islandwide delivery only. Rush fee: +${displaySettingMoney(rushFeeSmall)} for 1–4 keychains or +${displaySettingMoney(rushFeeLarge)} for 5–9. Availability is checked before payment.</small>
             </span>
           </label>
         </div>
@@ -3776,8 +3776,9 @@ function updateTurnaroundMessaging() {
   const turnaround = getTurnaroundInfo();
   const itemWord = turnaround.quantity === 1 ? "keychain" : "keychains";
   const isBulk = turnaround.quantity >= bulkOrderQuantity;
+  const isRush = !isBulk && Boolean(rushOrderToggle?.checked);
 
-  if (isBulk) {
+  if (isBulk || isRush) {
     if (linkExistingOrderToggle.checked) {
       linkExistingOrderToggle.checked = false;
       linkExistingOrderPanel.classList.add("hidden");
@@ -3793,6 +3794,7 @@ function updateTurnaroundMessaging() {
   }
 
   const methodIsDelivery = collectionMethod.value === "delivery";
+  updateCollectionNote();
   const range = `${turnaround.minDays}-${turnaround.maxDays} working days`;
   const estimateStart = alignToProductionDay(
     addWorkingDays(new Date(), turnaround.minDays)
@@ -3801,7 +3803,6 @@ function updateTurnaroundMessaging() {
     addWorkingDays(new Date(), turnaround.maxDays)
   );
   const bulkPolicy = getBulkApprovalPolicy(turnaround.quantity);
-  const isRush = !isBulk && Boolean(rushOrderToggle?.checked);
 
   neededBy.value = isBulk || isRush
     ? requestedCompletionDate.value
@@ -3855,12 +3856,8 @@ function updateTurnaroundMessaging() {
       queueMicrotask(() => checkBulkAvailability());
     }
   } else if (isRush) {
-    specialDateLabel.textContent = methodIsDelivery
-      ? "When should we dispatch it?"
-      : "When do you need it?";
-    specialOrderMessage.textContent = methodIsDelivery
-      ? "Choose an earlier dispatch date and we’ll check availability. Allow 1–3 days for delivery."
-      : "Only dates earlier than the standard estimate are shown. Choose a date and we’ll check availability instantly.";
+    specialDateLabel.textContent = "When should we dispatch it?";
+    specialOrderMessage.textContent = "Choose an earlier dispatch date and we’ll check availability. Rush orders are delivered islandwide; allow another 1–3 days for delivery.";
     orderNotes.placeholder = "Tell us about your deadline or event...";
 
     if (requestedCompletionDate.value && rushAssessmentFingerprint !== getRushFingerprint()) {
@@ -7341,8 +7338,10 @@ async function submitOrderOnce() {
   successModal.dataset.orderRef = orderRef;
   const checkoutOrderType = getCheckoutOrderType();
 
-  if (checkoutOrderType === "bulk" && collectionMethod.value !== "delivery") {
-    submitStatus.innerText = "Event orders are available by delivery only.";
+  if (["rush", "bulk"].includes(checkoutOrderType) && collectionMethod.value !== "delivery") {
+    submitStatus.innerText = checkoutOrderType === "rush"
+      ? "Rush orders are available by islandwide delivery only."
+      : "Event orders are available by delivery only.";
     collectionMethod.value = "delivery";
     deliveryAddressSection.classList.remove("hidden");
     refreshUI();
