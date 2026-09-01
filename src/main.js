@@ -2207,7 +2207,30 @@ Chloe</textarea>
       <div class="payment-box">
 <h3>Ready to Order?</h3>
 
-        <p>PayNow for all orders · Cards and wallets from $30</p>
+        ${isManualOrder ? `
+          <div id="manualOrderPaymentChoice" class="manual-order-payment-choice">
+            <strong>Has the customer already paid?</strong>
+            <p>Choose the correct status before saving this manual order.</p>
+
+            <div class="manual-payment-choice-grid" role="radiogroup" aria-label="Manual order payment status">
+              <label>
+                <input id="manualPaymentUnpaid" type="radio" name="manualPaymentStatus" value="unpaid" checked>
+                <span>
+                  <strong>Not paid yet</strong>
+                  <small>Save the order and create a payment link for the customer.</small>
+                </span>
+              </label>
+
+              <label>
+                <input id="manualPaymentPaid" type="radio" name="manualPaymentStatus" value="paid">
+                <span>
+                  <strong>Already paid me</strong>
+                  <small>Record it as paid and send it straight into production.</small>
+                </span>
+              </label>
+            </div>
+          </div>
+        ` : `<p>PayNow for all orders · Cards and wallets from $30</p>`}
       </div>
 
 <div class="checkout-submit-bar">
@@ -2913,6 +2936,8 @@ const manualPaymentRequestPanel = document.getElementById("manualPaymentRequestP
 const manualPaymentLink = document.getElementById("manualPaymentLink");
 const copyManualPaymentLinkBtn = document.getElementById("copyManualPaymentLinkBtn");
 const manualPaymentLinkStatus = document.getElementById("manualPaymentLinkStatus");
+const manualPaymentUnpaid = document.getElementById("manualPaymentUnpaid");
+const manualPaymentPaid = document.getElementById("manualPaymentPaid");
 const paymentDoneBtn =
 document.getElementById("paymentDoneBtn");
 const stripeCheckoutBtn =
@@ -3937,11 +3962,15 @@ function updateTurnaroundMessaging() {
   }
 
   if (submitOrderBtn) {
-    submitOrderBtn.textContent = isBulk
-      ? "Submit Order & Continue to Payment"
-      : isRush
-        ? "Submit Rush Request"
-        : "Submit Order & Continue to Payment";
+    submitOrderBtn.textContent = isManualOrder
+      ? manualPaymentPaid?.checked
+        ? "Save Paid Order"
+        : "Save Order & Create Payment Link"
+      : isBulk
+        ? "Submit Order & Continue to Payment"
+        : isRush
+          ? "Submit Rush Request"
+          : "Submit Order & Continue to Payment";
   }
 
   updateCheckoutPickupOptions();
@@ -7297,6 +7326,16 @@ async function submitOrder() {
 async function submitOrderOnce() {
   submitStatus.innerText = "Submitting order...";
 
+  if (isManualOrder) {
+    submitStatus.innerText = "Confirming your admin session…";
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      submitStatus.innerText = "Please open Manual Order from the signed-in admin page, then try again.";
+      return;
+    }
+    submitStatus.innerText = "Submitting order...";
+  }
+
   if (linkExistingOrderToggle.checked && !hasVerifiedLinkedOrder()) {
     submitStatus.innerText = "Please verify the original order ID before continuing.";
     return;
@@ -7420,6 +7459,7 @@ async function submitOrderOnce() {
     ? Number(confirmedRushAssessment?.fee ?? getRushFee())
     : 0;
   const total = roundMoney(subtotal + delivery + rushFee);
+  const manualOrderAlreadyPaid = isManualOrder && Boolean(manualPaymentPaid?.checked);
 
   let expandedItemIndex = 0;
   const orderData = checkoutItems.flatMap(item => {
@@ -7565,7 +7605,7 @@ async function submitOrderOnce() {
     rush_fee: rushFee,
     total,
 
-    payment_type: "Pending",
+    payment_type: manualOrderAlreadyPaid ? "Paid" : "Pending",
 
     order_source: preparedCheckoutMode
       ? "Prepared Checkout"
@@ -7574,7 +7614,7 @@ async function submitOrderOnce() {
         : "Website",
 
     status: isManualOrder
-      ? "Pending Payment"
+      ? manualOrderAlreadyPaid ? "Payment Verified" : "Pending Payment"
       : checkoutOrderType === "rush"
         ? rushAutoApproved ? "Pending Payment" : "Rush Review"
         : "Pending Payment",
@@ -7710,6 +7750,30 @@ async function submitOrderOnce() {
       modalParagraphs[3].textContent =
         "We’ll contact you by email or WhatsApp after reviewing your request.";
     }
+    checkoutScreen.classList.add("hidden");
+    successModal.classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+
+  if (manualOrderAlreadyPaid) {
+    orderRefText.innerHTML = `<strong>${orderRef}</strong>`;
+    successModal.querySelector("h2").textContent = "Paid Order Saved ✓";
+    const modalParagraphs = successModal.querySelectorAll(".modal-card > p");
+    if (modalParagraphs[1]) {
+      modalParagraphs[1].textContent = "The order is recorded as paid and ready for production. No customer payment page was created.";
+    }
+    const nextSteps = document.getElementById("successNextSteps");
+    if (nextSteps) {
+      nextSteps.innerHTML = `
+        <strong>What happens next?</strong>
+        <span>1. Payment is already verified</span>
+        <span>2. The order appears in your production queue</span>
+        <span>3. The customer can track it using this order ID</span>
+      `;
+    }
+    successModal.dataset.returnAdmin = "true";
+    closeModalBtn.textContent = "Return to Admin";
     checkoutScreen.classList.add("hidden");
     successModal.classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -10379,6 +10443,15 @@ rushOrderToggle.addEventListener("change", () => {
   validateForm();
 });
 
+[manualPaymentUnpaid, manualPaymentPaid].filter(Boolean).forEach(input => {
+  input.addEventListener("change", () => {
+    draftHasMeaningfulChanges = true;
+    updateTurnaroundMessaging();
+    saveDraft();
+    validateForm();
+  });
+});
+
 deliveryAddressLine1.addEventListener(
   "input",
   () => {
@@ -10702,6 +10775,10 @@ else if (
 }
 
 closeModalBtn.onclick = () => {
+  if (successModal.dataset.returnAdmin === "true") {
+    window.location.href = "./admin.html";
+    return;
+  }
   successModal.classList.add("hidden");
 };
 
@@ -10792,6 +10869,7 @@ function saveDraft() {
     customerName: customerName.value,
     customerEmail: customerEmail.value,
     customerPhone: customerPhone.value,
+    manualPaymentStatus: manualPaymentPaid?.checked ? "paid" : "unpaid",
     linkExistingOrderRequested: linkExistingOrderToggle.checked,
     existingOrderRef: existingOrderRef.value,
 
@@ -10921,6 +10999,11 @@ continueDraftBtn.onclick = () => {
 
   customerPhone.value =
     draftData.customerPhone || "";
+
+  if (manualPaymentPaid && manualPaymentUnpaid) {
+    manualPaymentPaid.checked = draftData.manualPaymentStatus === "paid";
+    manualPaymentUnpaid.checked = !manualPaymentPaid.checked;
+  }
 
   linkExistingOrderToggle.checked =
     Boolean(draftData.linkExistingOrderRequested);
