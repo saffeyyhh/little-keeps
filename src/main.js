@@ -5385,6 +5385,7 @@ async function setupNeededByCalendar() {
       neededBy.value = requestedCompletionDate.value;
       rushAssessment = null;
       rushAssessmentFingerprint = "";
+      updateCheckoutPickupOptions();
       if (getCheckoutOrderType() === "rush") {
         await checkRushAvailability();
       } else if (getCheckoutOrderType() === "bulk") {
