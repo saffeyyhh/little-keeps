@@ -6598,7 +6598,7 @@ async function markOrdersPrintingForStartedJobs(jobs = [], options = {}) {
   const updatedAt = new Date().toISOString();
   const { error } = await supabase
     .from("orders")
-    .update({ status: "Printing", updated_at: updatedAt })
+    .update({ status: "Printing", status_updated_at: updatedAt })
     .in("id", orderIds)
     .eq("status", "Payment Verified");
 
@@ -6611,7 +6611,7 @@ async function markOrdersPrintingForStartedJobs(jobs = [], options = {}) {
   latestOrders.forEach(order => {
     if (orderIds.includes(String(order.id)) && order.status === "Payment Verified") {
       order.status = "Printing";
-      order.updated_at = updatedAt;
+      order.status_updated_at = updatedAt;
     }
   });
 }
