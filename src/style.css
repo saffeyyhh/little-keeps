@@ -4659,6 +4659,21 @@ body {
   cursor: pointer;
 }
 
+.special-order-option.is-disabled {
+  opacity: 0.62;
+  background: #f7f3f5;
+}
+
+.special-order-option.is-disabled .special-order-toggle {
+  cursor: not-allowed;
+}
+
+.delivery-timing-confirmation {
+  margin-bottom: 0;
+  background: #fffdf5;
+  border-color: #eadfb2;
+}
+
 .special-order-toggle input {
   width: 20px;
   height: 20px;

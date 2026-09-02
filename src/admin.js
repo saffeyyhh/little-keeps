@@ -1439,11 +1439,11 @@ function renderScheduleCalendar() {
     <section class="schedule-workspace">
       <div class="schedule-explainer">
         <div><p class="section-kicker">Capacity-based planning</p><h2>${monthLabel}</h2></div>
-        <p>Normal orders take the first open working day after their production lead time. The ${adminShopSettings.bulk_buffer_days || 0}-day buffer is kept only around event orders.</p>
+        <p>Every order takes the first open working day after its quantity-based production lead time.</p>
       </div>
       <div class="schedule-capacity-strip">
         <span><strong>${maxOrders}</strong> orders / production day</span>
-        <span><strong>${adminShopSettings.bulk_buffer_days || 0}</strong> event buffer day${Number(adminShopSettings.bulk_buffer_days || 0) === 1 ? "" : "s"}</span>
+        <span>Larger quantities receive a later automatic estimate</span>
       </div>
       <div class="schedule-toolbar">
         <button type="button" onclick="window.changeScheduleMonth(-1)" aria-label="Previous month">←</button>
@@ -1950,10 +1950,9 @@ function renderSettingsWorkspace() {
 
         <section class="settings-card" data-settings-group="scheduling">
           <h3>Capacity & turnaround</h3>
-          <p class="hint">A date closes when its order limit is reached. The number of keychains does not close a standard production day. Buffer days are reserved around event orders only.</p>
+          <p class="hint">Every order follows the same automatic scheduling flow. Larger quantities receive a longer estimated ready or dispatch date.</p>
           <div class="settings-slider-stack">
             ${settingSlider("max_orders_per_date", "Orders accepted per production day", 1, 12)}
-            ${settingSlider("bulk_buffer_days", "Protected days around event orders", 0, 4)}
             ${settingSlider("standard_min_working_days", "Small order minimum lead time", 1, 10, " days")}
             ${settingSlider("standard_max_working_days", "Small order maximum lead time", 1, 14, " days")}
             ${settingSlider("large_min_working_days", "Large order minimum lead time", 1, 14, " days")}
@@ -1961,9 +1960,8 @@ function renderSettingsWorkspace() {
           </div>
           <div class="settings-fields two-columns">
             ${settingNumber("large_order_quantity", "7+ tier starts at")}
-            ${settingNumber("bulk_order_quantity", "Event order starts at")}
             ${settingNumber("rush_fee_small", "Rush fee: 1–4 items ($)", "0.50")}
-            ${settingNumber("rush_fee_large", "Rush fee: 5–9 items ($)", "0.50")}
+            ${settingNumber("rush_fee_large", "Rush fee: 5–10 items ($)", "0.50")}
             ${settingNumber("rush_max_missing_parts", "Auto-approve up to missing parts")}
             ${settingNumber("rush_max_active_orders", "Auto-approve up to active orders")}
           </div>
@@ -2362,7 +2360,6 @@ async function saveShopSettings(event) {
   const form = new FormData(event.currentTarget);
   const numberFields = [
     "delivery_fee", "free_delivery_threshold", "max_orders_per_date", "large_order_quantity",
-    "bulk_order_quantity",
     "standard_min_working_days", "standard_max_working_days", "large_min_working_days",
     "large_max_working_days", "rush_fee_small", "rush_fee_large", "rush_max_missing_parts",
     "rush_max_active_orders", "mechanical_switch_low_stock", "key_ring_low_stock"

@@ -587,6 +587,7 @@ const largeMinimumDays = Math.max(standardMaximumDays, getSettingNumber("large_m
 const largeMaximumDays = Math.max(largeMinimumDays, getSettingNumber("large_max_working_days", 5));
 const rushFeeSmall = Math.max(0, getSettingNumber("rush_fee_small", 5));
 const rushFeeLarge = Math.max(rushFeeSmall, getSettingNumber("rush_fee_large", 8));
+const rushOrderMaximumQuantity = 10;
 
 function displaySettingMoney(value) {
   return `$${Number(value || 0).toFixed(2)}`;
@@ -771,7 +772,7 @@ ${requestedPreviewProductKey ? `
 
   <div class="announcement-item">
     <span class="announcement-icon">✦</span>
-    <span><strong>Bulk orders welcome</strong></span>
+    <span><strong>Live dispatch estimates</strong></span>
   </div>
 
   <span id="holidayNoticeDivider" class="announcement-divider hidden"></span>
@@ -1141,7 +1142,7 @@ ${requestedPreviewProductKey ? `
     <div class="availability-preview-grid">
       <article><span>Standard orders</span><strong id="availabilityStandardDate">Checking…</strong><small>Estimated ready date</small></article>
       <article><span>Pickup</span><strong id="availabilityPickupDate">Checking…</strong><small>First selectable appointment</small></article>
-      <article><span>Event orders</span><strong id="availabilityBulkDate">Checking…</strong><small>Earliest dispatch request</small></article>
+      <article><span>Delivery</span><strong id="availabilityDeliveryDate">Checking…</strong><small>Estimated dispatch · delivery takes 1–3 days</small></article>
     </div>
     <p id="availabilityPreviewNote">Most production days accept ${Math.max(1, Number(shopSettings.max_orders_per_date || 2))} orders. Some dates may have extra or fewer slots.</p>
     <button id="refreshAvailabilityBtn" class="availability-refresh-btn" type="button">Refresh availability</button>
@@ -1983,7 +1984,7 @@ Chloe</textarea>
             <input id="rushOrderToggle" type="checkbox">
             <span>
               <strong>Need it sooner?</strong>
-              <small>Islandwide delivery only. Rush fee: +${displaySettingMoney(rushFeeSmall)} for 1–4 keychains or +${displaySettingMoney(rushFeeLarge)} for 5–9. Availability is checked before payment.</small>
+              <small>Available for up to ${rushOrderMaximumQuantity} keychains with islandwide delivery only. Rush fee: +${displaySettingMoney(rushFeeSmall)} for 1–4 keychains or +${displaySettingMoney(rushFeeLarge)} for 5–${rushOrderMaximumQuantity}. Availability is checked before payment.</small>
             </span>
           </label>
         </div>
@@ -2101,6 +2102,11 @@ Chloe</textarea>
               <span>I confirm that this full address and unit number are correct.</span>
             </label>
           </div>
+
+          <label class="final-order-confirmation delivery-timing-confirmation" for="confirmDeliveryTiming">
+            <input id="confirmDeliveryTiming" type="checkbox">
+            <span>I understand delivery takes approximately 1–3 days after my order is dispatched.</span>
+          </label>
         </div>
 
         <p id="deliveryNote" class="hint"></p>
@@ -2516,24 +2522,7 @@ Chloe</textarea>
       <summary>Production and timing</summary>
       <div class="policy-timing-copy">
         <p>Every Little Keep is made to order. Your checkout date updates automatically with our current bookings and scheduled shop closures.</p>
-        <div class="policy-timing-groups">
-          <article>
-            <strong>Standard orders</strong>
-            <span><b>1–3 keychains</b> · around ${standardMinimumDays}–${standardMaximumDays} working days</span>
-            <span><b>4–6 keychains</b> · around ${standardMaximumDays}–${largeMinimumDays} working days</span>
-            <span><b>7–14 keychains</b> · around ${largeMinimumDays}–${largeMaximumDays} working days</span>
-          </article>
-          <article>
-            <strong>Event orders</strong>
-            <span><b>${bulkOrderQuantity}–29 keychains</b> · at least 7 working days</span>
-            <span><b>30–50 keychains</b> · at least 14 days</span>
-            <span><b>51–75 keychains</b> · around 1.5–2 weeks</span>
-            <span><b>76–100 keychains</b> · around 2–3 weeks</span>
-            <span><b>101–150 keychains</b> · around 3–4 weeks</span>
-            <span><b>151+ keychains</b> · around 4–6 weeks</span>
-          </article>
-        </div>
-        <p class="policy-timing-note"><strong>Event orders:</strong> Islandwide delivery only. Choose an available date at checkout and continue straight to payment. Need it sooner? Rush requests are available where production allows.</p>
+        <p class="policy-timing-note">Every order is scheduled automatically according to its size and the current production queue. Your estimated ready or dispatch date is shown at checkout. For islandwide delivery, allow another 1–3 days after dispatch.</p>
       </div>
     </details>
 
@@ -3030,6 +3019,9 @@ const deliveryAddressPreview =
 const confirmDeliveryAddress =
   document.getElementById("confirmDeliveryAddress");
 
+const confirmDeliveryTiming =
+  document.getElementById("confirmDeliveryTiming");
+
 let deliveryAddressVerifiedPostal = "";
 let deliveryAddressManualOverride = false;
 
@@ -3277,6 +3269,7 @@ let bulkAssessmentFingerprint = "";
 
 function getTurnaroundInfo(quantity = getTotalKeychainQuantity() || 1) {
   const safeQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+  const quantityPolicy = getBulkApprovalPolicy(safeQuantity);
   const turnaroundProducts = cartHasItems && getCartItems().length
     ? getCartItems().map(getItemProduct)
     : [activeProduct];
@@ -3289,8 +3282,16 @@ function getTurnaroundInfo(quantity = getTotalKeychainQuantity() || 1) {
     ...turnaroundProducts.map(product => Number(product?.maximum_working_days) || 0)
   );
   if (productMinimum >= 1 || productMaximum >= 1) {
-    const minDays = Math.max(1, productMinimum || productMaximum);
-    const maxDays = Math.max(minDays, productMaximum || minDays);
+    const minDays = Math.max(
+      1,
+      productMinimum || productMaximum,
+      quantityPolicy.minWorkingDays || 0
+    );
+    const maxDays = Math.max(
+      minDays,
+      productMaximum || minDays,
+      quantityPolicy.minWorkingDays || 0
+    );
     return {
       quantity: safeQuantity,
       tier: "product",
@@ -3308,8 +3309,11 @@ function getTurnaroundInfo(quantity = getTotalKeychainQuantity() || 1) {
     : safeQuantity <= 6
       ? { quantity: safeQuantity, tier: "medium", minDays: standardMax, maxDays: largeMin }
       : { quantity: safeQuantity, tier: "large", minDays: largeMin, maxDays: largeMax };
+  const quantityMinimumDays = Math.max(0, quantityPolicy.minWorkingDays || 0);
   return {
     ...turnaround,
+    minDays: Math.max(turnaround.minDays, quantityMinimumDays),
+    maxDays: Math.max(turnaround.maxDays, quantityMinimumDays),
     isLargeOrder: turnaround.tier === "large"
   };
 }
@@ -3379,19 +3383,18 @@ function getFirstPickupDateAfter(readyDate) {
 async function renderAvailabilityPreview() {
   const standardDate = document.getElementById("availabilityStandardDate");
   const pickupDate = document.getElementById("availabilityPickupDate");
-  const bulkDate = document.getElementById("availabilityBulkDate");
+  const deliveryDate = document.getElementById("availabilityDeliveryDate");
   const note = document.getElementById("availabilityPreviewNote");
-  if (!standardDate || !pickupDate || !bulkDate) return;
+  if (!standardDate || !pickupDate || !deliveryDate) return;
 
   const standardReady = alignToProductionDay(
     addWorkingDays(new Date(), getTurnaroundInfo(1).maxDays)
   );
   const firstPickup = getFirstPickupDateAfter(standardReady);
-  const firstBulk = getBulkMinimumDate(bulkOrderQuantity);
 
   standardDate.textContent = formatEstimateDate(standardReady);
   pickupDate.textContent = formatEstimateDate(firstPickup);
-  bulkDate.textContent = formatEstimateDate(firstBulk);
+  deliveryDate.textContent = formatEstimateDate(standardReady);
 
   const { data, error } = await supabase.rpc("check_needed_by_date", {
     p_date: toLocalDateString(standardReady),
@@ -3593,8 +3596,10 @@ function setupCheckoutPickupCalendar() {
 }
 
 function getCheckoutOrderType() {
-  if (getTotalKeychainQuantity() >= bulkOrderQuantity) return "bulk";
-  if (rushOrderToggle?.checked) return "rush";
+  if (
+    rushOrderToggle?.checked &&
+    getTotalKeychainQuantity() <= rushOrderMaximumQuantity
+  ) return "rush";
   return "standard";
 }
 
@@ -3800,10 +3805,24 @@ async function checkBulkAvailability() {
 function updateTurnaroundMessaging() {
   const turnaround = getTurnaroundInfo();
   const itemWord = turnaround.quantity === 1 ? "keychain" : "keychains";
-  const isBulk = turnaround.quantity >= bulkOrderQuantity;
-  const isRush = !isBulk && Boolean(rushOrderToggle?.checked);
+  const rushIsAllowed = turnaround.quantity <= rushOrderMaximumQuantity;
 
-  if (isBulk || isRush) {
+  if (!rushIsAllowed && rushOrderToggle?.checked) {
+    rushOrderToggle.checked = false;
+    requestedCompletionDate.value = "";
+    specialDateCalendar?.clear();
+    rushAssessment = null;
+    rushAssessmentFingerprint = "";
+  }
+
+  const isRush = rushIsAllowed && Boolean(rushOrderToggle?.checked);
+  rushOrderToggle.disabled = !rushIsAllowed;
+  rushOrderOption.classList.toggle("is-disabled", !rushIsAllowed);
+  rushOrderOption.title = rushIsAllowed
+    ? ""
+    : `Rush is available for orders of up to ${rushOrderMaximumQuantity} keychains.`;
+
+  if (isRush) {
     if (linkExistingOrderToggle.checked) {
       linkExistingOrderToggle.checked = false;
       linkExistingOrderPanel.classList.add("hidden");
@@ -3827,21 +3846,18 @@ function updateTurnaroundMessaging() {
   const estimateEnd = alignToProductionDay(
     addWorkingDays(new Date(), turnaround.maxDays)
   );
-  const bulkPolicy = getBulkApprovalPolicy(turnaround.quantity);
 
-  neededBy.value = isBulk || isRush
+  neededBy.value = isRush
     ? requestedCompletionDate.value
     : toLocalDateString(estimateEnd);
 
   if (turnaroundSummary) {
-    turnaroundSummary.innerHTML = isBulk
-      ? `📦 <strong>${turnaround.quantity} ${itemWord}</strong> · allow <strong>${bulkPolicy.timeframeLabel}</strong>. Choose an available date and continue to payment.`
-      : `
-        🕒 <strong>${turnaround.quantity} ${itemWord}</strong>
-        ${methodIsDelivery ? "estimated to dispatch" : "estimated ready for pickup"}
-        in approximately <strong>${range}</strong>.
-        ${methodIsDelivery ? "<br><small>Allow another 1–3 days for delivery.</small>" : ""}
-      `;
+    turnaroundSummary.innerHTML = `
+      🕒 <strong>${turnaround.quantity} ${itemWord}</strong>
+      ${methodIsDelivery ? "estimated to dispatch" : "estimated ready for pickup"}
+      in approximately <strong>${range}</strong>.
+      ${methodIsDelivery ? "<br><small>Delivery takes approximately 1–3 days after dispatch.</small>" : ""}
+    `;
   }
 
   automaticDateLabel.textContent = methodIsDelivery
@@ -3856,31 +3872,11 @@ function updateTurnaroundMessaging() {
     ? "This is the dispatch date. Allow 1–3 days for delivery."
     : "Choose an available pickup slot below.";
 
-  automaticDateCard.classList.toggle("hidden", isBulk || isRush);
-  rushOrderOption.classList.toggle("hidden", isBulk);
+  automaticDateCard.classList.toggle("hidden", isRush);
   bulkOrderNotice.classList.add("hidden");
-  specialDateSection.classList.toggle("hidden", !isBulk && !isRush);
+  specialDateSection.classList.toggle("hidden", !isRush);
 
-  if (isBulk) {
-    bulkOrderNotice.classList.remove("hidden");
-    bulkOrderNotice.innerHTML = `
-      <p>Only islandwide delivery is available for orders of ${bulkOrderQuantity} or more keychains.</p>
-    `;
-    specialDateLabel.textContent = methodIsDelivery
-      ? "Choose your dispatch date"
-      : "Choose your completion date";
-    const earliestBulkDate = getBulkMinimumDate(turnaround.quantity);
-    specialOrderMessage.textContent = methodIsDelivery
-      ? `The earliest available dispatch date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. Your selected date is accepted immediately. Allow 1–3 days for delivery.`
-      : `The earliest available completion date is ${formatEstimateDate(earliestBulkDate)}. It uses the current production capacity and your order size. Your selected date is accepted immediately.`;
-    orderNotes.placeholder = "Additional order notes (optional)...";
-
-    if (requestedCompletionDate.value && bulkAssessmentFingerprint !== getBulkFingerprint()) {
-      bulkAssessment = null;
-      bulkAssessmentFingerprint = "";
-      queueMicrotask(() => checkBulkAvailability());
-    }
-  } else if (isRush) {
+  if (isRush) {
     specialDateLabel.textContent = "When should we dispatch it?";
     specialOrderMessage.textContent = "Choose an earlier dispatch date and we’ll check availability. Rush orders are delivered islandwide; allow another 1–3 days for delivery.";
     orderNotes.placeholder = "Tell us about your deadline or event...";
@@ -3903,8 +3899,7 @@ function updateTurnaroundMessaging() {
 
   if (specialDateCalendar) {
     const tomorrow = addWorkingDays(new Date(), 1);
-    const bulkMinimumDate = getBulkMinimumDate(turnaround.quantity);
-    const calendarMode = isRush ? "rush" : isBulk ? "bulk" : "standard";
+    const calendarMode = isRush ? "rush" : "standard";
     let calendarMaxDate;
 
     if (isRush) {
@@ -3916,33 +3911,13 @@ function updateTurnaroundMessaging() {
     }
 
     specialDateCalendar.set({
-      minDate: isBulk ? bulkMinimumDate : tomorrow,
+      minDate: tomorrow,
       maxDate: calendarMaxDate,
       disable: [
         ...calendarClosureDates,
-        ...(isBulk
-          ? bulkUnavailableDates
-          : isRush
-            ? []
-            : normalUnavailableDates)
+        ...(isRush ? [] : normalUnavailableDates)
       ]
     });
-
-    if (isBulk && requestedCompletionDate.value) {
-      const selectedBulkDate = dateFromLocalValue(requestedCompletionDate.value);
-      if (
-        !selectedBulkDate ||
-        selectedBulkDate < bulkMinimumDate ||
-        isCalendarDateUnavailable(selectedBulkDate, "bulk")
-      ) {
-        specialDateCalendar.clear();
-        requestedCompletionDate.value = "";
-        neededBy.value = "";
-        bulkAssessment = null;
-        bulkAssessmentFingerprint = "";
-        rushAvailabilityResult.classList.add("hidden");
-      }
-    }
 
     // Flatpickr can remain parked on the old maximum month after its range
     // changes. Reset only when the order mode changes so month navigation
@@ -3951,7 +3926,7 @@ function updateTurnaroundMessaging() {
       const selectedDate = specialDateCalendar.selectedDates[0];
       const firstAvailableDate = getFirstAvailableCalendarDate(
         calendarMode,
-        isBulk ? bulkMinimumDate : tomorrow,
+        tomorrow,
         calendarMaxDate
       );
       const dateToShow = selectedDate || firstAvailableDate;
@@ -3966,11 +3941,9 @@ function updateTurnaroundMessaging() {
       ? manualPaymentPaid?.checked
         ? "Save Paid Order"
         : "Save Order & Create Payment Link"
-      : isBulk
-        ? "Submit Order & Continue to Payment"
-        : isRush
-          ? "Submit Rush Request"
-          : "Submit Order & Continue to Payment";
+      : isRush
+        ? "Submit Rush Request"
+        : "Submit Order & Continue to Payment";
   }
 
   updateCheckoutPickupOptions();
@@ -5384,11 +5357,9 @@ async function setupNeededByCalendar() {
     ],
 
     onOpen: (_selectedDates, _dateString, instance) => {
-      const mode = getCheckoutOrderType() === "bulk"
-        ? "bulk"
-        : getCheckoutOrderType() === "rush"
-          ? "rush"
-          : "standard";
+      const mode = getCheckoutOrderType() === "rush"
+        ? "rush"
+        : "standard";
       const configuredMinimum =
         instance.config.minDate ||
         addWorkingDays(new Date(), 1);
@@ -5414,8 +5385,6 @@ async function setupNeededByCalendar() {
       updateCheckoutPickupOptions();
       if (getCheckoutOrderType() === "rush") {
         await checkRushAvailability();
-      } else if (getCheckoutOrderType() === "bulk") {
-        await checkBulkAvailability();
       }
       validateForm();
     }
@@ -7377,10 +7346,16 @@ async function submitOrderOnce() {
   successModal.dataset.orderRef = orderRef;
   const checkoutOrderType = getCheckoutOrderType();
 
-  if (["rush", "bulk"].includes(checkoutOrderType) && collectionMethod.value !== "delivery") {
-    submitStatus.innerText = checkoutOrderType === "rush"
-      ? "Rush orders are available by islandwide delivery only."
-      : "Event orders are available by delivery only.";
+  if (rushOrderToggle.checked && getTotalKeychainQuantity() > rushOrderMaximumQuantity) {
+    submitStatus.innerText = `Rush is available for orders of up to ${rushOrderMaximumQuantity} keychains.`;
+    rushOrderToggle.checked = false;
+    updateTurnaroundMessaging();
+    refreshUI();
+    return;
+  }
+
+  if (checkoutOrderType === "rush" && collectionMethod.value !== "delivery") {
+    submitStatus.innerText = "Rush orders are available by islandwide delivery only.";
     collectionMethod.value = "delivery";
     deliveryAddressSection.classList.remove("hidden");
     refreshUI();
@@ -7395,27 +7370,18 @@ async function submitOrderOnce() {
     addWorkingDays(new Date(), turnaround.maxDays)
   );
 
-  if (["rush", "bulk"].includes(checkoutOrderType) && !requestedCompletionDate.value) {
-    submitStatus.innerText = "Please choose a completion date.";
+  if (checkoutOrderType === "rush" && !requestedCompletionDate.value) {
+    submitStatus.innerText = "Please choose a rush dispatch date.";
     return;
   }
 
   let confirmedRushAssessment = null;
-  let confirmedBulkAssessment = null;
   if (checkoutOrderType === "rush" && !isManualOrder) {
     submitStatus.innerText = "Rechecking rush availability…";
     confirmedRushAssessment = await checkRushAvailability();
 
     if (!confirmedRushAssessment || confirmedRushAssessment.status === "unavailable") {
       submitStatus.innerText = "Rush service is unavailable for this date. Please choose another date.";
-      return;
-    }
-  } else if (checkoutOrderType === "bulk" && !isManualOrder) {
-    submitStatus.innerText = "Rechecking bulk date…";
-    confirmedBulkAssessment = await checkBulkAvailability();
-
-    if (!confirmedBulkAssessment || confirmedBulkAssessment.status !== "available") {
-      submitStatus.innerText = "This bulk date is no longer available. Please choose another date.";
       return;
     }
   }
@@ -7428,7 +7394,7 @@ async function submitOrderOnce() {
     checkoutOrderType === "rush" &&
     !rushAutoApproved;
 
-  const productionNeededBy = ["rush", "bulk"].includes(checkoutOrderType)
+  const productionNeededBy = checkoutOrderType === "rush"
     ? requestedCompletionDate.value
     : await findAutomaticAvailableDate();
   const selectedPickupDate =
@@ -7584,7 +7550,7 @@ async function submitOrderOnce() {
     needed_by: assignedNeededBy,
     notes: orderNotes.value,
     order_type: checkoutOrderType,
-    requested_completion_date: ["rush", "bulk"].includes(checkoutOrderType)
+    requested_completion_date: checkoutOrderType === "rush"
       ? requestedCompletionDate.value
       : null,
     estimated_ready_from: toLocalDateString(estimatedReadyFrom),
@@ -7593,7 +7559,7 @@ async function submitOrderOnce() {
       : productionNeededBy,
     review_status: isReviewRequest
       ? "Pending Review"
-      : rushAutoApproved || checkoutOrderType === "bulk"
+      : rushAutoApproved
         ? "Auto Approved"
         : null,
 
@@ -10372,6 +10338,7 @@ collectionMethod.addEventListener("change", () => {
     deliveryAddressLine2.value = "";
     deliveryPostalCode.value = "";
     resetDeliveryAddressVerification();
+    if (confirmDeliveryTiming) confirmDeliveryTiming.checked = false;
   }
 
   updateCollectionNote();
@@ -10433,7 +10400,7 @@ existingOrderRef.addEventListener("input", () => {
 });
 
 rushOrderToggle.addEventListener("change", () => {
-  if (!rushOrderToggle.checked && getTotalKeychainQuantity() < bulkOrderQuantity) {
+  if (!rushOrderToggle.checked) {
     requestedCompletionDate.value = "";
     specialDateCalendar?.clear();
   }
@@ -10485,6 +10452,7 @@ deliveryPostalCode.addEventListener(
 );
 
 confirmDeliveryAddress.addEventListener("change", validateForm);
+confirmDeliveryTiming?.addEventListener("change", validateForm);
 confirmFinalOrderDetails?.addEventListener("change", validateForm);
 
 nameList.addEventListener("input", updateNames);
@@ -10682,11 +10650,19 @@ function validateForm() {
     }
 
     else if (
-      ["rush", "bulk"].includes(getCheckoutOrderType()) &&
+      rushOrderToggle.checked &&
+      getTotalKeychainQuantity() > rushOrderMaximumQuantity
+    ) {
+      valid = false;
+      message = `Rush is available for orders of up to ${rushOrderMaximumQuantity} keychains.`;
+    }
+
+    else if (
+      getCheckoutOrderType() === "rush" &&
       !requestedCompletionDate.value
     ) {
       valid = false;
-      message = "Please choose a completion date.";
+      message = "Please choose a rush dispatch date.";
     }
 
     else if (
@@ -10703,22 +10679,6 @@ function validateForm() {
     ) {
       valid = false;
       message = "Rush service is unavailable for this date. Please choose another date or use the normal estimate.";
-    }
-
-    else if (
-      getCheckoutOrderType() === "bulk" &&
-      (!bulkAssessment || bulkAssessmentFingerprint !== getBulkFingerprint())
-    ) {
-      valid = false;
-      message = "Please wait while we check this bulk date.";
-    }
-
-    else if (
-      getCheckoutOrderType() === "bulk" &&
-      bulkAssessment.status !== "available"
-    ) {
-      valid = false;
-      message = "This bulk date is unavailable. Please choose another date.";
     }
 
 else if (
@@ -10765,6 +10725,14 @@ else if (
 ) {
   valid = false;
   message = "Please confirm that your complete delivery address is correct.";
+}
+
+else if (
+  collectionMethod.value === "delivery" && !hasVerifiedLinkedOrder() &&
+  !confirmDeliveryTiming?.checked
+) {
+  valid = false;
+  message = "Please confirm that you understand delivery takes 1–3 days after dispatch.";
 }
 
     submitOrderBtn.disabled = orderSubmissionInProgress || !valid;
@@ -10891,6 +10859,7 @@ function saveDraft() {
     deliveryAddressVerifiedPostal,
     deliveryAddressManualOverride,
     deliveryAddressConfirmed: confirmDeliveryAddress.checked,
+    deliveryTimingConfirmed: Boolean(confirmDeliveryTiming?.checked),
     orderNotes: orderNotes.value,
 
     singleName: singleName.value,
@@ -11063,6 +11032,9 @@ continueDraftBtn.onclick = () => {
   confirmDeliveryAddress.checked =
     Boolean(draftData.deliveryAddressConfirmed) &&
     Boolean(deliveryAddressVerifiedPostal || deliveryAddressManualOverride);
+  if (confirmDeliveryTiming) {
+    confirmDeliveryTiming.checked = Boolean(draftData.deliveryTimingConfirmed);
+  }
 
   if (deliveryAddressVerifiedPostal) {
     deliveryAddressLookupStatus.className = "address-lookup-status is-success";
