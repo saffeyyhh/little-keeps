@@ -22,6 +22,7 @@ import {
   getHandDeliveryLabelData,
   getInternalBasketLabelData,
   groupLinkedOrdersForAdmin,
+  indexKeycapOwnershipGroupsByLabel,
   getDeliveryRouteGroup,
   getPickupTimeRanges,
   getKeychainTurnaround,
@@ -755,6 +756,21 @@ test("assigns only newly printed keycaps to order owners", () => {
       characters: [{ character: "C" }]
     }
   ]);
+});
+
+test("finds keycap owners from the printed batch label", () => {
+  const group = {
+    capName: "Pink",
+    letterName: "Jade White",
+    owners: [{ orderRef: "LK-1" }]
+  };
+
+  assert.equal(
+    indexKeycapOwnershipGroupsByLabel({
+      "Pink|BASIC Cap + Jade White|BASIC Letter": group
+    })["Pink Cap + Jade White Letter"],
+    group
+  );
 });
 
 test("prepares an internal basket label without courier details", () => {

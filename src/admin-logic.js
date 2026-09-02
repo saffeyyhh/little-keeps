@@ -842,6 +842,14 @@ export function assignPrintedKeycapsToOwners(owners = [], rows = []) {
   })).filter(owner => owner.characters.length > 0);
 }
 
+export function indexKeycapOwnershipGroupsByLabel(groups = {}) {
+  return Object.values(groups || {}).reduce((indexed, group) => {
+    if (!group?.capName || !group?.letterName) return indexed;
+    indexed[`${group.capName} Cap + ${group.letterName} Letter`] = group;
+    return indexed;
+  }, {});
+}
+
 export function flattenSharedGroupContributions(contributions = []) {
   return (Array.isArray(contributions) ? contributions : []).flatMap(contribution =>
     (Array.isArray(contribution?.items) ? contribution.items : [])

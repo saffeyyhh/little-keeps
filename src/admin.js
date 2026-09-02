@@ -38,6 +38,7 @@ import {
   getHandDeliveryLabelData,
   getInternalBasketLabelData,
   groupLinkedOrdersForAdmin,
+  indexKeycapOwnershipGroupsByLabel,
   normalizePickupTimeOptions,
   getDeliveryRouteGroup,
   getOperationalBuckets,
@@ -6522,6 +6523,99 @@ window.setProductionQueueView = async function(view) {
   await renderProductionPlanner(latestOrders);
 };
 
+function getOrderIdsForStartedProductionJobs(
+  jobs = [],
+  { includeTrackedCoverage = true } = {}
+) {
+  const newPrintsByItem = new Map();
+  jobs.forEach(job => {
+    const itemName = String(job?.item_name || "");
+    const quantity = Math.max(0, Math.floor(Number(job?.quantity) || 0));
+    if (!itemName || !quantity) return;
+    newPrintsByItem.set(
+      itemName,
+      (newPrintsByItem.get(itemName) || 0) + quantity
+    );
+  });
+
+  if (!newPrintsByItem.size) return [];
+
+  const existingCoverageByItem = new Map(
+    Array.from(newPrintsByItem.keys(), itemName => [
+      itemName,
+      getInventoryQty(itemName) +
+        (includeTrackedCoverage
+          ? getTrackedProductionQuantity(productionJobs, itemName)
+          : 0)
+    ])
+  );
+
+  const matchingOrderIds = [];
+  latestOrders
+    .filter(order => !order.archived_at && order.status === "Payment Verified")
+    .sort((a, b) =>
+      new Date(a.needed_by || "9999-12-31") -
+      new Date(b.needed_by || "9999-12-31")
+    )
+    .forEach(order => {
+      const needs = getOrderPrintableInventoryNeeds(order);
+      let usesNewPrint = false;
+
+      Object.entries(needs).forEach(([itemName, quantityNeeded]) => {
+        let remainingNeed = Math.max(0, Number(quantityNeeded) || 0);
+        const existingCoverage = existingCoverageByItem.get(itemName) || 0;
+        const coveredAlready = Math.min(existingCoverage, remainingNeed);
+        existingCoverageByItem.set(itemName, existingCoverage - coveredAlready);
+        remainingNeed -= coveredAlready;
+
+        if (!remainingNeed) return;
+        const newPrintQuantity = newPrintsByItem.get(itemName) || 0;
+        const coveredByNewPrint = Math.min(newPrintQuantity, remainingNeed);
+        if (!coveredByNewPrint) return;
+        newPrintsByItem.set(itemName, newPrintQuantity - coveredByNewPrint);
+        usesNewPrint = true;
+      });
+
+      if (usesNewPrint) matchingOrderIds.push(String(order.id));
+    });
+
+  return matchingOrderIds;
+}
+
+async function markOrdersPrintingForStartedJobs(jobs = [], options = {}) {
+  const orderIds = getOrderIdsForStartedProductionJobs(jobs, options);
+  if (!orderIds.length) return;
+
+  if (IS_ADMIN_PREVIEW) {
+    latestOrders.forEach(order => {
+      if (orderIds.includes(String(order.id)) && order.status === "Payment Verified") {
+        order.status = "Printing";
+      }
+    });
+    return;
+  }
+
+  const updatedAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("orders")
+    .update({ status: "Printing", updated_at: updatedAt })
+    .in("id", orderIds)
+    .eq("status", "Payment Verified");
+
+  if (error) {
+    console.error("Unable to update printing order statuses:", error);
+    alert("The print started, but the matching order status could not be changed to Printing. Please refresh and update it manually.");
+    return;
+  }
+
+  latestOrders.forEach(order => {
+    if (orderIds.includes(String(order.id)) && order.status === "Payment Verified") {
+      order.status = "Printing";
+      order.updated_at = updatedAt;
+    }
+  });
+}
+
 window.startProductionJob = async function(
   itemName,
   qtyToPrint,
@@ -6541,15 +6635,16 @@ window.startProductionJob = async function(
     return;
   }
 
+  const job = {
+    item_name: itemName,
+    category,
+    quantity,
+    stage: "printing",
+    updated_at: new Date().toISOString()
+  };
   const { error } = await supabase
     .from("production_jobs")
-    .insert({
-      item_name: itemName,
-      category,
-      quantity,
-      stage: "printing",
-      updated_at: new Date().toISOString()
-    });
+    .insert(job);
 
   if (error) {
     console.error("Unable to start production job:", error);
@@ -6557,6 +6652,7 @@ window.startProductionJob = async function(
     return;
   }
 
+  await markOrdersPrintingForStartedJobs([job]);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -6589,6 +6685,7 @@ window.startSelectedBaseBatch = async function(button) {
   }
 
   if (IS_ADMIN_PREVIEW) {
+    await markOrdersPrintingForStartedJobs(jobs);
     const timestamp = new Date().toISOString();
     jobs.forEach((job, index) => {
       productionJobs.push({
@@ -6615,6 +6712,7 @@ window.startSelectedBaseBatch = async function(button) {
     return;
   }
 
+  await markOrdersPrintingForStartedJobs(jobs);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -6649,6 +6747,7 @@ window.startBaseColourBatch = async function(jobId, button) {
   }
 
   if (IS_ADMIN_PREVIEW) {
+    await markOrdersPrintingForStartedJobs(jobs);
     const timestamp = new Date().toISOString();
     productionJobs.push(...jobs.map((job, index) => ({
       id: `preview-base-colour-${timestamp}-${index}`,
@@ -6670,6 +6769,7 @@ window.startBaseColourBatch = async function(jobId, button) {
     return;
   }
 
+  await markOrdersPrintingForStartedJobs(jobs);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -8720,6 +8820,7 @@ window.startKeycapCombination = async function(jobId, button, printerId = null) 
     return;
   }
 
+  await markOrdersPrintingForStartedJobs(jobs);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -8798,6 +8899,7 @@ window.startSelectedKeycapCombinations = async function(button) {
   }
 
   if (IS_ADMIN_PREVIEW) {
+    await markOrdersPrintingForStartedJobs(jobs);
     jobs.forEach((job, index) => productionJobs.push({
       ...job,
       id: `preview-selected-combination-${Date.now()}-${index}`
@@ -8813,6 +8915,7 @@ window.startSelectedKeycapCombinations = async function(button) {
       }
       return;
     }
+    await markOrdersPrintingForStartedJobs(jobs);
   }
 
   await renderProductionPlanner(latestOrders);
@@ -8887,6 +8990,7 @@ window.startAmsLitePlate = async function(plateId, button) {
     return;
   }
 
+  await markOrdersPrintingForStartedJobs(jobs);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -10589,6 +10693,11 @@ async function renderProductionPlanner(orders) {
     loadProductionJobs()
   ]);
 
+  await markOrdersPrintingForStartedJobs(
+    productionJobs.filter(job => ["printing", "picked"].includes(job.stage)),
+    { includeTrackedCoverage: false }
+  );
+
   const selectedScopeActive = productionOrderSelection.size > 0;
   const planningOrders = selectedScopeActive
     ? orders.filter(order => productionOrderSelection.has(String(order.id)))
@@ -10600,6 +10709,9 @@ async function renderProductionPlanner(orders) {
   const { keycapGroups: allKeycapOwnershipGroups } = getProductionSummary(
     orders,
     true
+  );
+  const allKeycapOwnershipByLabel = indexKeycapOwnershipGroupsByLabel(
+    allKeycapOwnershipGroups
   );
   const timeEstimateOrders = planningOrders.filter(order =>
     !order.archived_at &&
@@ -11905,7 +12017,7 @@ async function renderProductionPlanner(orders) {
 
               if (group.category === "Keycap") {
                 combinationLabels.forEach(combinationLabel => {
-                  const ownershipGroup = allKeycapOwnershipGroups[combinationLabel];
+                  const ownershipGroup = allKeycapOwnershipByLabel[combinationLabel];
                   if (!ownershipGroup) return;
 
                   const quantitiesByCharacter = new Map();
