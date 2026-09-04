@@ -10976,11 +10976,16 @@ async function renderProductionPlanner(orders) {
 
   const otherCustomPrintRows = customPrintRows.filter(item => !item.isPencil);
   const pencilRoleLabels = {
-    singleColour: "Single-Colour Parts",
-    character: "Character Tops"
+    base: "Clicker Blocks",
+    character: "Character Tops",
+    wood: "Wood Noses",
+    tip: "Pencil Tips",
+    metal: "Metal Bands",
+    eraser: "Erasers",
+    endCap: "End Caps"
   };
   const pencilRoleOrder = [
-    "singleColour", "character"
+    "base", "character", "wood", "tip", "metal", "eraser", "endCap"
   ];
   const pencilPartLabels = {
     base: "Clicker block",
@@ -12435,7 +12440,7 @@ async function renderProductionPlanner(orders) {
       <div>
         <span>Product workflow</span>
         <h3>Custom Pencil Clickers</h3>
-        <p class="hint">Matching parts from every pencil order are combined by filament colour. Character plates hold up to 56 pieces; larger single-colour parts use safer 36-piece plates.</p>
+        <p class="hint">Each pencil part is kept on its own plate type, then matching orders are combined by filament colour. Character plates hold up to 56 pieces; other part plates use a safer 36-piece limit.</p>
       </div>
       <strong>${pencilQueuedPieces} pieces to print</strong>
     </div>
@@ -12462,7 +12467,7 @@ async function renderProductionPlanner(orders) {
                       ${escapeAdminHtml(group.colourName)} ·
                       ${group.roleKey === "character"
                         ? "optimised character plate"
-                        : "optimised single-colour plate"}
+                        : `optimised ${escapeAdminHtml((pencilPartLabels[group.roleKey] || "part").toLowerCase())} plate`}
                     </strong>
                     <small>${group.quantity} piece${group.quantity === 1 ? "" : "s"}${group.plateTotal > 1 ? ` · plate ${group.platePart} of ${group.plateTotal}` : ""}</small>
                     <div class="pencil-character-plate-list">

@@ -284,38 +284,45 @@ export function buildPencilCharacterPlates(parts = [], capacity = 56) {
 
 export function buildPencilSingleColourPlates(parts = [], capacity = 36) {
   const safeCapacity = Math.max(1, Math.floor(Number(capacity) || 36));
-  const colourGroups = new Map();
+  const partColourGroups = new Map();
+  const roleLabels = {
+    base: "Clicker Blocks",
+    wood: "Wood Noses",
+    tip: "Pencil Tips",
+    metal: "Metal Bands",
+    eraser: "Erasers",
+    endCap: "End Caps"
+  };
 
   parts
     .filter(part => part?.roleKey !== "character" && Number(part.toPrint) > 0)
     .forEach(part => {
+      const roleKey = String(part.roleKey || "part");
       const colourName = String(
         part.colourName || part.colour?.name || part.colour?.hex || part.colour || "Selected"
       );
-      if (!colourGroups.has(colourName)) {
-        colourGroups.set(colourName, {
-          roleKey: "singleColour",
+      const key = `${roleKey}|${colourName}`;
+      if (!partColourGroups.has(key)) {
+        partColourGroups.set(key, {
+          roleKey,
           type: part.type || "Pencil",
-          roleLabel: "Single-Colour Parts",
+          roleLabel: roleLabels[roleKey] || part.label || "Pencil Parts",
           colourName,
           topColour: part.colour,
           parts: []
         });
       }
-      colourGroups.get(colourName).parts.push(part);
+      partColourGroups.get(key).parts.push(part);
     });
 
-  return Array.from(colourGroups.values()).flatMap(group => {
+  return Array.from(partColourGroups.values()).flatMap(group => {
     const plates = [];
     let rows = [];
     let quantity = 0;
 
     group.parts
       .slice()
-      .sort((a, b) =>
-        String(a.roleKey).localeCompare(String(b.roleKey)) ||
-        String(a.sourceName).localeCompare(String(b.sourceName))
-      )
+      .sort((a, b) => String(a.sourceName).localeCompare(String(b.sourceName)))
       .forEach(part => {
         let remaining = Math.max(0, Math.floor(Number(part.toPrint) || 0));
         while (remaining > 0) {

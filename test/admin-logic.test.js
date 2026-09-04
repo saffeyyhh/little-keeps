@@ -379,7 +379,7 @@ test("combines pencil character tops by colour pair and plate capacity", () => {
   ]);
 });
 
-test("combines different pencil part types onto one single-colour plate", () => {
+test("optimizes pencil plates by part first and colour second", () => {
   const plates = buildPencilSingleColourPlates([
     {
       roleKey: "base",
@@ -405,16 +405,25 @@ test("combines different pencil part types onto one single-colour plate", () => 
   ]);
 
   assert.deepEqual(plates.map(plate => ({
+    role: plate.roleKey,
     colour: plate.colourName,
     quantity: plate.quantity,
     sources: plate.rows.map(row => row.sourceName)
   })), [
     {
+      role: "base",
       colour: "Blue",
-      quantity: 3,
-      sources: ["Pencil Body.stl", "Pencil Tip.stl"]
+      quantity: 2,
+      sources: ["Pencil Body.stl"]
     },
     {
+      role: "tip",
+      colour: "Blue",
+      quantity: 1,
+      sources: ["Pencil Tip.stl"]
+    },
+    {
+      role: "eraser",
       colour: "Pink",
       quantity: 1,
       sources: ["Eraser.stl"]
