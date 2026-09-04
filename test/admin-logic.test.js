@@ -47,6 +47,7 @@ import {
   partitionAmsCombinationsByBusyColours,
   sortEasyParcelQuotesByPrice,
   splitAmsCombinationsByPlateCapacity,
+  supportsBaseOnlyAssembly,
   isEasyParcelPickupQuote,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
@@ -315,6 +316,13 @@ test("excludes printing and picked quantities from the production queue", () => 
   assert.equal(calculateQueuedProductionQuantity(5, 4, 3), 0);
 });
 
+test("does not route pencil products to base-only assembly", () => {
+  assert.equal(supportsBaseOnlyAssembly("custom-pencil-clicker"), false);
+  assert.equal(supportsBaseOnlyAssembly("standard-name-keychain"), false);
+  assert.equal(supportsBaseOnlyAssembly("ai-photo-keepsake"), false);
+  assert.equal(supportsBaseOnlyAssembly("solid-clicky-keychain"), true);
+});
+
 test("groups tracked keycaps and bases by colour", () => {
   assert.deepEqual(
     getProductionJobGroup(
@@ -338,6 +346,17 @@ test("groups tracked keycaps and bases by colour", () => {
   assert.deepEqual(
     getProductionJobGroup("Jade White Bubbly Base", "Base"),
     getProductionJobGroup("Jade White Ribbed Base", "Base")
+  );
+
+  assert.deepEqual(
+    getProductionJobGroup(
+      "Pencil Character Top - Yellow Top + White Character - A",
+      "Pencil"
+    ),
+    {
+      key: "20-pencil-character-top",
+      label: "Pencil · Character Top"
+    }
   );
 });
 

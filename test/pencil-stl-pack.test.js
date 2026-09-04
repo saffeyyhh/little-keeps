@@ -31,10 +31,14 @@ test("builds the exact raised-character and eraser STL list", () => {
     "Letter B (Raised).stl"
   ]);
   assert.ok(plan.requiredFiles.includes("Pencil Body.stl"));
-  assert.ok(plan.requiredFiles.includes("Blanked Customizable TOP.stl"));
+  assert.ok(!plan.requiredFiles.includes("Blanked Customizable TOP.stl"));
   assert.ok(plan.requiredFiles.includes("Ferrule.stl"));
   assert.ok(plan.requiredFiles.includes("Eraser.stl"));
   assert.equal(plan.parts.find(part => part.role === "Pencil block" && part.colour === "Yellow").pieces, 2);
+  assert.equal(
+    plan.parts.find(part => part.role === "Character top A").colour,
+    "White top + Black character"
+  );
   assert.match(buildPencilStlManifest(plan), /Finished pencils required: 2/);
 });
 

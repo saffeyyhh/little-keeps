@@ -50,6 +50,7 @@ import {
   partitionAmsCombinationsByBusyColours,
   splitAmsCombinationsByPlateCapacity,
   sortEasyParcelQuotesByPrice,
+  supportsBaseOnlyAssembly,
   isEasyParcelPickupQuote,
   validateInventoryDecrement
 } from "./admin-logic.js";
@@ -6043,7 +6044,6 @@ function getPencilClickerInventoryName(order, item, itemIndex = 0) {
 
 const PENCIL_PRODUCTION_FILES = Object.freeze({
   base: "Pencil Body.stl",
-  cap: "Blanked Customizable TOP.stl",
   wood: "Pencil Nose.stl",
   tip: "Pencil Tip.stl",
   eraser: "Eraser.stl",
@@ -6063,7 +6063,16 @@ function getPencilProductionParts(order, item, itemIndex = 0, quantity = 1) {
   const multiplier = Math.max(1, Number(quantity) || 1);
   const parts = new Map();
   const colourName = (value, fallback) => value?.name || value?.hex || value || fallback;
-  const addPart = (type, roleKey, sourceName, label, itemName, qty, colour) => {
+  const addPart = (
+    type,
+    roleKey,
+    sourceName,
+    label,
+    itemName,
+    qty,
+    colour,
+    details = {}
+  ) => {
     const existing = parts.get(itemName);
     if (existing) {
       existing.need += qty;
@@ -6076,7 +6085,8 @@ function getPencilProductionParts(order, item, itemIndex = 0, quantity = 1) {
       label,
       itemName,
       need: qty,
-      colour
+      colour,
+      ...details
     });
   };
 
@@ -6099,21 +6109,18 @@ function getPencilProductionParts(order, item, itemIndex = 0, quantity = 1) {
     );
     addPart(
       "Pencil",
-      "cap",
-      PENCIL_PRODUCTION_FILES.cap,
-      `Cap · ${topName}`,
-      `Pencil Cap - ${topName}`,
-      multiplier,
-      top
-    );
-    addPart(
-      "Pencil",
-      "letter",
+      "character",
       getPencilCharacterStlName(character),
-      `Letter ${displayIcon(character)} · ${letteringName}`,
-      `Pencil Letter - ${letteringName} - ${character}`,
+      `${displayIcon(character)} top · ${topName} + ${letteringName}`,
+      `Pencil Character Top - ${topName} Top + ${letteringName} Character - ${character}`,
       multiplier,
-      lettering
+      top,
+      {
+        topColour: top,
+        characterColour: lettering,
+        topColourName: topName,
+        characterColourName: letteringName
+      }
     );
   });
 
@@ -6518,8 +6525,11 @@ window.setProductionStageView = async function(stage) {
 };
 
 window.setProductionQueueView = async function(view) {
-  if (!["batch", "timeline", "modular-bases", "solid-bases", "keycaps", "pencils", "custom"].includes(view)) return;
-  productionQueueView = view;
+  const normalizedView = ["modular-bases", "solid-bases", "keycaps"].includes(view)
+    ? "clicky"
+    : view;
+  if (!["batch", "timeline", "clicky", "pencils", "custom"].includes(normalizedView)) return;
+  productionQueueView = normalizedView;
   await renderProductionPlanner(latestOrders);
 };
 
@@ -7550,6 +7560,14 @@ function getOrderInventoryNeeds(order) {
       return;
     }
 
+    if (isPencilClicker(order, item)) {
+      getPencilProductionParts(order, item, itemIndex).forEach(part => {
+        add(part.itemName, part.need);
+      });
+      add("Mechanical Switch", letters.length);
+      return;
+    }
+
     const solidProduct = isSolidClickyKeychain(order, item);
     const solidBaseShape = getSolidBaseShape(letters.length);
 
@@ -7607,8 +7625,7 @@ function getOrderInventoryNeeds(order) {
 
 function getKeychainBaseAssemblyNeeds(item) {
   if (item?.base_assembled) return {};
-  if (String(item?.product_key || "") === "standard-name-keychain") return {};
-  if (String(item?.product_key || "") === "ai-photo-keepsake") return {};
+  if (!supportsBaseOnlyAssembly(item?.product_key)) return {};
   const needs = getKeychainPrintablePartNeeds(item, "base");
   const characterCount = Array.from(item?.clean_name || item?.name || "").length;
   if (characterCount > 0) needs["Mechanical Switch"] = characterCount;
@@ -10706,12 +10723,38 @@ async function renderProductionPlanner(orders) {
     planningOrders,
     selectedScopeActive
   );
-  const { keycapGroups: allKeycapOwnershipGroups } = getProductionSummary(
+  const {
+    keycapGroups: allKeycapOwnershipGroups,
+    customItems: allCustomProductionItems
+  } = getProductionSummary(
     orders,
     true
   );
   const allKeycapOwnershipByLabel = indexKeycapOwnershipGroupsByLabel(
     allKeycapOwnershipGroups
+  );
+  const customProductionOwnersByItem = allCustomProductionItems.reduce(
+    (ownersByItem, row) => {
+      const parts = row.isPencil
+        ? row.parts || []
+        : [{ itemName: row.itemName, need: 1 }];
+      parts.forEach(part => {
+        if (!part.itemName) return;
+        if (!ownersByItem.has(part.itemName)) ownersByItem.set(part.itemName, []);
+        ownersByItem.get(part.itemName).push({
+          orderId: String(row.order?.id || ""),
+          orderRef: row.order?.order_ref || "No reference",
+          customerName:
+            row.item?.group_contributor_name ||
+            row.order?.customer_name ||
+            "Customer",
+          keychainName: row.name || "Custom product",
+          quantity: Math.max(1, Number(part.need) || 1)
+        });
+      });
+      return ownersByItem;
+    },
+    new Map()
   );
   const timeEstimateOrders = planningOrders.filter(order =>
     !order.archived_at &&
@@ -10800,22 +10843,23 @@ async function renderProductionPlanner(orders) {
   const pencilRoleLabels = {
     eraser: "Erasers",
     metal: "Metal Bands",
-    base: "Pencil Bases",
-    letter: "Letters & Symbols",
-    cap: "Clicker Caps",
+    base: "Clicker Blocks",
+    character: "Character Tops",
     endCap: "End Caps",
     wood: "Wood Noses",
     tip: "Pencil Tips"
   };
   const pencilRoleOrder = [
-    "eraser", "metal", "base", "letter", "cap", "endCap", "wood", "tip"
+    "base", "character", "wood", "tip", "metal", "eraser", "endCap"
   ];
   const pencilPartNeeds = groupedCustomItems
     .filter(item => item.isPencil)
     .reduce((groups, row) => {
     (row.parts || []).forEach(part => {
       if (!part.sourceName || !part.roleKey) return;
-      const colourName = part.colour?.name || part.colour?.hex || part.colour || "Selected";
+      const colourName = part.roleKey === "character"
+        ? `${part.topColourName} top + ${part.characterColourName} character`
+        : part.colour?.name || part.colour?.hex || part.colour || "Selected";
       const key = `${part.roleKey}|${part.sourceName}|${colourName}|${part.itemName}`;
       const existing = groups.get(key);
       const needed = Number(part.need || 0) * Math.max(1, Number(row.need || 1));
@@ -12055,6 +12099,18 @@ async function renderProductionPlanner(orders) {
               }
 
               const plateOwners = Array.from(plateOwnerMap.values());
+              const customBatchOwnerMap = new Map();
+              if (group.category !== "Keycap") {
+                group.jobs.forEach(job => {
+                  (customProductionOwnersByItem.get(job.item_name) || []).forEach(owner => {
+                    const ownerKey = `${owner.orderId}:${owner.keychainName}`;
+                    if (!customBatchOwnerMap.has(ownerKey)) {
+                      customBatchOwnerMap.set(ownerKey, owner);
+                    }
+                  });
+                });
+              }
+              const customBatchOwners = Array.from(customBatchOwnerMap.values());
 
               return `
                 <details class="production-job-group ${group.category === "Keycap" ? "is-keycap-plate" : ""}" open>
@@ -12089,6 +12145,20 @@ async function renderProductionPlanner(orders) {
                             <span>${escapeAdminHtml(owner.keychainName)} — ${owner.characters.map(entry => displayIcon(entry.character)).join(", ")}</span>
                           </p>
                         `).join("") || `<p><span>No order ownership details found.</span></p>`}
+                      </div>
+                    </details>
+                  ` : ""}
+
+                  ${stage === "picked" && customBatchOwners.length ? `
+                    <details class="keycap-owner-guide picked-owner-guide">
+                      <summary>Who this batch belongs to</summary>
+                      <div>
+                        ${customBatchOwners.map(owner => `
+                          <p>
+                            <strong>${escapeAdminHtml(owner.orderRef)} · ${escapeAdminHtml(owner.customerName)}</strong>
+                            <span>${escapeAdminHtml(owner.keychainName)} · needs ${owner.quantity}</span>
+                          </p>
+                        `).join("")}
                       </div>
                     </details>
                   ` : ""}
@@ -12227,8 +12297,18 @@ async function renderProductionPlanner(orders) {
   };
 
   const renderPencilPrintingPanel = () => `
-    <h3>Pencil Parts</h3>
-    <p class="hint">Parts are grouped by type, STL and filament colour. Matching parts from different pencil orders are combined automatically, with a maximum of 56 pieces per plate.</p>
+    <div class="product-production-heading">
+      <div>
+        <span>Product workflow</span>
+        <h3>Custom Pencil Clickers</h3>
+        <p class="hint">Work from top to bottom. Matching parts from every pencil order are combined by filament colour, with a maximum of 56 pieces per plate.</p>
+      </div>
+      <strong>${pencilQueuedPieces} pieces to print</strong>
+    </div>
+    <div class="pencil-production-note">
+      <strong>One character = two printed pieces</strong>
+      <span>Print one clicker block plus one raised character top. The raised character STL already includes the top, so there is no separate blank-top print.</span>
+    </div>
     <div class="pencil-production-groups">
       ${pencilRoleOrder.map(roleKey => {
         const groups = pencilPartGroups.filter(group => group.roleKey === roleKey);
@@ -12239,7 +12319,10 @@ async function renderProductionPlanner(orders) {
             <div>
               ${groups.map(group => `
                 <article class="pencil-production-plate">
-                  <span class="colour-dot" style="background:${getSafePdfColour(group.colour?.hex || group.colour, "#d9d9d9")}"></span>
+                  <span class="pencil-production-swatches" aria-hidden="true">
+                    <i class="colour-dot" style="background:${getSafePdfColour(group.topColour?.hex || group.topColour || group.colour?.hex || group.colour, "#d9d9d9")}"></i>
+                    ${group.roleKey === "character" ? `<i class="colour-dot" style="background:${getSafePdfColour(group.characterColour?.hex || group.characterColour, "#ffffff")}"></i>` : ""}
+                  </span>
                   <div>
                     <strong>${escapeAdminHtml(group.colourName)} · ${escapeAdminHtml(group.sourceName)}</strong>
                     <small>${group.quantity} piece${group.quantity === 1 ? "" : "s"}${group.plateTotal > 1 ? ` · plate ${group.platePart} of ${group.plateTotal}` : ""}</small>
@@ -12411,34 +12494,18 @@ async function renderProductionPlanner(orders) {
           </button>
           <button
             type="button"
-            class="${productionQueueView === "modular-bases" ? "active" : ""}"
-            onclick="window.setProductionQueueView('modular-bases')"
+            class="${productionQueueView === "clicky" ? "active" : ""}"
+            onclick="window.setProductionQueueView('clicky')"
           >
-            <span>Modular Bases</span>
-            <strong>${modularBaseQueuedPieces}</strong>
-          </button>
-          <button
-            type="button"
-            class="${productionQueueView === "solid-bases" ? "active" : ""}"
-            onclick="window.setProductionQueueView('solid-bases')"
-          >
-            <span>Solid Bases</span>
-            <strong>${solidBaseQueuedPieces}</strong>
-          </button>
-          <button
-            type="button"
-            class="${productionQueueView === "keycaps" ? "active" : ""}"
-            onclick="window.setProductionQueueView('keycaps')"
-          >
-            <span>Keycaps Printing</span>
-            <strong>${keycapQueuedPieces}</strong>
+            <span>Clicky Keychains</span>
+            <strong>${baseQueuedPieces + keycapQueuedPieces}</strong>
           </button>
           <button
             type="button"
             class="${productionQueueView === "pencils" ? "active" : ""}"
             onclick="window.setProductionQueueView('pencils')"
           >
-            <span>Pencil Parts</span>
+            <span>Pencil Clickers</span>
             <strong>${pencilQueuedPieces}</strong>
           </button>
           <button
@@ -12446,7 +12513,7 @@ async function renderProductionPlanner(orders) {
             class="${productionQueueView === "custom" ? "active" : ""}"
             onclick="window.setProductionQueueView('custom')"
           >
-            <span>Custom Prints</span>
+            <span>Other Products</span>
             <strong>${otherCustomQueuedPieces}</strong>
           </button>
         </nav>
@@ -12461,18 +12528,26 @@ async function renderProductionPlanner(orders) {
           ${productionTimelinePanel}
         </div>
 
-        <div class="production-queue-section ${productionQueueView === "modular-bases" ? "" : "hidden"}">
-          ${renderBasePrintingPanel("modular", "Modular Bases", "Grouped by filament colour. Ribbed and Bubbly modular pieces can share one colour plate.")}
-        </div>
-
-        <div class="production-queue-section ${productionQueueView === "solid-bases" ? "" : "hidden"}">
-          ${renderBasePrintingPanel("compact", "Solid Bases", "Solid bases stay separate from modular base plates and are grouped by colour and character count.")}
-        </div>
-
-        <div class="production-queue-section ${productionQueueView === "keycaps" ? "" : "hidden"}">
-          <h3>Keycaps Printing</h3>
-          <p class="hint">Modular and solid-base orders use the same compatible keycaps, so matching colour combinations are combined here.</p>
-          ${amsLitePlanner || "<p>No keycaps need printing.</p>"}
+        <div class="production-queue-section product-production-workflow ${productionQueueView === "clicky" ? "" : "hidden"}">
+          <div class="product-production-heading">
+            <div>
+              <span>Product workflow</span>
+              <h3>Clicky Name Keychains</h3>
+              <p class="hint">Modular and solid-base designs share the same compatible keycaps, so their matching keycaps stay combined.</p>
+            </div>
+            <strong>${baseQueuedPieces + keycapQueuedPieces} pieces to print</strong>
+          </div>
+          <section class="product-production-step">
+            ${renderBasePrintingPanel("modular", "1 · Modular Bases", "Grouped by filament colour. Ribbed and Bubbly modular pieces can share one colour plate.")}
+          </section>
+          <section class="product-production-step">
+            ${renderBasePrintingPanel("compact", "2 · Solid Bases", "Solid bases stay separate from modular base plates and are grouped by colour and character count.")}
+          </section>
+          <section class="product-production-step">
+            <h3>3 · Shared Keycaps</h3>
+            <p class="hint">Matching cap-and-letter colour combinations from both keychain products are combined here.</p>
+            ${amsLitePlanner || "<p>No keycaps need printing.</p>"}
+          </section>
         </div>
 
         <div class="production-queue-section ${productionQueueView === "pencils" ? "" : "hidden"}">
@@ -12481,7 +12556,7 @@ async function renderProductionPlanner(orders) {
 
         <div class="production-queue-section ${productionQueueView === "custom" ? "" : "hidden"}">
           <h3>Order-Specific Custom Prints</h3>
-          <p class="hint">Download each order-specific print pack here. For pencil clickers, connect your licensed Pencil STL folder once per admin session; the files stay on this device.</p>
+          <p class="hint">Download each remaining order-specific custom print pack here.</p>
           <div class="custom-print-grid">
             ${otherCustomPrintRows.map(row => {
               const background = row.background || {};

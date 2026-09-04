@@ -1,7 +1,6 @@
 import { getPencilCharacterStlName } from "./pencil-characters.js";
 
 const PENCIL_BODY_FILE = "Pencil Body.stl";
-const PENCIL_TOP_FILE = "Blanked Customizable TOP.stl";
 const PENCIL_NOSE_FILE = "Pencil Nose.stl";
 const PENCIL_TIP_FILE = "Pencil Tip.stl";
 const PENCIL_FERRULE_FILE = "Ferrule.stl";
@@ -53,8 +52,13 @@ export function buildPencilStlPackPlan({ order = {}, item = {}, quantity = 1 } =
 
   blocks.forEach(block => {
     addPart(parts, PENCIL_BODY_FILE, "Pencil block", block.bodyColour, orderedQuantity);
-    addPart(parts, PENCIL_TOP_FILE, "Clicker top", block.topColour, orderedQuantity);
-    addPart(parts, block.characterFile, `Character ${block.character}`, block.characterColour, orderedQuantity);
+    addPart(
+      parts,
+      block.characterFile,
+      `Character top ${block.character}`,
+      `${block.topColour} top + ${block.characterColour} character`,
+      orderedQuantity
+    );
   });
 
   const woodColour = colourName(pencil.wood, "Desert Tan");
@@ -121,6 +125,7 @@ export function buildPencilStlManifest(plan) {
     ),
     "",
     "The STL files are the original licensed source parts selected from your local folder.",
+    "Each raised character STL already includes its clicker top. Do not print the blank top as an additional part.",
     "Use the quantities and colours above, then assemble one block per character in the listed order."
   ];
   return `${lines.join("\n")}\n`;

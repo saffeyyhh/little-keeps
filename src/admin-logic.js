@@ -215,6 +215,14 @@ export function calculateQueuedProductionQuantity(
   return Math.max(0, required - inventory - tracked);
 }
 
+export function supportsBaseOnlyAssembly(productKey) {
+  return ![
+    "standard-name-keychain",
+    "ai-photo-keepsake",
+    "custom-pencil-clicker"
+  ].includes(String(productKey || ""));
+}
+
 export function getProductionJobGroup(itemName, category) {
   if (category === "Base") {
     const baseName = String(itemName || "")
@@ -225,6 +233,16 @@ export function getProductionJobGroup(itemName, category) {
     return {
       key: `00-base-${baseName.toLowerCase()}`,
       label: `${baseName} Bases`
+    };
+  }
+
+  if (category === "Pencil") {
+    const role = String(itemName || "")
+      .match(/^Pencil\s+(Character Top|Base|Wood|Tip|Metal|Eraser|End Cap)\b/i)?.[1]
+      || "Part";
+    return {
+      key: `20-pencil-${role.toLowerCase().replace(/\s+/g, "-")}`,
+      label: `Pencil · ${role}`
     };
   }
 
