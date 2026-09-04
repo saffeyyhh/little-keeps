@@ -5337,6 +5337,23 @@ a {
   font-size: 9px;
 }
 
+.pencil-character-plate-list {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pencil-character-plate-list span {
+  padding: 3px 6px;
+  border: 1px solid #dce7ee;
+  border-radius: 999px;
+  color: #526b78;
+  background: #f6fbfd;
+  font-size: 9px;
+  font-weight: 800;
+}
+
 .pencil-production-plate button { white-space: nowrap; }
 
 .pencil-production-swatches {

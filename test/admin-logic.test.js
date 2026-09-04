@@ -11,6 +11,7 @@ import {
   calculateProductionTimeEstimate,
   calculateSubscriptionSummary,
   ASSEMBLY_STAGES,
+  buildPencilCharacterPlates,
   buildGoogleMapsRouteUrl,
   canOrderAcceptAddOn,
   canCancelEasyParcelShipment,
@@ -321,6 +322,60 @@ test("does not route pencil products to base-only assembly", () => {
   assert.equal(supportsBaseOnlyAssembly("standard-name-keychain"), false);
   assert.equal(supportsBaseOnlyAssembly("ai-photo-keepsake"), false);
   assert.equal(supportsBaseOnlyAssembly("solid-clicky-keychain"), true);
+});
+
+test("combines pencil character tops by colour pair and plate capacity", () => {
+  const plates = buildPencilCharacterPlates([
+    {
+      roleKey: "character",
+      sourceName: "Letter A (Raised).stl",
+      itemName: "Pencil Character Top - Yellow Top + White Character - A",
+      topColourName: "Yellow",
+      characterColourName: "White",
+      toPrint: 2
+    },
+    {
+      roleKey: "character",
+      sourceName: "Letter B (Raised).stl",
+      itemName: "Pencil Character Top - Yellow Top + White Character - B",
+      topColourName: "Yellow",
+      characterColourName: "White",
+      toPrint: 2
+    },
+    {
+      roleKey: "character",
+      sourceName: "Letter C (Raised).stl",
+      itemName: "Pencil Character Top - Pink Top + White Character - C",
+      topColourName: "Pink",
+      characterColourName: "White",
+      toPrint: 1
+    }
+  ], 3);
+
+  assert.deepEqual(plates.map(plate => ({
+    colours: plate.colourName,
+    quantity: plate.quantity,
+    rows: plate.rows.map(row => [row.sourceName, row.quantity])
+  })), [
+    {
+      colours: "Yellow top + White character",
+      quantity: 3,
+      rows: [
+        ["Letter A (Raised).stl", 2],
+        ["Letter B (Raised).stl", 1]
+      ]
+    },
+    {
+      colours: "Yellow top + White character",
+      quantity: 1,
+      rows: [["Letter B (Raised).stl", 1]]
+    },
+    {
+      colours: "Pink top + White character",
+      quantity: 1,
+      rows: [["Letter C (Raised).stl", 1]]
+    }
+  ]);
 });
 
 test("groups tracked keycaps and bases by colour", () => {

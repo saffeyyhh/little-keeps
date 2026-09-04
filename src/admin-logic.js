@@ -223,6 +223,65 @@ export function supportsBaseOnlyAssembly(productKey) {
   ].includes(String(productKey || ""));
 }
 
+export function buildPencilCharacterPlates(parts = [], capacity = 56) {
+  const safeCapacity = Math.max(1, Math.floor(Number(capacity) || 56));
+  const colourGroups = new Map();
+
+  parts
+    .filter(part => part?.roleKey === "character" && Number(part.toPrint) > 0)
+    .forEach(part => {
+      const topColourName = String(part.topColourName || "Selected");
+      const characterColourName = String(part.characterColourName || "Selected");
+      const key = `${topColourName}|${characterColourName}`;
+      if (!colourGroups.has(key)) {
+        colourGroups.set(key, {
+          roleKey: "character",
+          type: part.type || "Pencil",
+          roleLabel: "Character Tops",
+          colourName: `${topColourName} top + ${characterColourName} character`,
+          topColourName,
+          characterColourName,
+          topColour: part.topColour || part.colour,
+          characterColour: part.characterColour,
+          parts: []
+        });
+      }
+      colourGroups.get(key).parts.push(part);
+    });
+
+  return Array.from(colourGroups.values()).flatMap(group => {
+    const plates = [];
+    let rows = [];
+    let quantity = 0;
+
+    group.parts
+      .slice()
+      .sort((a, b) => String(a.sourceName).localeCompare(String(b.sourceName)))
+      .forEach(part => {
+        let remaining = Math.max(0, Math.floor(Number(part.toPrint) || 0));
+        while (remaining > 0) {
+          const taken = Math.min(remaining, safeCapacity - quantity);
+          rows.push({ ...part, quantity: taken });
+          quantity += taken;
+          remaining -= taken;
+
+          if (quantity === safeCapacity) {
+            plates.push({ ...group, rows, quantity });
+            rows = [];
+            quantity = 0;
+          }
+        }
+      });
+
+    if (quantity > 0) plates.push({ ...group, rows, quantity });
+    return plates.map((plate, index, all) => ({
+      ...plate,
+      platePart: index + 1,
+      plateTotal: all.length
+    }));
+  });
+}
+
 export function getProductionJobGroup(itemName, category) {
   if (category === "Base") {
     const baseName = String(itemName || "")

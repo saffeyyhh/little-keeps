@@ -19,6 +19,7 @@ import {
 import {
   ASSEMBLY_STAGES,
   assignPrintedKeycapsToOwners,
+  buildPencilCharacterPlates,
   buildGoogleMapsRouteUrl,
   canOrderAcceptAddOn,
   canCancelEasyParcelShipment,
@@ -9317,22 +9318,28 @@ window.generatePencilPartPlateStl = async function(jobId, button) {
 
   const previousLabel = button?.textContent || "Download Combined STL";
   try {
+    const rows = job.rows?.length
+      ? job.rows
+      : [{ ...job, quantity: job.quantity }];
+    const requiredFiles = Array.from(new Set(rows.map(row => row.sourceName)));
     if (button) {
       button.disabled = true;
-      button.textContent = pencilProductionStlFiles.has(job.sourceName)
+      button.textContent = requiredFiles.every(name => pencilProductionStlFiles.has(name))
         ? "Building plate…"
         : "Choose Pencil STL folder…";
     }
 
-    const sourceFiles = await connectPencilProductionStlFolder([job.sourceName]);
-    const sourceGeometry = productionStlLoader.parse(
-      await sourceFiles.get(job.sourceName).arrayBuffer()
-    );
-    const copies = Array.from(
-      { length: Math.max(1, Number(job.quantity) || 1) },
-      () => sourceGeometry.clone()
-    );
-    sourceGeometry.dispose();
+    const sourceFiles = await connectPencilProductionStlFolder(requiredFiles);
+    const copies = [];
+    for (const row of rows) {
+      const sourceGeometry = productionStlLoader.parse(
+        await sourceFiles.get(row.sourceName).arrayBuffer()
+      );
+      for (let index = 0; index < Math.max(1, Number(row.quantity) || 1); index += 1) {
+        copies.push(sourceGeometry.clone());
+      }
+      sourceGeometry.dispose();
+    }
     const arranged = arrangeProductionStlGeometries(copies, 8, 4);
     const merged = mergeGeometries(arranged, false);
     if (!merged) throw new Error("The pencil parts could not be combined.");
@@ -9353,6 +9360,47 @@ window.generatePencilPartPlateStl = async function(jobId, button) {
       setTimeout(() => { button.textContent = previousLabel; }, 2200);
     }
   }
+};
+
+window.startPencilPartPlate = async function(jobId, button) {
+  const plate = productionPencilStlJobs.get(jobId);
+  if (!plate) {
+    alert("This pencil print plate is no longer available. Refresh Production and try again.");
+    return;
+  }
+
+  const rows = plate.rows?.length
+    ? plate.rows
+    : [{ ...plate, quantity: plate.quantity }];
+  const startedAt = new Date().toISOString();
+  const jobs = rows.map(row => ({
+    item_name: row.itemName,
+    category: plate.type || row.type || "Pencil",
+    quantity: Math.max(1, Number(row.quantity) || 1),
+    stage: "printing",
+    started_at: startedAt,
+    updated_at: startedAt
+  }));
+
+  const previousLabel = button?.textContent || "Start Plate";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Starting plate…";
+  }
+
+  const { error } = await supabase.from("production_jobs").insert(jobs);
+  if (error) {
+    console.error("Unable to start pencil plate:", error);
+    alert("Unable to move this pencil plate to Printing.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+    return;
+  }
+
+  await markOrdersPrintingForStartedJobs(jobs);
+  await renderProductionPlanner(latestOrders);
 };
 
 window.generatePencilClickerStls = async function(
@@ -10872,14 +10920,20 @@ async function renderProductionPlanner(orders) {
     });
     return groups;
   }, new Map());
-  const pencilPartGroups = Array.from(pencilPartNeeds.values())
+  const pencilPartsWithQueue = Array.from(pencilPartNeeds.values())
     .map(part => {
       const stock = getInventoryQty(part.itemName);
       const tracked = getTrackedProductionQuantity(productionJobs, part.itemName);
       const toPrint = calculateQueuedProductionQuantity(part.need, stock, tracked);
       return { ...part, stock, tracked, toPrint };
     })
-    .filter(part => part.toPrint > 0)
+    .filter(part => part.toPrint > 0);
+  const pencilCharacterPlates = buildPencilCharacterPlates(
+    pencilPartsWithQueue,
+    56
+  );
+  const pencilPartGroups = pencilPartsWithQueue
+    .filter(part => part.roleKey !== "character")
     .flatMap(part => {
       const plateTotal = Math.ceil(part.toPrint / 56);
       let remaining = part.toPrint;
@@ -10895,6 +10949,7 @@ async function renderProductionPlanner(orders) {
         };
       });
     })
+    .concat(pencilCharacterPlates)
     .sort((a, b) =>
       pencilRoleOrder.indexOf(a.roleKey) - pencilRoleOrder.indexOf(b.roleKey) ||
       String(a.colourName).localeCompare(String(b.colourName)) ||
@@ -12324,11 +12379,24 @@ async function renderProductionPlanner(orders) {
                     ${group.roleKey === "character" ? `<i class="colour-dot" style="background:${getSafePdfColour(group.characterColour?.hex || group.characterColour, "#ffffff")}"></i>` : ""}
                   </span>
                   <div>
-                    <strong>${escapeAdminHtml(group.colourName)} · ${escapeAdminHtml(group.sourceName)}</strong>
+                    <strong>
+                      ${escapeAdminHtml(group.colourName)} ·
+                      ${group.roleKey === "character"
+                        ? "optimised character plate"
+                        : escapeAdminHtml(group.sourceName)}
+                    </strong>
                     <small>${group.quantity} piece${group.quantity === 1 ? "" : "s"}${group.plateTotal > 1 ? ` · plate ${group.platePart} of ${group.plateTotal}` : ""}</small>
+                    ${group.roleKey === "character" ? `
+                      <div class="pencil-character-plate-list">
+                        ${group.rows.map(row => {
+                          const character = String(row.itemName || "").split(" - ").pop();
+                          return `<span>${displayIcon(character)} × ${row.quantity}</span>`;
+                        }).join("")}
+                      </div>
+                    ` : ""}
                   </div>
                   <button type="button" class="stl-download-btn" onclick="window.generatePencilPartPlateStl('${group.stlJobId}', this)">Download Combined STL</button>
-                  <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(group.itemName)}, ${group.quantity}, ${JSON.stringify(group.type)})'>Start Printing</button>
+                  <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick="window.startPencilPartPlate('${group.stlJobId}', this)">Start Plate</button>
                 </article>
               `).join("")}
             </div>
