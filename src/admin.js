@@ -20,6 +20,7 @@ import {
   ASSEMBLY_STAGES,
   assignPrintedKeycapsToOwners,
   buildPencilCharacterPlates,
+  buildPencilSingleColourPlates,
   buildGoogleMapsRouteUrl,
   canOrderAcceptAddOn,
   canCancelEasyParcelShipment,
@@ -9234,6 +9235,67 @@ function downloadRushStl(blob, filename) {
 }
 
 let pencilProductionStlFiles = new Map();
+const PENCIL_STL_CACHE_DATABASE = "little-keeps-private-assets";
+const PENCIL_STL_CACHE_STORE = "pencil-stls";
+
+function openPencilStlCacheDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("Private browser storage is unavailable."));
+      return;
+    }
+
+    const request = window.indexedDB.open(PENCIL_STL_CACHE_DATABASE, 1);
+    request.addEventListener("upgradeneeded", () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(PENCIL_STL_CACHE_STORE)) {
+        database.createObjectStore(PENCIL_STL_CACHE_STORE);
+      }
+    });
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => reject(request.error));
+  });
+}
+
+async function loadCachedPencilStlFiles(requiredFiles) {
+  const missingFiles = requiredFiles.filter(name => !pencilProductionStlFiles.has(name));
+  if (!missingFiles.length) return;
+
+  const database = await openPencilStlCacheDatabase();
+  try {
+    const transaction = database.transaction(PENCIL_STL_CACHE_STORE, "readonly");
+    const store = transaction.objectStore(PENCIL_STL_CACHE_STORE);
+    const cachedFiles = await Promise.all(missingFiles.map(name => new Promise(resolve => {
+      const request = store.get(name);
+      request.addEventListener("success", () => resolve([name, request.result]));
+      request.addEventListener("error", () => resolve([name, null]));
+    })));
+
+    cachedFiles.forEach(([name, file]) => {
+      if (file instanceof Blob) pencilProductionStlFiles.set(name, file);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function cachePencilStlFiles(selectedFiles) {
+  const database = await openPencilStlCacheDatabase();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(PENCIL_STL_CACHE_STORE, "readwrite");
+      const store = transaction.objectStore(PENCIL_STL_CACHE_STORE);
+      selectedFiles.forEach((file, name) => {
+        store.put(file, name);
+      });
+      transaction.addEventListener("complete", resolve);
+      transaction.addEventListener("abort", () => reject(transaction.error));
+      transaction.addEventListener("error", () => reject(transaction.error));
+    });
+  } finally {
+    database.close();
+  }
+}
 
 async function collectPencilStlDirectoryFiles(directoryHandle, files = new Map()) {
   for await (const entry of directoryHandle.values()) {
@@ -9283,6 +9345,12 @@ function choosePencilStlFolderWithInput() {
 }
 
 async function connectPencilProductionStlFolder(requiredFiles) {
+  try {
+    await loadCachedPencilStlFiles(requiredFiles);
+  } catch (error) {
+    console.warn("Unable to load the private pencil STL cache:", error);
+  }
+
   const hasEveryFile = requiredFiles.every(name => pencilProductionStlFiles.has(name));
   if (hasEveryFile) return pencilProductionStlFiles;
 
@@ -9299,12 +9367,18 @@ async function connectPencilProductionStlFolder(requiredFiles) {
     selected = await choosePencilStlFolderWithInput();
   }
 
-  pencilProductionStlFiles = selected;
   const missing = requiredFiles.filter(name => !selected.has(name));
   if (missing.length) {
     throw new Error(
       `The selected folder is missing ${missing.length} required file${missing.length === 1 ? "" : "s"}:\n${missing.join("\n")}`
     );
+  }
+
+  selected.forEach((file, name) => pencilProductionStlFiles.set(name, file));
+  try {
+    await cachePencilStlFiles(selected);
+  } catch (error) {
+    console.warn("Unable to save the private pencil STL cache:", error);
   }
   return pencilProductionStlFiles;
 }
@@ -9324,9 +9398,7 @@ window.generatePencilPartPlateStl = async function(jobId, button) {
     const requiredFiles = Array.from(new Set(rows.map(row => row.sourceName)));
     if (button) {
       button.disabled = true;
-      button.textContent = requiredFiles.every(name => pencilProductionStlFiles.has(name))
-        ? "Building plate…"
-        : "Choose Pencil STL folder…";
+      button.textContent = "Preparing plate…";
     }
 
     const sourceFiles = await connectPencilProductionStlFolder(requiredFiles);
@@ -9375,7 +9447,9 @@ window.startPencilPartPlate = async function(jobId, button) {
   const startedAt = new Date().toISOString();
   const jobs = rows.map(row => ({
     item_name: row.itemName,
-    category: plate.type || row.type || "Pencil",
+    // The deployed production table still permits only Base/Keycap.
+    // Pencil jobs are identified by their item-name prefix in the admin.
+    category: "Keycap",
     quantity: Math.max(1, Number(row.quantity) || 1),
     stage: "printing",
     started_at: startedAt,
@@ -9418,9 +9492,7 @@ window.generatePencilClickerStls = async function(
     const plan = buildPencilStlPackPlan({ order, item, quantity: orderedQuantity });
     if (button) {
       button.disabled = true;
-      button.textContent = pencilProductionStlFiles.size
-        ? "Packing STLs…"
-        : "Choose your STL folder…";
+      button.textContent = "Preparing STL pack…";
     }
 
     const sourceFiles = await connectPencilProductionStlFolder(plan.requiredFiles);
@@ -9446,7 +9518,7 @@ window.generatePencilClickerStls = async function(
     if (button) button.textContent = "Downloaded ✓";
     alert(
       `Pencil STL pack downloaded for ${plan.designName}.\n\n` +
-      "The ZIP contains only the required licensed source STLs plus a print manifest with every colour, quantity and character position. Your source folder stayed on this device."
+      "The ZIP contains only the required licensed source STLs plus a print manifest with every colour, quantity and character position. Your source folder stays private and is remembered by this browser for future automatic downloads."
     );
   } catch (error) {
     console.error("Unable to prepare pencil STL pack:", error);
@@ -10392,6 +10464,7 @@ async function renderInventoryWorkspace() {
 
   const baseRows = allNormalItems.filter(item =>
     !knownHardwareNames.has(item.itemName) &&
+    !item.itemName.startsWith("Pencil ") &&
     (
       String(item.category).toLowerCase() === "base" ||
       (
@@ -10403,10 +10476,16 @@ async function renderInventoryWorkspace() {
 
   const keycapRows = allNormalItems.filter(item =>
     !knownHardwareNames.has(item.itemName) &&
+    !item.itemName.startsWith("Pencil ") &&
     (
       String(item.category).toLowerCase() === "keycap" ||
       item.itemName.includes(" Cap + ")
     )
+  );
+
+  const pencilRows = allNormalItems.filter(item =>
+    !knownHardwareNames.has(item.itemName) &&
+    item.itemName.startsWith("Pencil ")
   );
 
   const baseShapeInventoryGroups = [
@@ -10456,7 +10535,8 @@ async function renderInventoryWorkspace() {
   const assignedNames = new Set([
     ...hardwareRows.map(item => item.itemName),
     ...baseRows.map(item => item.itemName),
-    ...keycapRows.map(item => item.itemName)
+    ...keycapRows.map(item => item.itemName),
+    ...pencilRows.map(item => item.itemName)
   ]);
 
   const otherRows = allNormalItems.filter(
@@ -10719,6 +10799,13 @@ async function renderInventoryWorkspace() {
         )
       }
 
+      ${section(
+        "pencil-parts",
+        "Pencil Parts",
+        "Finished pencil components grouped separately from standard keycaps.",
+        pencilRows
+      )}
+
       ${otherRows.length
         ? section(
             "other",
@@ -10889,17 +10976,20 @@ async function renderProductionPlanner(orders) {
 
   const otherCustomPrintRows = customPrintRows.filter(item => !item.isPencil);
   const pencilRoleLabels = {
-    eraser: "Erasers",
-    metal: "Metal Bands",
-    base: "Clicker Blocks",
-    character: "Character Tops",
-    endCap: "End Caps",
-    wood: "Wood Noses",
-    tip: "Pencil Tips"
+    singleColour: "Single-Colour Parts",
+    character: "Character Tops"
   };
   const pencilRoleOrder = [
-    "base", "character", "wood", "tip", "metal", "eraser", "endCap"
+    "singleColour", "character"
   ];
+  const pencilPartLabels = {
+    base: "Clicker block",
+    wood: "Wood nose",
+    tip: "Pencil tip",
+    metal: "Metal band",
+    eraser: "Eraser",
+    endCap: "End cap"
+  };
   const pencilPartNeeds = groupedCustomItems
     .filter(item => item.isPencil)
     .reduce((groups, row) => {
@@ -10932,23 +11022,11 @@ async function renderProductionPlanner(orders) {
     pencilPartsWithQueue,
     56
   );
-  const pencilPartGroups = pencilPartsWithQueue
-    .filter(part => part.roleKey !== "character")
-    .flatMap(part => {
-      const plateTotal = Math.ceil(part.toPrint / 56);
-      let remaining = part.toPrint;
-      return Array.from({ length: plateTotal }, (_, index) => {
-        const quantity = Math.min(56, remaining);
-        remaining -= quantity;
-        return {
-          ...part,
-          quantity,
-          platePart: index + 1,
-          plateTotal,
-          roleLabel: pencilRoleLabels[part.roleKey] || part.label
-        };
-      });
-    })
+  const pencilSingleColourPlates = buildPencilSingleColourPlates(
+    pencilPartsWithQueue,
+    36
+  );
+  const pencilPartGroups = pencilSingleColourPlates
     .concat(pencilCharacterPlates)
     .sort((a, b) =>
       pencilRoleOrder.indexOf(a.roleKey) - pencilRoleOrder.indexOf(b.roleKey) ||
@@ -12025,7 +12103,8 @@ async function renderProductionPlanner(orders) {
     const groupedJobs = new Map();
 
     jobs.forEach(job => {
-      const isKeycap = job.category === "Keycap";
+      const isPencil = String(job.item_name || "").startsWith("Pencil ");
+      const isKeycap = job.category === "Keycap" && !isPencil;
       const printer = printers.find(item =>
         String(item.id) === String(job.printer_id)
       );
@@ -12042,7 +12121,7 @@ async function renderProductionPlanner(orders) {
           }
         : {
             ...getProductionJobGroup(job.item_name, job.category),
-            category: job.category
+            category: isPencil ? "Pencil" : job.category
           };
 
       if (!groupedJobs.has(group.key)) {
@@ -12241,11 +12320,11 @@ async function renderProductionPlanner(orders) {
                         </label>
 
                         <div class="production-job-icon" aria-hidden="true">
-                          ${job.category === "Base" ? "◯" : "A"}
+                          ${String(job.item_name || "").startsWith("Pencil ") ? "✎" : job.category === "Base" ? "◯" : "A"}
                         </div>
 
                         <div class="production-job-copy">
-                          <span>${escapeAdminHtml(job.category)}</span>
+                          <span>${String(job.item_name || "").startsWith("Pencil ") ? "Pencil" : escapeAdminHtml(job.category)}</span>
                           <h4>${escapeAdminHtml(job.item_name)}</h4>
                           <p>
                             ${stage === "printing" ? "Started" : "Picked"}
@@ -12356,13 +12435,13 @@ async function renderProductionPlanner(orders) {
       <div>
         <span>Product workflow</span>
         <h3>Custom Pencil Clickers</h3>
-        <p class="hint">Work from top to bottom. Matching parts from every pencil order are combined by filament colour, with a maximum of 56 pieces per plate.</p>
+        <p class="hint">Matching parts from every pencil order are combined by filament colour. Character plates hold up to 56 pieces; larger single-colour parts use safer 36-piece plates.</p>
       </div>
       <strong>${pencilQueuedPieces} pieces to print</strong>
     </div>
     <div class="pencil-production-note">
       <strong>One character = two printed pieces</strong>
-      <span>Print one clicker block plus one raised character top. The raised character STL already includes the top, so there is no separate blank-top print.</span>
+      <span>Print one clicker block plus one raised character top. The first download asks for your licensed Pencil STL folder once, then this browser remembers it privately and downloads future plates automatically.</span>
     </div>
     <div class="pencil-production-groups">
       ${pencilRoleOrder.map(roleKey => {
@@ -12383,17 +12462,18 @@ async function renderProductionPlanner(orders) {
                       ${escapeAdminHtml(group.colourName)} ·
                       ${group.roleKey === "character"
                         ? "optimised character plate"
-                        : escapeAdminHtml(group.sourceName)}
+                        : "optimised single-colour plate"}
                     </strong>
                     <small>${group.quantity} piece${group.quantity === 1 ? "" : "s"}${group.plateTotal > 1 ? ` · plate ${group.platePart} of ${group.plateTotal}` : ""}</small>
-                    ${group.roleKey === "character" ? `
-                      <div class="pencil-character-plate-list">
-                        ${group.rows.map(row => {
+                    <div class="pencil-character-plate-list">
+                      ${group.rows.map(row => {
+                        if (group.roleKey === "character") {
                           const character = String(row.itemName || "").split(" - ").pop();
                           return `<span>${displayIcon(character)} × ${row.quantity}</span>`;
-                        }).join("")}
-                      </div>
-                    ` : ""}
+                        }
+                        return `<span>${escapeAdminHtml(pencilPartLabels[row.roleKey] || row.sourceName)} × ${row.quantity}</span>`;
+                      }).join("")}
+                    </div>
                   </div>
                   <button type="button" class="stl-download-btn" onclick="window.generatePencilPartPlateStl('${group.stlJobId}', this)">Download Combined STL</button>
                   <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick="window.startPencilPartPlate('${group.stlJobId}', this)">Start Plate</button>

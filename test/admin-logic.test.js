@@ -12,6 +12,7 @@ import {
   calculateSubscriptionSummary,
   ASSEMBLY_STAGES,
   buildPencilCharacterPlates,
+  buildPencilSingleColourPlates,
   buildGoogleMapsRouteUrl,
   canOrderAcceptAddOn,
   canCancelEasyParcelShipment,
@@ -378,6 +379,49 @@ test("combines pencil character tops by colour pair and plate capacity", () => {
   ]);
 });
 
+test("combines different pencil part types onto one single-colour plate", () => {
+  const plates = buildPencilSingleColourPlates([
+    {
+      roleKey: "base",
+      sourceName: "Pencil Body.stl",
+      itemName: "Pencil Base - Blue",
+      colourName: "Blue",
+      toPrint: 2
+    },
+    {
+      roleKey: "tip",
+      sourceName: "Pencil Tip.stl",
+      itemName: "Pencil Tip - Blue",
+      colourName: "Blue",
+      toPrint: 1
+    },
+    {
+      roleKey: "eraser",
+      sourceName: "Eraser.stl",
+      itemName: "Pencil Eraser - Pink",
+      colourName: "Pink",
+      toPrint: 1
+    }
+  ]);
+
+  assert.deepEqual(plates.map(plate => ({
+    colour: plate.colourName,
+    quantity: plate.quantity,
+    sources: plate.rows.map(row => row.sourceName)
+  })), [
+    {
+      colour: "Blue",
+      quantity: 3,
+      sources: ["Pencil Body.stl", "Pencil Tip.stl"]
+    },
+    {
+      colour: "Pink",
+      quantity: 1,
+      sources: ["Eraser.stl"]
+    }
+  ]);
+});
+
 test("groups tracked keycaps and bases by colour", () => {
   assert.deepEqual(
     getProductionJobGroup(
@@ -406,7 +450,7 @@ test("groups tracked keycaps and bases by colour", () => {
   assert.deepEqual(
     getProductionJobGroup(
       "Pencil Character Top - Yellow Top + White Character - A",
-      "Pencil"
+      "Keycap"
     ),
     {
       key: "20-pencil-character-top",

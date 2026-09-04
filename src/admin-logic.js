@@ -282,7 +282,75 @@ export function buildPencilCharacterPlates(parts = [], capacity = 56) {
   });
 }
 
+export function buildPencilSingleColourPlates(parts = [], capacity = 36) {
+  const safeCapacity = Math.max(1, Math.floor(Number(capacity) || 36));
+  const colourGroups = new Map();
+
+  parts
+    .filter(part => part?.roleKey !== "character" && Number(part.toPrint) > 0)
+    .forEach(part => {
+      const colourName = String(
+        part.colourName || part.colour?.name || part.colour?.hex || part.colour || "Selected"
+      );
+      if (!colourGroups.has(colourName)) {
+        colourGroups.set(colourName, {
+          roleKey: "singleColour",
+          type: part.type || "Pencil",
+          roleLabel: "Single-Colour Parts",
+          colourName,
+          topColour: part.colour,
+          parts: []
+        });
+      }
+      colourGroups.get(colourName).parts.push(part);
+    });
+
+  return Array.from(colourGroups.values()).flatMap(group => {
+    const plates = [];
+    let rows = [];
+    let quantity = 0;
+
+    group.parts
+      .slice()
+      .sort((a, b) =>
+        String(a.roleKey).localeCompare(String(b.roleKey)) ||
+        String(a.sourceName).localeCompare(String(b.sourceName))
+      )
+      .forEach(part => {
+        let remaining = Math.max(0, Math.floor(Number(part.toPrint) || 0));
+        while (remaining > 0) {
+          const taken = Math.min(remaining, safeCapacity - quantity);
+          rows.push({ ...part, quantity: taken });
+          quantity += taken;
+          remaining -= taken;
+          if (quantity === safeCapacity) {
+            plates.push({ ...group, rows, quantity });
+            rows = [];
+            quantity = 0;
+          }
+        }
+      });
+
+    if (quantity > 0) plates.push({ ...group, rows, quantity });
+    return plates.map((plate, index, all) => ({
+      ...plate,
+      platePart: index + 1,
+      plateTotal: all.length
+    }));
+  });
+}
+
 export function getProductionJobGroup(itemName, category) {
+  if (String(itemName || "").startsWith("Pencil ")) {
+    const role = String(itemName || "")
+      .match(/^Pencil\s+(Character Top|Base|Wood|Tip|Metal|Eraser|End Cap)\b/i)?.[1]
+      || "Part";
+    return {
+      key: `20-pencil-${role.toLowerCase().replace(/\s+/g, "-")}`,
+      label: `Pencil · ${role}`
+    };
+  }
+
   if (category === "Base") {
     const baseName = String(itemName || "")
       .replace(/\s+(?:Bubbly|Ribbed)\s+Base$/i, "")
@@ -292,16 +360,6 @@ export function getProductionJobGroup(itemName, category) {
     return {
       key: `00-base-${baseName.toLowerCase()}`,
       label: `${baseName} Bases`
-    };
-  }
-
-  if (category === "Pencil") {
-    const role = String(itemName || "")
-      .match(/^Pencil\s+(Character Top|Base|Wood|Tip|Metal|Eraser|End Cap)\b/i)?.[1]
-      || "Part";
-    return {
-      key: `20-pencil-${role.toLowerCase().replace(/\s+/g, "-")}`,
-      label: `Pencil · ${role}`
     };
   }
 
