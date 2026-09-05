@@ -5599,7 +5599,10 @@ async function createKeycap(letter, index, characterCount, design) {
   group.add(base);
 
   const capGroup = await createKeycapTop(letter, index, design);
-  capGroup.position.set(4.2, 0, 11);
+  // Every current modular base STL is centred on its switch opening. Keep the
+  // character top on that same centre instead of carrying over the old model's
+  // sideways correction.
+  capGroup.position.set(0, 0, 11);
   group.add(capGroup);
 
   group.position.x = index * 28;
