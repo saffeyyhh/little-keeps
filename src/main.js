@@ -3178,6 +3178,12 @@ const specialKeycaps = {
   "✈": "airplane",
 
   // Sports
+  "🏀": "basketball",
+  "🎱": "billiard",
+  "🎾": "tennis",
+  "🏄": "surf",
+  "🛹": "skateboard",
+  "🏸": "badminton",
   "⚽": "soccer",
   "🏐": "volleyball",
   "🏉": "rugby",
@@ -3248,7 +3254,7 @@ const ICON_CATEGORIES = [
   {
     key: "sports",
     label: "Sports",
-    icons: ["⚽", "🏐", "🏉", "⛷", "🚲", "⛳", "🥒", "🎳", "⚾", "♟"]
+    icons: ["🏀", "🎱", "🎾", "🏄", "🛹", "🏸", "⚽", "🏐", "🏉", "⛷", "🚲", "⛳", "🥒", "🎳", "⚾", "♟"]
   }
 ];
 

@@ -7734,6 +7734,12 @@ const specialKeycaps = {
   "✈": "airplane",
 
   // Sports
+  "🏀": "basketball",
+  "🎱": "billiard",
+  "🎾": "tennis",
+  "🏄": "surf",
+  "🛹": "skateboard",
+  "🏸": "badminton",
   "⚽": "soccer",
   "🏐": "volleyball",
   "🏉": "rugby",
@@ -7818,6 +7824,12 @@ const PDF_ICON_CODES = {
   "🦆": "DK",
   "🐱": "CT",
   "✈": "PL",
+  "🏀": "BK",
+  "🎱": "BL",
+  "🎾": "TN",
+  "🏄": "SU",
+  "🛹": "SB",
+  "🏸": "BD",
   "⚽": "SC",
   "🏐": "VB",
   "🏉": "RG",
@@ -7827,7 +7839,22 @@ const PDF_ICON_CODES = {
   "🥒": "PB",
   "🎳": "BW",
   "⚾": "BB",
-  "♟": "CH"
+  "♟": "CH",
+  "🍎": "AP",
+  "🥑": "AV",
+  "🍌": "BN",
+  "🫐": "BY",
+  "🍒": "CY",
+  "🌰": "DU",
+  "🍇": "GR",
+  "🥝": "KI",
+  "🍋": "LE",
+  "🥭": "MG",
+  "🍊": "OR",
+  "🍑": "PE",
+  "🌟": "SR",
+  "🍓": "SW",
+  "🍉": "WM"
 };
 
 function getPdfIconCode(character) {
