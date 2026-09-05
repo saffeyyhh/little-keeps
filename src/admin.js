@@ -39,6 +39,7 @@ import {
   getEasyParcelVolumetricWeight,
   getHandDeliveryLabelData,
   getInternalBasketLabelData,
+  getModularBaseRole,
   groupLinkedOrdersForAdmin,
   indexKeycapOwnershipGroupsByLabel,
   normalizePickupTimeOptions,
@@ -2141,112 +2142,6 @@ function renderSettingsWorkspace() {
         </div>
       </section>
 
-      <section class="settings-card review-manager" data-settings-group="customer">
-        <div class="settings-card-heading">
-          <div>
-            <h3>Customer reviews</h3>
-            <p class="hint">Add genuine customer feedback to the swipeable storefront section.</p>
-          </div>
-          <strong>${adminCustomerReviews.length} review${adminCustomerReviews.length === 1 ? "" : "s"}</strong>
-        </div>
-
-        ${adminReviewsLoadFailed ? `
-          <div class="stock-alert">
-            <strong>Review manager is not ready</strong>
-            <span>Run the supplied customer reviews SQL once, then refresh Admin.</span>
-          </div>
-        ` : ""}
-
-        <div class="review-create-grid">
-          <label class="review-create-field review-quote-field">
-            <span>Customer’s words</span>
-            <textarea id="reviewQuoteInput" rows="3" maxlength="500" placeholder="Paste the genuine review here..."></textarea>
-          </label>
-
-          <label class="review-create-field">
-            <span>Customer label</span>
-            <input id="reviewCustomerInput" maxlength="80" value="Little Keeps customer" placeholder="e.g. Aisyah or Little Keeps customer">
-          </label>
-
-          <label class="review-create-field">
-            <span>Occasion / ordered for</span>
-            <input id="reviewOccasionInput" maxlength="80" list="reviewOccasionIdeas" placeholder="e.g. Teachers’ Day gifts">
-            <datalist id="reviewOccasionIdeas">
-              <option value="Birthday gift">
-              <option value="Party goodie bags">
-              <option value="Teachers’ Day gifts">
-              <option value="Children’s Day gifts">
-              <option value="Friendship gift">
-              <option value="Class or team gifts">
-              <option value="Group gifting">
-              <option value="Just because">
-            </datalist>
-          </label>
-
-          <label class="review-create-field review-image-field">
-            <span>Customer photo (optional)</span>
-            <input id="reviewImageInput" type="file" accept="image/jpeg,image/png,image/webp">
-            <small>Use a clear product photo with the customer’s permission. Maximum 5 MB.</small>
-          </label>
-
-          <div id="reviewImagePreview" class="review-image-preview hidden"></div>
-
-          <label id="reviewRemoveImageField" class="promo-feature-toggle hidden">
-            <input id="reviewRemoveImageInput" type="checkbox">
-            Remove current photo
-          </label>
-
-          <label class="review-create-field">
-            <span>Display order</span>
-            <input id="reviewSortInput" type="number" min="0" step="1" value="${(adminCustomerReviews.length + 1) * 10}">
-          </label>
-
-          <label class="promo-feature-toggle review-active-toggle">
-            <input id="reviewActiveInput" type="checkbox" checked>
-            Show on storefront
-          </label>
-
-          <div class="review-editor-actions">
-            <button id="saveReviewBtn" class="ready-btn" type="button" onclick="window.saveCustomerReview()" ${adminReviewsLoadFailed ? "disabled" : ""}>
-              Add Review
-            </button>
-            <button id="cancelReviewEditBtn" type="button" class="hidden" onclick="window.cancelCustomerReviewEdit()">
-              Cancel Edit
-            </button>
-          </div>
-        </div>
-
-        <div class="review-admin-list">
-          ${adminCustomerReviews.map(review => `
-            <article class="review-admin-row ${review.active ? "" : "is-hidden"} ${review.image_url ? "has-photo" : ""}">
-              ${String(review.image_url || "").startsWith("https://") ? `
-                <img
-                  class="review-admin-thumbnail"
-                  src="${escapeAdminHtml(review.image_url)}"
-                  alt=""
-                  loading="lazy"
-                >
-              ` : ""}
-              <div class="review-admin-copy">
-                <blockquote>“${escapeAdminHtml(review.quote)}”</blockquote>
-                <p>
-                  <strong>${escapeAdminHtml(review.customer_label || "Little Keeps customer")}</strong>
-                  <span>${escapeAdminHtml(review.occasion || "No occasion added")}</span>
-                </p>
-              </div>
-              <div class="review-admin-meta">
-                <span>Order ${Number(review.sort_order || 0)}</span>
-                <strong>${review.active ? "Visible" : "Hidden"}</strong>
-              </div>
-              <div class="promo-admin-actions">
-                <button type="button" onclick="window.editCustomerReview(${Number(review.id)})">Edit</button>
-                <button type="button" onclick="window.toggleCustomerReview(${Number(review.id)}, ${!review.active})">${review.active ? "Hide" : "Show"}</button>
-                <button type="button" class="archive-action" onclick="window.deleteCustomerReview(${Number(review.id)})">Delete</button>
-              </div>
-            </article>
-          `).join("") || `<p class="today-empty">No reviews yet. Add your first one above.</p>`}
-        </div>
-      </section>
     </form>
   `;
 
@@ -6157,17 +6052,36 @@ function getSolidBaseShape(characterCount) {
 function getBaseShapeLabel(baseShape = "ribbed") {
   const solidMatch = String(baseShape).match(/^solid-(\d+)$/);
   if (solidMatch) return `Compact Solid ${solidMatch[1]}-Slot`;
-  return baseShape === "bubbly" ? "Bubbly" : "Ribbed";
+  if (baseShape === "bubbly") return "Bubbly";
+  if (baseShape === "wavy") return "Wavy";
+  return "Ribbed";
 }
 
-function getBaseModelPath(baseShape = "ribbed") {
+function getBaseRoleLabel(baseRole) {
+  return {
+    first: "First / keyring end",
+    middle: "Middle / open",
+    last: "Last / closed end"
+  }[baseRole] || "Base";
+}
+
+function getBaseModelPath(baseShape = "ribbed", baseRole = "middle") {
   const solidMatch = String(baseShape).match(/^solid-(\d+)$/);
   if (solidMatch) return `/models/solid-base-${solidMatch[1]}.stl`;
-  return `/models/base_${baseShape === "bubbly" ? "bubbly" : "ribbed"}.stl`;
+  const safeShape = ["ribbed", "wavy", "bubbly"].includes(baseShape)
+    ? baseShape
+    : "ribbed";
+  const safeRole = ["first", "middle", "last"].includes(baseRole)
+    ? baseRole
+    : "middle";
+  return `/models/bases/${safeShape}-${safeRole}.stl`;
 }
 
-function getBaseInventoryName(baseName, baseShape = "ribbed") {
-  return `${baseName} ${getBaseShapeLabel(baseShape)} Base`;
+function getBaseInventoryName(baseName, baseShape = "ribbed", baseRole = null) {
+  const roleName = baseRole
+    ? `${getBaseRoleLabel(baseRole).split(" /")[0]} `
+    : "";
+  return `${baseName} ${getBaseShapeLabel(baseShape)} ${roleName}Base`;
 }
 
 function getKeycapInventoryName(
@@ -6796,7 +6710,7 @@ window.downloadSelectedBaseBatchStls = async function(button) {
 
   if (!confirm(
     `Download ${groups.length} combined base STL file${groups.length === 1 ? "" : "s"}?\n\n` +
-    "Each colour becomes one plate file containing both Ribbed and Bubbly designs where needed."
+    "Each colour becomes one plate file containing the needed Ribbed, Wavy and Bubbly connector pieces."
   )) return;
 
   const previousLabel = button?.textContent || "Download All Base STLs";
@@ -7328,8 +7242,11 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
         const baseShape = solidProduct
           ? solidBaseShape
           : design.base_shape?.key || design.baseShape || "ribbed";
+        const baseRole = solidProduct
+          ? null
+          : getModularBaseRole(index, letters.length);
 
-        const baseKey = `${baseShape}|${baseName}|${baseMaterial}`;
+        const baseKey = `${baseShape}|${baseRole || "solid"}|${baseName}|${baseMaterial}`;
 
         if (!solidProduct || index === 0) {
           if (!baseTotals[baseKey]) {
@@ -7338,6 +7255,7 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
               hex: baseHex,
               material: baseMaterial,
               baseShape,
+              baseRole,
               baseFamily: solidProduct ? "compact" : "modular",
               qty: 0
             };
@@ -7441,7 +7359,10 @@ function getOrderPrintableInventoryNeeds(order) {
         const letterName = letter?.name || letter?.hex || letter;
 
         if (!solidProduct || index === 0) {
-          addNeed(getBaseInventoryName(baseName, baseShape));
+          const baseRole = solidProduct
+            ? null
+            : getModularBaseRole(index, characters.length);
+          addNeed(getBaseInventoryName(baseName, baseShape, baseRole));
         }
         addNeed(
           getKeycapInventoryName(
@@ -7587,10 +7508,13 @@ function getOrderInventoryNeeds(order) {
       const baseShape = solidProduct
         ? solidBaseShape
         : design.base_shape?.key || design.baseShape || "ribbed";
+      const baseRole = solidProduct
+        ? null
+        : getModularBaseRole(index, letters.length);
 
       if (!item.base_assembled && (!solidProduct || index === 0)) {
         add(
-          getBaseInventoryName(baseName, baseShape),
+          getBaseInventoryName(baseName, baseShape, baseRole),
           1
         );
       }
@@ -7681,7 +7605,11 @@ function getKeychainPrintablePartNeeds(
     const letterName =
       letterColour?.name || letterColour?.hex || letterColour;
     if ((partType === "base" || partType === "all") && !solidProduct) {
-      add(getBaseInventoryName(baseName, baseShape));
+      add(getBaseInventoryName(
+        baseName,
+        baseShape,
+        getModularBaseRole(index, characters.length)
+      ));
     }
 
     if (partType === "keycap" || partType === "all") {
@@ -8438,7 +8366,7 @@ async function generateBaseColourStl(jobId, button) {
       components.flatMap(component =>
         Array.from({ length: component.quantity }, () =>
           loadProductionStlGeometry(
-            getBaseModelPath(component.baseShape)
+            getBaseModelPath(component.baseShape, component.baseRole)
           )
         )
       )
@@ -8457,7 +8385,7 @@ async function generateBaseColourStl(jobId, button) {
 
     const colourName = safeProductionFileName(job.baseName, "base");
     const shapeCounts = components.map(component =>
-      `${safeProductionFileName(getBaseShapeLabel(component.baseShape), "base")}-${component.quantity}`
+      `${safeProductionFileName(getBaseShapeLabel(component.baseShape), "base")}-${safeProductionFileName(getBaseRoleLabel(component.baseRole), "base")}-${component.quantity}`
     ).join("_");
 
     downloadProductionStl(
@@ -9151,9 +9079,12 @@ function getRushOrderPrintGroups(order, missingParts = null) {
       const capHex = cap?.hex || cap || "#ffffff";
       const letterName = letterColour?.name || letterColour?.hex || letterColour || "Letter";
       const letterHex = letterColour?.hex || letterColour || "#332d30";
-      const baseKey = `${baseShape}|${baseName}`;
+      const baseRole = solidProduct
+        ? null
+        : getModularBaseRole(index, characters.length);
+      const baseKey = `${baseShape}|${baseRole || "solid"}|${baseName}`;
       const keycapKey = `${capName}|${letterName}`;
-      const baseInventoryName = getBaseInventoryName(baseName, baseShape);
+      const baseInventoryName = getBaseInventoryName(baseName, baseShape, baseRole);
       const keycapInventoryName = getKeycapInventoryName(
         capName,
         letterName,
@@ -9164,6 +9095,7 @@ function getRushOrderPrintGroups(order, missingParts = null) {
         if (!baseGroups[baseKey]) {
           baseGroups[baseKey] = {
             baseShape,
+            baseRole,
             baseName,
             baseHex,
             quantity: 0
@@ -9675,7 +9607,7 @@ async function generateOrderStls(id, button) {
 
   const summary = [
     ...groups.bases.map(group =>
-      `${group.baseName} ${getBaseShapeLabel(group.baseShape)} Bases × ${group.quantity}`
+      `${group.baseName} ${getBaseShapeLabel(group.baseShape)} ${getBaseRoleLabel(group.baseRole)} × ${group.quantity}`
     ),
     ...keycapPlatePlan.map((plate, plateIndex) =>
       `AMS Plate ${plateIndex + 1}: ${plate.pieceCount} keycaps using ` +
@@ -9702,12 +9634,12 @@ async function generateOrderStls(id, button) {
     for (const group of groups.bases) {
       const requests = Array.from({ length: group.quantity }, () => ({
         kind: "base",
-        path: getBaseModelPath(group.baseShape)
+        path: getBaseModelPath(group.baseShape, group.baseRole)
       }));
       const blob = await buildRushStlPlate(requests);
       files.push({
         blob,
-        filename: `${reference}_BASE_${safeProductionFileName(group.baseName, "colour")}_${group.baseShape}_${group.quantity}pcs.stl`
+        filename: `${reference}_BASE_${safeProductionFileName(group.baseName, "colour")}_${group.baseShape}_${group.baseRole || "solid"}_${group.quantity}pcs.stl`
       });
     }
 
@@ -10517,16 +10449,32 @@ async function renderInventoryWorkspace() {
 
   const baseShapeInventoryGroups = [
     {
+      key: "compact",
+      title: "Compact Solid Bases",
+      description: "Finished one-piece solid bases currently available.",
+      rows: baseRows.filter(item => item.itemName.includes(" Compact Solid "))
+    },
+    {
       key: "bubbly",
       title: "Bubbly Bases",
       description: "Finished bubbly bases currently available.",
-      rows: baseRows.filter(item => item.itemName.includes(" Bubbly Base"))
+      rows: baseRows.filter(item => item.itemName.includes(" Bubbly "))
+    },
+    {
+      key: "wavy",
+      title: "Wavy Bases",
+      description: "Finished wavy bases currently available.",
+      rows: baseRows.filter(item => item.itemName.includes(" Wavy "))
     },
     {
       key: "ribbed",
       title: "Ribbed Bases",
       description: "Finished ribbed bases currently available.",
-      rows: baseRows.filter(item => !item.itemName.includes(" Bubbly Base"))
+      rows: baseRows.filter(item =>
+        !item.itemName.includes(" Compact Solid ") &&
+        !item.itemName.includes(" Bubbly ") &&
+        !item.itemName.includes(" Wavy ")
+      )
     }
   ];
 
@@ -10949,7 +10897,8 @@ async function renderProductionPlanner(orders) {
 
       const itemName = getBaseInventoryName(
         item.name,
-        baseShape
+        baseShape,
+        item.baseRole
       );
       const need = item.qty;
       const stock = getInventoryQty(itemName);
@@ -11088,7 +11037,8 @@ async function renderProductionPlanner(orders) {
     .map(group => ({
       ...group,
       rows: group.rows.sort((a, b) =>
-        String(a.baseShape || "ribbed").localeCompare(String(b.baseShape || "ribbed"))
+        String(a.baseShape || "ribbed").localeCompare(String(b.baseShape || "ribbed")) ||
+        String(a.baseRole || "solid").localeCompare(String(b.baseRole || "solid"))
       )
     }))
     .sort((a, b) => String(a.baseName).localeCompare(String(b.baseName)));
@@ -11112,6 +11062,7 @@ async function renderProductionPlanner(orders) {
       components: group.rows.map(item => ({
         itemName: item.itemName,
         baseShape: item.baseShape || "ribbed",
+        baseRole: item.baseRole || null,
         toPrint: item.toPrint,
         inputId: `printQty-${encodeURIComponent(item.itemName)}`
       }))
@@ -12058,7 +12009,7 @@ async function renderProductionPlanner(orders) {
               <h4>Bulk Base Printing</h4>
               <p>
                 All ${planningOrders.length} selected orders are combined here.
-                Bases are grouped by colour; Ribbed and Bubbly share the same colour plate.
+                Bases are grouped by colour. Ribbed, Wavy and Bubbly pieces may share a colour plate, while every row keeps its correct first, middle or last connector.
               </p>
             </div>
             <strong>${baseQueuedPieces} bases</strong>
@@ -12444,7 +12395,7 @@ async function renderProductionPlanner(orders) {
               ${group.rows.map(item => `
                 <div class="print-check-row">
                   <span class="colour-dot" style="background:${getSafePdfColour(item.hex, "#d9d9d9")}"></span>
-                  <div style="flex:1;"><strong>${getBaseShapeLabel(item.baseShape)} design</strong><p class="hint">Need: ${item.need} · Stock: ${item.stock}${item.tracked ? ` · Tracked: ${item.tracked}` : ""} · To Print: ${item.toPrint}</p></div>
+                  <div style="flex:1;"><strong>${getBaseShapeLabel(item.baseShape)} · ${escapeAdminHtml(getBaseRoleLabel(item.baseRole))}</strong><p class="hint">Need: ${item.need} · Stock: ${item.stock}${item.tracked ? ` · Tracked: ${item.tracked}` : ""} · To Print: ${item.toPrint}</p></div>
                   <div class="print-qty-control">
                     <input type="number" min="1" value="${item.toPrint}" id="printQty-${encodeURIComponent(item.itemName)}">
                     <button class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(item.itemName)}, document.getElementById(${JSON.stringify(`printQty-${encodeURIComponent(item.itemName)}`)}).value, "Base")'>Start Printing</button>
@@ -12718,7 +12669,7 @@ async function renderProductionPlanner(orders) {
             <strong>${baseQueuedPieces + keycapQueuedPieces} pieces to print</strong>
           </div>
           <section class="product-production-step">
-            ${renderBasePrintingPanel("modular", "1 · Modular Bases", "Grouped by filament colour. Ribbed and Bubbly modular pieces can share one colour plate.")}
+            ${renderBasePrintingPanel("modular", "1 · Modular Bases", "Grouped by filament colour with separate first, middle and last connector counts for Ribbed, Wavy and Bubbly bases.")}
           </section>
           <section class="product-production-step">
             ${renderBasePrintingPanel("compact", "2 · Solid Bases", "Solid bases stay separate from modular base plates and are grouped by colour and character count.")}
@@ -12998,7 +12949,7 @@ async function generateLegacyRenderedOrderPdf(order, items) {
         const design = item.design || {};
         const baseShape = isSolidClickyKeychain(order, item)
           ? `${getBaseShapeLabel(getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length))} Base`
-          : design.base_shape?.label || (design.base_shape?.key === "bubbly" ? "Bubbly Base" : "Ribbed Base");
+          : design.base_shape?.label || `${getBaseShapeLabel(design.base_shape?.key || "ribbed")} Base`;
         const baseColours = getPdfColourNames(design.bases);
         const capColours = getPdfColourNames(design.caps);
         const letterColours = getPdfColourNames(design.letters);
@@ -13439,7 +13390,7 @@ async function generateCustomerOrderPdf(order, items) {
       ? "Ready-made design"
       : isSolidClickyKeychain(order, item)
       ? `${getBaseShapeLabel(getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length))} Base`
-      : design.base_shape?.label || (design.base_shape?.key === "bubbly" ? "Bubbly Base" : "Ribbed Base");
+      : design.base_shape?.label || `${getBaseShapeLabel(design.base_shape?.key || "ribbed")} Base`;
     const letterOrientation = getLetterOrientation(design);
     const letterOrientationLabel = getLetterOrientationLabel(design);
     const baseNames = getPdfColourNames(bases);
@@ -14848,18 +14799,12 @@ async function loadAdminSettings() {
   const [
     { data: settings, error: settingsError },
     { data: promos, error: promosError },
-    { data: reviews, error: reviewsError },
     { data: products, error: productsError },
     { data: closures, error: closuresError },
     { data: dayOverrides, error: dayOverridesError }
   ] = await Promise.all([
     supabase.from("shop_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.from("promo_codes").select("*").order("created_at", { ascending: false }),
-    supabase
-      .from("customer_reviews")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true }),
     supabase
       .from("product_catalog")
       .select("*")
@@ -14878,14 +14823,13 @@ async function loadAdminSettings() {
 
   if (settingsError) console.warn("Using fallback admin settings:", settingsError);
   if (promosError) console.warn("Promo management is not ready yet:", promosError);
-  if (reviewsError) console.warn("Customer review management is not ready yet:", reviewsError);
   if (productsError) console.warn("Product catalogue is not ready yet:", productsError);
   if (closuresError) console.warn("Shop closures could not be loaded:", closuresError);
   if (dayOverridesError) console.warn("Day-by-day scheduling controls are not ready yet:", dayOverridesError);
 
   adminSettingsLoaded = true;
   adminSettingsLoadFailed = Boolean(settingsError);
-  adminReviewsLoadFailed = Boolean(reviewsError);
+  adminReviewsLoadFailed = false;
   adminProductsLoadFailed = Boolean(productsError);
   adminShopSettings = {
     ...DEFAULT_ADMIN_SHOP_SETTINGS,
@@ -14929,7 +14873,7 @@ async function loadAdminSettings() {
     adminShopSettings.pickup_time_options
   );
   adminPromoCodes = promos || [];
-  adminCustomerReviews = reviews || [];
+  adminCustomerReviews = [];
   adminShopClosures = closures || [];
   adminScheduleDayOverrides = dayOverrides || [];
   adminProductCatalog = applyProductCatalogOverrides(

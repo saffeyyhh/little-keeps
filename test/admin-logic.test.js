@@ -31,6 +31,7 @@ import {
   getOperationalBuckets,
   getProductionPreviewOrders,
   getProductionJobGroup,
+  getModularBaseRole,
   getTrackedProductionQuantity,
   normalizeAssemblyProgress,
   assessRushDateCapacity,
@@ -457,6 +458,11 @@ test("groups tracked keycaps and bases by colour", () => {
   );
 
   assert.deepEqual(
+    getProductionJobGroup("Jade White Wavy Last Base", "Base"),
+    getProductionJobGroup("Jade White Ribbed First Base", "Base")
+  );
+
+  assert.deepEqual(
     getProductionJobGroup(
       "Pencil Character Top - Yellow Top + White Character - A",
       "Keycap"
@@ -466,6 +472,14 @@ test("groups tracked keycaps and bases by colour", () => {
       label: "Pencil · Character Top"
     }
   );
+});
+
+test("assigns the correct connector role to modular bases", () => {
+  assert.equal(getModularBaseRole(0, 6), "first");
+  assert.equal(getModularBaseRole(1, 6), "middle");
+  assert.equal(getModularBaseRole(4, 6), "middle");
+  assert.equal(getModularBaseRole(5, 6), "last");
+  assert.equal(getModularBaseRole(0, 1), "first");
 });
 
 test("groups nearby deliveries by Singapore postal sector", () => {

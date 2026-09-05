@@ -223,6 +223,14 @@ export function supportsBaseOnlyAssembly(productKey) {
   ].includes(String(productKey || ""));
 }
 
+export function getModularBaseRole(index, characterCount) {
+  const safeIndex = Math.max(0, Math.floor(Number(index) || 0));
+  const safeCount = Math.max(1, Math.floor(Number(characterCount) || 1));
+  if (safeIndex === 0) return "first";
+  if (safeIndex >= safeCount - 1) return "last";
+  return "middle";
+}
+
 export function buildPencilCharacterPlates(parts = [], capacity = 56) {
   const safeCapacity = Math.max(1, Math.floor(Number(capacity) || 56));
   const colourGroups = new Map();
@@ -360,7 +368,7 @@ export function getProductionJobGroup(itemName, category) {
 
   if (category === "Base") {
     const baseName = String(itemName || "")
-      .replace(/\s+(?:Bubbly|Ribbed)\s+Base$/i, "")
+      .replace(/\s+(?:Bubbly|Wavy|Ribbed)(?:\s+(?:First|Middle|Last))?\s+Base$/i, "")
       .replace(/\s+Base$/i, "")
       .trim() || "Other";
 

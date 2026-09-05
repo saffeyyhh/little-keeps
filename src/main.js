@@ -25,6 +25,7 @@ import {
   getCustomerDueDate,
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
+  getModularBaseRole,
   getPickupTimeRanges,
   isPickupDay,
   isOrderReminderFinishedOrExpired,
@@ -245,25 +246,6 @@ const DEFAULT_DESIGN_PRESETS = [
 
 let designPresets = [...DEFAULT_DESIGN_PRESETS];
 let promoCodeRows = [];
-const DEFAULT_CUSTOMER_REVIEWS = [
-  {
-    id: "fallback-clicking",
-    quote: "The clicking is addictive!",
-    customer_label: "Little Keeps customer",
-    occasion: "Just because",
-    image_url: "",
-    sort_order: 10
-  },
-  {
-    id: "fallback-group",
-    quote: "So cute, beautifully made and really good quality. It turned out exactly how I imagined, and it’s so affordable too!",
-    customer_label: "Little Keeps customer",
-    occasion: "Group gifting",
-    image_url: "",
-    sort_order: 20
-  }
-];
-let customerReviews = [...DEFAULT_CUSTOMER_REVIEWS];
 
 try {
   const { data, error } = await supabase
@@ -405,20 +387,6 @@ try {
   console.warn("Using the fallback promo code setting:", error);
 }
 
-try {
-  const { data, error } = await supabase
-    .from("customer_reviews")
-    .select("id,quote,customer_label,occasion,image_url,sort_order")
-    .eq("active", true)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-  if (data?.length) customerReviews = data;
-} catch (error) {
-  console.warn("Using fallback customer reviews:", error);
-}
-
 function escapePresetText(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
     "&": "&amp;",
@@ -432,45 +400,6 @@ function escapePresetText(value) {
 function safePresetColour(value, fallback = "#FFFFFF") {
   const colour = String(value ?? "").trim();
   return /^#[0-9a-f]{6}$/i.test(colour) ? colour : fallback;
-}
-
-function renderCustomerReviewCards() {
-  return customerReviews.map((review, index) => {
-    const quote = escapePresetText(review.quote);
-    const customer = escapePresetText(
-      review.customer_label || "Little Keeps customer"
-    );
-    const occasion = escapePresetText(review.occasion || "Personalised order");
-    const imageUrl = String(review.image_url || "").trim();
-    const safeImageUrl = /^https:\/\//i.test(imageUrl)
-      ? escapePresetText(imageUrl)
-      : "";
-
-    return `
-      <article class="review-card ${index % 2 ? "is-featured" : ""} ${safeImageUrl ? "has-image" : ""}" role="listitem">
-        ${safeImageUrl ? `
-          <div class="review-photo">
-            <img
-              src="${safeImageUrl}"
-              alt="Customer’s Little Keeps order for ${occasion}"
-              loading="lazy"
-            >
-          </div>
-        ` : ""}
-        <span class="review-quote-mark" aria-hidden="true">“</span>
-        <div class="review-card-content">
-          <blockquote>${quote}</blockquote>
-          <div class="review-card-footer">
-            <span>${index % 2 ? "✦" : "♡"}</span>
-            <div>
-              <strong>${customer}</strong>
-              <small>${occasion}</small>
-            </div>
-          </div>
-        </div>
-      </article>
-    `;
-  }).join("");
 }
 
 function renderDesignPresetCards() {
@@ -1068,87 +997,6 @@ ${requestedPreviewProductKey ? `
 
 <section id="designScreen" class="design-screen">
 
-<section id="homeSection" class="storefront-hero" data-store-view="shop">
-  <div class="hero-inner">
-    <div class="hero-copy">
-      <p class="hero-eyebrow">
-        Thoughtfully made in Singapore
-      </p>
-
-      <h1>
-        Small things,
-        <span>made special.</span>
-      </h1>
-
-      <p class="hero-description">
-        Personalised gifts and cheerful little designs, made in small batches just for you.
-      </p>
-
-      <div class="hero-actions">
-        <button
-          id="startDesignBtn"
-          type="button"
-          class="hero-button"
-        >
-          Shop the collection
-          <span>→</span>
-        </button>
-
-        <button
-          type="button"
-          class="hero-secondary-button"
-          data-view-target="shop"
-          data-view-scroll="howItWorksSection"
-        >
-          See how it works
-        </button>
-      </div>
-
-    </div>
-
-    <div class="hero-offer-card hero-showcase-card">
-      <div class="hero-showcase-photo">
-        <img
-          src="/images/modular-clicky-keychain.jpg"
-          alt="Colourful personalised Little Keeps clicky keychains"
-        />
-        <span class="hero-bestseller-pill">Made to order in Singapore</span>
-      </div>
-      <div class="hero-showcase-copy">
-        <strong>Designed with care. Made to keep.</strong>
-        <p>Choose a ready-made favourite or create something completely personal.</p>
-      </div>
-      <div class="hero-showcase-points">
-        <span>Made in Singapore</span>
-        <span>Checked by hand</span>
-        <span>Personalised for you</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="hero-decoration hero-decoration-one"></div>
-  <div class="hero-decoration hero-decoration-two"></div>
-</section>
-
-<section class="availability-preview" data-store-view="shop" aria-labelledby="availabilityPreviewHeading">
-  <button id="availabilityPreviewToggle" class="availability-preview-heading" type="button" aria-expanded="false" aria-controls="availabilityPreviewBody">
-    <div>
-      <p class="section-eyebrow">Plan before you design</p>
-      <h2 id="availabilityPreviewHeading">Check current availability</h2>
-    </div>
-    <span>Live estimate <b aria-hidden="true">⌄</b></span>
-  </button>
-  <div id="availabilityPreviewBody" class="availability-preview-body hidden">
-    <div class="availability-preview-grid">
-      <article><span>Standard orders</span><strong id="availabilityStandardDate">Checking…</strong><small>Estimated ready date</small></article>
-      <article><span>Pickup</span><strong id="availabilityPickupDate">Checking…</strong><small>First selectable appointment</small></article>
-      <article><span>Delivery</span><strong id="availabilityDeliveryDate">Checking…</strong><small>Estimated dispatch · delivery takes 1–3 days</small></article>
-    </div>
-    <p id="availabilityPreviewNote">Most production days accept ${Math.max(1, Number(shopSettings.max_orders_per_date || 2))} orders. Some dates may have extra or fewer slots.</p>
-    <button id="refreshAvailabilityBtn" class="availability-refresh-btn" type="button">Refresh availability</button>
-  </div>
-</section>
-
 <section id="productsSection" class="products-section" data-store-view="shop" aria-labelledby="productsHeading">
   <div class="products-heading">
     <p class="section-eyebrow">The Little Keeps collection</p>
@@ -1371,73 +1219,6 @@ ${requestedPreviewProductKey ? `
     </div>
   </div>
 </div>
-
-<section id="howItWorksSection" class="how-it-works-section" data-store-view="shop">
-  <div class="how-it-works-heading">
-    <h2>How it works</h2>
-  </div>
-
-  <div class="how-it-works-grid">
-    <article>
-      <span>01</span>
-      <div class="how-step-icon">✿</div>
-      <h3>Design it live</h3>
-      <p>Add a name and choose your colours.</p>
-    </article>
-
-    <article>
-      <span>02</span>
-      <div class="how-step-icon">♡</div>
-      <h3>We make it</h3>
-      <p>We print, assemble and check it.</p>
-    </article>
-
-    <article>
-      <span>03</span>
-      <div class="how-step-icon">→</div>
-      <h3>Collect or deliver</h3>
-      <p>Pick up at Woodlands or Marsiling MRT, or choose delivery.</p>
-    </article>
-  </div>
-</section>
-
-<section class="occasion-section" aria-labelledby="occasionHeading" data-store-view="shop">
-  <div class="occasion-copy">
-    <h2 id="occasionHeading">Made for little moments ♡</h2>
-  </div>
-
-  <div class="occasion-grid">
-    <article><span>🎂</span><strong>Birthday gifts</strong></article>
-    <article><span>🎁</span><strong>Party goodie bags</strong></article>
-    <article><span>✏️</span><strong>Teachers’ Day</strong></article>
-    <article><span>🌈</span><strong>Children’s Day</strong></article>
-    <article><span>♡</span><strong>Friendship gifts</strong></article>
-    <article><span>★</span><strong>Class and team gifts</strong></article>
-  </div>
-
-  <p class="occasion-safety-note">Contains small parts. Please supervise young children.</p>
-</section>
-
-<section class="reviews-section" aria-labelledby="reviewsHeading" data-store-view="shop">
-  <div class="reviews-heading">
-    <div>
-      <p class="section-eyebrow">Real words from real customers</p>
-      <h2 id="reviewsHeading">Loved by you ♡</h2>
-    </div>
-    <span>Swipe to read →</span>
-  </div>
-
-  <div class="reviews-track" role="list" aria-label="Customer reviews">
-    ${renderCustomerReviewCards()}
-  </div>
-</section>
-
-<aside class="payment-unlock-banner" aria-label="Payment options" data-store-view="shop">
-  <div class="payment-unlock-icon">♡</div>
-  <div>
-    <strong>PayNow for all orders · Cards and wallets from $30</strong>
-  </div>
-</aside>
 
 <section id="designArea" class="shop-section" data-store-view="design" data-design-step="names">
   <div class="customer-progress" aria-label="Order progress">
@@ -1753,6 +1534,14 @@ Chloe</textarea>
               class="toggle"
             >
               Bubbly
+            </button>
+
+            <button
+              id="wavyBaseBtn"
+              type="button"
+              class="toggle"
+            >
+              Wavy
             </button>
           </div>
         </div>
@@ -2808,9 +2597,6 @@ const headerCartCount =
 const sideCartCount =
   document.getElementById("sideCartCount");
 
-const startDesignBtn =
-  document.getElementById("startDesignBtn");
-
 const designTotalDisplay =
   document.getElementById("designTotalDisplay");
 
@@ -3133,6 +2919,7 @@ manualDeliveryAddressBtn.addEventListener("click", () => {
 
 const ribbedBaseBtn = document.getElementById("ribbedBaseBtn");
 const bubblyBaseBtn = document.getElementById("bubblyBaseBtn");
+const wavyBaseBtn = document.getElementById("wavyBaseBtn");
 
 const colours = shopSettings.colour_options
   .filter(item => item.active)
@@ -3624,7 +3411,7 @@ function getRushInventoryNeeds() {
     const design = getDesign(item);
     const characters = Array.from(sanitizeName(item.name));
     const orientation = design.letterOrientation === "horizontal" ? "horizontal" : "vertical";
-    const shapeLabel = design.baseShape === "bubbly" ? "Bubbly" : "Ribbed";
+    const shapeLabel = getBaseShapeLabel(design.baseShape);
 
     const itemQuantity = getItemQuantity(item);
 
@@ -3632,7 +3419,9 @@ function getRushInventoryNeeds() {
       const baseName = getColourName(design.bases[index % design.bases.length]);
       const capName = getColourName(design.caps[index % design.caps.length]);
       const letterName = getColourName(design.letters[index % design.letters.length]);
-      add(`${baseName} ${shapeLabel} Base`, itemQuantity);
+      const baseRole = getModularBaseRole(index, characters.length);
+      const baseRoleLabel = baseRole.charAt(0).toUpperCase() + baseRole.slice(1);
+      add(`${baseName} ${shapeLabel} ${baseRoleLabel} Base`, itemQuantity);
       add(
         `${capName} Cap + ${letterName} Letter - ${character}` +
         (orientation === "horizontal" ? " - Sideways" : ""),
@@ -4285,13 +4074,33 @@ function normalizePencilDesign(value = {}) {
 const BASE_SHAPES = {
   ribbed: {
     label: "Ribbed",
-    file: "/models/base_ribbed.stl"
+    files: {
+      first: "/models/bases/ribbed-first.stl",
+      middle: "/models/bases/ribbed-middle.stl",
+      last: "/models/bases/ribbed-last.stl"
+    }
+  },
+  wavy: {
+    label: "Wavy",
+    files: {
+      first: "/models/bases/wavy-first.stl",
+      middle: "/models/bases/wavy-middle.stl",
+      last: "/models/bases/wavy-last.stl"
+    }
   },
   bubbly: {
     label: "Bubbly",
-    file: "/models/base_bubbly.stl"
+    files: {
+      first: "/models/bases/bubbly-first.stl",
+      middle: "/models/bases/bubbly-middle.stl",
+      last: "/models/bases/bubbly-last.stl"
+    }
   }
 };
+
+function getBaseShapeLabel(baseShape = "ribbed") {
+  return BASE_SHAPES[baseShape]?.label || BASE_SHAPES.ribbed.label;
+}
 
 
 let names = [];
@@ -5774,15 +5583,16 @@ async function createKeycapTop(letter, index, design) {
   return capGroup;
 }
 
-async function createKeycap(letter, index, design) {
+async function createKeycap(letter, index, characterCount, design) {
   const group = new THREE.Group();
 
   const baseColour = design.bases[index % design.bases.length];
   const selectedBaseShape =
     design.baseShape || "ribbed";
+  const baseRole = getModularBaseRole(index, characterCount);
 
   const baseGeo = await loadSTL(
-    BASE_SHAPES[selectedBaseShape].file
+    (BASE_SHAPES[selectedBaseShape] || BASE_SHAPES.ribbed).files[baseRole]
   );
   const base = new THREE.Mesh(baseGeo, createMat(baseColour));
   base.rotation.z = Math.PI / 2;
@@ -6234,7 +6044,7 @@ async function buildKeychain(name, design) {
 
     for (let i = 0; i < letters.length; i++) {
       try {
-        const item = await createKeycap(letters[i], i, design);
+        const item = await createKeycap(letters[i], i, letters.length, design);
 
         if (thisBuildNumber !== previewBuildNumber) return;
         keychain.add(item);
@@ -6367,6 +6177,11 @@ function updateBaseShapeButtons() {
   bubblyBaseBtn.classList.toggle(
     "active",
     shape === "bubbly"
+  );
+
+  wavyBaseBtn.classList.toggle(
+    "active",
+    shape === "wavy"
   );
 }
 
@@ -6558,6 +6373,10 @@ bubblyBaseBtn.onclick = () => {
   setBaseShape("bubbly");
 };
 
+wavyBaseBtn.onclick = () => {
+  setBaseShape("wavy");
+};
+
 verticalLetterBtn.onclick = () => {
   setLetterOrientation("vertical");
 };
@@ -6651,7 +6470,7 @@ function getDesignDescription(design, product = activeProduct) {
   }
 
   return `${
-    design.baseShape === "bubbly" ? "Bubbly Base" : "Ribbed Base"
+    `${getBaseShapeLabel(design.baseShape)} Base`
   } · ${
     design.letterOrientation === "horizontal"
       ? "Sideways letters"
@@ -10293,12 +10112,6 @@ async function retryRememberedOrderEmail() {
   if (!saved || needsReview || isManualOrder) return;
   await requestOrderSavedEmail(saved.orderRef, saved.email);
 }
-
-startDesignBtn.onclick = () => {
-  setStorefrontView("shop", {
-    scrollTo: "productsSection"
-  });
-};
 
 singleName.addEventListener("input", updateNames);
 singleQuantity?.addEventListener("input", () => {
