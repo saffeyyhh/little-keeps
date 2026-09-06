@@ -5602,7 +5602,7 @@ async function createKeycap(letter, index, characterCount, design) {
   // Every current modular base STL is centred on its switch opening. Keep the
   // character top on that same centre instead of carrying over the old model's
   // sideways correction.
-  capGroup.position.set(0, 0, 11);
+  capGroup.position.set(4.7, 0, 11);
   group.add(capGroup);
 
   group.position.x = index * 28;
