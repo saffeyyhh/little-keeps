@@ -4876,15 +4876,11 @@ function renderOrders(orders) {
           Print Basket Label
         </button>
 
-        ${order.collection_method !== "delivery" ? `
-          <button type="button" class="shipping-label-action" onclick='window.printPickupThankYouLabel(${JSON.stringify(orderId)})'>
-            Print Pickup Thank-You Label
-          </button>
-        ` : `
+        ${order.collection_method === "delivery" ? `
           <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(orderId)})'>
             Print Hand-Delivery Label
           </button>
-        `}
+        ` : ""}
 
         ${!order.archived_at && !["Completed", "Refunded"].includes(order.status) ? `
           <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(orderId)})'>
@@ -5100,6 +5096,11 @@ function renderFulfilmentWorkspace(orders) {
         ${renderAssemblyChecklist(order, true)}
       </div>
       <div class="fulfilment-card-actions">
+        ${order.collection_method !== "delivery" ? `
+          <button type="button" class="shipping-label-action" onclick='window.printPickupThankYouLabel(${JSON.stringify(String(order.id))})'>
+            Print Pickup Thank-You Label
+          </button>
+        ` : ""}
         ${order.collection_method === "delivery" ? `
           ${order.easyparcel_shipment_number ? `
             ${order.easyparcel_awb_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.easyparcel_awb_url)}" target="_blank" rel="noopener">Download Courier Label</a>` : ""}
