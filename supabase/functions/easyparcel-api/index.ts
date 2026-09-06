@@ -196,7 +196,10 @@ Deno.serve(async request => {
       const orderId = String(payload.order_id || "");
       const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
       if (!order || order.collection_method !== "delivery") throw new Error("Delivery order not found.");
-      if (order.easyparcel_shipment_number) throw new Error("This order already has an EasyParcel shipment.");
+      const previousShipmentWasCancelled = String(order.easyparcel_status || "").toLowerCase().includes("cancel");
+      if (order.easyparcel_shipment_number && !previousShipmentWasCancelled) {
+        throw new Error("This order already has an EasyParcel shipment.");
+      }
       const receiverPostcode = postal(order.delivery_address);
       if (!receiverPostcode) throw new Error("The customer address needs a six-digit postal code.");
       const senderPhone = digits(payload.sender_phone);
@@ -345,8 +348,19 @@ Deno.serve(async request => {
       });
       const cancelled = requireSuccessfulItem(result.data?.[0], "EasyParcel could not cancel this shipment.");
       const { error: cancelSaveError } = await supabase.from("orders").update({
-        easyparcel_status: cancelled?.message || "Cancelled",
-        easyparcel_last_event_at: new Date().toISOString()
+        easyparcel_order_number: null,
+        easyparcel_shipment_number: null,
+        easyparcel_service_id: null,
+        easyparcel_courier_name: null,
+        easyparcel_amount: null,
+        easyparcel_currency: null,
+        easyparcel_awb_url: null,
+        easyparcel_status: null,
+        easyparcel_booked_at: null,
+        easyparcel_last_event_at: new Date().toISOString(),
+        courier_name: "",
+        tracking_number: "",
+        tracking_url: ""
       }).eq("easyparcel_shipment_number", shipmentNumber);
       if (cancelSaveError) throw new Error("EasyParcel cancelled the shipment, but Little Keeps could not save the new status. Refresh the shipment.");
       return json(result);

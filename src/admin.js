@@ -38,6 +38,7 @@ import {
   getEasyParcelQuotePrices,
   getEasyParcelVolumetricWeight,
   getHandDeliveryLabelData,
+  hasActiveEasyParcelShipment,
   getInternalBasketLabelData,
   getModularBaseRole,
   groupLinkedOrdersForAdmin,
@@ -5034,7 +5035,7 @@ function renderFulfilmentWorkspace(orders) {
         Number(aRoute.postalCode || 999999) - Number(bRoute.postalCode || 999999);
     });
   const pickups = ready.filter(order => order.collection_method !== "delivery");
-  const handDeliveries = deliveries.filter(order => !order.easyparcel_shipment_number);
+  const handDeliveries = deliveries.filter(order => !hasActiveEasyParcelShipment(order));
 
   const fulfilmentCard = order => `
     <details class="fulfilment-card">
@@ -5051,7 +5052,7 @@ function renderFulfilmentWorkspace(orders) {
       </summary>
       <div class="fulfilment-card-body">
       <div class="fulfilment-card-info">
-        ${order.collection_method === "delivery" && !order.easyparcel_shipment_number ? `
+        ${order.collection_method === "delivery" && !hasActiveEasyParcelShipment(order) ? `
           <label class="route-stop-select">
             <input type="checkbox" data-label-order-id="${escapeAdminHtml(String(order.id))}">
             <span>Select hand-delivery label</span>
@@ -5066,14 +5067,14 @@ function renderFulfilmentWorkspace(orders) {
         </div>
         ${order.collection_method === "delivery" ? `
           <p>${escapeAdminHtml(order.delivery_address || "Address missing")}</p>
-          ${order.easyparcel_shipment_number ? `
+          ${hasActiveEasyParcelShipment(order) ? `
             <div class="easyparcel-shipment-summary">
               <strong>${escapeAdminHtml(order.easyparcel_courier_name || "EasyParcel shipment")}</strong>
               <span>${escapeAdminHtml(order.easyparcel_shipment_number)} · ${escapeAdminHtml(order.easyparcel_status || "Booked")}</span>
               ${order.tracking_number ? `<span>AWB ${escapeAdminHtml(order.tracking_number)}</span>` : ""}
             </div>
           ` : ""}
-          ${!order.easyparcel_shipment_number ? `
+          ${!hasActiveEasyParcelShipment(order) ? `
             <label class="route-stop-select">
               <input type="checkbox" data-route-address="${escapeAdminHtml(order.delivery_address || "")}">
               <span>Include as hand-delivery route stop</span>
@@ -5102,7 +5103,7 @@ function renderFulfilmentWorkspace(orders) {
           </button>
         ` : ""}
         ${order.collection_method === "delivery" ? `
-          ${order.easyparcel_shipment_number ? `
+          ${hasActiveEasyParcelShipment(order) ? `
             ${order.easyparcel_awb_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.easyparcel_awb_url)}" target="_blank" rel="noopener">Download Courier Label</a>` : ""}
             ${order.tracking_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.tracking_url)}" target="_blank" rel="noopener">Open Tracking</a>` : ""}
           ` : `
@@ -5114,14 +5115,14 @@ function renderFulfilmentWorkspace(orders) {
             Set Pending Pickup
           </button>
         ` : ""}
-        ${order.collection_method === "delivery" && !order.easyparcel_shipment_number && ["Assembly Complete", "Pending Delivery"].includes(order.status) ? `
+        ${order.collection_method === "delivery" && !hasActiveEasyParcelShipment(order) && ["Assembly Complete", "Pending Delivery"].includes(order.status) ? `
           <button type="button" class="ready-btn" onclick='window.startDelivery(${JSON.stringify(String(order.id))})'>Start Hand Delivery</button>
         ` : ""}
         ${order.collection_method !== "delivery" && ["Assembly Complete", "Pending Pickup", "Ready for Pickup/Delivery"].includes(order.status) ? `
           <button type="button" class="ready-btn" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "customer")'>Customer Collected - Complete</button>
           <button type="button" class="approve-request-action" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "other")'>Passed to Someone Else</button>
         ` : ""}
-        ${order.status === "Out for Delivery" && !order.easyparcel_shipment_number ? `
+        ${order.status === "Out for Delivery" && !hasActiveEasyParcelShipment(order) ? `
           <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Hand Delivered - Complete</button>
         ` : ""}
         <details class="fulfilment-more-actions">
@@ -5132,18 +5133,18 @@ function renderFulfilmentWorkspace(orders) {
               <button type="button" onclick='window.openFulfilmentEditor(${JSON.stringify(String(order.id))})'>Edit customer &amp; fulfilment</button>
             ` : ""}
             ${order.collection_method === "delivery" ? `
-              ${order.easyparcel_shipment_number ? `
+              ${hasActiveEasyParcelShipment(order) ? `
                 <button type="button" onclick='window.refreshEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Refresh EasyParcel</button>
                 ${canCancelEasyParcelShipment(order.easyparcel_status) ? `
                   <button type="button" class="danger-action" onclick='window.cancelEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Cancel courier booking</button>
                 ` : ""}
               ` : ""}
               <button type="button" onclick='window.copyEasyParcelReceiver(${JSON.stringify(String(order.id))}, this)'>Copy courier details</button>
-              ${!order.easyparcel_shipment_number ? `<button type="button" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>Print hand-delivery label</button>` : ""}
+              ${!hasActiveEasyParcelShipment(order) ? `<button type="button" onclick='window.printHandDeliveryLabel(${JSON.stringify(String(order.id))})'>Print hand-delivery label</button>` : ""}
             ` : ""}
             ${order.customer_email && (
               order.collection_method === "delivery"
-                ? !order.easyparcel_shipment_number && ["Out for Delivery", "Completed"].includes(order.status)
+                ? !hasActiveEasyParcelShipment(order) && ["Out for Delivery", "Completed"].includes(order.status)
                 : ["Pending Pickup", "Completed"].includes(order.status)
             ) ? `
               <button type="button" onclick='window.resendCurrentStatusEmail(${JSON.stringify(String(order.id))}, this)'>Resend customer email</button>
@@ -14228,7 +14229,7 @@ window.copyPickupWhatsAppReminder = async function(id, button) {
 window.startDelivery = async function(id) {
   let order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
   if (!order) return;
-  if (order.easyparcel_shipment_number) return;
+  if (hasActiveEasyParcelShipment(order)) return;
   if (order.status === "Assembly Complete") {
     await window.markReady(String(order.id), true);
     order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
@@ -14251,7 +14252,7 @@ window.startDelivery = async function(id) {
 
 window.completeFulfilment = async function(id) {
   const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
-  if (order?.easyparcel_shipment_number) return;
+  if (hasActiveEasyParcelShipment(order)) return;
   if (!order || !confirm(`Complete ${order.order_ref}?`)) return;
   const updateData = { status: "Completed", status_updated_at: new Date().toISOString() };
   const { error } = await updateOrderFamily(order, updateData);
@@ -15866,7 +15867,7 @@ window.printAllHandDeliveryLabels = function() {
       !order.archived_at &&
       FULFILMENT_STATUSES.includes(order.status) &&
       order.collection_method === "delivery" &&
-      !order.easyparcel_shipment_number
+      !hasActiveEasyParcelShipment(order)
     )
     .map(order => order.id);
   printHandDeliveryLabels(orderIds);

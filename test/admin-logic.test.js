@@ -22,6 +22,7 @@ import {
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
   getHandDeliveryLabelData,
+  hasActiveEasyParcelShipment,
   getInternalBasketLabelData,
   groupLinkedOrdersForAdmin,
   indexKeycapOwnershipGroupsByLabel,
@@ -52,6 +53,7 @@ import {
   splitAmsCombinationsByPlateCapacity,
   supportsBaseOnlyAssembly,
   isEasyParcelPickupQuote,
+  isEasyParcelShipmentCancelled,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
 
@@ -74,6 +76,22 @@ test("sorts EasyParcel quotes by the final payable price", () => {
     sortEasyParcelQuotesByPrice(quotes).map(quote => quote.courier.service_id),
     ["b", "c", "a"]
   );
+});
+
+test("treats a cancelled EasyParcel booking as available to rebook", () => {
+  const booked = {
+    easyparcel_shipment_number: "ES-2026-ABC123",
+    easyparcel_status: "Submitted"
+  };
+  const cancelled = {
+    easyparcel_shipment_number: "ES-2026-ABC123",
+    easyparcel_status: "Shipment cancellation successful"
+  };
+
+  assert.equal(hasActiveEasyParcelShipment(booked), true);
+  assert.equal(hasActiveEasyParcelShipment(cancelled), false);
+  assert.equal(hasActiveEasyParcelShipment({}), false);
+  assert.equal(isEasyParcelShipmentCancelled(cancelled.easyparcel_status), true);
 });
 
 test("keeps EasyParcel's website rate separate from its payable total", () => {

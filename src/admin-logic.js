@@ -1286,6 +1286,15 @@ export function canCancelEasyParcelShipment(status) {
     .some(value => normalized.includes(value));
 }
 
+export function isEasyParcelShipmentCancelled(status) {
+  return String(status || "").trim().toLowerCase().includes("cancel");
+}
+
+export function hasActiveEasyParcelShipment(order = {}) {
+  return Boolean(String(order?.easyparcel_shipment_number || "").trim()) &&
+    !isEasyParcelShipmentCancelled(order?.easyparcel_status);
+}
+
 export function sortEasyParcelQuotesByPrice(quotes = []) {
   return [...quotes].sort((left, right) => {
     const leftPrice = getEasyParcelQuotePrices(left).payable || Number.POSITIVE_INFINITY;
