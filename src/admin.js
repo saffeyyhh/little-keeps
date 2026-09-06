@@ -15663,28 +15663,28 @@ function buildHandDeliveryLabelPdf(orders) {
 
 function buildPickupThankYouLabelPdf(orders) {
   const pdf = new jsPDF({
-    orientation: "landscape",
+    orientation: "portrait",
     unit: "mm",
-    format: [100, 60],
+    format: [100, 150],
     compress: true
   });
   const pageWidth = 100;
-  const pageHeight = 60;
+  const pageHeight = 150;
   const black = [0, 0, 0];
   const white = [255, 255, 255];
 
   orders.forEach((order, index) => {
-    if (index > 0) pdf.addPage([100, 60], "landscape");
+    if (index > 0) pdf.addPage([100, 150], "portrait");
 
     pdf.setFillColor(...white);
     pdf.rect(0, 0, pageWidth, pageHeight, "F");
     pdf.setDrawColor(...black);
     pdf.setLineWidth(1.2);
-    pdf.roundedRect(3, 3, pageWidth - 6, pageHeight - 6, 5, 5, "S");
+    pdf.roundedRect(4, 4, pageWidth - 8, pageHeight - 8, 6, 6, "S");
 
     // Small vector flowers keep the label cute and print reliably without
     // depending on emoji support in the PDF viewer or label printer.
-    [[10, 10], [90, 50]].forEach(([x, y]) => {
+    [[14, 15], [86, 135]].forEach(([x, y]) => {
       pdf.setFillColor(...white);
       pdf.setDrawColor(...black);
       pdf.setLineWidth(0.45);
@@ -15698,34 +15698,34 @@ function buildPickupThankYouLabelPdf(orders) {
 
     pdf.setTextColor(...black);
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.text("Little Keeps", pageWidth / 2, 12, { align: "center" });
+    pdf.setFontSize(16);
+    pdf.text("Little Keeps", pageWidth / 2, 28, { align: "center" });
 
     const customerName = getCompactPdfText(order.customer_name || "you");
     pdf.setTextColor(...black);
-    pdf.setFontSize(20);
+    pdf.setFontSize(24);
     const greeting = pdf.splitTextToSize(`Thank you, ${customerName}!`, 82).slice(0, 2);
-    const greetingY = greeting.length > 1 ? 22 : 25;
+    const greetingY = greeting.length > 1 ? 52 : 60;
     pdf.text(greeting, pageWidth / 2, greetingY, { align: "center" });
 
     pdf.setTextColor(...black);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
+    pdf.setFontSize(12);
     const message = pdf.splitTextToSize(
       "Made especially for you, with lots of love and a little click.",
-      74
+      72
     );
-    pdf.text(message, pageWidth / 2, greeting.length > 1 ? 38 : 36, {
+    pdf.text(message, pageWidth / 2, greeting.length > 1 ? 86 : 82, {
       align: "center"
     });
 
     pdf.setTextColor(...black);
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(7.5);
+    pdf.setFontSize(9);
     pdf.text(
       `${getCompactPdfText(order.order_ref || "-")}  |  @madebylittlekeeps`,
       pageWidth / 2,
-      52,
+      122,
       { align: "center" }
     );
   });
