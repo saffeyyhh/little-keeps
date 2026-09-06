@@ -15670,45 +15670,45 @@ function buildPickupThankYouLabelPdf(orders) {
   });
   const pageWidth = 100;
   const pageHeight = 60;
-  const dark = [51, 45, 48];
-  const muted = [117, 96, 105];
-  const pink = [239, 79, 136];
-  const palePink = [255, 238, 244];
+  const black = [0, 0, 0];
+  const white = [255, 255, 255];
 
   orders.forEach((order, index) => {
     if (index > 0) pdf.addPage([100, 60], "landscape");
 
-    pdf.setFillColor(255, 250, 252);
+    pdf.setFillColor(...white);
     pdf.rect(0, 0, pageWidth, pageHeight, "F");
-    pdf.setDrawColor(...palePink);
+    pdf.setDrawColor(...black);
     pdf.setLineWidth(1.2);
     pdf.roundedRect(3, 3, pageWidth - 6, pageHeight - 6, 5, 5, "S");
 
     // Small vector flowers keep the label cute and print reliably without
     // depending on emoji support in the PDF viewer or label printer.
     [[10, 10], [90, 50]].forEach(([x, y]) => {
-      pdf.setFillColor(...palePink);
-      pdf.circle(x - 2, y, 1.7, "F");
-      pdf.circle(x + 2, y, 1.7, "F");
-      pdf.circle(x, y - 2, 1.7, "F");
-      pdf.circle(x, y + 2, 1.7, "F");
-      pdf.setFillColor(...pink);
+      pdf.setFillColor(...white);
+      pdf.setDrawColor(...black);
+      pdf.setLineWidth(0.45);
+      pdf.circle(x - 2, y, 1.7, "FD");
+      pdf.circle(x + 2, y, 1.7, "FD");
+      pdf.circle(x, y - 2, 1.7, "FD");
+      pdf.circle(x, y + 2, 1.7, "FD");
+      pdf.setFillColor(...black);
       pdf.circle(x, y, 1.2, "F");
     });
 
-    pdf.setTextColor(...pink);
+    pdf.setTextColor(...black);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(12);
     pdf.text("Little Keeps", pageWidth / 2, 12, { align: "center" });
 
     const customerName = getCompactPdfText(order.customer_name || "you");
-    pdf.setTextColor(...dark);
+    pdf.setTextColor(...black);
     pdf.setFontSize(20);
     const greeting = pdf.splitTextToSize(`Thank you, ${customerName}!`, 82).slice(0, 2);
     const greetingY = greeting.length > 1 ? 22 : 25;
     pdf.text(greeting, pageWidth / 2, greetingY, { align: "center" });
 
-    pdf.setTextColor(...muted);
+    pdf.setTextColor(...black);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     const message = pdf.splitTextToSize(
@@ -15719,7 +15719,7 @@ function buildPickupThankYouLabelPdf(orders) {
       align: "center"
     });
 
-    pdf.setTextColor(...pink);
+    pdf.setTextColor(...black);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(7.5);
     pdf.text(
