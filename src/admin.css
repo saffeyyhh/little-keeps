@@ -2731,6 +2731,120 @@ body {
   font-weight: bold;
 }
 
+.assembly-pencil-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+  padding: 18px;
+  border: 1px solid #e8dde2;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fffdfd, #faf4f6);
+}
+
+.assembly-pencil-preview {
+  min-width: max-content;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  filter: drop-shadow(0 7px 5px rgba(65, 45, 55, .16));
+}
+
+.assembly-pencil-nose {
+  width: 48px;
+  flex: 0 0 48px;
+  background: linear-gradient(90deg, var(--pencil-tip) 0 17%, var(--pencil-wood) 17%);
+  clip-path: polygon(0 50%, 100% 0, 100% 100%);
+}
+
+.assembly-pencil-blocks {
+  display: flex;
+  align-items: stretch;
+}
+
+.assembly-pencil-blocks > b {
+  width: 46px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  background: var(--pencil-block);
+  box-shadow: inset 0 -4px rgba(0, 0, 0, .12);
+}
+
+.assembly-pencil-blocks > b + b {
+  border-left: 1px solid rgba(47, 37, 45, .18);
+}
+
+.assembly-pencil-blocks > b em {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--pencil-top);
+  color: var(--pencil-character);
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: inset 0 -3px rgba(0, 0, 0, .1);
+}
+
+.assembly-pencil-ending {
+  width: 56px;
+  flex: 0 0 56px;
+  border-radius: 0 14px 14px 0;
+  background: linear-gradient(90deg, var(--pencil-ferrule) 0 50%, var(--pencil-eraser) 50%);
+}
+
+.assembly-pencil-ending.is-end-cap {
+  width: 38px;
+  flex-basis: 38px;
+  background: var(--pencil-end-cap);
+}
+
+.assembly-pencil-parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 7px;
+  padding: 10px;
+  border-bottom: 1px solid #e7eff2;
+}
+
+.assembly-pencil-parts > span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 1px 7px;
+  padding: 7px 8px;
+  border: 1px solid #e4eaed;
+  border-radius: 10px;
+  background: white;
+}
+
+.assembly-pencil-parts i {
+  grid-row: 1 / span 2;
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(45, 70, 85, .18);
+  border-radius: 50%;
+}
+
+.assembly-pencil-parts em {
+  color: #84959d;
+  font-size: 8px;
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.assembly-pencil-parts strong {
+  overflow: hidden;
+  color: #374f5b;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .assembly-colour-guide {
   margin-top: 12px;
   overflow: hidden;

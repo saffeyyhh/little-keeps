@@ -9931,6 +9931,93 @@ function createAssemblyColourGuide(name, design = {}) {
   `;
 }
 
+function createPencilAssemblyVisual(name, design = {}) {
+  const characters = Array.from(sanitizeName(name));
+  const bases = Array.isArray(design.bases) && design.bases.length ? design.bases : ["#f7c948"];
+  const caps = Array.isArray(design.caps) && design.caps.length ? design.caps : ["#f7c948"];
+  const letters = Array.isArray(design.letters) && design.letters.length ? design.letters : ["#ffffff"];
+  const pencil = design.pencil || {};
+  const wood = getAssemblyColourDetails(pencil.wood || "#e8bd8d", "Desert Tan");
+  const tip = getAssemblyColourDetails(pencil.tip || "#1d1b1d", "Black");
+  const endingStyle = String(pencil.ending_style || pencil.endingStyle || "eraser");
+  const eraser = getAssemblyColourDetails(pencil.eraser || "#f18db2", "Pink");
+  const ferrule = getAssemblyColourDetails(pencil.ferrule || "#727d8f", "Blue Grey");
+  const endCap = getAssemblyColourDetails(pencil.end_cap || pencil.endCap || "#f7c948", "End cap");
+
+  return `
+    <div class="assembly-pencil-wrap">
+      <div class="assembly-pencil-preview" aria-label="Colour preview for ${escapeAdminHtml(name || "pencil")}">
+        <span class="assembly-pencil-nose" style="--pencil-wood:${wood.hex}; --pencil-tip:${tip.hex}"></span>
+        <span class="assembly-pencil-blocks">
+          ${characters.map((character, index) => {
+            const base = getAssemblyColourDetails(bases[index % bases.length], "Base colour");
+            const cap = getAssemblyColourDetails(caps[index % caps.length], "Top colour");
+            const letter = getAssemblyColourDetails(letters[index % letters.length], "Character colour");
+            return `
+              <b style="--pencil-block:${base.hex}; --pencil-top:${cap.hex}; --pencil-character:${letter.hex}">
+                <em>${displayIcon(character)}</em>
+              </b>
+            `;
+          }).join("")}
+        </span>
+        <i class="assembly-pencil-ending ${endingStyle === "endCap" ? "is-end-cap" : ""}" style="--pencil-eraser:${eraser.hex}; --pencil-ferrule:${ferrule.hex}; --pencil-end-cap:${endCap.hex}"></i>
+      </div>
+    </div>
+  `;
+}
+
+function createPencilAssemblyColourGuide(name, design = {}) {
+  const characters = Array.from(sanitizeName(name));
+  const bases = Array.isArray(design.bases) && design.bases.length ? design.bases : ["#f7c948"];
+  const caps = Array.isArray(design.caps) && design.caps.length ? design.caps : ["#f7c948"];
+  const letters = Array.isArray(design.letters) && design.letters.length ? design.letters : ["#ffffff"];
+  const pencil = design.pencil || {};
+  const endingStyle = String(pencil.ending_style || pencil.endingStyle || "eraser");
+  const fixedParts = endingStyle === "endCap"
+    ? [
+        ["Wood", pencil.wood, "Desert Tan"],
+        ["Tip", pencil.tip, "Black"],
+        ["End cap", pencil.end_cap || pencil.endCap, "End cap"]
+      ]
+    : [
+        ["Wood", pencil.wood, "Desert Tan"],
+        ["Tip", pencil.tip, "Black"],
+        ["Metal band", pencil.ferrule, "Blue Grey"],
+        ["Eraser", pencil.eraser, "Pink"]
+      ];
+
+  return `
+    <div class="assembly-colour-guide assembly-pencil-guide">
+      <div class="assembly-colour-guide-heading">
+        <strong>Exact pencil colours</strong>
+        <span>Follow each block from the pencil tip to the eraser or end cap.</span>
+      </div>
+      <div class="assembly-pencil-parts">
+        ${fixedParts.map(([label, value, fallback]) => {
+          const colour = getAssemblyColourDetails(value || "#d9d9d9", fallback);
+          return `<span><i style="background:${colour.hex}"></i><em>${escapeAdminHtml(label)}</em><strong>${escapeAdminHtml(colour.name)} · ${escapeAdminHtml(colour.material)}</strong></span>`;
+        }).join("")}
+      </div>
+      <div class="assembly-colour-guide-rows">
+        ${characters.map((character, index) => {
+          const base = getAssemblyColourDetails(bases[index % bases.length], "Base colour");
+          const cap = getAssemblyColourDetails(caps[index % caps.length], "Top colour");
+          const letter = getAssemblyColourDetails(letters[index % letters.length], "Character colour");
+          return `
+            <div class="assembly-colour-row">
+              <b>${index + 1}</b>
+              <span class="assembly-colour-character">${displayIcon(character)}</span>
+              <span><i style="background:${base.hex}"></i><em>Block</em><strong>${escapeAdminHtml(base.name)} · ${escapeAdminHtml(base.material)}</strong></span>
+              <span><i style="background:${cap.hex}"></i><em>Top</em><strong>${escapeAdminHtml(cap.name)} · ${escapeAdminHtml(cap.material)}</strong></span>
+              <span><i style="background:${letter.hex}"></i><em>Character</em><strong>${escapeAdminHtml(letter.name)} · ${escapeAdminHtml(letter.material)}</strong></span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
 async function renderAssemblyQueue() {
   await loadInventoryItems();
 
@@ -10105,7 +10192,8 @@ async function renderAssemblyQueue() {
         ${photoProduct ? `
           <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 4)} stocked colours · review in Custom Prints</div>
         ` : pencilProduct ? `
-          <div class="assembly-photo-summary">Licensed pencil project · all part colours are listed in Production → Custom Prints</div>
+          ${createPencilAssemblyVisual(item.name, item.design)}
+          ${createPencilAssemblyColourGuide(item.name, item.design)}
         ` : customNameProduct ? `
           <div class="assembly-standard-name-preview" style="--name-bg:${getSafePdfColour(item.design?.bases?.[0]?.hex || item.design?.bases?.[0], "#f55a74")}; --name-fg:${getSafePdfColour(item.design?.letters?.[0]?.hex || item.design?.letters?.[0], "#ffffff")}">${escapeAdminHtml(item.name || "Name")}</div>
           ${createAssemblyColourGuide(item.name, item.design)}
