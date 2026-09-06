@@ -4876,11 +4876,15 @@ function renderOrders(orders) {
           Print Basket Label
         </button>
 
-        ${order.collection_method === "delivery" ? `
+        ${order.collection_method !== "delivery" ? `
+          <button type="button" class="shipping-label-action" onclick='window.printPickupThankYouLabel(${JSON.stringify(orderId)})'>
+            Print Pickup Thank-You Label
+          </button>
+        ` : `
           <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(orderId)})'>
             Print Hand-Delivery Label
           </button>
-        ` : ""}
+        `}
 
         ${!order.archived_at && !["Completed", "Refunded"].includes(order.status) ? `
           <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(orderId)})'>
@@ -15657,6 +15661,86 @@ function buildHandDeliveryLabelPdf(orders) {
   return pdf;
 }
 
+function buildPickupThankYouLabelPdf(orders) {
+  const pdf = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: [100, 60],
+    compress: true
+  });
+  const pageWidth = 100;
+  const pageHeight = 60;
+  const dark = [51, 45, 48];
+  const muted = [117, 96, 105];
+  const pink = [239, 79, 136];
+  const palePink = [255, 238, 244];
+
+  orders.forEach((order, index) => {
+    if (index > 0) pdf.addPage([100, 60], "landscape");
+
+    pdf.setFillColor(255, 250, 252);
+    pdf.rect(0, 0, pageWidth, pageHeight, "F");
+    pdf.setDrawColor(...palePink);
+    pdf.setLineWidth(1.2);
+    pdf.roundedRect(3, 3, pageWidth - 6, pageHeight - 6, 5, 5, "S");
+
+    // Small vector flowers keep the label cute and print reliably without
+    // depending on emoji support in the PDF viewer or label printer.
+    [[10, 10], [90, 50]].forEach(([x, y]) => {
+      pdf.setFillColor(...palePink);
+      pdf.circle(x - 2, y, 1.7, "F");
+      pdf.circle(x + 2, y, 1.7, "F");
+      pdf.circle(x, y - 2, 1.7, "F");
+      pdf.circle(x, y + 2, 1.7, "F");
+      pdf.setFillColor(...pink);
+      pdf.circle(x, y, 1.2, "F");
+    });
+
+    pdf.setTextColor(...pink);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(12);
+    pdf.text("Little Keeps", pageWidth / 2, 12, { align: "center" });
+
+    const customerName = getCompactPdfText(order.customer_name || "you");
+    pdf.setTextColor(...dark);
+    pdf.setFontSize(20);
+    const greeting = pdf.splitTextToSize(`Thank you, ${customerName}!`, 82).slice(0, 2);
+    const greetingY = greeting.length > 1 ? 22 : 25;
+    pdf.text(greeting, pageWidth / 2, greetingY, { align: "center" });
+
+    pdf.setTextColor(...muted);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    const message = pdf.splitTextToSize(
+      "Made especially for you, with lots of love and a little click.",
+      74
+    );
+    pdf.text(message, pageWidth / 2, greeting.length > 1 ? 38 : 36, {
+      align: "center"
+    });
+
+    pdf.setTextColor(...pink);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7.5);
+    pdf.text(
+      `${getCompactPdfText(order.order_ref || "-")}  |  @madebylittlekeeps`,
+      pageWidth / 2,
+      52,
+      { align: "center" }
+    );
+  });
+
+  pdf.setProperties({
+    title: orders.length === 1
+      ? `${orders[0].order_ref} Pickup Thank-You Label`
+      : `Little Keeps Pickup Thank-You Labels (${orders.length})`,
+    subject: "Little Keeps pickup thank-you labels",
+    author: "Little Keeps"
+  });
+  if (typeof pdf.autoPrint === "function") pdf.autoPrint();
+  return pdf;
+}
+
 function printBasketLabels(orderIds) {
   const requestedIds = new Set(orderIds.map(String));
   const orders = groupLinkedOrdersForAdmin(latestOrders).filter(order =>
@@ -15704,6 +15788,35 @@ window.printAllBasketLabels = function() {
     )
     .map(order => order.id);
   printBasketLabels(orderIds);
+};
+
+function printPickupThankYouLabels(orderIds) {
+  const requestedIds = new Set((orderIds || []).map(String));
+  const orders = groupLinkedOrdersForAdmin(latestOrders).filter(order =>
+    requestedIds.has(String(order.id)) &&
+    order.collection_method !== "delivery"
+  );
+
+  if (!orders.length) {
+    alert("Choose a pickup order for a thank-you label.");
+    return;
+  }
+
+  const pdf = buildPickupThankYouLabelPdf(orders);
+  const pdfUrl = pdf.output("bloburl");
+  const printWindow = window.open(pdfUrl, "_blank");
+
+  if (!printWindow) {
+    const filename = orders.length === 1
+      ? `${safeProductionFileName(orders[0].order_ref, "pickup")}-thank-you-label.pdf`
+      : `little-keeps-${orders.length}-pickup-thank-you-labels.pdf`;
+    pdf.save(filename);
+    alert("The thank-you label PDF was downloaded because the print window was blocked.");
+  }
+}
+
+window.printPickupThankYouLabel = function(orderId) {
+  printPickupThankYouLabels([orderId]);
 };
 
 function printHandDeliveryLabels(orderIds) {
