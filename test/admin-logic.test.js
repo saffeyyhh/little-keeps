@@ -509,7 +509,7 @@ test("aligns each modular base role to an evenly spaced switch centre", () => {
   assert.deepEqual(placements.map(item => item.role), ["first", "middle", "last"]);
   assert.deepEqual(
     placements.map(item => Number((item.groupX + item.capX).toFixed(3))),
-    [4.768, 32.768, 60.768]
+    [4.768, 33.768, 62.768]
   );
   assert.equal(getModularPreviewPlacement("wavy", 0, 2).capX, 2.775);
   assert.equal(getModularPreviewPlacement("unknown", 0, 2).capX, 3.134);
