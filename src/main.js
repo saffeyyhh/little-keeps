@@ -26,6 +26,7 @@ import {
   getBulkApprovalPolicy,
   getGiftingBagSelectionLimit,
   getModularBaseRole,
+  getModularPreviewPlacement,
   getPickupTimeRanges,
   isPickupDay,
   isOrderReminderFinishedOrExpired,
@@ -125,17 +126,6 @@ const DEFAULT_SHOP_SETTINGS = {
   pickup_time_options: {
     weekday: ["7:00 PM", "7:30 PM", "8:00 PM"],
     weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
-  },
-  modular_preview_layout: {
-    base_x: 0,
-    base_y: 0,
-    base_z: 0,
-    cap_x: 4.7,
-    cap_y: 0,
-    cap_z: 11,
-    letter_x: 0,
-    letter_y: 0,
-    letter_z: 0
   }
 };
 
@@ -290,10 +280,6 @@ try {
   shopSettings.booth_notice_text = String(
     shopSettings.pickup_time_options?.booth_notice_text || ""
   ).trim();
-  shopSettings.modular_preview_layout = {
-    ...DEFAULT_SHOP_SETTINGS.modular_preview_layout,
-    ...(shopSettings.pickup_time_options?.modular_preview_layout || {})
-  };
   shopSettings.pickup_time_options = normalizePickupTimeOptions(
     shopSettings.pickup_time_options
   );
@@ -5591,14 +5577,6 @@ async function createKeycapTop(letter, index, design) {
     }
   }
 
-  const previewLayout = {
-    ...DEFAULT_SHOP_SETTINGS.modular_preview_layout,
-    ...(shopSettings.modular_preview_layout || {})
-  };
-  raisedLetter.position.x += Number(previewLayout.letter_x);
-  raisedLetter.position.y += Number(previewLayout.letter_y);
-  raisedLetter.position.z += Number(previewLayout.letter_z);
-
   const capGroup = new THREE.Group();
   capGroup.add(tile);
   capGroup.add(raisedLetter);
@@ -5612,33 +5590,25 @@ async function createKeycap(letter, index, characterCount, design) {
   const baseColour = design.bases[index % design.bases.length];
   const selectedBaseShape =
     design.baseShape || "ribbed";
-  const baseRole = getModularBaseRole(index, characterCount);
+  const placement = getModularPreviewPlacement(selectedBaseShape, index, characterCount);
+  const baseRole = placement.role;
 
   const baseGeo = await loadSTL(
     (BASE_SHAPES[selectedBaseShape] || BASE_SHAPES.ribbed).files[baseRole]
   );
   const base = new THREE.Mesh(baseGeo, createMat(baseColour));
   base.rotation.z = Math.PI / 2;
-  const previewLayout = {
-    ...DEFAULT_SHOP_SETTINGS.modular_preview_layout,
-    ...(shopSettings.modular_preview_layout || {})
-  };
-  base.position.set(
-    Number(previewLayout.base_x),
-    Number(previewLayout.base_y),
-    Number(previewLayout.base_z)
-  );
   group.add(base);
 
   const capGroup = await createKeycapTop(letter, index, design);
   capGroup.position.set(
-    Number(previewLayout.cap_x),
-    Number(previewLayout.cap_y),
-    Number(previewLayout.cap_z)
+    placement.capX,
+    placement.capY,
+    placement.capZ
   );
   group.add(capGroup);
 
-  group.position.x = index * 28;
+  group.position.x = placement.groupX;
 
   return group;
 }

@@ -33,6 +33,7 @@ import {
   getProductionPreviewOrders,
   getProductionJobGroup,
   getModularBaseRole,
+  getModularPreviewPlacement,
   getTrackedProductionQuantity,
   normalizeAssemblyProgress,
   assessRushDateCapacity,
@@ -498,6 +499,20 @@ test("assigns the correct connector role to modular bases", () => {
   assert.equal(getModularBaseRole(4, 6), "middle");
   assert.equal(getModularBaseRole(5, 6), "last");
   assert.equal(getModularBaseRole(0, 1), "first");
+});
+
+test("aligns each modular base role to an evenly spaced switch centre", () => {
+  const placements = [0, 1, 2].map(index =>
+    getModularPreviewPlacement("bubbly", index, 3)
+  );
+
+  assert.deepEqual(placements.map(item => item.role), ["first", "middle", "last"]);
+  assert.deepEqual(
+    placements.map(item => Number((item.groupX + item.capX).toFixed(3))),
+    [4.768, 32.768, 60.768]
+  );
+  assert.equal(getModularPreviewPlacement("wavy", 0, 2).capX, 2.775);
+  assert.equal(getModularPreviewPlacement("unknown", 0, 2).capX, 3.134);
 });
 
 test("groups nearby deliveries by Singapore postal sector", () => {

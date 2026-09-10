@@ -7496,21 +7496,6 @@ a {
   margin-top: 16px;
 }
 
-.preview-part-alignment {
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid #eadde3;
-  border-radius: 13px;
-  background: #fffafb;
-}
-
-.preview-part-alignment > strong {
-  display: block;
-  margin-bottom: 9px;
-  color: #674654;
-  font-size: 13px;
-}
-
 .new-product-listing {
   margin: 16px 0 20px;
   overflow: hidden;

@@ -231,6 +231,28 @@ export function getModularBaseRole(index, characterCount) {
   return "middle";
 }
 
+const MODULAR_PREVIEW_BASE_CENTRES = Object.freeze({
+  ribbed: Object.freeze({ first: 3.134, middle: 4.627, last: 4.627 }),
+  wavy: Object.freeze({ first: 2.775, middle: 4.268, last: 4.268 }),
+  bubbly: Object.freeze({ first: 3.273, middle: 4.768, last: 4.768 })
+});
+
+export function getModularPreviewPlacement(baseShape, index, characterCount) {
+  const safeShape = MODULAR_PREVIEW_BASE_CENTRES[baseShape] ? baseShape : "ribbed";
+  const centres = MODULAR_PREVIEW_BASE_CENTRES[safeShape];
+  const role = getModularBaseRole(index, characterCount);
+  const centreX = centres[role];
+  const referenceX = centres.middle;
+
+  return {
+    role,
+    capX: centreX,
+    capY: 0,
+    capZ: 11,
+    groupX: Math.max(0, Math.floor(Number(index) || 0)) * 28 + referenceX - centreX
+  };
+}
+
 export function buildPencilCharacterPlates(parts = [], capacity = 56) {
   const safeCapacity = Math.max(1, Math.floor(Number(capacity) || 56));
   const colourGroups = new Map();
