@@ -585,6 +585,11 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
     weekday: ["7:00 PM", "7:30 PM", "8:00 PM"],
     weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
   },
+  modular_preview_layout: {
+    cap_x: 4.7,
+    cap_y: 0,
+    cap_z: 11
+  },
   easyparcel_settings: {
     sender_name: "",
     sender_company: "Little Keeps",
@@ -1898,6 +1903,31 @@ function renderSettingsWorkspace() {
           <p class="hint">Product prices are managed separately above.</p>
         </section>
 
+        <section class="settings-card settings-card-wide" data-settings-group="products">
+          <div class="settings-card-heading">
+            <div>
+              <h3>Modular keycap preview alignment</h3>
+              <p class="hint">Adjust only the website's 3D preview. Your downloaded STL files are not changed.</p>
+            </div>
+            <button type="button" onclick="window.resetModularPreviewAlignment()">Reset</button>
+          </div>
+          <div class="settings-fields three-columns">
+            <label class="settings-field">
+              <span>Left / right (X)</span>
+              <input id="modularPreviewCapX" name="modular_preview_cap_x" type="number" step="0.1" min="-20" max="20" value="${escapeAdminHtml(adminShopSettings.modular_preview_layout?.cap_x ?? 4.7)}">
+            </label>
+            <label class="settings-field">
+              <span>Forward / back (Y)</span>
+              <input id="modularPreviewCapY" name="modular_preview_cap_y" type="number" step="0.1" min="-20" max="20" value="${escapeAdminHtml(adminShopSettings.modular_preview_layout?.cap_y ?? 0)}">
+            </label>
+            <label class="settings-field">
+              <span>Up / down (Z)</span>
+              <input id="modularPreviewCapZ" name="modular_preview_cap_z" type="number" step="0.1" min="-10" max="30" value="${escapeAdminHtml(adminShopSettings.modular_preview_layout?.cap_z ?? 11)}">
+            </label>
+          </div>
+          <p class="hint">Save settings, then open the modular product's private preview to check the position.</p>
+        </section>
+
         <section class="settings-card settings-card-wide" data-settings-group="delivery">
           <div class="settings-card-heading">
             <div>
@@ -2272,6 +2302,15 @@ async function saveShopSettings(event) {
   updates.review_url = String(form.get("review_url") || "").trim();
   const boothNoticeEnabled = form.has("booth_notice_enabled");
   const boothNoticeText = String(form.get("booth_notice_text") || "").trim();
+  const clampPreviewOffset = (value, fallback, min, max) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+  };
+  const modularPreviewLayout = {
+    cap_x: clampPreviewOffset(form.get("modular_preview_cap_x"), 4.7, -20, 20),
+    cap_y: clampPreviewOffset(form.get("modular_preview_cap_y"), 0, -20, 20),
+    cap_z: clampPreviewOffset(form.get("modular_preview_cap_z"), 11, -10, 30)
+  };
   const colourRows = Array.from(
     event.currentTarget.querySelectorAll("[data-colour-row]")
   );
@@ -2390,6 +2429,7 @@ async function saveShopSettings(event) {
       .replace(/\D/g, "") || "6585121915",
     booth_notice_enabled: boothNoticeEnabled,
     booth_notice_text: boothNoticeText,
+    modular_preview_layout: modularPreviewLayout,
     colour_options: normalizedColourOptions,
     product_catalog_overrides: productCatalogOverrides,
     product_statuses: productStatusOverrides
@@ -2458,6 +2498,10 @@ async function saveShopSettings(event) {
     booth_notice_text: String(
       savedShopSettings.pickup_time_options?.booth_notice_text || ""
     ).trim(),
+    modular_preview_layout: {
+      ...DEFAULT_ADMIN_SHOP_SETTINGS.modular_preview_layout,
+      ...(savedShopSettings.pickup_time_options?.modular_preview_layout || {})
+    },
     pickup_time_options: normalizePickupTimeOptions(savedShopSettings.pickup_time_options)
   };
   adminShopSettings.easyparcel_settings = {
@@ -2473,6 +2517,16 @@ async function saveShopSettings(event) {
     : "Shop settings saved ✓");
   renderSettingsWorkspace();
 }
+
+window.resetModularPreviewAlignment = function() {
+  const defaults = DEFAULT_ADMIN_SHOP_SETTINGS.modular_preview_layout;
+  const x = document.getElementById("modularPreviewCapX");
+  const y = document.getElementById("modularPreviewCapY");
+  const z = document.getElementById("modularPreviewCapZ");
+  if (x) x.value = defaults.cap_x;
+  if (y) y.value = defaults.cap_y;
+  if (z) z.value = defaults.cap_z;
+};
 
 window.addShopClosure = async function() {
   const startDate = document.getElementById("shopClosureStart")?.value || "";
@@ -14953,6 +15007,10 @@ async function loadAdminSettings() {
     adminShopSettings.booth_notice_text ??
     ""
   ).trim();
+  adminShopSettings.modular_preview_layout = {
+    ...DEFAULT_ADMIN_SHOP_SETTINGS.modular_preview_layout,
+    ...(adminShopSettings.pickup_time_options?.modular_preview_layout || {})
+  };
   adminShopSettings.bulk_buffer_days = Math.max(0, Number(
     adminShopSettings.pickup_time_options?.bulk_buffer_days ??
     adminShopSettings.bulk_buffer_days ??

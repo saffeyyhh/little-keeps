@@ -125,6 +125,11 @@ const DEFAULT_SHOP_SETTINGS = {
   pickup_time_options: {
     weekday: ["7:00 PM", "7:30 PM", "8:00 PM"],
     weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
+  },
+  modular_preview_layout: {
+    cap_x: 4.7,
+    cap_y: 0,
+    cap_z: 11
   }
 };
 
@@ -279,6 +284,10 @@ try {
   shopSettings.booth_notice_text = String(
     shopSettings.pickup_time_options?.booth_notice_text || ""
   ).trim();
+  shopSettings.modular_preview_layout = {
+    ...DEFAULT_SHOP_SETTINGS.modular_preview_layout,
+    ...(shopSettings.pickup_time_options?.modular_preview_layout || {})
+  };
   shopSettings.pickup_time_options = normalizePickupTimeOptions(
     shopSettings.pickup_time_options
   );
@@ -5599,10 +5608,15 @@ async function createKeycap(letter, index, characterCount, design) {
   group.add(base);
 
   const capGroup = await createKeycapTop(letter, index, design);
-  // Every current modular base STL is centred on its switch opening. Keep the
-  // character top on that same centre instead of carrying over the old model's
-  // sideways correction.
-  capGroup.position.set(4.7, 0, 11);
+  const previewLayout = {
+    ...DEFAULT_SHOP_SETTINGS.modular_preview_layout,
+    ...(shopSettings.modular_preview_layout || {})
+  };
+  capGroup.position.set(
+    Number(previewLayout.cap_x),
+    Number(previewLayout.cap_y),
+    Number(previewLayout.cap_z)
+  );
   group.add(capGroup);
 
   group.position.x = index * 28;
