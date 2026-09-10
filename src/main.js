@@ -1036,10 +1036,12 @@ ${requestedPreviewProductKey ? `
   ${solidProduct.status !== "hidden" ? `
     <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <span class="authorised-seller-ribbon">Authorised Seller</span>
-      <div class="product-card-visual mystery-product-visual" aria-hidden="true">
-        <div class="mystery-solid-base">
-          <i></i><i></i><i></i><b>ABC</b>
-        </div>
+      <div class="product-card-visual">
+        <img
+          src="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}"
+          alt="Colourful compact solid clicky keychains"
+          loading="lazy"
+        >
         <span class="product-card-badge">${solidProduct.status === "active" ? "Available now" : "Coming soon"}</span>
       </div>
 
@@ -1064,10 +1066,12 @@ ${requestedPreviewProductKey ? `
   ${pencilProduct.status !== "hidden" ? `
     <article class="product-card pencil-product-card ${pencilProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${pencilProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <span class="authorised-seller-ribbon">Authorised Seller</span>
-      <div class="product-card-visual pencil-product-visual" aria-hidden="true">
-        <div class="pencil-card-art">
-          <i class="pencil-card-eraser"></i><i class="pencil-card-ferrule"></i><b>LITTLE KEEPS</b><i class="pencil-card-wood"></i><i class="pencil-card-tip"></i>
-        </div>
+      <div class="product-card-visual pencil-product-visual">
+        <img
+          src="${escapePresetText(pencilProduct.image_path || "/images/custom-pencil-clicker.jpg")}"
+          alt="A colourful collection of custom pencil clicker keychains"
+          loading="lazy"
+        >
         <span class="product-card-badge">${pencilProduct.status === "active" ? "Available now" : "Coming soon"}</span>
       </div>
       <div class="product-card-content">

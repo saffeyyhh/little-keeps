@@ -116,7 +116,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     minimum_working_days: null,
     maximum_working_days: null,
     sort_order: 20,
-    image_path: null,
+    image_path: "/images/compact-solid-clicky-keychain.jpg",
     production_notes: "Use the matching licensed Compact Fidget Clicker solid base for 1–10 slots, plus one chunky keycap and switch per character."
   },
 
@@ -219,7 +219,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     minimum_working_days: null,
     maximum_working_days: null,
     sort_order: 25,
-    image_path: null,
+    image_path: "/images/custom-pencil-clicker.jpg",
     production_notes: "Prepare one licensed Clickify 3D Pencil Body and matching Flat/Raised top per character. Confirm block, top, character, eraser, ferrule, wood, tip and end-cap colours before slicing."
   }
 ];
