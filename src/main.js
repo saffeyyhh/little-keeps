@@ -698,13 +698,6 @@ ${requestedPreviewProductKey ? `
     <span>Free islandwide delivery above ${displaySettingMoney(freeDeliveryThreshold)}</span>
   </div>
 
-  <span class="announcement-divider"></span>
-
-  <div class="announcement-item">
-    <span class="announcement-icon">✦</span>
-    <span><strong>Live dispatch estimates</strong></span>
-  </div>
-
   <span id="holidayNoticeDivider" class="announcement-divider hidden"></span>
 
   <div id="holidayNotice" class="announcement-item announcement-holiday hidden">
