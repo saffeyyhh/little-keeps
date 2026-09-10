@@ -127,9 +127,15 @@ const DEFAULT_SHOP_SETTINGS = {
     weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
   },
   modular_preview_layout: {
+    base_x: 0,
+    base_y: 0,
+    base_z: 0,
     cap_x: 4.7,
     cap_y: 0,
-    cap_z: 11
+    cap_z: 11,
+    letter_x: 0,
+    letter_y: 0,
+    letter_z: 0
   }
 };
 
@@ -5585,6 +5591,14 @@ async function createKeycapTop(letter, index, design) {
     }
   }
 
+  const previewLayout = {
+    ...DEFAULT_SHOP_SETTINGS.modular_preview_layout,
+    ...(shopSettings.modular_preview_layout || {})
+  };
+  raisedLetter.position.x += Number(previewLayout.letter_x);
+  raisedLetter.position.y += Number(previewLayout.letter_y);
+  raisedLetter.position.z += Number(previewLayout.letter_z);
+
   const capGroup = new THREE.Group();
   capGroup.add(tile);
   capGroup.add(raisedLetter);
@@ -5605,13 +5619,18 @@ async function createKeycap(letter, index, characterCount, design) {
   );
   const base = new THREE.Mesh(baseGeo, createMat(baseColour));
   base.rotation.z = Math.PI / 2;
-  group.add(base);
-
-  const capGroup = await createKeycapTop(letter, index, design);
   const previewLayout = {
     ...DEFAULT_SHOP_SETTINGS.modular_preview_layout,
     ...(shopSettings.modular_preview_layout || {})
   };
+  base.position.set(
+    Number(previewLayout.base_x),
+    Number(previewLayout.base_y),
+    Number(previewLayout.base_z)
+  );
+  group.add(base);
+
+  const capGroup = await createKeycapTop(letter, index, design);
   capGroup.position.set(
     Number(previewLayout.cap_x),
     Number(previewLayout.cap_y),

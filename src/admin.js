@@ -586,9 +586,15 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
     weekend: ["10:00 AM", "2:00 PM", "7:00 PM"]
   },
   modular_preview_layout: {
+    base_x: 0,
+    base_y: 0,
+    base_z: 0,
     cap_x: 4.7,
     cap_y: 0,
-    cap_z: 11
+    cap_z: 11,
+    letter_x: 0,
+    letter_y: 0,
+    letter_z: 0
   },
   easyparcel_settings: {
     sender_name: "",
@@ -1911,20 +1917,20 @@ function renderSettingsWorkspace() {
             </div>
             <button type="button" onclick="window.resetModularPreviewAlignment()">Reset</button>
           </div>
-          <div class="settings-fields three-columns">
-            <label class="settings-field">
-              <span>Left / right (X)</span>
-              <input id="modularPreviewCapX" name="modular_preview_cap_x" type="number" step="0.1" min="-20" max="20" value="${escapeAdminHtml(adminShopSettings.modular_preview_layout?.cap_x ?? 4.7)}">
-            </label>
-            <label class="settings-field">
-              <span>Forward / back (Y)</span>
-              <input id="modularPreviewCapY" name="modular_preview_cap_y" type="number" step="0.1" min="-20" max="20" value="${escapeAdminHtml(adminShopSettings.modular_preview_layout?.cap_y ?? 0)}">
-            </label>
-            <label class="settings-field">
-              <span>Up / down (Z)</span>
-              <input id="modularPreviewCapZ" name="modular_preview_cap_z" type="number" step="0.1" min="-10" max="30" value="${escapeAdminHtml(adminShopSettings.modular_preview_layout?.cap_z ?? 11)}">
-            </label>
-          </div>
+          ${[
+            ["Base", "Base", adminShopSettings.modular_preview_layout?.base_x ?? 0, adminShopSettings.modular_preview_layout?.base_y ?? 0, adminShopSettings.modular_preview_layout?.base_z ?? 0],
+            ["Cap / top", "Cap", adminShopSettings.modular_preview_layout?.cap_x ?? 4.7, adminShopSettings.modular_preview_layout?.cap_y ?? 0, adminShopSettings.modular_preview_layout?.cap_z ?? 11],
+            ["Letter / icon", "Letter", adminShopSettings.modular_preview_layout?.letter_x ?? 0, adminShopSettings.modular_preview_layout?.letter_y ?? 0, adminShopSettings.modular_preview_layout?.letter_z ?? 0]
+          ].map(([label, key, x, y, z]) => `
+            <div class="preview-part-alignment">
+              <strong>${label}</strong>
+              <div class="settings-fields three-columns">
+                <label class="settings-field"><span>Left / right (X)</span><input id="modularPreview${key}X" name="modular_preview_${key.toLowerCase()}_x" type="number" step="0.1" min="-20" max="20" value="${escapeAdminHtml(x)}"></label>
+                <label class="settings-field"><span>Forward / back (Y)</span><input id="modularPreview${key}Y" name="modular_preview_${key.toLowerCase()}_y" type="number" step="0.1" min="-20" max="20" value="${escapeAdminHtml(y)}"></label>
+                <label class="settings-field"><span>Up / down (Z)</span><input id="modularPreview${key}Z" name="modular_preview_${key.toLowerCase()}_z" type="number" step="0.1" min="-20" max="30" value="${escapeAdminHtml(z)}"></label>
+              </div>
+            </div>
+          `).join("")}
           <p class="hint">Save settings, then open the modular product's private preview to check the position.</p>
         </section>
 
@@ -2307,9 +2313,15 @@ async function saveShopSettings(event) {
     return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
   };
   const modularPreviewLayout = {
+    base_x: clampPreviewOffset(form.get("modular_preview_base_x"), 0, -20, 20),
+    base_y: clampPreviewOffset(form.get("modular_preview_base_y"), 0, -20, 20),
+    base_z: clampPreviewOffset(form.get("modular_preview_base_z"), 0, -20, 30),
     cap_x: clampPreviewOffset(form.get("modular_preview_cap_x"), 4.7, -20, 20),
     cap_y: clampPreviewOffset(form.get("modular_preview_cap_y"), 0, -20, 20),
-    cap_z: clampPreviewOffset(form.get("modular_preview_cap_z"), 11, -10, 30)
+    cap_z: clampPreviewOffset(form.get("modular_preview_cap_z"), 11, -20, 30),
+    letter_x: clampPreviewOffset(form.get("modular_preview_letter_x"), 0, -20, 20),
+    letter_y: clampPreviewOffset(form.get("modular_preview_letter_y"), 0, -20, 20),
+    letter_z: clampPreviewOffset(form.get("modular_preview_letter_z"), 0, -20, 30)
   };
   const colourRows = Array.from(
     event.currentTarget.querySelectorAll("[data-colour-row]")
@@ -2520,12 +2532,13 @@ async function saveShopSettings(event) {
 
 window.resetModularPreviewAlignment = function() {
   const defaults = DEFAULT_ADMIN_SHOP_SETTINGS.modular_preview_layout;
-  const x = document.getElementById("modularPreviewCapX");
-  const y = document.getElementById("modularPreviewCapY");
-  const z = document.getElementById("modularPreviewCapZ");
-  if (x) x.value = defaults.cap_x;
-  if (y) y.value = defaults.cap_y;
-  if (z) z.value = defaults.cap_z;
+  ["Base", "Cap", "Letter"].forEach(part => {
+    ["X", "Y", "Z"].forEach(axis => {
+      const input = document.getElementById(`modularPreview${part}${axis}`);
+      const key = `${part.toLowerCase()}_${axis.toLowerCase()}`;
+      if (input) input.value = defaults[key];
+    });
+  });
 };
 
 window.addShopClosure = async function() {
