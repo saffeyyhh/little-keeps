@@ -249,7 +249,7 @@ export function getModularPreviewPlacement(baseShape, index, characterCount) {
     capX: centreX,
     capY: 0,
     capZ: 11,
-    groupX: Math.max(0, Math.floor(Number(index) || 0)) * 28 + referenceX - centreX
+    groupX: Math.max(0, Math.floor(Number(index) || 0)) * 26 + referenceX - centreX
   };
 }
 
