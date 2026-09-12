@@ -143,7 +143,9 @@ Deno.serve(async request => {
       `Use only colours from this available physical filament palette: ${filamentPalette.map(item => `${item.name} (${item.hex})`).join(", ")}. Choose the closest matches and do not invent any colour outside this list.`,
       subjectType === "person"
         ? "Use exactly one single flat filament colour for all visible skin across every face, neck, ear, arm and hand. Completely ignore photographic lighting, highlights, shadows, blush and reflections on skin: never turn them into additional skin colours or white patches. Preserve each person's likeness through the face shape, hairstyle, eyebrows, eyes, nose, mouth, expression and bold outline—not through skin shading."
-        : "Ignore photographic lighting, highlights, shadows and reflections when separating the subject into colour regions.",
+        : subjectType === "pet"
+          ? "Make the pet look especially cute, warm and friendly while remaining clearly recognizable. Use a charming rounded sticker style with slightly larger expressive eyes, a softly simplified face and muzzle, neat rounded paws, smooth fluffy contours and a gentle pleasant expression. Preserve the real species or breed, ear shape, face shape and distinctive coat markings so it does not become a generic cartoon animal. Do not invent clothes, bows, accessories, a protruding tongue or markings that are not in the photo. Avoid harsh, angry, uncanny or overly realistic facial features. Ignore photographic lighting, highlights, shadows and reflections when separating the pet into colour regions."
+          : "Ignore photographic lighting, highlights, shadows and reflections when separating the subject into colour regions.",
       "Keep the subject recognizable and charming, with bold connected shapes, smooth closed outlines, and no gradients, shadows, texture, text, logos, scenery, frame, or background.",
       "Remove tiny details and isolated specks. Every important stroke and gap must remain thick enough to print at approximately 60 mm wide; target at least 1.2 mm features.",
       variant === "clicker"
