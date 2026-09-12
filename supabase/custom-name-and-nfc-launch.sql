@@ -7,7 +7,7 @@ alter table public.shop_settings
 
 alter table public.shop_settings
   add column if not exists photo_clicker_addon_price numeric(10, 2) not null
-  default 3.00 check (photo_clicker_addon_price >= 0);
+  default 1.50 check (photo_clicker_addon_price >= 0);
 
 update public.product_catalog
 set

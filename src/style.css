@@ -7069,6 +7069,44 @@ body {
   font: inherit;
 }
 
+.photo-clicker-upgrade {
+  margin-top: 14px;
+  padding: 13px 14px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #e3c8d6;
+  border-radius: 14px;
+  background: #fff8fb;
+  color: #5f4e57;
+  cursor: pointer;
+}
+
+.photo-clicker-upgrade input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: #ef4f88;
+}
+
+.photo-clicker-upgrade span,
+.photo-clicker-upgrade small { display: block; }
+.photo-clicker-upgrade strong { font-size: 13px; }
+.photo-clicker-upgrade strong b { color: #d83772; }
+.photo-clicker-upgrade small { margin-top: 3px; color: #7c6b74; font-size: 11px; }
+
+.photo-keepsake-live-price {
+  margin-top: 8px;
+  padding: 0 3px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #77656e;
+  font-size: 11px;
+}
+
+.photo-keepsake-live-price strong { color: #493941; }
+
 .photo-permission-check {
   margin-top: 12px;
   display: flex;

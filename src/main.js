@@ -113,7 +113,7 @@ const DEFAULT_SHOP_SETTINGS = {
   rush_fee_small: 5,
   rush_fee_large: 8,
   nfc_addon_price: 2.5,
-  photo_clicker_addon_price: 3,
+  photo_clicker_addon_price: 1.5,
   stripe_enabled: false,
   status_emails_enabled: false,
   status_email_template_id: "",
@@ -1191,6 +1191,15 @@ ${requestedPreviewProductKey ? `
           <label><span>Name for this design</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
         </div>
+
+        <label class="photo-clicker-upgrade" for="photoClickerUpgrade">
+          <input id="photoClickerUpgrade" type="checkbox">
+          <span>
+            <strong>Make it clicky <b>+S$1.50</b></strong>
+            <small>Add a satisfying clicker to your photo keepsake.</small>
+          </span>
+        </label>
+        <div id="photoKeepsakeLivePrice" class="photo-keepsake-live-price" aria-live="polite"></div>
 
         <label class="photo-permission-check"><input id="photoPermissionCheck" type="checkbox"><span>I own this photo or have permission to use it, including permission from the person or guardian shown.</span></label>
         <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I agree to private AI processing of this photo. It may be kept for up to 30 days so Little Keeps can make my order.</span></label>
@@ -2406,6 +2415,7 @@ const EXTRA_BASE_COLOUR_PRICE = Number(modularProduct.extra_base_colour_price);
 const EXTRA_CAP_COLOUR_PRICE = Number(modularProduct.extra_cap_colour_price);
 const EXTRA_LETTER_COLOUR_PRICE = Number(modularProduct.extra_letter_colour_price);
 const GIFTING_BAG_PRICE = 0.5;
+const PHOTO_CLICKER_ADDON_PRICE = 1.5;
 
 const configuredPromoCode = normalizePromoCode(shopSettings.promo_code);
 
@@ -2546,6 +2556,8 @@ const photoSubjectType = document.getElementById("photoSubjectType");
 const photoColourCount = document.getElementById("photoColourCount");
 const photoKeepsakeLabel = document.getElementById("photoKeepsakeLabel");
 const photoKeepsakeQuantity = document.getElementById("photoKeepsakeQuantity");
+const photoClickerUpgrade = document.getElementById("photoClickerUpgrade");
+const photoKeepsakeLivePrice = document.getElementById("photoKeepsakeLivePrice");
 const photoPermissionCheck = document.getElementById("photoPermissionCheck");
 const photoAiConsentCheck = document.getElementById("photoAiConsentCheck");
 const generatePhotoArtworkBtn = document.getElementById("generatePhotoArtworkBtn");
@@ -4297,7 +4309,7 @@ function calculatePrice(design, name = "", product = activeProduct) {
   });
   const photoVariantPrice =
     product.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker"
-      ? Math.max(0, Number(shopSettings.photo_clicker_addon_price ?? 3))
+      ? PHOTO_CLICKER_ADDON_PRICE
       : 0;
   return roundMoney(productPrice + photoVariantPrice);
 }
@@ -4346,7 +4358,7 @@ function getUnitPriceBreakdown(design, name = "", product = activeProduct) {
   if (product.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker") {
     rows.push({
       label: "Clicker keychain upgrade",
-      amount: Math.max(0, Number(shopSettings.photo_clicker_addon_price ?? 3)),
+      amount: PHOTO_CLICKER_ADDON_PRICE,
       addOn: true
     });
   }
@@ -6842,6 +6854,9 @@ function renderReviewOrder() {
           photoColourCount.value = String(design.photo?.colourCount || 4);
           photoSubjectType.value = design.photo?.subjectType || "person";
           photoKeepsakeQuantity.value = String(getItemQuantity(item));
+          if (photoClickerUpgrade) {
+            photoClickerUpgrade.checked = design.photo?.variant === "clicker";
+          }
           Object.assign(photoKeepsakeState, {
             originalPath: design.photo?.originalPath || "",
             artworkPath: design.photo?.artworkPath || "",
@@ -8782,6 +8797,9 @@ window.editCartItem = function(index) {
     photoColourCount.value = String(design.photo?.colourCount || 4);
     photoSubjectType.value = design.photo?.subjectType || "person";
     photoKeepsakeQuantity.value = String(getItemQuantity(item));
+    if (photoClickerUpgrade) {
+      photoClickerUpgrade.checked = design.photo?.variant === "clicker";
+    }
     Object.assign(photoKeepsakeState, {
       originalPath: design.photo?.originalPath || "",
       artworkPath: design.photo?.artworkPath || "",
@@ -9561,8 +9579,23 @@ async function getPhotoFunctionErrorDetails(error) {
 
 function openPhotoKeepsakeStudio() {
   activeProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
+  renderPhotoKeepsakeLivePrice();
   photoKeepsakeModal?.classList.remove("hidden");
   document.body.classList.add("modal-open");
+}
+
+function renderPhotoKeepsakeLivePrice() {
+  if (!photoKeepsakeLivePrice) return;
+  const product = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
+  const quantity = normalizeItemQuantity(photoKeepsakeQuantity?.value);
+  const clickerSelected = Boolean(photoClickerUpgrade?.checked);
+  const unitPrice = roundMoney(
+    getProductDisplayPrice(product) + (clickerSelected ? PHOTO_CLICKER_ADDON_PRICE : 0)
+  );
+  photoKeepsakeLivePrice.innerHTML = `
+    <span>${clickerSelected ? "Clicker keepsake" : "Classic keepsake"}</span>
+    <strong>${displaySettingMoney(unitPrice)} each${quantity > 1 ? ` · ${quantity} for ${displaySettingMoney(unitPrice * quantity)}` : ""}</strong>
+  `;
 }
 
 function closePhotoKeepsakeStudio() {
@@ -9628,7 +9661,7 @@ async function generatePhotoKeepsakeArtwork() {
         image_data_url: imageDataUrl,
         subject_type: photoSubjectType.value,
         colour_count: Number(photoColourCount.value),
-        variant: "classic",
+        variant: photoClickerUpgrade?.checked ? "clicker" : "classic",
         filament_palette: availableFilamentPalette,
         client_token: currentSubmissionId
       }
@@ -9797,7 +9830,7 @@ function addPhotoKeepsakeToCart() {
         generationId: photoKeepsakeState.generationId,
         subjectType: photoSubjectType.value,
         colourCount: Number(photoColourCount.value),
-        variant: "classic",
+        variant: photoClickerUpgrade?.checked ? "clicker" : "classic",
         filamentPalette: normalizePhotoFilamentPalette(photoKeepsakeState.filamentPalette)
       }
     }
@@ -9889,7 +9922,12 @@ readyMadeProductModal?.addEventListener("click", event => {
 });
 
 document.querySelectorAll("[data-photo-product-start]").forEach(button => {
-  button.addEventListener("click", openPhotoKeepsakeStudio);
+  button.addEventListener("click", () => {
+    if (photoClickerUpgrade) photoClickerUpgrade.checked = false;
+    if (photoKeepsakeQuantity) photoKeepsakeQuantity.value = "1";
+    renderPhotoKeepsakeLivePrice();
+    openPhotoKeepsakeStudio();
+  });
 });
 closePhotoKeepsakeModal?.addEventListener("click", closePhotoKeepsakeStudio);
 photoKeepsakeModal?.addEventListener("click", event => {
@@ -9915,6 +9953,8 @@ photoKeepsakeInput?.addEventListener("change", async () => {
 generatePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 regeneratePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
+photoClickerUpgrade?.addEventListener("change", renderPhotoKeepsakeLivePrice);
+photoKeepsakeQuantity?.addEventListener("input", renderPhotoKeepsakeLivePrice);
 photoMappedPalette?.addEventListener("change", event => {
   const select = event.target.closest("[data-photo-region-colour]");
   if (!select) return;

@@ -567,7 +567,7 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   rush_fee_small: 5,
   rush_fee_large: 8,
   nfc_addon_price: 2.50,
-  photo_clicker_addon_price: 3.00,
+  photo_clicker_addon_price: 1.50,
   rush_max_missing_parts: 60,
   rush_max_active_orders: 5,
   mechanical_switch_low_stock: 100,
@@ -4976,7 +4976,7 @@ function renderOrders(orders) {
             <span class="assembly-tag">× ${Math.max(1, Number(item.quantity) || 1)}</span>
           ` : photoProduct ? `
             <span class="assembly-tag">Photo Keepsake</span>
-            <span class="assembly-tag">Classic Keychain</span>
+            <span class="assembly-tag">${item.design?.photo?.variant === "clicker" ? "Clicker Keychain" : "Classic Keychain"}</span>
             <span class="assembly-tag">${Number(item.design?.photo?.colour_count || 4)} Stocked Colours</span>
           ` : pencilProduct ? `
             <span class="assembly-tag">Custom Pencil Clicker</span>

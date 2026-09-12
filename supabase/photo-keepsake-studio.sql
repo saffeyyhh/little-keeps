@@ -3,7 +3,7 @@
 
 alter table public.shop_settings
   add column if not exists photo_clicker_addon_price numeric(10, 2) not null
-  default 3.00 check (photo_clicker_addon_price >= 0);
+  default 1.50 check (photo_clicker_addon_price >= 0);
 
 insert into public.product_catalog (
   product_key, name, eyebrow, description, status, price_visible,
