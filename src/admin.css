@@ -3130,6 +3130,118 @@ body {
   margin-bottom: 8px;
 }
 
+.photo-preview-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.photo-preview-workspace-header {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #eadde3;
+  border-radius: 16px;
+  background: #fffafd;
+}
+
+.photo-preview-workspace-header h3,
+.photo-preview-workspace-header p { margin: 0; }
+.photo-preview-workspace-header p { margin-top: 4px; color: #718087; font-size: 12px; }
+.photo-preview-workspace-header button,
+.admin-photo-preview-card footer button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: #7c4fa4;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.admin-photo-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.admin-photo-preview-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e7dce1;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.admin-photo-preview-card > header,
+.admin-photo-preview-card > footer {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-photo-preview-card > header strong,
+.admin-photo-preview-card > header small { display: block; }
+.admin-photo-preview-card > header small,
+.admin-photo-preview-card > footer small { margin-top: 3px; color: #78858a; font-size: 10px; }
+.admin-photo-preview-card > header > span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #76576a;
+  background: #f5eaf0;
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.admin-photo-preview-card > header > span.is-ordered { color: #356b53; background: #e6f5ec; }
+
+.admin-photo-preview-images {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: #eadde3;
+}
+
+.admin-photo-preview-images figure {
+  margin: 0;
+  min-width: 0;
+  background: #f6f1ed;
+}
+
+.admin-photo-preview-images img,
+.admin-photo-preview-images figure > div {
+  width: 100%;
+  height: 220px;
+  display: grid;
+  place-items: center;
+  object-fit: contain;
+  background: #f6f1ed;
+  color: #83747b;
+  font-size: 11px;
+}
+
+.admin-photo-preview-images figcaption {
+  padding: 7px 9px;
+  color: #66565e;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.admin-photo-preview-card footer button:disabled,
+.photo-preview-workspace-header button:disabled { opacity: .6; cursor: wait; }
+
+@media (max-width: 640px) {
+  .photo-preview-workspace-header,
+  .admin-photo-preview-card > footer { align-items: stretch; flex-direction: column; }
+  .admin-photo-preview-images { grid-template-columns: 1fr; }
+}
+
 .order-details {
   margin-top: 14px;
   background: #fff7fb;

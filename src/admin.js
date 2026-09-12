@@ -164,6 +164,9 @@ document.querySelector("#app").innerHTML = `
       <button id="ordersViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">▤</span> Orders
       </button>
+      <button id="photoPreviewsViewBtn" class="workshop-tab" type="button">
+        <span aria-hidden="true">▧</span> AI Photos
+      </button>
       <button id="scheduleViewBtn" class="workshop-tab" type="button">
         <span aria-hidden="true">▦</span> Calendar
       </button>
@@ -451,6 +454,7 @@ const refreshBtn = document.getElementById("refreshBtn");
 const cleanupExpiredBtn = document.getElementById("cleanupExpiredBtn");
 const todayViewBtn = document.getElementById("todayViewBtn");
 const ordersViewBtn = document.getElementById("ordersViewBtn");
+const photoPreviewsViewBtn = document.getElementById("photoPreviewsViewBtn");
 const scheduleViewBtn = document.getElementById("scheduleViewBtn");
 const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
@@ -505,6 +509,7 @@ logoutBtn.onclick = async () => {
 
 let currentView = "today";
 let latestOrders = [];
+let latestPhotoPreviews = [];
 let scheduleMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedScheduleDate = getSingaporeDateValue();
 let workshopNotesSaveTimer = null;
@@ -811,6 +816,146 @@ function createEmailMiniPreview(name, design) {
     .join("");
 }
 
+function getOrderedPhotoArtworkPaths() {
+  return new Set(latestOrders.flatMap(order =>
+    (Array.isArray(order.order_data) ? order.order_data : []).flatMap(item => {
+      const path = String(item?.design?.photo?.artwork_path || "").trim();
+      return path ? [path] : [];
+    })
+  ));
+}
+
+function formatPhotoPreviewDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return date.toLocaleString("en-SG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+async function getPrivateArtworkUrl(path, expiresIn = 900) {
+  if (!path) return "";
+  const { data, error } = await supabase.storage
+    .from("customer-artwork")
+    .createSignedUrl(path, expiresIn);
+  return error ? "" : data?.signedUrl || "";
+}
+
+async function loadPhotoPreviews() {
+  const { data, error } = await supabase
+    .from("photo_artwork_requests")
+    .select("id, subject_type, variant, colour_count, original_path, artwork_path, status, created_at, expires_at")
+    .order("created_at", { ascending: false })
+    .limit(48);
+  if (error) throw error;
+  latestPhotoPreviews = await Promise.all((data || []).map(async preview => ({
+    ...preview,
+    originalUrl: await getPrivateArtworkUrl(preview.original_path),
+    artworkUrl: await getPrivateArtworkUrl(preview.artwork_path)
+  })));
+  return latestPhotoPreviews;
+}
+
+async function renderPhotoPreviewsWorkspace(forceReload = false) {
+  if (currentView !== "photo-previews") return;
+  if (forceReload || !latestPhotoPreviews.length) {
+    ordersContainer.innerHTML = `<p class="empty">Loading your recent AI photo previews…</p>`;
+    try {
+      await loadPhotoPreviews();
+    } catch (error) {
+      console.error("Unable to load AI photo previews:", error);
+      ordersContainer.innerHTML = `
+        <div class="stock-alert">
+          <strong>AI photo previews could not be loaded</strong>
+          <span>Refresh and try again. If this continues, check that the photo artwork database setup has been installed.</span>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  const orderedPaths = getOrderedPhotoArtworkPaths();
+  ordersContainer.innerHTML = `
+    <div class="photo-preview-workspace">
+      <header class="photo-preview-workspace-header">
+        <div>
+          <h3>Recent generated artwork</h3>
+          <p>Private source photos and artwork are kept for up to 30 days. Tests appear here even when they were not added to an order.</p>
+        </div>
+        <button type="button" onclick="window.refreshPhotoPreviews(this)">Refresh</button>
+      </header>
+      <div class="admin-photo-preview-grid">
+        ${latestPhotoPreviews.map(preview => {
+          const ordered = orderedPaths.has(preview.artwork_path);
+          const filename = `AI-${preview.subject_type || "photo"}-${String(preview.id || "preview").slice(0, 8)}-ARTWORK.png`;
+          return `
+            <article class="admin-photo-preview-card">
+              <header>
+                <div>
+                  <strong>${escapeAdminHtml(String(preview.subject_type || "photo").replace(/^./, letter => letter.toUpperCase()))} · ${Number(preview.colour_count || 4)} colours</strong>
+                  <small>${escapeAdminHtml(formatPhotoPreviewDate(preview.created_at))}</small>
+                </div>
+                <span class="${ordered ? "is-ordered" : ""}">${ordered ? "In an order" : "Preview only"}</span>
+              </header>
+              <div class="admin-photo-preview-images">
+                <figure>
+                  ${preview.originalUrl ? `<img src="${escapeAdminHtml(preview.originalUrl)}" alt="Private uploaded source photo" loading="lazy">` : `<div>Source unavailable</div>`}
+                  <figcaption>Uploaded photo</figcaption>
+                </figure>
+                <figure>
+                  ${preview.artworkUrl ? `<img src="${escapeAdminHtml(preview.artworkUrl)}" alt="Generated photo keepsake artwork" loading="lazy">` : `<div>Artwork unavailable</div>`}
+                  <figcaption>${preview.variant === "clicker" ? "Clicker artwork" : "Classic artwork"}</figcaption>
+                </figure>
+              </div>
+              <footer>
+                <small>Expires ${escapeAdminHtml(formatPhotoPreviewDate(preview.expires_at))}</small>
+                <button type="button" ${preview.artwork_path ? "" : "disabled"} onclick='window.downloadSavedPhotoPreview(${JSON.stringify(preview.artwork_path || "")}, ${JSON.stringify(filename)}, this)'>Save Artwork PNG</button>
+              </footer>
+            </article>
+          `;
+        }).join("") || `<p class="empty">No AI photo previews have been generated yet.</p>`}
+      </div>
+    </div>
+  `;
+}
+
+window.refreshPhotoPreviews = async function(button) {
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Refreshing…";
+  }
+  await renderPhotoPreviewsWorkspace(true);
+};
+
+window.downloadSavedPhotoPreview = async function(path, filename, button) {
+  if (!path) return;
+  const previousLabel = button?.textContent || "Save Artwork PNG";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving…";
+  }
+  try {
+    const url = await getPrivateArtworkUrl(path, 300);
+    if (!url) throw new Error("This private artwork link could not be created.");
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("This private artwork could not be downloaded.");
+    downloadRushStl(await response.blob(), filename);
+    if (button) button.textContent = "Saved ✓";
+  } catch (error) {
+    console.error("Unable to save generated artwork:", error);
+    alert(error?.message || "Unable to save this artwork. Please try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      setTimeout(() => { button.textContent = previousLabel; }, 1800);
+    }
+  }
+};
+
 function renderCurrentView() {
 
   orderFilters.style.display = currentView === "orders" ? "" : "none";
@@ -826,6 +971,12 @@ function renderCurrentView() {
     ordersActions.style.display = "flex";
     renderStats(latestOrders);
     renderOrders(latestOrders);
+  }
+
+  if (currentView === "photo-previews") {
+    sectionTitle.innerText = "AI Photo Previews";
+    ordersActions.style.display = "none";
+    renderPhotoPreviewsWorkspace();
   }
 
   if (currentView === "schedule") {
@@ -16060,6 +16211,7 @@ function setActiveTab(activeTab) {
 
     todayViewBtn.classList.remove("active");
     ordersViewBtn.classList.remove("active");
+    photoPreviewsViewBtn.classList.remove("active");
     scheduleViewBtn.classList.remove("active");
     productionViewBtn.classList.remove("active");
     assemblyViewBtn.classList.remove("active");
@@ -16081,6 +16233,12 @@ todayViewBtn.onclick = () => {
 ordersViewBtn.onclick = () => {
   currentView = "orders";
   setActiveTab(ordersViewBtn);
+  renderCurrentView();
+};
+
+photoPreviewsViewBtn.onclick = () => {
+  currentView = "photo-previews";
+  setActiveTab(photoPreviewsViewBtn);
   renderCurrentView();
 };
 
