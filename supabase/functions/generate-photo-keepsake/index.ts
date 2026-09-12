@@ -81,7 +81,7 @@ Deno.serve(async request => {
     const subjectType = ["person", "pet", "object"].includes(body.subject_type)
       ? body.subject_type
       : "person";
-    const variant = "classic";
+    const variant = body.variant === "clicker" ? "clicker" : "classic";
     const filamentPalette = (Array.isArray(body.filament_palette) ? body.filament_palette : [])
       .slice(0, 40)
       .flatMap((item: Record<string, unknown>) => {
@@ -146,7 +146,9 @@ Deno.serve(async request => {
         : "Ignore photographic lighting, highlights, shadows and reflections when separating the subject into colour regions.",
       "Keep the subject recognizable and charming, with bold connected shapes, smooth closed outlines, and no gradients, shadows, texture, text, logos, scenery, frame, or background.",
       "Remove tiny details and isolated specks. Every important stroke and gap must remain thick enough to print at approximately 60 mm wide; target at least 1.2 mm features.",
-      "Keep the silhouette compact with a safe solid area near an upper corner for a keyring hole.",
+      variant === "clicker"
+        ? "This is the Clicker version. Do not draw or include any keyring hole, hanging loop, eyelet, attachment tab, ring, or circular cut-out. Keep the subject's outer silhouette clean and natural all the way around."
+        : "This is the Classic keychain version. Keep the silhouette compact with a safe solid area near an upper corner for its keyring hole.",
       "Return one centred front-facing sticker-like design on a transparent background. Do not add mockups, keyrings, hands, or product photography."
     ].join(" ");
 

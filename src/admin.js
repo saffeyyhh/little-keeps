@@ -8224,7 +8224,7 @@ window.generatePhotoKeepsakeStls = async function(orderId, itemIndex, button, or
       `STL pack ready at approximately ${parts.widthMm.toFixed(1)} × ${parts.heightMm.toFixed(1)} mm.\n\n` +
       "Import every STL together as one object with multiple parts, assign the matching filament colours, and keep their positions unchanged. " +
       `Set ${Math.max(1, Number(orderedQuantity) || 1)} cop${Number(orderedQuantity) === 1 ? "y" : "ies"} in your slicer. ` +
-      "Use a 0.4 mm nozzle with the matching printer/nozzle preset and Arachne wall generator. Inspect the keyring hole and small details before printing."
+      `Use a 0.4 mm nozzle with the matching printer/nozzle preset and Arachne wall generator. Inspect ${item.design?.photo?.variant === "clicker" ? "the clean outer edge and" : "the keyring hole and"} small details before printing.`
     );
   } catch (error) {
     console.error("Unable to generate photo keepsake STL files:", error);
@@ -8242,7 +8242,7 @@ window.startPhotoKeepsakePrint = async function(orderId, itemIndex, itemName, qu
   const item = order?.order_data?.[Number(itemIndex)];
   if (!order || !item) return;
   if (!confirm(
-    `Start printing ${item.name || "this photo keepsake"}?\n\nConfirm you sliced it with the 0.4 mm nozzle preset and Arachne wall generator, then checked connected shapes, minimum wall thickness and the keyring area.`
+    `Start printing ${item.name || "this photo keepsake"}?\n\nConfirm you sliced it with the 0.4 mm nozzle preset and Arachne wall generator, then checked connected shapes, minimum wall thickness and ${item.design?.photo?.variant === "clicker" ? "the clean edge with no keyring hole" : "the keyring area"}.`
   )) return;
   await window.startProductionJob(itemName, Math.max(1, Number(quantity) || 1), "Base");
 };
@@ -12817,7 +12817,7 @@ async function renderProductionPlanner(orders) {
                     <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : row.isPencil ? "Licensed Pencil Clicker" : `${row.fontSize} mm letters`}</strong>
                   </header>
                   ${row.isPhoto ? `
-                    <div class="photo-printability-warning"><strong>Use the 0.4 mm nozzle preset</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · use Arachne walls, then inspect connected shapes, minimum wall thickness and the keyring hole before printing.</span></div>
+                    <div class="photo-printability-warning"><strong>Use the 0.4 mm nozzle preset</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · use Arachne walls, then inspect connected shapes, minimum wall thickness and ${row.photo.variant === "clicker" ? "confirm there is no keyring hole" : "the keyring hole"} before printing.</span></div>
                     ${normalizePhotoFilamentPalette(row.photo.filament_palette).length ? `
                       <div class="custom-print-colours">
                         ${normalizePhotoFilamentPalette(row.photo.filament_palette).map(filament => `

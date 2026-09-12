@@ -3992,6 +3992,7 @@ let photoKeepsakeState = {
   artworkPath: "",
   artworkUrl: "",
   generationId: "",
+  variant: "",
   filamentPalette: [],
   recolouring: false
 };
@@ -6866,6 +6867,7 @@ function renderReviewOrder() {
             artworkPath: design.photo?.artworkPath || "",
             artworkUrl: design.photo?.artworkUrl || "",
             generationId: design.photo?.generationId || "",
+            variant: design.photo?.variant || "classic",
             filamentPalette: normalizePhotoFilamentPalette(
               design.photo?.filamentPalette || design.photo?.filament_palette
             )
@@ -8809,6 +8811,7 @@ window.editCartItem = function(index) {
       artworkPath: design.photo?.artworkPath || "",
       artworkUrl: design.photo?.artworkUrl || "",
       generationId: design.photo?.generationId || "",
+      variant: design.photo?.variant || "classic",
       filamentPalette: normalizePhotoFilamentPalette(
         design.photo?.filamentPalette || design.photo?.filament_palette
       )
@@ -9362,6 +9365,7 @@ function resetPhotoArtworkResult() {
   photoKeepsakeState.artworkPath = "";
   photoKeepsakeState.artworkUrl = "";
   photoKeepsakeState.generationId = "";
+  photoKeepsakeState.variant = "";
   photoKeepsakeState.filamentPalette = [];
   photoKeepsakeState.recolouring = false;
   photoArtworkResult?.classList.add("hidden");
@@ -9713,6 +9717,7 @@ async function generatePhotoKeepsakeArtwork() {
       artworkPath: data.artwork_path,
       artworkUrl: exactArtworkUrl.toString(),
       generationId: data.generation_id || "",
+      variant: photoClickerUpgrade?.checked ? "clicker" : "classic",
       filamentPalette,
       recolouring: false
     });
@@ -9984,7 +9989,20 @@ photoKeepsakeInput?.addEventListener("change", async () => {
 generatePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 regeneratePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
-photoClickerUpgrade?.addEventListener("change", renderPhotoKeepsakeLivePrice);
+photoClickerUpgrade?.addEventListener("change", () => {
+  const selectedVariant = photoClickerUpgrade.checked ? "clicker" : "classic";
+  if (
+    photoKeepsakeState.artworkUrl &&
+    photoKeepsakeState.variant &&
+    photoKeepsakeState.variant !== selectedVariant
+  ) {
+    resetPhotoArtworkResult();
+    photoGenerationStatus.textContent = selectedVariant === "clicker"
+      ? "Clicker selected — create the artwork again so it has no keychain hole."
+      : "Classic selected — create the artwork again with space for the keychain hole.";
+  }
+  renderPhotoKeepsakeLivePrice();
+});
 photoKeepsakeQuantity?.addEventListener("input", renderPhotoKeepsakeLivePrice);
 photoMappedPalette?.addEventListener("change", event => {
   const select = event.target.closest("[data-photo-region-colour]");
