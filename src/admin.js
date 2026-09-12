@@ -837,6 +837,16 @@ function formatPhotoPreviewDate(value) {
   });
 }
 
+function formatPhotoSubjectType(value) {
+  const labels = {
+    person: "Person",
+    pet: "Pet",
+    pet_person: "Pet + person",
+    object: "Object or keepsake"
+  };
+  return labels[String(value || "").toLowerCase()] || "Photo";
+}
+
 async function getPrivateArtworkUrl(path, expiresIn = 900) {
   if (!path) return "";
   const { data, error } = await supabase.storage
@@ -916,7 +926,7 @@ async function renderPhotoPreviewsWorkspace(forceReload = false) {
             <article class="admin-photo-preview-card">
               <header>
                 <div>
-                  <strong>${escapeAdminHtml(String(preview.subject_type || "photo").replace(/^./, letter => letter.toUpperCase()))} · ${Number(preview.colour_count || 4)} colours</strong>
+                  <strong>${escapeAdminHtml(formatPhotoSubjectType(preview.subject_type))} · ${Number(preview.colour_count || 4)} colours</strong>
                   <small>${escapeAdminHtml(formatPhotoPreviewDate(preview.created_at))}</small>
                 </div>
                 <span class="${ordered ? "is-ordered" : ""}">${ordered ? "In an order" : "Preview only"}</span>

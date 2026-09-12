@@ -56,7 +56,7 @@ create table if not exists public.photo_artwork_requests (
   id uuid primary key default gen_random_uuid(),
   client_token text not null,
   requester_hash text not null,
-  subject_type text not null check (subject_type in ('person', 'pet', 'object')),
+  subject_type text not null check (subject_type in ('person', 'pet', 'pet_person', 'object')),
   variant text not null check (variant in ('classic', 'clicker')),
   colour_count integer not null check (colour_count between 2 and 4),
   original_path text not null,
@@ -69,6 +69,12 @@ create table if not exists public.photo_artwork_requests (
 
 create index if not exists photo_artwork_requests_requester_idx
   on public.photo_artwork_requests (requester_hash, created_at desc);
+
+alter table public.photo_artwork_requests
+  drop constraint if exists photo_artwork_requests_subject_type_check;
+alter table public.photo_artwork_requests
+  add constraint photo_artwork_requests_subject_type_check
+  check (subject_type in ('person', 'pet', 'pet_person', 'object'));
 
 alter table public.photo_artwork_requests
   add column if not exists expires_at timestamptz not null

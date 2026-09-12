@@ -190,16 +190,19 @@ Deno.serve(async request => {
       const limit = checkPublicLimit(request, "photo");
       if (!limit.allowed) return json({ error: `You have used all ${limit.maximum} photo checks for this hour. You can still create an artwork preview.`, retry_after_seconds: limit.retryAfterSeconds }, 429, request);
       const imageDataUrl = cleanText(body.image_data_url, 12_000_000);
-      const subjectType = ["person", "pet", "object"].includes(body.subject_type) ? body.subject_type : "subject";
+      const subjectType = ["person", "pet", "pet_person", "object"].includes(body.subject_type) ? body.subject_type : "subject";
       if (!/^data:image\/(jpeg|png|webp);base64,/i.test(imageDataUrl)) return json({ error: "Choose a JPG, PNG or WebP photo." }, 400);
       if (await moderate(openAiKey, [{ type: "image_url", image_url: { url: imageDataUrl } }])) {
         return json({ error: "This photo cannot be processed. Please choose another appropriate image." }, 400);
       }
+      const suitabilityRule = subjectType === "pet_person"
+        ? "For a pet + person photo, return true only when one main person and one main pet are both clearly visible, large enough to recognize, and not heavily obstructed."
+        : "Return true when there is one clearly visible main subject with enough light and separation.";
       const result = await respondWithSchema(
         openAiKey,
-        "Decide only whether this photo is suitable for simplifying into recognizable flat-colour artwork for a small keychain. Return true when there is one clearly visible main subject with enough light and separation. Return false when the subject is unclear, too dark, heavily obstructed or too small. Do not provide an explanation.",
+        `Decide only whether this photo is suitable for simplifying into recognizable flat-colour artwork for a small keychain. ${suitabilityRule} Return false when a required subject is unclear, too dark, heavily obstructed or too small. Do not provide an explanation.`,
         [{ role: "user", content: [
-          { type: "input_text", text: `Check this ${subjectType} photo before artwork generation.` },
+          { type: "input_text", text: `Check this ${subjectType === "pet_person" ? "pet and person" : subjectType} photo before artwork generation.` },
           { type: "input_image", image_url: imageDataUrl, detail: "low" }
         ] }],
         "little_keeps_photo_check",

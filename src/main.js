@@ -1204,14 +1204,14 @@ ${requestedPreviewProductKey ? `
         <label class="photo-upload-zone" for="photoKeepsakeInput">
           <input id="photoKeepsakeInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
           <span>Choose a clear photo</span>
-          <small>A bright photo with one person, pet or object works best · maximum 8 MB</small>
+          <small>A bright photo with one person, one pet, both together, or one object works best · maximum 8 MB</small>
           <img id="photoOriginalPreview" class="hidden" alt="Your uploaded photo preview">
         </label>
 
         <div id="photoSuitabilityCheck" class="photo-suitability-check hidden" aria-live="polite"></div>
 
         <div class="photo-option-grid">
-          <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="object">Object or keepsake</option></select></label>
+          <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="pet_person">Pet + person</option><option value="object">Object or keepsake</option></select></label>
           <label><span>Artwork detail</span><select id="photoColourCount"><option value="2">Simple · 2 colours</option><option value="3">Balanced · 3 colours</option><option value="4" selected>More detail · 4 colours</option></select></label>
           <label><span>Name for this design</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
@@ -9881,7 +9881,11 @@ async function downloadPhotoTestStlPack() {
 function addPhotoKeepsakeToCart() {
   if (!photoKeepsakeState.artworkPath || !photoKeepsakeState.artworkUrl) return;
   const label = photoKeepsakeLabel.value.trim() ||
-    (photoSubjectType.value === "pet" ? "Pet Photo" : "Photo Keepsake");
+    (photoSubjectType.value === "pet"
+      ? "Pet Photo"
+      : photoSubjectType.value === "pet_person"
+        ? "Pet + Person Photo"
+        : "Photo Keepsake");
   const fallbackColours = getAvailableColours();
   names = names.filter(item => cartHasItems && item.cartAdded !== false);
   names.push({
