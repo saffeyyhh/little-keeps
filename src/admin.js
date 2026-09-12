@@ -13714,6 +13714,7 @@ async function generateCustomerOrderPdf(order, items) {
     const design = item.design || {};
     const readyMadeProduct = isReadyMadeOrderItem(item);
     const photoProduct = isPhotoKeepsake(order, item);
+    const pencilProduct = isPencilClicker(order, item);
     const productName = getAdminOrderItemProductName(order, item);
     const readyMadeSelections = Object.entries(design.ready_made?.selections || {})
       .map(([label, value]) => `${label}: ${value}`);
@@ -13726,10 +13727,20 @@ async function generateCustomerOrderPdf(order, items) {
     const letters = Array.isArray(design.letters) && design.letters.length
       ? design.letters
       : ["#332d30"];
+    const pencil = design.pencil || {};
+    const pencilEndingStyle = String(
+      pencil.ending_style || pencil.endingStyle || "eraser"
+    );
+    const pdfPencilPart = (value, fallback) => {
+      const colour = getAssemblyColourDetails(value, fallback);
+      return `${colour.name} - ${colour.material}`;
+    };
     const baseShape = photoProduct
       ? design.photo?.variant === "clicker" ? "Clicker artwork" : "Classic keychain artwork"
       : readyMadeProduct
       ? "Ready-made design"
+      : pencilProduct
+      ? pencilEndingStyle === "endCap" ? "Pencil with end cap" : "Pencil with eraser"
       : isSolidClickyKeychain(order, item)
       ? `${getBaseShapeLabel(getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length))} Base`
       : design.base_shape?.label || `${getBaseShapeLabel(design.base_shape?.key || "ribbed")} Base`;
@@ -13761,6 +13772,54 @@ async function generateCustomerOrderPdf(order, items) {
         ? readyMadeSelections.map(selection => getCompactPdfText(selection))
         : ["Options: None selected"]),
       `Quantity: ${Math.max(1, Number(item.quantity) || 1)}`
+    ] : pencilProduct ? [
+      ...(item.group_contributor_name
+        ? pdf.splitTextToSize(
+            `Group member: ${getCompactPdfText(item.group_contributor_name)}`,
+            contentWidth - 12
+          )
+        : []),
+      ...pdf.splitTextToSize(
+        `Block bodies: ${getCompactPdfText(baseNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Clicker tops: ${getCompactPdfText(capNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Characters: ${getCompactPdfText(letterNames)}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Wood: ${getCompactPdfText(pdfPencilPart(pencil.wood || "#e8bd8d", "Desert Tan"))}`,
+        contentWidth - 12
+      ),
+      ...pdf.splitTextToSize(
+        `Pencil tip: ${getCompactPdfText(pdfPencilPart(pencil.tip || "#1d1b1d", "Black"))}`,
+        contentWidth - 12
+      ),
+      ...(pencilEndingStyle === "endCap"
+        ? pdf.splitTextToSize(
+            `End cap: ${getCompactPdfText(pdfPencilPart(pencil.end_cap || pencil.endCap || "#f7c948", "End cap"))}`,
+            contentWidth - 12
+          )
+        : [
+            ...pdf.splitTextToSize(
+              `Metal band: ${getCompactPdfText(pdfPencilPart(pencil.ferrule || "#727d8f", "Blue Grey"))}`,
+              contentWidth - 12
+            ),
+            ...pdf.splitTextToSize(
+              `Eraser: ${getCompactPdfText(pdfPencilPart(pencil.eraser || "#f18db2", "Pink"))}`,
+              contentWidth - 12
+            )
+          ]),
+      ...(iconLegend
+        ? pdf.splitTextToSize(
+            `Icons: ${getCompactPdfText(iconLegend)}`,
+            contentWidth - 12
+          )
+        : [])
     ] : [
       ...(item.group_contributor_name
         ? pdf.splitTextToSize(
@@ -13826,12 +13885,16 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);
     pdf.text(
-      getCompactPdfText(photoProduct || readyMadeProduct ? baseShape : `${baseShape} · ${letterOrientationLabel}`),
+      getCompactPdfText(
+        photoProduct || readyMadeProduct || pencilProduct
+          ? baseShape
+          : `${baseShape} - ${letterOrientationLabel}`
+      ),
       margin + 5,
       y + 12
     );
 
-    let blockX = margin + 5;
+    let blockX = margin + (pencilProduct ? 18 : 5);
     const blockY = y + 16;
 
     if (photoProduct) {
@@ -13864,6 +13927,17 @@ async function generateCustomerOrderPdf(order, items) {
         pdf.setFontSize(7.5);
         pdf.text("Artwork saved privately", margin + 27.5, y + 38, { align: "center" });
       }
+    }
+
+    if (pencilProduct) {
+      const woodRgb = getPdfRgb(pencil.wood || "#e8bd8d", "#e8bd8d");
+      const tipRgb = getPdfRgb(pencil.tip || "#1d1b1d", "#1d1d1d");
+      const pencilCentreY = blockY + 5.5;
+
+      pdf.setFillColor(...woodRgb);
+      pdf.triangle(margin + 7, pencilCentreY, blockX, blockY, blockX, blockY + 11, "F");
+      pdf.setFillColor(...tipRgb);
+      pdf.triangle(margin + 5, pencilCentreY, margin + 8.5, blockY + 3, margin + 8.5, blockY + 8, "F");
     }
 
     characters.forEach((character, characterIndex) => {
@@ -13923,6 +13997,24 @@ async function generateCustomerOrderPdf(order, items) {
       }
       blockX += 10.5;
     });
+
+    if (pencilProduct) {
+      if (pencilEndingStyle === "endCap") {
+        const endCapRgb = getPdfRgb(
+          pencil.end_cap || pencil.endCap || "#f7c948",
+          "#f7c948"
+        );
+        pdf.setFillColor(...endCapRgb);
+        pdf.roundedRect(blockX, blockY, 10, 11, 2, 2, "F");
+      } else {
+        const ferruleRgb = getPdfRgb(pencil.ferrule || "#727d8f", "#727d8f");
+        const eraserRgb = getPdfRgb(pencil.eraser || "#f18db2", "#f18db2");
+        pdf.setFillColor(...ferruleRgb);
+        pdf.rect(blockX, blockY, 6, 11, "F");
+        pdf.setFillColor(...eraserRgb);
+        pdf.roundedRect(blockX + 6, blockY, 8, 11, 2, 2, "F");
+      }
+    }
 
     pdf.setTextColor(...muted);
     pdf.setFont("helvetica", "normal");
@@ -15388,6 +15480,40 @@ async function loadOrders() {
       base_shape: { key: "ribbed" }
     };
     latestOrders = [
+      {
+        id: "preview-pencil-order",
+        order_ref: "LK-PENCIL-PREVIEW",
+        customer_name: "Pencil Customer",
+        customer_email: "pencil@example.com",
+        customer_phone: "90000004",
+        payment_type: "Paid",
+        subtotal: 12.5,
+        delivery_fee: 0,
+        total: 12.5,
+        status: "Payment Verified",
+        collection_method: "pickup_woodlands",
+        needed_by: tomorrow,
+        order_data: [{
+          product_key: PENCIL_PRODUCT_KEY,
+          product_name: "Custom Pencil Clicker Keychain",
+          name: "AIMAN",
+          clean_name: "AIMAN",
+          price: 12.5,
+          design: {
+            bases: [{ name: "Cyan", hex: "#008fd5", material_type: "BASIC" }],
+            caps: [{ name: "Cobalt Blue", hex: "#0759b7", material_type: "BASIC" }],
+            letters: [{ name: "Jade White", hex: "#ffffff", material_type: "BASIC" }],
+            pencil: {
+              ending_style: "eraser",
+              wood: { name: "Desert Tan", hex: "#e8bd8d", material_type: "MATTE" },
+              tip: { name: "Black", hex: "#1d1b1d", material_type: "BASIC" },
+              ferrule: { name: "Blue Grey", hex: "#727d8f", material_type: "BASIC" },
+              eraser: { name: "Pink", hex: "#f18db2", material_type: "BASIC" }
+            }
+          }
+        }],
+        created_at: new Date().toISOString()
+      },
       {
         id: "preview-photo-order",
         order_ref: "LK-PHOTO-PREVIEW",
