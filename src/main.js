@@ -13,7 +13,8 @@ import "flatpickr/dist/flatpickr.min.css";
 import {
   getArtworkColourClusters,
   mapArtworkClustersToFilaments,
-  normalizePhotoFilamentPalette
+  normalizePhotoFilamentPalette,
+  replacePhotoFilamentSelection
 } from "./photo-palette.js";
 import {
   exportPhotoGeometryStl,
@@ -3975,7 +3976,8 @@ let photoKeepsakeState = {
   artworkPath: "",
   artworkUrl: "",
   generationId: "",
-  filamentPalette: []
+  filamentPalette: [],
+  recolouring: false
 };
 
 let cartHasItems = false;
@@ -9339,6 +9341,7 @@ function resetPhotoArtworkResult() {
   photoKeepsakeState.artworkUrl = "";
   photoKeepsakeState.generationId = "";
   photoKeepsakeState.filamentPalette = [];
+  photoKeepsakeState.recolouring = false;
   photoArtworkResult?.classList.add("hidden");
   photoArtworkResult?.removeAttribute("src");
   photoResultActions?.classList.add("hidden");
@@ -9361,13 +9364,22 @@ function getAvailablePhotoFilamentPalette() {
 function renderPhotoMappedPalette(palette = photoKeepsakeState.filamentPalette) {
   if (!photoMappedPalette) return;
   const normalized = normalizePhotoFilamentPalette(palette);
+  const availablePalette = getAvailablePhotoFilamentPalette();
   photoMappedPalette.classList.toggle("hidden", !normalized.length);
   photoMappedPalette.innerHTML = normalized.length ? `
-    <strong>Your finished keychain colours</strong>
-    <div>${normalized.map(item => `
-      <span><i style="background:${item.hex}"></i>${escapePresetText(item.name)}</span>
+    <strong>Customise the colour regions</strong>
+    <small>Each row controls every area currently shown in that colour.</small>
+    <div class="photo-region-colours">${normalized.map((item, index) => `
+      <label class="photo-region-colour">
+        <span><i style="background:${item.hex}"></i>Region ${index + 1} · ${escapePresetText(item.name)}</span>
+        <select data-photo-region-colour="${index}" ${photoKeepsakeState.recolouring ? "disabled" : ""}>
+          ${availablePalette.map(option => `
+            <option value="${escapePresetText(option.hex)}" ${option.hex === item.hex ? "selected" : ""}>${escapePresetText(option.name)} · ${escapePresetText(option.material_type)}</option>
+          `).join("")}
+        </select>
+      </label>
     `).join("")}</div>
-    <small>The preview and finished print use these exact colour choices. Screen colours may look slightly different in person.</small>
+    <small>The preview, order and STL pack will use these choices. Choosing a colour already used by another region swaps the two colours.</small>
   ` : "";
 }
 
@@ -9388,7 +9400,7 @@ async function mapPhotoPreviewToAvailableFilaments(artworkUrl, colourCount, pale
   return mapArtworkClustersToFilaments(centres, palette);
 }
 
-async function recolourPhotoPreview(artworkUrl, filamentPalette) {
+async function recolourPhotoPreview(artworkUrl, filamentPalette, sourceFilamentPalette = []) {
   const palette = normalizePhotoFilamentPalette(filamentPalette).map(item => ({
     ...item,
     rgb: [
@@ -9398,6 +9410,14 @@ async function recolourPhotoPreview(artworkUrl, filamentPalette) {
     ]
   }));
   if (!palette.length) throw new Error("The selected print colours could not be applied.");
+  const sourcePalette = normalizePhotoFilamentPalette(sourceFilamentPalette).map(item => ({
+    ...item,
+    rgb: [
+      Number.parseInt(item.hex.slice(1, 3), 16),
+      Number.parseInt(item.hex.slice(3, 5), 16),
+      Number.parseInt(item.hex.slice(5, 7), 16)
+    ]
+  }));
 
   const response = await fetch(artworkUrl);
   if (!response.ok) throw new Error("The generated preview could not be prepared.");
@@ -9412,18 +9432,20 @@ async function recolourPhotoPreview(artworkUrl, filamentPalette) {
 
   for (let index = 0; index < image.data.length; index += 4) {
     if (image.data[index + 3] < 24) continue;
-    let closest = palette[0];
+    const matchingPalette = sourcePalette.length === palette.length ? sourcePalette : palette;
+    let closestIndex = 0;
     let closestDistance = Infinity;
-    palette.forEach(option => {
+    matchingPalette.forEach((option, optionIndex) => {
       const red = image.data[index] - option.rgb[0];
       const green = image.data[index + 1] - option.rgb[1];
       const blue = image.data[index + 2] - option.rgb[2];
       const distance = red * red + green * green + blue * blue;
       if (distance < closestDistance) {
-        closest = option;
+        closestIndex = optionIndex;
         closestDistance = distance;
       }
     });
+    const closest = palette[closestIndex] || palette[0];
     image.data[index] = closest.rgb[0];
     image.data[index + 1] = closest.rgb[1];
     image.data[index + 2] = closest.rgb[2];
@@ -9433,6 +9455,61 @@ async function recolourPhotoPreview(artworkUrl, filamentPalette) {
   const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
   if (!blob) throw new Error("The exact print-colour preview could not be saved.");
   return blob;
+}
+
+async function updatePhotoRegionColour(regionIndex, selectedHex) {
+  if (photoKeepsakeState.recolouring || !photoKeepsakeState.artworkUrl || !photoKeepsakeState.generationId) return;
+  const previousPalette = normalizePhotoFilamentPalette(photoKeepsakeState.filamentPalette);
+  const replacement = getAvailablePhotoFilamentPalette().find(item => item.hex === String(selectedHex).toUpperCase());
+  if (!replacement || !previousPalette[regionIndex] || previousPalette[regionIndex].hex === replacement.hex) return;
+  const nextPalette = replacePhotoFilamentSelection(previousPalette, regionIndex, replacement);
+
+  photoKeepsakeState.recolouring = true;
+  renderPhotoMappedPalette(previousPalette);
+  if (addPhotoArtworkToCartBtn) addPhotoArtworkToCartBtn.disabled = true;
+  if (downloadPhotoTestStlsBtn) downloadPhotoTestStlsBtn.disabled = true;
+  photoGenerationStatus.textContent = "Updating your colour regions…";
+
+  try {
+    const recolouredArtwork = await recolourPhotoPreview(
+      photoKeepsakeState.artworkUrl,
+      nextPalette,
+      previousPalette
+    );
+    const { data, error } = await supabase.functions.invoke("generate-photo-keepsake", {
+      body: {
+        action: "recolour",
+        generation_id: photoKeepsakeState.generationId,
+        client_token: currentSubmissionId
+      }
+    });
+    if (error || !data?.recolour_token || !data?.artwork_url) {
+      throw new Error(data?.error || error?.message || "The new colours could not be saved.");
+    }
+    const { error: uploadError } = await supabase.storage
+      .from("customer-artwork")
+      .uploadToSignedUrl(
+        photoKeepsakeState.artworkPath,
+        data.recolour_token,
+        recolouredArtwork,
+        { contentType: "image/png", upsert: true }
+      );
+    if (uploadError) throw uploadError;
+    const exactArtworkUrl = new URL(data.artwork_url);
+    exactArtworkUrl.searchParams.set("preview", String(Date.now()));
+    photoKeepsakeState.artworkUrl = exactArtworkUrl.toString();
+    photoKeepsakeState.filamentPalette = nextPalette;
+    photoArtworkResult.src = photoKeepsakeState.artworkUrl;
+    photoGenerationStatus.textContent = "Colours updated — your preview and print files now match.";
+  } catch (error) {
+    console.error("Unable to update photo region colours:", error);
+    photoGenerationStatus.textContent = error?.message || "The colours could not be updated. Please try again.";
+  } finally {
+    photoKeepsakeState.recolouring = false;
+    if (addPhotoArtworkToCartBtn) addPhotoArtworkToCartBtn.disabled = false;
+    if (downloadPhotoTestStlsBtn) downloadPhotoTestStlsBtn.disabled = false;
+    renderPhotoMappedPalette();
+  }
 }
 
 function formatPhotoRetryTime(seconds) {
@@ -9596,7 +9673,8 @@ async function generatePhotoKeepsakeArtwork() {
       artworkPath: data.artwork_path,
       artworkUrl: exactArtworkUrl.toString(),
       generationId: data.generation_id || "",
-      filamentPalette
+      filamentPalette,
+      recolouring: false
     });
     photoArtworkResult.src = exactArtworkUrl.toString();
     photoArtworkResult.classList.remove("hidden");
@@ -9837,6 +9915,11 @@ photoKeepsakeInput?.addEventListener("change", async () => {
 generatePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 regeneratePhotoArtworkBtn?.addEventListener("click", generatePhotoKeepsakeArtwork);
 addPhotoArtworkToCartBtn?.addEventListener("click", addPhotoKeepsakeToCart);
+photoMappedPalette?.addEventListener("change", event => {
+  const select = event.target.closest("[data-photo-region-colour]");
+  if (!select) return;
+  updatePhotoRegionColour(Number(select.dataset.photoRegionColour), select.value);
+});
 downloadPhotoTestStlsBtn?.addEventListener("click", downloadPhotoTestStlPack);
 aiDesignHelperBtn?.addEventListener("click", requestAiDesignSuggestions);
 aiDesignBrief?.addEventListener("keydown", event => {

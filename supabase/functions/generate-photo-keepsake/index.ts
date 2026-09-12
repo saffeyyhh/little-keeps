@@ -41,6 +41,42 @@ Deno.serve(async request => {
     }
 
     const body = await request.json();
+    const clientToken = String(body.client_token || "").slice(0, 120);
+    if (!clientToken) return json({ error: "The preview session is missing. Refresh and try again." }, 400);
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+
+    if (body.action === "recolour") {
+      const generationId = String(body.generation_id || "").trim();
+      if (!/^[0-9a-f-]{36}$/i.test(generationId)) {
+        return json({ error: "This artwork preview could not be found." }, 400);
+      }
+      const { data: requestRow, error: requestError } = await supabase
+        .from("photo_artwork_requests")
+        .select("artwork_path")
+        .eq("id", generationId)
+        .eq("client_token", clientToken)
+        .maybeSingle();
+      if (requestError) throw requestError;
+      if (!requestRow?.artwork_path) {
+        return json({ error: "This artwork preview has expired. Please create a new version." }, 404);
+      }
+      const { data: signedArtwork, error: signedError } = await supabase.storage
+        .from("customer-artwork")
+        .createSignedUrl(requestRow.artwork_path, 60 * 60 * 2);
+      if (signedError) throw signedError;
+      const { data: recolourUpload, error: recolourUploadError } = await supabase.storage
+        .from("customer-artwork")
+        .createSignedUploadUrl(requestRow.artwork_path, { upsert: true });
+      if (recolourUploadError) throw recolourUploadError;
+      return json({
+        artwork_path: requestRow.artwork_path,
+        artwork_url: signedArtwork.signedUrl,
+        recolour_token: recolourUpload.token
+      });
+    }
+
     const imageDataUrl = String(body.image_data_url || "");
     const subjectType = ["person", "pet", "object"].includes(body.subject_type)
       ? body.subject_type
@@ -57,17 +93,10 @@ Deno.serve(async request => {
       return json({ error: "At least two available filament colours are required." }, 400);
     }
     const colourCount = Math.min(4, filamentPalette.length, Math.max(2, Number(body.colour_count) || 4));
-    const clientToken = String(body.client_token || "").slice(0, 120);
-    if (!clientToken) return json({ error: "The preview session is missing. Refresh and try again." }, 400);
-
     const { bytes, mimeType } = decodeDataUrl(imageDataUrl);
     const requester = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       request.headers.get("cf-connecting-ip") || "unknown";
     const requesterHash = await sha256(`${requester}:${Deno.env.get("PHOTO_RATE_LIMIT_SALT") || serviceRoleKey.slice(0, 24)}`);
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
-
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { data: recentAttempts, count } = await supabase
       .from("photo_artwork_requests")

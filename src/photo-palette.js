@@ -64,6 +64,22 @@ export function normalizePhotoFilamentPalette(value) {
   });
 }
 
+export function replacePhotoFilamentSelection(palette, index, replacement) {
+  const current = normalizePhotoFilamentPalette(palette);
+  const [next] = normalizePhotoFilamentPalette([replacement]);
+  const targetIndex = Math.floor(Number(index));
+  if (!next || targetIndex < 0 || targetIndex >= current.length) return current;
+
+  const previous = current[targetIndex];
+  const duplicateIndex = current.findIndex((item, itemIndex) =>
+    itemIndex !== targetIndex && item.hex === next.hex
+  );
+  const updated = current.slice();
+  updated[targetIndex] = next;
+  if (duplicateIndex >= 0) updated[duplicateIndex] = previous;
+  return updated;
+}
+
 export function getArtworkColourClusters(pixelData, colourCount) {
   const histogram = new Map();
   for (let index = 0; index < pixelData.length; index += 4) {

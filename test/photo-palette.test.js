@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mapArtworkClustersToFilaments,
-  normalizePhotoFilamentPalette
+  normalizePhotoFilamentPalette,
+  replacePhotoFilamentSelection
 } from "../src/photo-palette.js";
 
 test("normalizes only named BASIC and MATTE photo filaments", () => {
@@ -29,4 +30,22 @@ test("maps artwork clusters to unique stocked filament colours", () => {
   ]);
   assert.deepEqual(mapped.map(item => item.name), ["Black", "Cream", "Brown"]);
   assert.equal(new Set(mapped.map(item => item.hex)).size, mapped.length);
+});
+
+test("changes one photo region colour and swaps colours already in use", () => {
+  const palette = [
+    { name: "Black", hex: "#000000", material_type: "BASIC" },
+    { name: "Gold", hex: "#E7BD59", material_type: "BASIC" },
+    { name: "White", hex: "#FFFFFF", material_type: "BASIC" }
+  ];
+  assert.deepEqual(
+    replacePhotoFilamentSelection(palette, 1, {
+      name: "Cyan", hex: "#078BCB", material_type: "BASIC"
+    }).map(item => item.name),
+    ["Black", "Cyan", "White"]
+  );
+  assert.deepEqual(
+    replacePhotoFilamentSelection(palette, 0, palette[2]).map(item => item.name),
+    ["White", "Gold", "Black"]
+  );
 });
