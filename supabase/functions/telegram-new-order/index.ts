@@ -1,6 +1,8 @@
 type OrderItem = {
   name?: string;
   clean_name?: string;
+  product_key?: string;
+  product_name?: string;
 };
 
 type OrderRecord = {
@@ -89,6 +91,30 @@ function formatNames(order: OrderRecord) {
   ].filter(Boolean).join(" ");
 }
 
+function getProductName(item: OrderItem) {
+  if (item.product_name) return item.product_name;
+  const labels: Record<string, string> = {
+    "modular-clicky-keychain": "Modular Clicky Name Keychain",
+    "solid-clicky-keychain": "Solid-Base Clicky Name Keychain",
+    "custom-pencil-clicker": "Custom Pencil Clicker Keychain",
+    "ai-photo-keepsake": "AI Photo Keepsake",
+    "standard-name-keychain": "Customised Name Keychain"
+  };
+  return labels[item.product_key || ""] || "Personalised product";
+}
+
+function formatProducts(order: OrderRecord) {
+  const counts = new Map<string, number>();
+  (order.order_data || []).forEach(item => {
+    const name = getProductName(item);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  });
+  if (!counts.size) return "Not provided";
+  return Array.from(counts.entries())
+    .map(([name, count]) => `${name} x${count}`)
+    .join(", ");
+}
+
 function buildMessage(
   order: OrderRecord,
   notificationKind: "review" | "paid" | "pickup" | "due"
@@ -111,6 +137,7 @@ function buildMessage(
       `Customer: ${order.customer_name || "Customer"}`,
       `Status: ${order.status || "Unknown"}`,
       `Method: ${method}`,
+      `Products: ${formatProducts(order)}`,
       `Names: ${formatNames(order)}`,
       "",
       "Check Printing and Assembly in Admin today."
@@ -127,6 +154,7 @@ function buildMessage(
       `Pickup date: ${order.pickup_scheduled_date || "Not selected"}`,
       `Pickup time: ${order.pickup_time_range || "Not selected"}`,
       "",
+      `Products: ${formatProducts(order)}`,
       `Names: ${formatNames(order)}`,
       "",
       "The pickup appointment is saved in Admin → Fulfilment."
@@ -145,6 +173,7 @@ function buildMessage(
       `Method: ${method}`,
       `Total: ${formatMoney(order.total)}`,
       "",
+      `Products: ${formatProducts(order)}`,
       `Names: ${formatNames(order)}`,
       "",
       "Open Admin → Today to review this request."
@@ -161,6 +190,7 @@ function buildMessage(
     `Method: ${method}`,
     `Paid: ${formatMoney(order.total)}`,
     "",
+    `Products: ${formatProducts(order)}`,
     `Names: ${formatNames(order)}`,
     "",
     "The order is ready to enter your production queue."

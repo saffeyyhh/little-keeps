@@ -8034,6 +8034,35 @@ function getPdfReadableItemName(item) {
     .join("");
 }
 
+function getAdminOrderItemProductName(order, item) {
+  const productKey = String(item?.product_key || order?.product_key || "");
+  return item?.product_name ||
+    adminProductCatalog.find(product => product.product_key === productKey)?.name ||
+    (productKey === "ai-photo-keepsake" ? "AI Photo Keepsake" : "Personalised Keychain");
+}
+
+async function getPdfPhotoArtworkDataUrl(item) {
+  const photo = item?.design?.photo;
+  const artworkUrl = photo?.admin_artwork_url ||
+    await getPrivateArtworkUrl(photo?.artwork_path, 300);
+  if (!artworkUrl) return "";
+
+  try {
+    const response = await fetch(artworkUrl);
+    if (!response.ok) return "";
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.warn("Unable to load photo artwork for the order PDF:", error);
+    return "";
+  }
+}
+
 const productionStlJobs = new Map();
 const productionBaseStlJobs = new Map();
 const productionAmsPlateJobs = new Map();
@@ -13574,6 +13603,9 @@ async function generateCustomerOrderPdf(order, items) {
   const softPink = [255, 248, 251];
   const dark = [51, 45, 48];
   const muted = [117, 107, 112];
+  const photoArtworkImages = await Promise.all(items.map(item =>
+    isPhotoKeepsake(order, item) ? getPdfPhotoArtworkDataUrl(item) : ""
+  ));
 
   function drawPageHeader(showTitle = true) {
     pdf.setFillColor(...palePink);
@@ -13681,6 +13713,8 @@ async function generateCustomerOrderPdf(order, items) {
   items.forEach((item, index) => {
     const design = item.design || {};
     const readyMadeProduct = isReadyMadeOrderItem(item);
+    const photoProduct = isPhotoKeepsake(order, item);
+    const productName = getAdminOrderItemProductName(order, item);
     const readyMadeSelections = Object.entries(design.ready_made?.selections || {})
       .map(([label, value]) => `${label}: ${value}`);
     const bases = Array.isArray(design.bases) && design.bases.length
@@ -13692,7 +13726,9 @@ async function generateCustomerOrderPdf(order, items) {
     const letters = Array.isArray(design.letters) && design.letters.length
       ? design.letters
       : ["#332d30"];
-    const baseShape = readyMadeProduct
+    const baseShape = photoProduct
+      ? design.photo?.variant === "clicker" ? "Clicker artwork" : "Classic keychain artwork"
+      : readyMadeProduct
       ? "Ready-made design"
       : isSolidClickyKeychain(order, item)
       ? `${getBaseShapeLabel(getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length))} Base`
@@ -13702,11 +13738,22 @@ async function generateCustomerOrderPdf(order, items) {
     const baseNames = getPdfColourNames(bases);
     const capNames = getPdfColourNames(caps);
     const letterNames = getPdfColourNames(letters);
-    const characters = readyMadeProduct ? [] : Array.from(
+    const characters = readyMadeProduct || photoProduct ? [] : Array.from(
       item.clean_name || sanitizeName(item.name || "")
     );
     const iconLegend = getPdfIconLegend(item);
-    const colourLines = readyMadeProduct ? [
+    const photoPalette = normalizePhotoFilamentPalette(design.photo?.filament_palette);
+    const photoSubject = formatPhotoSubjectType(design.photo?.subject_type || design.photo?.subjectType);
+    const photoTextWidth = contentWidth - 64;
+    const colourLines = photoProduct ? [
+      ...pdf.splitTextToSize(`Design name: ${getCompactPdfText(item.name || "Photo keepsake")}`, photoTextWidth),
+      ...pdf.splitTextToSize(`Subject: ${getCompactPdfText(photoSubject)}`, photoTextWidth),
+      ...pdf.splitTextToSize(`Style: ${getCompactPdfText(baseShape)}`, photoTextWidth),
+      ...pdf.splitTextToSize(
+        `Print colours: ${getCompactPdfText(photoPalette.length ? getPdfColourNames(photoPalette) : `${Number(design.photo?.colour_count || 4)} saved colours`)}`,
+        photoTextWidth
+      )
+    ] : readyMadeProduct ? [
       ...(item.group_contributor_name
         ? [`Group member: ${getCompactPdfText(item.group_contributor_name)}`]
         : []),
@@ -13750,7 +13797,9 @@ async function generateCustomerOrderPdf(order, items) {
           )
         : [])
     ];
-    const cardHeight = (readyMadeProduct ? 22 : 34) + colourLines.length * 3.8;
+    const cardHeight = photoProduct
+      ? Math.max(64, 24 + colourLines.length * 4)
+      : (readyMadeProduct ? 22 : 34) + colourLines.length * 3.8;
 
     addPageIfNeeded(cardHeight + 5);
     pdf.setFillColor(255, 255, 255);
@@ -13761,7 +13810,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(11);
     pdf.text(
-      `${index + 1}. ${getCompactPdfText(getPdfReadableItemName(item))}`,
+      `${index + 1}. ${getCompactPdfText(productName)}${photoProduct ? "" : ` - ${getCompactPdfText(getPdfReadableItemName(item))}`}`,
       margin + 5,
       y + 7
     );
@@ -13777,13 +13826,45 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);
     pdf.text(
-      getCompactPdfText(readyMadeProduct ? baseShape : `${baseShape} · ${letterOrientationLabel}`),
+      getCompactPdfText(photoProduct || readyMadeProduct ? baseShape : `${baseShape} · ${letterOrientationLabel}`),
       margin + 5,
       y + 12
     );
 
     let blockX = margin + 5;
     const blockY = y + 16;
+
+    if (photoProduct) {
+      const artworkImage = photoArtworkImages[index];
+      if (artworkImage) {
+        try {
+          const properties = pdf.getImageProperties(artworkImage);
+          const maxWidth = 45;
+          const maxHeight = 43;
+          const scale = Math.min(maxWidth / properties.width, maxHeight / properties.height);
+          const imageWidth = properties.width * scale;
+          const imageHeight = properties.height * scale;
+          pdf.addImage(
+            artworkImage,
+            "PNG",
+            margin + 5 + (maxWidth - imageWidth) / 2,
+            y + 16 + (maxHeight - imageHeight) / 2,
+            imageWidth,
+            imageHeight,
+            `photo-artwork-${index}`,
+            "FAST"
+          );
+        } catch (error) {
+          console.warn("Unable to draw photo artwork in the order PDF:", error);
+        }
+      } else {
+        pdf.setFillColor(248, 243, 246);
+        pdf.roundedRect(margin + 5, y + 16, 45, 43, 3, 3, "F");
+        pdf.setTextColor(...muted);
+        pdf.setFontSize(7.5);
+        pdf.text("Artwork saved privately", margin + 27.5, y + 38, { align: "center" });
+      }
+    }
 
     characters.forEach((character, characterIndex) => {
       const baseRgb = getPdfRgb(
@@ -13846,7 +13927,11 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setTextColor(...muted);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.5);
-    pdf.text(colourLines, margin + 5, y + (readyMadeProduct ? 18 : 31));
+    pdf.text(
+      colourLines,
+      margin + (photoProduct ? 56 : 5),
+      y + (photoProduct ? 21 : readyMadeProduct ? 18 : 31)
+    );
     y += cardHeight + 5;
   });
 
@@ -15303,6 +15388,43 @@ async function loadOrders() {
       base_shape: { key: "ribbed" }
     };
     latestOrders = [
+      {
+        id: "preview-photo-order",
+        order_ref: "LK-PHOTO-PREVIEW",
+        customer_name: "Photo Customer",
+        customer_email: "photo@example.com",
+        customer_phone: "90000003",
+        payment_type: "Paid",
+        subtotal: 10,
+        delivery_fee: 0,
+        total: 10,
+        status: "Payment Verified",
+        collection_method: "pickup_woodlands",
+        needed_by: tomorrow,
+        order_data: [{
+          product_key: "ai-photo-keepsake",
+          product_name: "AI Photo Keepsake",
+          name: "Milo & Mum",
+          clean_name: "MILO MUM",
+          price: 10,
+          design: {
+            photo: {
+              subject_type: "pet_person",
+              variant: "clicker",
+              colour_count: 4,
+              artwork_path: "preview/artwork.png",
+              admin_artwork_url: "/images/compact-solid-clicky-keychain.jpg",
+              filament_palette: [
+                { name: "Black", hex: "#000000", material_type: "BASIC" },
+                { name: "Gold", hex: "#e6b84f", material_type: "BASIC" },
+                { name: "Jade White", hex: "#ffffff", material_type: "BASIC" },
+                { name: "Cyan", hex: "#008fd5", material_type: "BASIC" }
+              ]
+            }
+          }
+        }],
+        created_at: new Date().toISOString()
+      },
       {
         id: "preview-changed-order",
         order_ref: "LK-1042",
