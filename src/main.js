@@ -1219,7 +1219,10 @@ ${requestedPreviewProductKey ? `
         <div id="photoResultActions" class="photo-result-actions hidden">
           <div class="photo-retry-action"><button id="regeneratePhotoArtworkBtn" type="button">Try Another Version</button><small id="photoAttemptStatus">Up to 5 previews per hour</small></div>
           <button id="addPhotoArtworkToCartBtn" type="button">Approve & Add to Cart</button>
-          ${isProductPreview ? `<button id="downloadPhotoTestStlsBtn" class="photo-preview-download-btn" type="button">Download Test STL Pack</button>` : ""}
+          ${isProductPreview ? `
+            <button id="downloadPhotoPreviewArtworkBtn" class="photo-preview-download-btn hidden" type="button">Save Artwork PNG</button>
+            <button id="downloadPhotoTestStlsBtn" class="photo-preview-download-btn" type="button">Download Test STL Pack</button>
+          ` : ""}
         </div>
         <div id="photoMappedPalette" class="photo-mapped-palette hidden"></div>
         <p class="photo-proof-note">We check every design before making it. Very tiny details may be adjusted so your finished keychain looks neat.</p>
@@ -2563,6 +2566,7 @@ const photoAiConsentCheck = document.getElementById("photoAiConsentCheck");
 const generatePhotoArtworkBtn = document.getElementById("generatePhotoArtworkBtn");
 const regeneratePhotoArtworkBtn = document.getElementById("regeneratePhotoArtworkBtn");
 const addPhotoArtworkToCartBtn = document.getElementById("addPhotoArtworkToCartBtn");
+const downloadPhotoPreviewArtworkBtn = document.getElementById("downloadPhotoPreviewArtworkBtn");
 const downloadPhotoTestStlsBtn = document.getElementById("downloadPhotoTestStlsBtn");
 const photoGenerationStatus = document.getElementById("photoGenerationStatus");
 const photoGenerationLoader = document.getElementById("photoGenerationLoader");
@@ -9485,6 +9489,7 @@ async function updatePhotoRegionColour(regionIndex, selectedHex) {
   photoKeepsakeState.recolouring = true;
   renderPhotoMappedPalette(previousPalette);
   if (addPhotoArtworkToCartBtn) addPhotoArtworkToCartBtn.disabled = true;
+  if (downloadPhotoPreviewArtworkBtn) downloadPhotoPreviewArtworkBtn.disabled = true;
   if (downloadPhotoTestStlsBtn) downloadPhotoTestStlsBtn.disabled = true;
   photoGenerationStatus.textContent = "Updating your colour regions…";
 
@@ -9525,6 +9530,7 @@ async function updatePhotoRegionColour(regionIndex, selectedHex) {
   } finally {
     photoKeepsakeState.recolouring = false;
     if (addPhotoArtworkToCartBtn) addPhotoArtworkToCartBtn.disabled = false;
+    if (downloadPhotoPreviewArtworkBtn) downloadPhotoPreviewArtworkBtn.disabled = false;
     if (downloadPhotoTestStlsBtn) downloadPhotoTestStlsBtn.disabled = false;
     renderPhotoMappedPalette();
   }
@@ -9596,6 +9602,7 @@ function renderPhotoKeepsakeLivePrice() {
     <span>${clickerSelected ? "Clicker keepsake" : "Classic keepsake"}</span>
     <strong>${displaySettingMoney(unitPrice)} each${quantity > 1 ? ` · ${quantity} for ${displaySettingMoney(unitPrice * quantity)}` : ""}</strong>
   `;
+  downloadPhotoPreviewArtworkBtn?.classList.toggle("hidden", !clickerSelected);
 }
 
 function closePhotoKeepsakeStudio() {
@@ -9752,6 +9759,30 @@ function downloadPhotoTestBlob(blob, filename) {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadPhotoPreviewArtwork() {
+  if (!isProductPreview || !photoKeepsakeState.artworkUrl || !photoClickerUpgrade?.checked) return;
+  const previousLabel = downloadPhotoPreviewArtworkBtn?.textContent || "Save Artwork PNG";
+  if (downloadPhotoPreviewArtworkBtn) {
+    downloadPhotoPreviewArtworkBtn.disabled = true;
+    downloadPhotoPreviewArtworkBtn.textContent = "Saving…";
+  }
+  try {
+    const response = await fetch(photoKeepsakeState.artworkUrl);
+    if (!response.ok) throw new Error("The artwork could not be downloaded.");
+    const label = safePhotoTestFileName(photoKeepsakeLabel.value, "Photo-Keepsake");
+    downloadPhotoTestBlob(await response.blob(), `TEST_${label}_CLICKER_ARTWORK.png`);
+    if (downloadPhotoPreviewArtworkBtn) downloadPhotoPreviewArtworkBtn.textContent = "Saved ✓";
+  } catch (error) {
+    console.error("Unable to save the private preview artwork:", error);
+    photoGenerationStatus.textContent = error?.message || "The artwork could not be saved. Please try again.";
+  } finally {
+    if (downloadPhotoPreviewArtworkBtn) {
+      downloadPhotoPreviewArtworkBtn.disabled = false;
+      setTimeout(() => { downloadPhotoPreviewArtworkBtn.textContent = previousLabel; }, 2000);
+    }
+  }
 }
 
 async function downloadPhotoTestStlPack() {
@@ -9961,6 +9992,7 @@ photoMappedPalette?.addEventListener("change", event => {
   updatePhotoRegionColour(Number(select.dataset.photoRegionColour), select.value);
 });
 downloadPhotoTestStlsBtn?.addEventListener("click", downloadPhotoTestStlPack);
+downloadPhotoPreviewArtworkBtn?.addEventListener("click", downloadPhotoPreviewArtwork);
 aiDesignHelperBtn?.addEventListener("click", requestAiDesignSuggestions);
 aiDesignBrief?.addEventListener("keydown", event => {
   if (event.key === "Enter") requestAiDesignSuggestions();
