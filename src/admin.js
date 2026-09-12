@@ -4946,7 +4946,7 @@ function renderOrders(orders) {
   </div>
 </div>
 <div class="order-preview-list">
-  ${(order.order_data || []).map(item => {
+  ${(order.order_data || []).map((item, itemIndex) => {
     const baseShape = isSolidClickyKeychain(order, item)
       ? getSolidBaseShape(Array.from(item.clean_name || sanitizeName(item.name || "")).length)
       : item.design?.base_shape?.key || item.design?.baseShape || "ribbed";
@@ -5003,6 +5003,11 @@ function renderOrders(orders) {
           </div>
         ` : photoProduct ? `
           <div class="assembly-photo-summary">Private artwork saved · download the STL pack under Production → Custom Prints</div>
+          ${item.design?.photo?.variant === "clicker" ? `
+            <div class="photo-artwork-download-action">
+              <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Artwork PNG</button>
+            </div>
+          ` : ""}
         ` : pencilProduct ? `
           <div class="assembly-photo-summary">All pencil-part colours saved · prepare and track it under Production → Custom Prints</div>
         ` : customNameProduct ? `
@@ -8011,17 +8016,24 @@ window.downloadPhotoKeepsakeArtwork = async function(orderId, itemIndex, button)
     button.disabled = true;
     button.textContent = "Preparing…";
   }
-  const { data, error } = await supabase.storage
-    .from("customer-artwork")
-    .createSignedUrl(artworkPath, 300, { download: `${safeProductionFileName(order.order_ref, "order")}_${safeProductionFileName(item.name, "photo")}_ARTWORK.png` });
-  if (error || !data?.signedUrl) {
-    alert("Unable to open this private artwork. Check the photo-keepsake storage policy.");
-  } else {
-    window.open(data.signedUrl, "_blank", "noopener");
-  }
-  if (button) {
-    button.disabled = false;
-    button.textContent = previousLabel;
+  try {
+    const filename = `${safeProductionFileName(order.order_ref, "order")}_${safeProductionFileName(item.name, "photo")}_ARTWORK.png`;
+    const { data, error } = await supabase.storage
+      .from("customer-artwork")
+      .createSignedUrl(artworkPath, 300);
+    if (error || !data?.signedUrl) throw error || new Error("Unable to open the private artwork.");
+    const response = await fetch(data.signedUrl);
+    if (!response.ok) throw new Error("Unable to download the private artwork.");
+    downloadRushStl(await response.blob(), filename);
+    if (button) button.textContent = "Saved ✓";
+  } catch (error) {
+    console.error("Unable to download photo keepsake artwork:", error);
+    alert("Unable to save this private artwork. Please try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      setTimeout(() => { button.textContent = previousLabel; }, 1800);
+    }
   }
 };
 
@@ -10191,6 +10203,11 @@ async function renderAssemblyQueue() {
 
         ${photoProduct ? `
           <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 4)} stocked colours · review in Custom Prints</div>
+          ${item.design?.photo?.variant === "clicker" ? `
+            <div class="photo-artwork-download-action">
+              <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Artwork PNG</button>
+            </div>
+          ` : ""}
         ` : pencilProduct ? `
           ${createPencilAssemblyVisual(item.name, item.design)}
           ${createPencilAssemblyColourGuide(item.name, item.design)}

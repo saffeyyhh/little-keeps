@@ -5526,6 +5526,27 @@ a {
   font-weight: 800;
 }
 
+.photo-artwork-download-action {
+  margin: -4px 0 12px;
+}
+
+.photo-artwork-download-action button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: #7c4fa4;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.photo-artwork-download-action button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
 .assembly-standard-name-preview {
   width: fit-content;
   max-width: 100%;
