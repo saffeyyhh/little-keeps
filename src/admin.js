@@ -5196,8 +5196,11 @@ function renderOrders(orders) {
             <div>
               <strong>Ordered AI artwork</strong>
               <span>${item.design?.photo?.variant === "clicker" ? "Clicker artwork" : "Keychain artwork"} · ${Number(item.design?.photo?.colour_count || 4)} colours</span>
-              <small>Download the printable STL pack under Production → Custom Prints.</small>
-              <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Artwork PNG</button>
+              <small>Download the printable STL pack under Production → AI Photos &amp; Other.</small>
+              <div class="assembly-photo-artwork-actions">
+                <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Artwork PNG</button>
+                <button type="button" onclick='window.generatePhotoKeepsakeStls(${JSON.stringify(String(order.id))}, ${itemIndex}, this, 1)'>Download STL Pack</button>
+              </div>
             </div>
           </div>
         ` : pencilProduct ? `
@@ -10394,7 +10397,7 @@ async function renderAssemblyQueue() {
         </div>
 
         ${photoProduct ? `
-          <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 4)} stocked colours · review in Custom Prints</div>
+          <div class="assembly-photo-summary">Private AI artwork · ${Number(item.design?.photo?.colour_count || 4)} stocked colours · review in Production → AI Photos &amp; Other</div>
           ${item.design?.photo?.variant === "clicker" ? `
             <div class="photo-artwork-download-action">
               <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Artwork PNG</button>
@@ -12947,7 +12950,7 @@ async function renderProductionPlanner(orders) {
             class="${productionQueueView === "custom" ? "active" : ""}"
             onclick="window.setProductionQueueView('custom')"
           >
-            <span>Other Products</span>
+            <span>AI Photos &amp; Other</span>
             <strong>${otherCustomQueuedPieces}</strong>
           </button>
         </nav>
@@ -12989,7 +12992,7 @@ async function renderProductionPlanner(orders) {
         </div>
 
         <div class="production-queue-section ${productionQueueView === "custom" ? "" : "hidden"}">
-          <h3>Order-Specific Custom Prints</h3>
+          <h3>AI Photos &amp; Other Custom Prints</h3>
           <p class="hint">Download each remaining order-specific custom print pack here.</p>
           <div class="custom-print-grid">
             ${otherCustomPrintRows.map(row => {
@@ -15020,10 +15023,22 @@ async function updateOrderStatus(id, status) {
 
 async function updatePaymentType(id, paymentType) {
   const scrollY = window.scrollY;
+  const order = latestOrders.find(item => String(item.id) === String(id));
+  const noPaymentNeeded = ["Free", "Giveaway", "Replacement"].includes(paymentType);
+  const shouldReleaseToProduction = noPaymentNeeded &&
+    ["Pending Payment", "Payment Expired", "Payment Verification"].includes(order?.status);
+  const update = {
+    payment_type: paymentType,
+    ...(shouldReleaseToProduction ? {
+      status: "Payment Verified",
+      payment_expires_at: null,
+      online_payment_status: null
+    } : {})
+  };
 
   const { error } = await supabase
     .from("orders")
-    .update({ payment_type: paymentType })
+    .update(update)
     .eq("id", id);
 
   if (error) {
