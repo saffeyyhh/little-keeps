@@ -845,6 +845,26 @@ async function getPrivateArtworkUrl(path, expiresIn = 900) {
   return error ? "" : data?.signedUrl || "";
 }
 
+async function hydrateOrderPhotoArtworkUrls(orders) {
+  const photoItems = (orders || []).flatMap(order =>
+    (Array.isArray(order.order_data) ? order.order_data : [])
+      .filter(item => item?.design?.photo?.artwork_path)
+  );
+  const paths = Array.from(new Set(photoItems.map(item =>
+    String(item.design.photo.artwork_path).trim()
+  ).filter(Boolean)));
+  const signedUrls = new Map(await Promise.all(paths.map(async path => [
+    path,
+    await getPrivateArtworkUrl(path, 60 * 60)
+  ])));
+
+  photoItems.forEach(item => {
+    item.design.photo.admin_artwork_url = signedUrls.get(
+      String(item.design.photo.artwork_path).trim()
+    ) || "";
+  });
+}
+
 async function loadPhotoPreviews() {
   const { data, error } = await supabase
     .from("photo_artwork_requests")
@@ -5153,12 +5173,23 @@ function renderOrders(orders) {
             <span>${escapeAdminHtml(readyMadeSelections || "No options selected")}</span>
           </div>
         ` : photoProduct ? `
-          <div class="assembly-photo-summary">Private artwork saved · download the STL pack under Production → Custom Prints</div>
-          ${item.design?.photo?.variant === "clicker" ? `
-            <div class="photo-artwork-download-action">
+          <div class="assembly-photo-artwork">
+            ${item.design?.photo?.admin_artwork_url ? `
+              <img
+                src="${escapeAdminHtml(item.design.photo.admin_artwork_url)}"
+                alt="Generated artwork for ${escapeAdminHtml(item.name || "photo keepsake")}"
+                loading="lazy"
+              >
+            ` : `
+              <div class="assembly-photo-summary">Artwork preview could not be opened. Refresh the admin and try again.</div>
+            `}
+            <div>
+              <strong>Ordered AI artwork</strong>
+              <span>${item.design?.photo?.variant === "clicker" ? "Clicker artwork" : "Keychain artwork"} · ${Number(item.design?.photo?.colour_count || 4)} colours</span>
+              <small>Download the printable STL pack under Production → Custom Prints.</small>
               <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Artwork PNG</button>
             </div>
-          ` : ""}
+          </div>
         ` : pencilProduct ? `
           <div class="assembly-photo-summary">All pencil-part colours saved · prepare and track it under Production → Custom Prints</div>
         ` : customNameProduct ? `
@@ -15340,6 +15371,8 @@ latestOrders = (data || []).map(order =>
     ? { ...order, status: "Payment Expired", online_payment_status: "expired" }
     : order
 );
+
+await hydrateOrderPhotoArtworkUrls(latestOrders);
 
 void requestDueTomorrowTelegramAlerts(latestOrders);
 
