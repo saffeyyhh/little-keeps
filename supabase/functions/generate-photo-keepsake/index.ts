@@ -141,6 +141,9 @@ Deno.serve(async request => {
       `Transform the main ${subjectType} in this image into clean artwork specifically for a small FDM 3D-printed keychain.`,
       `Use no more than ${colourCount} flat solid colours including outlines.`,
       `Use only colours from this available physical filament palette: ${filamentPalette.map(item => `${item.name} (${item.hex})`).join(", ")}. Choose the closest matches and do not invent any colour outside this list.`,
+      subjectType === "person"
+        ? "Use exactly one single flat filament colour for all visible skin across every face, neck, ear, arm and hand. Completely ignore photographic lighting, highlights, shadows, blush and reflections on skin: never turn them into additional skin colours or white patches. Preserve each person's likeness through the face shape, hairstyle, eyebrows, eyes, nose, mouth, expression and bold outline—not through skin shading."
+        : "Ignore photographic lighting, highlights, shadows and reflections when separating the subject into colour regions.",
       "Keep the subject recognizable and charming, with bold connected shapes, smooth closed outlines, and no gradients, shadows, texture, text, logos, scenery, frame, or background.",
       "Remove tiny details and isolated specks. Every important stroke and gap must remain thick enough to print at approximately 60 mm wide; target at least 1.2 mm features.",
       "Keep the silhouette compact with a safe solid area near an upper corner for a keyring hole.",
