@@ -5,7 +5,17 @@ export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
 export const READY_MADE_PRODUCT_TYPE = "ready_made";
 export const CUSTOM_PRODUCT_TYPE = "custom";
+export const PHOTO_KEEPSAKE_COLOUR_PRICES = Object.freeze({
+  2: 6.5,
+  3: 7.5,
+  4: 8.5
+});
 const PRODUCT_STATUSES = new Set(["active", "coming_soon", "hidden"]);
+
+export function getPhotoKeepsakeColourPrice(colourCount = 4) {
+  const normalizedCount = Math.min(4, Math.max(2, Math.round(Number(colourCount) || 4)));
+  return PHOTO_KEEPSAKE_COLOUR_PRICES[normalizedCount];
+}
 
 export function normalizeProductStatusOverrides(value = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -167,9 +177,9 @@ export const DEFAULT_PRODUCT_CATALOG = [
     description: "Upload a person, pet or meaningful picture and receive a limited-colour illustrated keepsake.",
     status: "coming_soon",
     price_visible: false,
-    usual_base_price: 15,
-    launch_base_price: 12,
-    launch_price_enabled: true,
+    usual_base_price: 6.5,
+    launch_base_price: 6.5,
+    launch_price_enabled: false,
     launch_price_ends_at: null,
     included_characters: 50,
     extra_character_price: 0,

@@ -15,12 +15,20 @@ import {
   calculateProductProductionEstimate,
   calculateProductUnitPrice,
   getProductByKey,
+  getPhotoKeepsakeColourPrice,
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
   normalizeProductCatalog,
   normalizeProductOptions,
   isReadyMadeProduct
 } from "../src/product-catalog.js";
+
+test("prices photo keepsakes by artwork colour count", () => {
+  assert.equal(getPhotoKeepsakeColourPrice(2), 6.5);
+  assert.equal(getPhotoKeepsakeColourPrice(3), 7.5);
+  assert.equal(getPhotoKeepsakeColourPrice(4), 8.5);
+  assert.equal(getPhotoKeepsakeColourPrice(99), 8.5);
+});
 
 test("normalizes ready-made product options and stock", () => {
   const catalogue = normalizeProductCatalog([{

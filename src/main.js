@@ -50,6 +50,7 @@ import {
   formatProductUnitsSold,
   getProductByKey,
   getProductDisplayPrice,
+  getPhotoKeepsakeColourPrice,
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
   normalizeProductCatalog,
@@ -86,6 +87,7 @@ const SUPABASE_URL = "https://jetamtthfenjyzcdklqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_IXgEB4mpCTF3zOhkulGOYw_fcDwgiHf";
 const EMAILJS_SERVICE = "service_joll6ie";
 const EMAILJS_PUBLIC = "dRppqgrkwps-kd6W-";
+const PHOTO_CLICKER_ADDON_PRICE = 1.5;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 emailjs.init(EMAILJS_PUBLIC);
@@ -534,6 +536,9 @@ function renderProductCardPrice(product) {
   if (!product?.price_visible) {
     return '<span class="product-card-price is-pending">Pricing coming soon</span>';
   }
+  if (product.product_key === PHOTO_PRODUCT_KEY) {
+    return `<span class="product-card-price"><strong>From ${displaySettingMoney(getPhotoKeepsakeColourPrice(2))}</strong></span>`;
+  }
   const current = getProductDisplayPrice(product);
   const usual = Number(product.usual_base_price || 0);
   const launch = Number(product.launch_base_price || 0);
@@ -559,6 +564,26 @@ function getProductPricingPartLabels(product) {
 function renderProductPricingGuideMarkup(product, { compact = false, showHeading = true } = {}) {
   const labels = getProductPricingPartLabels(product);
   const isPhotoProduct = product.product_key === PHOTO_PRODUCT_KEY;
+  if (isPhotoProduct) {
+    const startingPrice = getPhotoKeepsakeColourPrice(2);
+    return `
+      ${showHeading ? `<div class="product-pricing-guide-heading">
+        <div><span>Pricing guide</span><strong>${escapePresetText(product.name)}</strong></div>
+        <div class="product-guide-price"><small>Starting from</small><b>${displaySettingMoney(startingPrice)}</b></div>
+      </div>` : ""}
+      <div class="pricing-guide-included">
+        <div><span>Choose your artwork detail</span><strong>From ${displaySettingMoney(startingPrice)}</strong></div>
+        <p>More colours add more detail to your finished keepsake.</p>
+      </div>
+      <div class="product-pricing-guide-rows pricing-guide-character-rows">
+        <span><b>Simple · 2 colours</b><em>${displaySettingMoney(getPhotoKeepsakeColourPrice(2))}</em></span>
+        <span><b>Balanced · 3 colours</b><em>${displaySettingMoney(getPhotoKeepsakeColourPrice(3))}</em></span>
+        <span><b>More detail · 4 colours</b><em>${displaySettingMoney(getPhotoKeepsakeColourPrice(4))}</em></span>
+        <span><b>Make it clicky</b><em>+${displaySettingMoney(PHOTO_CLICKER_ADDON_PRICE)}</em></span>
+      </div>
+      ${compact ? "" : `<small>Your exact total updates automatically when you choose the detail and Clicker option.</small>`}
+    `;
+  }
   const includedCharacters = Math.max(0, Number(product.included_characters) || 0);
   const maximumCharacters = Math.max(includedCharacters, Number(product.maximum_characters) || includedCharacters);
   const current = getProductDisplayPrice(product);
@@ -1173,7 +1198,7 @@ ${requestedPreviewProductKey ? `
     <div class="photo-keepsake-grid">
       <section>
         <details class="product-pricing-guide photo-product-pricing-guide">
-          <summary><span>Pricing guide</span><strong>From ${displaySettingMoney(getProductDisplayPrice(photoProduct))}</strong></summary>
+          <summary><span>Pricing guide</span><strong>From ${displaySettingMoney(getPhotoKeepsakeColourPrice(2))}</strong></summary>
           <div>${renderProductPricingGuideMarkup(photoProduct, { showHeading: false })}</div>
         </details>
         <label class="photo-upload-zone" for="photoKeepsakeInput">
@@ -2418,7 +2443,6 @@ const EXTRA_BASE_COLOUR_PRICE = Number(modularProduct.extra_base_colour_price);
 const EXTRA_CAP_COLOUR_PRICE = Number(modularProduct.extra_cap_colour_price);
 const EXTRA_LETTER_COLOUR_PRICE = Number(modularProduct.extra_letter_colour_price);
 const GIFTING_BAG_PRICE = 0.5;
-const PHOTO_CLICKER_ADDON_PRICE = 1.5;
 
 const configuredPromoCode = normalizePromoCode(shopSettings.promo_code);
 
@@ -4305,13 +4329,15 @@ function calculatePrice(design, name = "", product = activeProduct) {
   }
   const characterCount = Array.from(sanitizeName(name)).length;
 
-  const productPrice = calculateProductUnitPrice({
-    product,
-    characterCount,
-    baseColourCount: getUniqueColourCount(design.bases),
-    capColourCount: getUniqueColourCount(design.caps),
-    letterColourCount: getUniqueColourCount(design.letters)
-  });
+  const productPrice = product.product_key === PHOTO_PRODUCT_KEY
+    ? getPhotoKeepsakeColourPrice(design?.photo?.colourCount)
+    : calculateProductUnitPrice({
+        product,
+        characterCount,
+        baseColourCount: getUniqueColourCount(design.bases),
+        capColourCount: getUniqueColourCount(design.caps),
+        letterColourCount: getUniqueColourCount(design.letters)
+      });
   const photoVariantPrice =
     product.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker"
       ? PHOTO_CLICKER_ADDON_PRICE
@@ -4323,6 +4349,26 @@ function getUnitPriceBreakdown(design, name = "", product = activeProduct) {
   if (isReadyMadeProduct(product)) {
     const unitTotal = roundMoney(getProductDisplayPrice(product));
     return { rows: [{ label: "Product price", amount: unitTotal, addOn: false }], unitTotal };
+  }
+  if (product.product_key === PHOTO_PRODUCT_KEY) {
+    const colourCount = Math.min(4, Math.max(2, Math.round(Number(design?.photo?.colourCount) || 4)));
+    const artworkPrice = getPhotoKeepsakeColourPrice(colourCount);
+    const rows = [{
+      label: `${colourCount}-colour artwork`,
+      amount: artworkPrice,
+      addOn: false
+    }];
+    if (design?.photo?.variant === "clicker") {
+      rows.push({
+        label: "Clicker upgrade",
+        amount: PHOTO_CLICKER_ADDON_PRICE,
+        addOn: true
+      });
+    }
+    return {
+      rows,
+      unitTotal: roundMoney(artworkPrice + (design?.photo?.variant === "clicker" ? PHOTO_CLICKER_ADDON_PRICE : 0))
+    };
   }
   const characterCount = Array.from(sanitizeName(name)).length;
   const includedCharacters = Math.max(0, Number(product.included_characters) || 0);
@@ -4359,14 +4405,6 @@ function getUnitPriceBreakdown(design, name = "", product = activeProduct) {
       addOn: true
     });
   });
-
-  if (product.product_key === PHOTO_PRODUCT_KEY && design?.photo?.variant === "clicker") {
-    rows.push({
-      label: "Clicker keychain upgrade",
-      amount: PHOTO_CLICKER_ADDON_PRICE,
-      addOn: true
-    });
-  }
 
   return {
     rows,
@@ -9600,7 +9638,7 @@ function renderPhotoKeepsakeLivePrice() {
   const quantity = normalizeItemQuantity(photoKeepsakeQuantity?.value);
   const clickerSelected = Boolean(photoClickerUpgrade?.checked);
   const unitPrice = roundMoney(
-    getProductDisplayPrice(product) + (clickerSelected ? PHOTO_CLICKER_ADDON_PRICE : 0)
+    getPhotoKeepsakeColourPrice(photoColourCount?.value) + (clickerSelected ? PHOTO_CLICKER_ADDON_PRICE : 0)
   );
   photoKeepsakeLivePrice.innerHTML = `
     <span>${clickerSelected ? "Clicker keepsake" : "Classic keepsake"}</span>
@@ -10000,6 +10038,13 @@ photoClickerUpgrade?.addEventListener("change", () => {
     photoGenerationStatus.textContent = selectedVariant === "clicker"
       ? "Clicker selected — create the artwork again so it has no keychain hole."
       : "Classic selected — create the artwork again with space for the keychain hole.";
+  }
+  renderPhotoKeepsakeLivePrice();
+});
+photoColourCount?.addEventListener("change", () => {
+  if (photoKeepsakeState.artworkUrl) {
+    resetPhotoArtworkResult();
+    photoGenerationStatus.textContent = "Artwork detail changed — create the artwork again to preview the selected number of colours.";
   }
   renderPhotoKeepsakeLivePrice();
 });

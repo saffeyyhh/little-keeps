@@ -22,7 +22,7 @@ values (
   'Your photo, simplified for 3D printing',
   'Upload a person, pet or meaningful picture and receive a limited-colour illustrated keepsake.',
   'coming_soon', false,
-  15.00, 12.00, true,
+  6.50, 6.50, false,
   50, 0,
   1, 1, 1,
   0, 0, 0,
