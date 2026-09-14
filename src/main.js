@@ -7323,6 +7323,7 @@ async function submitOrderOnce() {
 
     return Array.from({ length: getItemQuantity(item) }, () => {
       const includesGiftingBag = expandedItemIndex === 0 && giftingBagQuantity > 0;
+      const unitPriceBreakdown = getUnitPriceBreakdown(design, item.name, itemProduct);
       expandedItemIndex += 1;
 
       return {
@@ -7335,9 +7336,15 @@ async function submitOrderOnce() {
         design_batch_number: item.designBatchNumber || null,
         group_contributor_name: item.groupContributorName || null,
         price: roundMoney(
-          calculatePrice(design, item.name, itemProduct) +
+          unitPriceBreakdown.unitTotal +
           (includesGiftingBag ? giftingBagQuantity * GIFTING_BAG_PRICE : 0)
         ),
+        unit_price: unitPriceBreakdown.unitTotal,
+        price_breakdown: unitPriceBreakdown.rows.map(row => ({
+          label: row.label,
+          amount: row.amount,
+          add_on: Boolean(row.addOn)
+        })),
         gifting_bag: includesGiftingBag,
         gifting_bag_quantity: includesGiftingBag ? giftingBagQuantity : 0,
 

@@ -13555,6 +13555,9 @@ function getPdfRgb(value, fallback) {
 function getCompactPdfText(value) {
   return String(value ?? "-")
     .replace(/[–—]/g, "-")
+    .replace(/[·•]/g, "-")
+    .replace(/×/g, "x")
+    .replace(/−/g, "-")
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[^\x20-\x7E]/g, "*");
@@ -13582,6 +13585,90 @@ function getCompactPdfIconImage(character) {
   const image = canvas.toDataURL("image/png");
   compactPdfIconImageCache.set(character, image);
   return image;
+}
+
+function getPdfItemPriceBreakdown(order, item) {
+  const savedRows = Array.isArray(item?.price_breakdown)
+    ? item.price_breakdown
+        .map(row => ({
+          label: String(row?.label || "").trim(),
+          amount: Math.max(0, Number(row?.amount) || 0),
+          addOn: Boolean(row?.add_on ?? row?.addOn)
+        }))
+        .filter(row => row.label)
+    : [];
+  const giftingAmount = getItemGiftingBagQuantity(item) * 0.5;
+  const savedItemTotal = Math.max(0, Number(item?.price) || 0);
+  const savedUnitTotal = Math.max(
+    0,
+    Number(item?.unit_price) || savedItemTotal - giftingAmount
+  );
+
+  if (savedRows.length) {
+    return { rows: savedRows, unitTotal: savedUnitTotal };
+  }
+
+  const productKey = String(item?.product_key || order?.product_key || "");
+  const product = adminProductCatalog.find(entry => entry.product_key === productKey) ||
+    DEFAULT_PRODUCT_CATALOG.find(entry => entry.product_key === productKey);
+
+  if (!product || isReadyMadeOrderItem(item)) {
+    return {
+      rows: [{ label: "Product price", amount: savedUnitTotal, addOn: false }],
+      unitTotal: savedUnitTotal
+    };
+  }
+
+  if (productKey === "ai-photo-keepsake") {
+    const clickerPrice = item?.design?.photo?.variant === "clicker"
+      ? Math.min(savedUnitTotal, Number(adminShopSettings.photo_clicker_addon_price || 1.5))
+      : 0;
+    const colourCount = Math.min(
+      4,
+      Math.max(2, Math.round(Number(item?.design?.photo?.colour_count || 4)))
+    );
+    const rows = [{
+      label: `${colourCount}-colour artwork`,
+      amount: Math.max(0, savedUnitTotal - clickerPrice),
+      addOn: false
+    }];
+    if (clickerPrice > 0) {
+      rows.push({ label: "Clicker upgrade", amount: clickerPrice, addOn: true });
+    }
+    return { rows, unitTotal: savedUnitTotal };
+  }
+
+  const design = item?.design || {};
+  const characterCount = Array.from(
+    item?.clean_name || sanitizeName(item?.name || "")
+  ).length;
+  const uniqueColourCount = values => new Set((values || []).map(value =>
+    String(value?.hex || value || "").toLowerCase()
+  ).filter(Boolean)).size;
+  const includedCharacters = Math.max(0, Number(product.included_characters) || 0);
+  const extras = [
+    ["Extra character", Math.max(0, characterCount - includedCharacters), Number(product.extra_character_price || 0)],
+    ["Extra base colour", Math.max(0, uniqueColourCount(design.bases) - Number(product.included_base_colours || 0)), Number(product.extra_base_colour_price || 0)],
+    ["Extra cap colour", Math.max(0, uniqueColourCount(design.caps) - Number(product.included_cap_colours || 0)), Number(product.extra_cap_colour_price || 0)],
+    ["Extra letter colour", Math.max(0, uniqueColourCount(design.letters) - Number(product.included_letter_colours || 0)), Number(product.extra_letter_colour_price || 0)]
+  ].filter(([, quantity, unitAmount]) => quantity > 0 && unitAmount > 0);
+  const addOnTotal = extras.reduce(
+    (sum, [, quantity, unitAmount]) => sum + quantity * unitAmount,
+    0
+  );
+  const rows = [{
+    label: `Base price - includes up to ${includedCharacters} character${includedCharacters === 1 ? "" : "s"}`,
+    amount: Math.max(0, savedUnitTotal - addOnTotal),
+    addOn: false
+  }];
+  extras.forEach(([label, quantity, unitAmount]) => {
+    rows.push({
+      label: `${label}${quantity === 1 ? "" : "s"} - ${quantity} x S$${unitAmount.toFixed(2)}`,
+      amount: quantity * unitAmount,
+      addOn: true
+    });
+  });
+  return { rows, unitTotal: savedUnitTotal };
 }
 
 async function generateCustomerOrderPdf(order, items) {
@@ -13716,6 +13803,7 @@ async function generateCustomerOrderPdf(order, items) {
     const photoProduct = isPhotoKeepsake(order, item);
     const pencilProduct = isPencilClicker(order, item);
     const productName = getAdminOrderItemProductName(order, item);
+    const itemPricing = getPdfItemPriceBreakdown(order, item);
     const readyMadeSelections = Object.entries(design.ready_made?.selections || {})
       .map(([label, value]) => `${label}: ${value}`);
     const bases = Array.isArray(design.bases) && design.bases.length
@@ -13856,9 +13944,13 @@ async function generateCustomerOrderPdf(order, items) {
           )
         : [])
     ];
-    const cardHeight = photoProduct
-      ? Math.max(64, 24 + colourLines.length * 4)
-      : (readyMadeProduct ? 22 : 34) + colourLines.length * 3.8;
+    const detailStartOffset = photoProduct ? 21 : readyMadeProduct ? 18 : 31;
+    const detailLineHeight = photoProduct ? 4 : 3.8;
+    const detailEndOffset = detailStartOffset + colourLines.length * detailLineHeight;
+    const priceSectionOffset = photoProduct
+      ? Math.max(64, detailEndOffset + 4)
+      : Math.max(readyMadeProduct ? 25 : 36, detailEndOffset + 4);
+    const cardHeight = priceSectionOffset + 14 + itemPricing.rows.length * 4.3;
 
     addPageIfNeeded(cardHeight + 5);
     pdf.setFillColor(255, 255, 255);
@@ -13875,7 +13967,7 @@ async function generateCustomerOrderPdf(order, items) {
     );
     pdf.setTextColor(...pink);
     pdf.text(
-      getCompactPdfText(formatMoney(item.price)),
+      getCompactPdfText(formatMoney(itemPricing.unitTotal)),
       pageWidth - margin - 5,
       y + 7,
       { align: "right" }
@@ -14024,6 +14116,41 @@ async function generateCustomerOrderPdf(order, items) {
       margin + (photoProduct ? 56 : 5),
       y + (photoProduct ? 21 : readyMadeProduct ? 18 : 31)
     );
+
+    const priceSectionY = y + priceSectionOffset;
+    pdf.setDrawColor(241, 215, 226);
+    pdf.line(margin + 5, priceSectionY, pageWidth - margin - 5, priceSectionY);
+    pdf.setTextColor(...dark);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8.5);
+    pdf.text("Price per keychain", margin + 5, priceSectionY + 5);
+
+    let priceRowY = priceSectionY + 10;
+    itemPricing.rows.forEach(row => {
+      pdf.setTextColor(row.addOn ? 39 : muted[0], row.addOn ? 129 : muted[1], row.addOn ? 84 : muted[2]);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.5);
+      pdf.text(getCompactPdfText(row.label), margin + 5, priceRowY);
+      pdf.text(
+        `${row.addOn ? "+" : ""}${getCompactPdfText(formatMoney(row.amount))}`,
+        pageWidth - margin - 5,
+        priceRowY,
+        { align: "right" }
+      );
+      priceRowY += 4.3;
+    });
+    pdf.setDrawColor(238, 226, 231);
+    pdf.line(margin + 5, priceRowY - 1.5, pageWidth - margin - 5, priceRowY - 1.5);
+    pdf.setTextColor(...dark);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8.5);
+    pdf.text("Price per keychain", margin + 5, priceRowY + 2.5);
+    pdf.text(
+      getCompactPdfText(formatMoney(itemPricing.unitTotal)),
+      pageWidth - margin - 5,
+      priceRowY + 2.5,
+      { align: "right" }
+    );
     y += cardHeight + 5;
   });
 
@@ -14033,8 +14160,32 @@ async function generateCustomerOrderPdf(order, items) {
 
   const promoDiscount = Number(order.discount_amount || 0);
   const hasPromoDiscount = promoDiscount > 0;
-  const summaryHeight = hasPromoDiscount ? 45 : 33;
-  const totalLineY = hasPromoDiscount ? 39 : 27;
+  const originalSubtotal = Number(order.original_subtotal ?? order.subtotal ?? 0);
+  const giftingBagTotal = items.reduce(
+    (sum, item) => sum + getItemGiftingBagQuantity(item) * 0.5,
+    0
+  );
+  const keychainSubtotal = Math.max(0, originalSubtotal - giftingBagTotal);
+  const summaryRows = [];
+
+  if (giftingBagTotal > 0) {
+    summaryRows.push(["Keychains", keychainSubtotal, "normal"]);
+    summaryRows.push(["Gifting bags", giftingBagTotal, "normal"]);
+  }
+  summaryRows.push(["Subtotal", originalSubtotal, "normal"]);
+  if (hasPromoDiscount) {
+    summaryRows.push([`Promo ${getCompactPdfText(order.promo_code || "")}`, -promoDiscount, "discount"]);
+    summaryRows.push(["Discounted subtotal", Number(order.subtotal || 0), "normal"]);
+  }
+  summaryRows.push([
+    "Delivery",
+    Number(order.delivery_fee || 0),
+    Number(order.delivery_fee || 0) === 0 ? "free" : "normal"
+  ]);
+  if (Number(order.rush_fee || 0) > 0) {
+    summaryRows.push(["Rush fee", Number(order.rush_fee), "normal"]);
+  }
+  const summaryHeight = 15 + summaryRows.length * 6;
 
   addPageIfNeeded(summaryHeight + 4);
   pdf.setFillColor(...softPink);
@@ -14043,52 +14194,31 @@ async function generateCustomerOrderPdf(order, items) {
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
 
-  if (hasPromoDiscount) {
-    pdf.text("Original subtotal", margin + 6, y + 7);
+  let summaryRowY = y + 7;
+  summaryRows.forEach(([label, amount, type]) => {
+    if (type === "discount") pdf.setTextColor(39, 129, 84);
+    else pdf.setTextColor(...dark);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    pdf.text(label, margin + 6, summaryRowY);
     pdf.text(
-      getCompactPdfText(formatMoney(order.original_subtotal)),
+      type === "free"
+        ? "Free"
+        : `${type === "discount" ? "-" : ""}${getCompactPdfText(formatMoney(Math.abs(amount)))}`,
       pageWidth - margin - 6,
-      y + 7,
+      summaryRowY,
       { align: "right" }
     );
-    pdf.setTextColor(39, 129, 84);
-    pdf.text(`Promo ${getCompactPdfText(order.promo_code || "")}`, margin + 6, y + 14);
-    pdf.text(
-      `-${getCompactPdfText(formatMoney(promoDiscount))}`,
-      pageWidth - margin - 6,
-      y + 14,
-      { align: "right" }
-    );
-    pdf.setTextColor(...dark);
-  }
-
-  const subtotalLineY = hasPromoDiscount ? 21 : 8;
-  const deliveryLineY = hasPromoDiscount ? 28 : 16;
-
-  pdf.text(hasPromoDiscount ? "Discounted subtotal" : "Subtotal", margin + 6, y + subtotalLineY);
-  pdf.text(
-    getCompactPdfText(formatMoney(order.subtotal)),
-    pageWidth - margin - 6,
-    y + subtotalLineY,
-    { align: "right" }
-  );
-  pdf.text("Delivery", margin + 6, y + deliveryLineY);
-  pdf.text(
-    Number(order.delivery_fee || 0) === 0
-      ? "Free"
-      : getCompactPdfText(formatMoney(order.delivery_fee)),
-    pageWidth - margin - 6,
-    y + deliveryLineY,
-    { align: "right" }
-  );
+    summaryRowY += 6;
+  });
   pdf.setTextColor(...pink);
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(13);
-  pdf.text("Total Paid", margin + 6, y + totalLineY);
+  pdf.text("Total Paid", margin + 6, y + summaryHeight - 6);
   pdf.text(
     getCompactPdfText(formatMoney(order.total)),
     pageWidth - margin - 6,
-    y + totalLineY,
+    y + summaryHeight - 6,
     { align: "right" }
   );
 
@@ -15487,22 +15617,42 @@ async function loadOrders() {
         customer_email: "pencil@example.com",
         customer_phone: "90000004",
         payment_type: "Paid",
-        subtotal: 12.5,
+        original_subtotal: 9.3,
+        promo_code: "PREVIEW10",
+        discount_amount: 0.93,
+        subtotal: 8.37,
         delivery_fee: 0,
-        total: 12.5,
+        total: 8.37,
         status: "Payment Verified",
         collection_method: "pickup_woodlands",
         needed_by: tomorrow,
         order_data: [{
           product_key: PENCIL_PRODUCT_KEY,
           product_name: "Custom Pencil Clicker Keychain",
-          name: "AIMAN",
-          clean_name: "AIMAN",
-          price: 12.5,
+          name: "AIMANXYZ",
+          clean_name: "AIMANXYZ",
+          price: 9.3,
+          unit_price: 9.3,
+          price_breakdown: [
+            { label: "Base price · includes up to 6 characters", amount: 7.9, add_on: false },
+            { label: "Extra characters · 2 × S$0.20", amount: 0.4, add_on: true },
+            { label: "Extra base colour · 1 × S$0.50", amount: 0.5, add_on: true },
+            { label: "Extra cap colour · 1 × S$0.30", amount: 0.3, add_on: true },
+            { label: "Extra letter colour · 1 × S$0.20", amount: 0.2, add_on: true }
+          ],
           design: {
-            bases: [{ name: "Cyan", hex: "#008fd5", material_type: "BASIC" }],
-            caps: [{ name: "Cobalt Blue", hex: "#0759b7", material_type: "BASIC" }],
-            letters: [{ name: "Jade White", hex: "#ffffff", material_type: "BASIC" }],
+            bases: [
+              { name: "Cyan", hex: "#008fd5", material_type: "BASIC" },
+              { name: "Pink", hex: "#f18db2", material_type: "BASIC" }
+            ],
+            caps: [
+              { name: "Cobalt Blue", hex: "#0759b7", material_type: "BASIC" },
+              { name: "Sunflower Yellow", hex: "#f7c948", material_type: "BASIC" }
+            ],
+            letters: [
+              { name: "Jade White", hex: "#ffffff", material_type: "BASIC" },
+              { name: "Maroon Red", hex: "#9d2235", material_type: "BASIC" }
+            ],
             pencil: {
               ending_style: "eraser",
               wood: { name: "Desert Tan", hex: "#e8bd8d", material_type: "MATTE" },
