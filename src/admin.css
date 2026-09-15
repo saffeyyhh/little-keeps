@@ -2364,6 +2364,243 @@ body {
   overflow: hidden;
 }
 
+.basket-board,
+.basket-focus-banner {
+  margin-bottom: 20px;
+  border: 2px solid #cfeaf5;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #f7fbff, #fff9fc);
+  padding: 20px;
+}
+
+.basket-board > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.basket-board h2,
+.basket-focus-banner h2 {
+  margin: 2px 0 5px;
+}
+
+.basket-board p,
+.basket-focus-banner p {
+  margin: 0;
+}
+
+.basket-board button,
+.basket-focus-banner button,
+.basket-assignment-control button {
+  border: 0;
+  border-radius: 12px;
+  background: var(--admin-main-dark);
+  color: #fff;
+  padding: 10px 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.basket-board button:disabled,
+.basket-focus-banner button:disabled,
+.basket-assignment-control button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.basket-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 9px;
+}
+
+.basket-slot {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #d8e8ef;
+  border-radius: 15px;
+  background: #fff;
+}
+
+.basket-slot > b,
+.basket-focus-number {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: #20374a;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.basket-slot.is-free > b {
+  background: #e8f7ee;
+  color: #27774b;
+}
+
+.basket-slot > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.basket-slot strong,
+.basket-slot small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.basket-slot small {
+  color: #74818b;
+  margin-top: 2px;
+}
+
+.basket-slot > span {
+  color: #2f9a61;
+  font-weight: 900;
+}
+
+.basket-slot button {
+  padding: 8px 10px;
+}
+
+.basket-focus-banner {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+}
+
+.basket-focus-number {
+  font-size: 44px;
+  border-radius: 20px;
+}
+
+.basket-focus-actions,
+.basket-assignment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.basket-focus-actions .secondary-action,
+.basket-assignment-actions .secondary-action {
+  color: #304456;
+  background: #e9f2f6;
+}
+
+.basket-assignment-actions .danger-action {
+  color: #9a3151;
+  background: #fde8ef;
+}
+
+.basket-assignment-control {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid #cfeaf5;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.basket-assignment-control > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.basket-assignment-control small {
+  color: #71808b;
+}
+
+.basket-assignment-control select {
+  min-width: 145px;
+  border: 1px solid #cad9e1;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 34px 10px 11px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.basket-number-pill {
+  color: #fff !important;
+  border-color: #20374a !important;
+  background: #20374a !important;
+}
+
+.assembly-waiting-note ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.assembly-waiting-note li + li {
+  margin-top: 4px;
+}
+
+@media (max-width: 760px) {
+  .basket-board,
+  .basket-focus-banner {
+    padding: 14px;
+    border-radius: 19px;
+  }
+
+  .basket-board > header,
+  .basket-assignment-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .basket-board > header button,
+  .basket-assignment-actions,
+  .basket-assignment-actions select,
+  .basket-assignment-actions button {
+    width: 100%;
+  }
+
+  .basket-slot-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .basket-slot {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .basket-slot button,
+  .basket-slot > span {
+    grid-column: 1 / -1;
+    width: 100%;
+    text-align: center;
+  }
+
+  .basket-focus-banner {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+
+  .basket-focus-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .basket-focus-number {
+    font-size: 34px;
+  }
+}
+
 .assembly-summary {
   cursor: pointer;
   list-style: none;

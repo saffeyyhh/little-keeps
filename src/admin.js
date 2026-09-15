@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import emailjs from "@emailjs/browser";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
@@ -509,6 +510,14 @@ logoutBtn.onclick = async () => {
 
 let currentView = "today";
 let latestOrders = [];
+const REUSABLE_BASKET_COUNT = 20;
+
+function getFocusedBasketNumber() {
+  const basketNumber = Number(new URLSearchParams(window.location.search).get("basket"));
+  return Number.isInteger(basketNumber) && basketNumber >= 1 && basketNumber <= REUSABLE_BASKET_COUNT
+    ? basketNumber
+    : null;
+}
 let latestPhotoPreviews = [];
 let scheduleMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedScheduleDate = getSingaporeDateValue();
@@ -3067,7 +3076,9 @@ window.moveAssemblyToFulfilment = async function(id) {
   if (!IS_ADMIN_PREVIEW) {
     const { error } = await updateOrderFamily(order, {
       status: "Assembly Complete",
-      status_updated_at: new Date().toISOString()
+      status_updated_at: new Date().toISOString(),
+      basket_number: null,
+      basket_assigned_at: null
     });
 
     if (error) {
@@ -3171,7 +3182,12 @@ window.markReady = async function(id, automatic = false) {
   const familyIds = getOrderFamily(order).map(item => item.id);
   const { error: readyError } = await supabase
     .from("orders")
-    .update({ status: finalStatus, status_updated_at: new Date().toISOString() })
+    .update({
+      status: finalStatus,
+      status_updated_at: new Date().toISOString(),
+      basket_number: null,
+      basket_assigned_at: null
+    })
     .in("id", familyIds);
   if (readyError) {
     alert("Stock was deducted, but the fulfilment status could not be updated.");
@@ -10254,8 +10270,221 @@ function createPencilAssemblyColourGuide(name, design = {}) {
   `;
 }
 
+function getBasketLink(basketNumber) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("basket", String(basketNumber));
+  return url.toString();
+}
+
+function renderReusableBasketBoard(candidateOrders, focusedBasketNumber) {
+  const assignments = new Map(
+    candidateOrders
+      .filter(order => Number(order.basket_number) >= 1)
+      .map(order => [Number(order.basket_number), order])
+  );
+
+  if (focusedBasketNumber) {
+    const assignedOrder = assignments.get(focusedBasketNumber);
+    return `
+      <section class="basket-focus-banner">
+        <div class="basket-focus-number">${focusedBasketNumber}</div>
+        <div>
+          <p class="section-kicker">Reusable basket</p>
+          <h2>${assignedOrder ? escapeAdminHtml(assignedOrder.customer_name || "Unnamed customer") : "This basket is free"}</h2>
+          <p>${assignedOrder
+            ? `${escapeAdminHtml(assignedOrder.order_ref || "-")} · Keep this screen open while assembling.`
+            : "Assign an order to this basket from the full Assembly view."}</p>
+        </div>
+        <div class="basket-focus-actions">
+          ${assignedOrder ? `<button type="button" onclick='window.clearOrderBasket(${JSON.stringify(String(assignedOrder.id))}, this)'>Free Basket ${focusedBasketNumber}</button>` : ""}
+          <button type="button" class="secondary-action" onclick="window.showAllBaskets()">Show all baskets</button>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="basket-board">
+      <header>
+        <div>
+          <p class="section-kicker">Paper-free workshop</p>
+          <h2>Reusable baskets</h2>
+          <p>Put the permanent numbered tag on each basket, then assign an order here.</p>
+        </div>
+        <button type="button" onclick="window.printReusableBasketTags(this)">Print Basket 1–${REUSABLE_BASKET_COUNT} Tags</button>
+      </header>
+      <div class="basket-slot-grid">
+        ${Array.from({ length: REUSABLE_BASKET_COUNT }, (_, index) => {
+          const basketNumber = index + 1;
+          const order = assignments.get(basketNumber);
+          return `
+            <article class="basket-slot ${order ? "is-assigned" : "is-free"}">
+              <b>${basketNumber}</b>
+              <div>
+                <strong>${order ? escapeAdminHtml(order.customer_name || "Unnamed customer") : "Free"}</strong>
+                <small>${order ? escapeAdminHtml(order.order_ref || "-") : "Ready to reuse"}</small>
+              </div>
+              ${order
+                ? `<button type="button" onclick="window.openBasket(${basketNumber})">Open</button>`
+                : `<span aria-label="Available basket">✓</span>`}
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderBasketAssignmentControl(order) {
+  const assignedBasket = Number(order.basket_number) || 0;
+  return `
+    <section class="basket-assignment-control">
+      <div>
+        <p class="section-kicker">Physical sorting basket</p>
+        <strong>${assignedBasket ? `Basket ${assignedBasket}` : "No basket assigned"}</strong>
+        <small>${assignedBasket ? "Scan its permanent tag to reopen this order." : "Choose the basket holding these printed pieces."}</small>
+      </div>
+      <div class="basket-assignment-actions">
+        <select id="basket-select-${escapeAdminHtml(String(order.id))}" aria-label="Basket number">
+          <option value="">Choose basket…</option>
+          ${Array.from({ length: REUSABLE_BASKET_COUNT }, (_, index) => {
+            const basketNumber = index + 1;
+            return `<option value="${basketNumber}" ${assignedBasket === basketNumber ? "selected" : ""}>Basket ${basketNumber}</option>`;
+          }).join("")}
+        </select>
+        <button type="button" onclick='window.assignOrderBasket(${JSON.stringify(String(order.id))}, document.getElementById(${JSON.stringify(`basket-select-${String(order.id)}`)}).value, this)'>${assignedBasket ? "Change" : "Assign"}</button>
+        ${assignedBasket ? `<button type="button" class="secondary-action" onclick='window.openBasket(${assignedBasket})'>Open</button><button type="button" class="danger-action" onclick='window.clearOrderBasket(${JSON.stringify(String(order.id))}, this)'>Free</button>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+window.openBasket = function(basketNumber) {
+  const url = new URL(getBasketLink(Number(basketNumber)));
+  window.history.pushState({}, "", `${url.pathname}${url.search}`);
+  currentView = "assembly";
+  setActiveTab(assemblyViewBtn);
+  renderCurrentView();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+window.showAllBaskets = function() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("basket");
+  window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  renderCurrentView();
+};
+
+window.assignOrderBasket = async function(orderId, basketValue, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const basketNumber = Number(basketValue);
+  if (!order || !Number.isInteger(basketNumber) || basketNumber < 1 || basketNumber > REUSABLE_BASKET_COUNT) {
+    alert("Choose a basket number first.");
+    return;
+  }
+
+  const occupied = latestOrders.find(item =>
+    String(item.id) !== String(order.id) && Number(item.basket_number) === basketNumber
+  );
+  if (occupied) {
+    alert(`Basket ${basketNumber} is already holding ${occupied.order_ref || "another order"} for ${occupied.customer_name || "a customer"}. Free it first.`);
+    return;
+  }
+
+  if (button) button.disabled = true;
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({ basket_number: basketNumber, basket_assigned_at: new Date().toISOString() })
+      .eq("id", order.id);
+    if (error) {
+      console.error("Unable to assign reusable basket:", error);
+      alert("Unable to save this basket. Run the reusable basket SQL in Supabase once, then try again.");
+      if (button) button.disabled = false;
+      return;
+    }
+  }
+  order.basket_number = basketNumber;
+  order.basket_assigned_at = new Date().toISOString();
+  renderCurrentView();
+};
+
+window.clearOrderBasket = async function(orderId, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  if (!order) return;
+  if (button) button.disabled = true;
+  if (!IS_ADMIN_PREVIEW) {
+    const { error } = await supabase
+      .from("orders")
+      .update({ basket_number: null, basket_assigned_at: null })
+      .eq("id", order.id);
+    if (error) {
+      console.error("Unable to free reusable basket:", error);
+      alert("Unable to free this basket. Refresh and try again.");
+      if (button) button.disabled = false;
+      return;
+    }
+  }
+  order.basket_number = null;
+  order.basket_assigned_at = null;
+  const focusedBasketNumber = getFocusedBasketNumber();
+  if (focusedBasketNumber) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("basket");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  renderCurrentView();
+};
+
+window.printReusableBasketTags = async function(button) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("Allow pop-ups once so the reusable basket tags can open for printing.");
+    return;
+  }
+  const previousLabel = button?.textContent || "Print Basket Tags";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Making tags…";
+  }
+  printWindow.document.write("<p style='font:16px sans-serif;padding:24px'>Making your reusable basket tags…</p>");
+  try {
+    const tags = await Promise.all(Array.from({ length: REUSABLE_BASKET_COUNT }, async (_, index) => {
+      const basketNumber = index + 1;
+      const qrDataUrl = await QRCode.toDataURL(getBasketLink(basketNumber), {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: "M",
+        color: { dark: "#000000", light: "#ffffff" }
+      });
+      return `<article><b>${basketNumber}</b><img src="${qrDataUrl}" alt="QR code for Basket ${basketNumber}"><strong>Little Keeps</strong><span>Scan to view this basket</span></article>`;
+    }));
+    printWindow.document.open();
+    const tagSheets = [tags.slice(0, 10), tags.slice(10, 20)]
+      .map(sheetTags => `<main class="sheet">${sheetTags.join("")}</main>`)
+      .join("");
+    printWindow.document.write(`<!doctype html><html><head><title>Little Keeps Reusable Basket Tags</title><style>
+      @page{size:A4;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.sheet{height:281mm;display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(5,1fr);gap:4mm;page-break-after:always}.sheet:last-child{page-break-after:auto}article{min-height:0;border:2px solid #000;border-radius:5mm;padding:4mm;display:grid;grid-template-columns:1fr 30mm;grid-template-rows:1fr auto auto;align-items:center;page-break-inside:avoid}article>b{font-size:32mm;line-height:1;font-weight:900}article img{width:30mm;height:30mm;grid-column:2;grid-row:1}article strong{font-size:12pt;grid-column:1/-1}article span{font-size:8pt;grid-column:1/-1;margin-top:1mm}@media print{button{display:none}}
+    </style></head><body>${tagSheets}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+    printWindow.document.close();
+  } catch (error) {
+    console.error("Unable to create reusable basket tags:", error);
+    printWindow.close();
+    alert("Unable to create the basket tags. Please try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+  }
+};
+
 async function renderAssemblyQueue() {
   await loadInventoryItems();
+
+  const focusedBasketNumber = getFocusedBasketNumber();
 
   const candidateOrders = latestOrders
     .filter(order =>
@@ -10319,7 +10548,13 @@ async function renderAssemblyQueue() {
             baseReadyItems.push({ item, itemIndex });
             return;
           }
-          waitingItems.push({ item, itemIndex });
+          const missingParts = Object.entries(itemNeeds)
+            .filter(([itemName, qtyNeeded]) => Number(remainingStock[itemName] || 0) < qtyNeeded)
+            .map(([itemName, qtyNeeded]) => ({
+              itemName,
+              missing: Math.max(1, qtyNeeded - Number(remainingStock[itemName] || 0))
+            }));
+          waitingItems.push({ item, itemIndex, missingParts });
           return;
         }
 
@@ -10345,7 +10580,8 @@ async function renderAssemblyQueue() {
     .filter(entry =>
       entry.readyItems.length > 0 ||
       entry.baseReadyItems.length > 0 ||
-      entry.completedItems.length > 0
+      entry.completedItems.length > 0 ||
+      Number(entry.order.basket_number) > 0
     );
 
   const readyKeychainCount = assemblyOrders.reduce(
@@ -10570,12 +10806,16 @@ async function renderAssemblyQueue() {
       </div>
     `;
 
-  const assemblyCards = assemblyOrders
+  const visibleAssemblyOrders = focusedBasketNumber
+    ? assemblyOrders.filter(entry => Number(entry.order.basket_number) === focusedBasketNumber)
+    : assemblyOrders;
+
+  const assemblyCards = visibleAssemblyOrders
     .map(({ order, readyItems, baseReadyItems, waitingItems, completedItems, allCompleted }, index) => {
       const totalItems = (order.order_data || []).length;
 
       return `
-        <details class="assembly-card">
+        <details class="assembly-card" id="assembly-order-${escapeAdminHtml(String(order.id))}" ${focusedBasketNumber ? "open" : ""}>
           <summary class="assembly-summary">
             <div>
               <h3>${escapeAdminHtml(order.customer_name || "-")}</h3>
@@ -10584,6 +10824,7 @@ async function renderAssemblyQueue() {
 
             <div class="assembly-meta">
               <span>${completedItems.length}/${totalItems} completed</span>
+              ${order.basket_number ? `<span class="basket-number-pill">Basket ${Number(order.basket_number)}</span>` : ""}
               ${readyItems.length ? `<span>${readyItems.length} ready now</span>` : ""}
               ${baseReadyItems.length ? `<span>${baseReadyItems.length} base-only ready</span>` : ""}
               <span>${getMethodLabel(order.collection_method)}</span>
@@ -10592,6 +10833,7 @@ async function renderAssemblyQueue() {
           </summary>
 
           <div class="assembly-body">
+            ${renderBasketAssignmentControl(order)}
             ${renderOrderAlerts(order)}
             ${renderProductionNote(order)}
             ${renderAssemblyChecklist(order)}
@@ -10640,6 +10882,16 @@ async function renderAssemblyQueue() {
                   <div class="assembly-waiting-note">
                     <strong>${waitingItems.length} more keychain(s) still waiting for printed parts.</strong>
                     <span>They will appear here automatically when enough stock is added in Production.</span>
+                    <ul>
+                      ${waitingItems.map(({ item, missingParts }) => `
+                        <li>
+                          <b>${escapeAdminHtml(item.name || "Keychain")}</b>
+                          ${missingParts.length
+                            ? `— ${missingParts.map(part => `${escapeAdminHtml(part.itemName)} × ${part.missing}`).join(", ")}`
+                            : "— printed parts still pending"}
+                        </li>
+                      `).join("")}
+                    </ul>
                   </div>
                 `
                 : ""
@@ -10668,6 +10920,7 @@ async function renderAssemblyQueue() {
     .join("");
 
   ordersContainer.innerHTML = `    
+    ${renderReusableBasketBoard(candidateOrders, focusedBasketNumber)}
     <div class="production-card">
       <div class="production-header">
         <div>
@@ -10692,7 +10945,9 @@ async function renderAssemblyQueue() {
         </div>
       ` : ""}
 
-      ${assemblyOrders.length ? assemblyCards : emptyAssemblyMessage}
+      ${visibleAssemblyOrders.length ? assemblyCards : (focusedBasketNumber
+        ? `<div class="empty-card"><h3>Basket ${focusedBasketNumber} is free</h3><p>Return to all baskets and assign an order when you start collecting its pieces.</p></div>`
+        : emptyAssemblyMessage)}
     </div>
   `;
 }
@@ -14469,7 +14724,11 @@ async function archiveOrder(id) {
 
   const { error } = await supabase
     .from("orders")
-    .update({ archived_at: new Date().toISOString() })
+    .update({
+      archived_at: new Date().toISOString(),
+      basket_number: null,
+      basket_assigned_at: null
+    })
     .eq("id", id);
 
   if (error) {
@@ -15720,6 +15979,8 @@ async function loadOrders() {
         update_needs_review: true,
         update_summary: "Add-on: Aiman (+5 printed letters/caps and bases)",
         revision_number: 2,
+        basket_number: 3,
+        basket_assigned_at: new Date().toISOString(),
         assembly_progress: { base_connected: true },
         order_data: [{ name: "AIMAN", clean_name: "AIMAN", design: previewDesign }],
         created_at: new Date().toISOString()
@@ -16786,4 +17047,15 @@ if (window.matchMedia("(max-width: 760px)").matches) {
   workshopNotesBody.hidden = true;
   workshopNotesToggle.setAttribute("aria-expanded", "false");
 }
+if (getFocusedBasketNumber()) {
+  currentView = "assembly";
+  setActiveTab(assemblyViewBtn);
+}
+window.addEventListener("popstate", () => {
+  if (getFocusedBasketNumber()) {
+    currentView = "assembly";
+    setActiveTab(assemblyViewBtn);
+  }
+  renderCurrentView();
+});
 loadOrders();
