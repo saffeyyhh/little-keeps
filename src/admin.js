@@ -442,28 +442,29 @@ document.querySelector("#app").innerHTML = `
       <header>
         <div>
           <p>Reusable basket tags</p>
-          <h2>Fit My Label Roll</h2>
-          <span>Choose one of your three sizes—or enter the exact millimetres.</span>
+          <h2>Print 3 Tags on One Label</h2>
+          <span>Your label size stays fixed. Choose the basket size and numbers.</span>
         </div>
         <button id="closeBasketLabelDialog" type="button" aria-label="Close">×</button>
       </header>
 
-      <div class="basket-label-presets" role="group" aria-label="Label size presets">
-        <button type="button" data-label-width="40" data-label-height="30"><strong>Small</strong><span>40 × 30 mm</span></button>
-        <button type="button" data-label-width="50" data-label-height="30" class="active"><strong>Medium</strong><span>50 × 30 mm</span></button>
-        <button type="button" data-label-width="60" data-label-height="40"><strong>Large</strong><span>60 × 40 mm</span></button>
+      <div class="basket-label-presets" role="group" aria-label="Basket size">
+        <button type="button" data-basket-size="small"><i></i><strong>Small Basket</strong><span>Compact round tag</span></button>
+        <button type="button" data-basket-size="medium" class="active"><i></i><strong>Medium Basket</strong><span>Rounded tag</span></button>
+        <button type="button" data-basket-size="large"><i></i><strong>Large Basket</strong><span>Wide tag</span></button>
       </div>
 
       <div class="fulfilment-editor-grid basket-label-fields">
-        <label><span>Label width (mm)</span><input id="basketLabelWidth" type="number" min="25" max="150" step="1" value="50" required></label>
-        <label><span>Label height (mm)</span><input id="basketLabelHeight" type="number" min="25" max="150" step="1" value="30" required></label>
         <label><span>Start at Basket</span><input id="basketLabelStart" type="number" min="1" max="20" step="1" value="1" required></label>
-        <label><span>How many labels?</span><input id="basketLabelCount" type="number" min="1" max="20" step="1" value="20" required></label>
-        <label class="full-row"><span>Label shape</span><select id="basketLabelShape"><option value="rounded">Rounded rectangle</option><option value="square">Square corners</option><option value="circle">Circle</option></select></label>
+        <label><span>How many basket tags?</span><input id="basketLabelCount" type="number" min="1" max="20" step="1" value="3" required></label>
       </div>
 
-      <div class="basket-label-preview" id="basketLabelPreview"><b>1</b><span></span><small>Little Keeps</small></div>
-      <p class="fulfilment-editor-note">Each number prints as one correctly sized label page. In the print window, select the matching paper size and use 100% scale.</p>
+      <div class="basket-label-sheet-preview is-medium" id="basketLabelPreview" aria-label="Three tags on one label">
+        <div><b>1</b><span></span><small>Little Keeps</small></div>
+        <div><b>2</b><span></span><small>Little Keeps</small></div>
+        <div><b>3</b><span></span><small>Little Keeps</small></div>
+      </div>
+      <p class="fulfilment-editor-note"><strong>3 basket tags print on each 100 × 150 mm label.</strong> Cut along the outlines, then paste one tag onto each basket. Print at 100% scale.</p>
 
       <footer>
         <button id="cancelBasketLabelPrint" type="button">Cancel</button>
@@ -10414,15 +10415,15 @@ window.clearOrderBasket = async function(orderId, button) {
 };
 
 function syncBasketLabelPreview() {
-  const width = Number(document.getElementById("basketLabelWidth")?.value || 50);
-  const height = Number(document.getElementById("basketLabelHeight")?.value || 30);
-  const shape = document.getElementById("basketLabelShape")?.value || "rounded";
   const number = Number(document.getElementById("basketLabelStart")?.value || 1);
   const preview = document.getElementById("basketLabelPreview");
   if (!preview) return;
-  preview.style.setProperty("--label-ratio", `${Math.max(25, width)} / ${Math.max(25, height)}`);
-  preview.className = `basket-label-preview is-${shape}`;
-  preview.querySelector("b").textContent = String(Math.min(REUSABLE_BASKET_COUNT, Math.max(1, number)));
+  const basketSize = document.querySelector("[data-basket-size].active")?.dataset.basketSize || "medium";
+  const start = Math.min(REUSABLE_BASKET_COUNT, Math.max(1, number));
+  preview.className = `basket-label-sheet-preview is-${basketSize}`;
+  preview.querySelectorAll("b").forEach((label, index) => {
+    label.textContent = String(Math.min(REUSABLE_BASKET_COUNT, start + index));
+  });
 }
 
 window.printReusableBasketTags = function() {
@@ -10431,13 +10432,11 @@ window.printReusableBasketTags = function() {
 };
 
 async function createConfiguredBasketTags(button) {
-  const width = Math.min(150, Math.max(25, Number(document.getElementById("basketLabelWidth").value) || 50));
-  const height = Math.min(150, Math.max(25, Number(document.getElementById("basketLabelHeight").value) || 30));
   const start = Math.min(REUSABLE_BASKET_COUNT, Math.max(1, Number(document.getElementById("basketLabelStart").value) || 1));
   const requestedCount = Math.min(REUSABLE_BASKET_COUNT, Math.max(1, Number(document.getElementById("basketLabelCount").value) || 1));
   const count = Math.min(requestedCount, REUSABLE_BASKET_COUNT - start + 1);
-  const shapeValue = document.getElementById("basketLabelShape").value;
-  const shape = ["rounded", "square", "circle"].includes(shapeValue) ? shapeValue : "rounded";
+  const basketSizeValue = document.querySelector("[data-basket-size].active")?.dataset.basketSize;
+  const basketSize = ["small", "medium", "large"].includes(basketSizeValue) ? basketSizeValue : "medium";
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     alert("Allow pop-ups once so the reusable basket tags can open for printing.");
@@ -10458,15 +10457,16 @@ async function createConfiguredBasketTags(button) {
         errorCorrectionLevel: "M",
         color: { dark: "#000000", light: "#ffffff" }
       });
-      return `<main class="label-page"><article class="tag is-${shape}"><b>${basketNumber}</b><img src="${qrDataUrl}" alt="QR code for Basket ${basketNumber}"><strong>Little Keeps</strong></article></main>`;
+      return `<article class="tag is-${basketSize}"><b>${basketNumber}</b><img src="${qrDataUrl}" alt="QR code for Basket ${basketNumber}"><strong>Little Keeps</strong><small>${basketSize} basket</small></article>`;
     }));
+    const pages = [];
+    for (let index = 0; index < tags.length; index += 3) {
+      pages.push(`<main class="label-page">${tags.slice(index, index + 3).join("")}</main>`);
+    }
     printWindow.document.open();
-    const qrSize = Math.max(16, Math.min(width * .42, height - 6));
-    const numberSize = Math.max(12, Math.min(height * .58, width * .32));
-    const logoSize = Math.max(7, Math.min(11, height * .25));
     printWindow.document.write(`<!doctype html><html><head><title>Little Keeps Basket Labels</title><style>
-      @page{size:${width}mm ${height}mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;color:#000;background:#fff;font-family:Arial,sans-serif}.label-page{width:${width}mm;height:${height}mm;display:grid;place-items:center;break-after:page;page-break-after:always;overflow:hidden}.label-page:last-child{break-after:auto;page-break-after:auto}.tag{width:calc(100% - 2mm);height:calc(100% - 2mm);position:relative;display:grid;grid-template-columns:minmax(0,1fr) ${qrSize}mm;grid-template-rows:1fr auto;align-items:center;gap:1mm;padding:2mm;border:.45mm solid #000;border-radius:3mm;overflow:hidden}.tag.is-square{border-radius:0}.tag.is-circle{width:calc(min(${width}mm,${height}mm) - 2mm);height:calc(min(${width}mm,${height}mm) - 2mm);border-radius:50%;padding:3mm}.tag>b{font-size:${numberSize}mm;line-height:.82;font-weight:900;text-align:center}.tag img{width:${qrSize}mm;height:${qrSize}mm;grid-column:2;grid-row:1 / span 2}.tag strong{align-self:end;grid-column:1;grid-row:2;font-size:${logoSize}pt;line-height:1;text-align:center}@media screen{body{background:#ddd}.label-page{margin:8px auto;background:#fff;box-shadow:0 3px 15px #888}}@media print{html,body{width:${width}mm;height:${height}mm}}
-    </style></head><body>${tags.join("")}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+      @page{size:100mm 150mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;color:#000;background:#fff;font-family:Arial,sans-serif}.label-page{width:100mm;height:150mm;display:grid;grid-template-rows:repeat(3,1fr);place-items:center;gap:2mm;padding:3mm;break-after:page;page-break-after:always;overflow:hidden}.label-page:last-child{break-after:auto;page-break-after:auto}.tag{width:92mm;height:44mm;position:relative;display:grid;grid-template-columns:minmax(0,1fr) 31mm;grid-template-rows:1fr auto auto;align-items:center;column-gap:2mm;padding:2.5mm 4mm;border:.55mm dashed #000;border-radius:5mm;overflow:hidden}.tag.is-medium{width:76mm;border-radius:8mm}.tag.is-small{width:44mm;height:44mm;grid-template-columns:1fr 18mm;column-gap:1mm;padding:3mm;border-radius:50%}.tag>b{font-size:22mm;line-height:.82;font-weight:900;text-align:center}.tag img{width:31mm;height:31mm;grid-column:2;grid-row:1 / span 3}.tag strong{grid-column:1;grid-row:2;font-size:11pt;line-height:1;text-align:center}.tag small{grid-column:1;grid-row:3;margin-top:1mm;font-size:6pt;font-weight:700;letter-spacing:.08em;text-align:center;text-transform:uppercase}.tag.is-small>b{font-size:12mm}.tag.is-small img{width:18mm;height:18mm}.tag.is-small strong{font-size:7pt}.tag.is-small small{display:none}@media screen{body{background:#ddd}.label-page{margin:8px auto;background:#fff;box-shadow:0 3px 15px #888}}@media print{html,body{width:100mm;height:150mm}}
+    </style></head><body>${pages.join("")}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
     printWindow.document.close();
     basketLabelDialog.close();
   } catch (error) {
@@ -10481,15 +10481,13 @@ async function createConfiguredBasketTags(button) {
   }
 }
 
-document.querySelectorAll("[data-label-width]").forEach(preset => {
+document.querySelectorAll("[data-basket-size]").forEach(preset => {
   preset.addEventListener("click", () => {
-    document.querySelectorAll("[data-label-width]").forEach(item => item.classList.toggle("active", item === preset));
-    document.getElementById("basketLabelWidth").value = preset.dataset.labelWidth;
-    document.getElementById("basketLabelHeight").value = preset.dataset.labelHeight;
+    document.querySelectorAll("[data-basket-size]").forEach(item => item.classList.toggle("active", item === preset));
     syncBasketLabelPreview();
   });
 });
-["basketLabelWidth", "basketLabelHeight", "basketLabelStart", "basketLabelShape"].forEach(id => {
+["basketLabelStart", "basketLabelCount"].forEach(id => {
   document.getElementById(id)?.addEventListener("input", syncBasketLabelPreview);
 });
 document.getElementById("closeBasketLabelDialog").onclick = () => basketLabelDialog.close();
