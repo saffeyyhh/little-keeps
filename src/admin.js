@@ -159,36 +159,26 @@ document.querySelector("#app").innerHTML = `
     <section id="operationsSummary" class="operations-summary" aria-live="polite"></section>
 
     <nav class="workshop-tabs" aria-label="Workshop sections">
-      <button id="todayViewBtn" class="workshop-tab active" type="button">
-        <span aria-hidden="true">●</span> Today
-      </button>
-      <button id="ordersViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">▤</span> Orders
-      </button>
-      <button id="photoPreviewsViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">▧</span> AI Photos
-      </button>
-      <button id="scheduleViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">▦</span> Calendar
-      </button>
-      <button id="productionViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">▦</span> Production
-      </button>
-      <button id="assemblyViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">◇</span> Assembly
-      </button>
-      <button id="fulfilmentViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">↗</span> Fulfilment
-      </button>
-      <button id="inventoryViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">□</span> Inventory
-      </button>
-      <button id="financeViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">⌁</span> Finances
-      </button>
-      <button id="settingsViewBtn" class="workshop-tab" type="button">
-        <span aria-hidden="true">⚙️</span> Settings
-      </button>
+      <section class="workshop-tab-group is-workflow">
+        <small>Daily workflow</small>
+        <div>
+          <button id="todayViewBtn" class="workshop-tab active" type="button"><span aria-hidden="true">●</span> Today</button>
+          <button id="ordersViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▤</span> Orders</button>
+          <button id="productionViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▦</span> Production</button>
+          <button id="assemblyViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">◇</span> Assembly</button>
+          <button id="fulfilmentViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">↗</span> Fulfilment</button>
+        </div>
+      </section>
+      <section class="workshop-tab-group is-manage">
+        <small>Plan &amp; manage</small>
+        <div>
+          <button id="scheduleViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▦</span> Calendar</button>
+          <button id="photoPreviewsViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▧</span> AI Photos</button>
+          <button id="inventoryViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">□</span> Inventory</button>
+          <button id="financeViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">⌁</span> Finances</button>
+          <button id="settingsViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">⚙</span> Settings</button>
+        </div>
+      </section>
     </nav>
 
     <section class="workspace-panel">
@@ -446,6 +436,41 @@ document.querySelector("#app").innerHTML = `
       </footer>
     </form>
   </dialog>
+
+  <dialog id="basketLabelDialog" class="fulfilment-editor basket-label-dialog">
+    <form id="basketLabelForm" method="dialog">
+      <header>
+        <div>
+          <p>Reusable basket tags</p>
+          <h2>Fit My Label Roll</h2>
+          <span>Choose one of your three sizes—or enter the exact millimetres.</span>
+        </div>
+        <button id="closeBasketLabelDialog" type="button" aria-label="Close">×</button>
+      </header>
+
+      <div class="basket-label-presets" role="group" aria-label="Label size presets">
+        <button type="button" data-label-width="40" data-label-height="30"><strong>Small</strong><span>40 × 30 mm</span></button>
+        <button type="button" data-label-width="50" data-label-height="30" class="active"><strong>Medium</strong><span>50 × 30 mm</span></button>
+        <button type="button" data-label-width="60" data-label-height="40"><strong>Large</strong><span>60 × 40 mm</span></button>
+      </div>
+
+      <div class="fulfilment-editor-grid basket-label-fields">
+        <label><span>Label width (mm)</span><input id="basketLabelWidth" type="number" min="25" max="150" step="1" value="50" required></label>
+        <label><span>Label height (mm)</span><input id="basketLabelHeight" type="number" min="25" max="150" step="1" value="30" required></label>
+        <label><span>Start at Basket</span><input id="basketLabelStart" type="number" min="1" max="20" step="1" value="1" required></label>
+        <label><span>How many labels?</span><input id="basketLabelCount" type="number" min="1" max="20" step="1" value="20" required></label>
+        <label class="full-row"><span>Label shape</span><select id="basketLabelShape"><option value="rounded">Rounded rectangle</option><option value="square">Square corners</option><option value="circle">Circle</option></select></label>
+      </div>
+
+      <div class="basket-label-preview" id="basketLabelPreview"><b>1</b><span></span><small>Little Keeps</small></div>
+      <p class="fulfilment-editor-note">Each number prints as one correctly sized label page. In the print window, select the matching paper size and use 100% scale.</p>
+
+      <footer>
+        <button id="cancelBasketLabelPrint" type="button">Cancel</button>
+        <button id="printConfiguredBasketTags" type="submit">Create Labels</button>
+      </footer>
+    </form>
+  </dialog>
 `;
 
 const ordersContainer = document.getElementById("orders");
@@ -488,6 +513,8 @@ const aiMessageWriterForm = document.getElementById("aiMessageWriterForm");
 const aiMessageType = document.getElementById("aiMessageType");
 const aiMessageNote = document.getElementById("aiMessageNote");
 const aiMessageDraft = document.getElementById("aiMessageDraft");
+const basketLabelDialog = document.getElementById("basketLabelDialog");
+const basketLabelForm = document.getElementById("basketLabelForm");
 const aiMessageWriterStatus = document.getElementById("aiMessageWriterStatus");
 
 const { data: { session } } = await supabase.auth.getSession();
@@ -4914,8 +4941,6 @@ function renderOrders(orders) {
       </summary>
 
       ${renderOrderAlerts(order)}
-      ${renderProductionNote(order)}
-      ${renderAssemblyChecklist(order)}
 
       <div class="order-detail-grid">
         <p><strong>Customer Name</strong><br>${customerName}</p>
@@ -4995,64 +5020,9 @@ function renderOrders(orders) {
           </button>
         ` : ""}
 
-        <button type="button" onclick='window.copyOrderReference(${JSON.stringify(orderId)})'>
-          Copy Reference
-        </button>
-
-        ${order.linked_order_ref ? `
-          <button type="button" class="linked-order-action" onclick='window.unlinkOrderAddOn(${JSON.stringify(orderId)}, this)'>
-            Unlink Add-on
-          </button>
-        ` : canOrderAcceptAddOn(order.status) && !latestOrders.some(item =>
-          String(item.linked_order_ref || "").toUpperCase() ===
-          String(order.order_ref || "").toUpperCase()
-        ) ? `
-          <button type="button" class="linked-order-action" onclick='window.linkOrderAsAddOn(${JSON.stringify(orderId)}, this)'>
-            Link as Add-on
-          </button>
-        ` : ""}
-
-        ${order.customer_email ? `
-          <a href="mailto:${encodeURIComponent(order.customer_email)}?subject=${encodeURIComponent(`Little Keeps order ${order.order_ref || ""}`)}">
-            Email Customer
-          </a>
-        ` : ""}
-
         ${["Pending Payment", "Payment Expired"].includes(order.status) && order.customer_email ? `
           <button type="button" onclick='window.sendPaymentReminder(${JSON.stringify(orderId)}, this)'>
             Email Payment Reminder
-          </button>
-        ` : ""}
-
-        ${order.stripe_payment_intent_id && Number(order.refunded_amount || 0) < Number(order.total || 0) ? `
-          <button type="button" class="danger-action" onclick='window.refundOrder(${JSON.stringify(orderId)}, this)'>
-            Refund
-          </button>
-        ` : ""}
-
-        ${order.status === "Completed" && order.customer_email ? `
-          <button type="button" onclick='window.sendReviewRequest(${JSON.stringify(orderId)}, this)'>
-            ${order.review_request_sent_at ? "Resend Review Request" : "Send Review Request"}
-          </button>
-        ` : ""}
-
-        ${order.customer_email && (order.payment_type === "Paid" || order.status === "Payment Verified") ? `
-          <button type="button" class="approve-request-action" onclick='window.sendPaymentConfirmationEmail(${JSON.stringify(orderId)}, this)'>
-            Send Confirmation + PDF
-          </button>
-        ` : ""}
-
-        ${order.customer_email && (
-          order.collection_method === "delivery"
-            ? ["Out for Delivery", "Completed"].includes(order.status)
-            : ["Pending Pickup", "Completed"].includes(order.status)
-        ) ? `
-          <button
-            type="button"
-            class="approve-request-action"
-            onclick='window.resendCurrentStatusEmail(${JSON.stringify(orderId)}, this)'
-          >
-            Resend Status Email
           </button>
         ` : ""}
 
@@ -5070,32 +5040,37 @@ function renderOrders(orders) {
           Download PDF
         </button>
 
-        <button type="button" class="shipping-label-action" onclick='window.printBasketLabel(${JSON.stringify(orderId)})'>
-          Print Basket Label
-        </button>
-
-        ${order.collection_method === "delivery" ? `
-          <button type="button" class="hand-delivery-label-action" onclick='window.printHandDeliveryLabel(${JSON.stringify(orderId)})'>
-            Print Hand-Delivery Label
-          </button>
-        ` : ""}
-
-        ${!order.archived_at && !["Completed", "Refunded"].includes(order.status) ? `
-          <button type="button" class="rework-action" onclick='window.startOrderRework(${JSON.stringify(orderId)})'>
-            Send Keychain Back to Rework
-          </button>
-        ` : ""}
-
-        <button type="button" class="rush-stl-action" onclick='window.generateOrderStls(${JSON.stringify(orderId)}, this)'>
-          Generate Order STLs
-        </button>
-
-        ${order.archived_at ? `
-          <button type="button" onclick='window.restoreOrder(${JSON.stringify(orderId)})'>Restore Order</button>
-          <button type="button" class="danger-action" onclick='window.deleteTestOrder(${JSON.stringify(orderId)})'>Delete Permanently</button>
-        ` : `
-          <button type="button" class="archive-action" onclick='window.archiveOrder(${JSON.stringify(orderId)})'>Archive Order</button>
-        `}
+        <details class="order-more-actions">
+          <summary>More order actions <span aria-hidden="true">⌄</span></summary>
+          <div>
+            <button type="button" onclick='window.copyOrderReference(${JSON.stringify(orderId)})'>Copy Reference</button>
+            ${order.linked_order_ref ? `
+              <button type="button" class="linked-order-action" onclick='window.unlinkOrderAddOn(${JSON.stringify(orderId)}, this)'>Unlink Add-on</button>
+            ` : canOrderAcceptAddOn(order.status) && !latestOrders.some(item =>
+              String(item.linked_order_ref || "").toUpperCase() === String(order.order_ref || "").toUpperCase()
+            ) ? `
+              <button type="button" class="linked-order-action" onclick='window.linkOrderAsAddOn(${JSON.stringify(orderId)}, this)'>Link as Add-on</button>
+            ` : ""}
+            ${order.stripe_payment_intent_id && Number(order.refunded_amount || 0) < Number(order.total || 0) ? `
+              <button type="button" class="danger-action" onclick='window.refundOrder(${JSON.stringify(orderId)}, this)'>Refund</button>
+            ` : ""}
+            ${order.status === "Completed" && order.customer_email ? `
+              <button type="button" onclick='window.sendReviewRequest(${JSON.stringify(orderId)}, this)'>${order.review_request_sent_at ? "Resend Review Request" : "Send Review Request"}</button>
+            ` : ""}
+            ${order.customer_email && (order.payment_type === "Paid" || order.status === "Payment Verified") ? `
+              <button type="button" onclick='window.sendPaymentConfirmationEmail(${JSON.stringify(orderId)}, this)'>Send Confirmation + PDF</button>
+            ` : ""}
+            ${order.customer_email && (
+              order.collection_method === "delivery"
+                ? ["Out for Delivery", "Completed"].includes(order.status)
+                : ["Pending Pickup", "Completed"].includes(order.status)
+            ) ? `<button type="button" onclick='window.resendCurrentStatusEmail(${JSON.stringify(orderId)}, this)'>Resend Status Email</button>` : ""}
+            ${order.archived_at ? `
+              <button type="button" onclick='window.restoreOrder(${JSON.stringify(orderId)})'>Restore Order</button>
+              <button type="button" class="danger-action" onclick='window.deleteTestOrder(${JSON.stringify(orderId)})'>Delete Permanently</button>
+            ` : `<button type="button" class="archive-action" onclick='window.archiveOrder(${JSON.stringify(orderId)})'>Archive Order</button>`}
+          </div>
+        </details>
       </div>
 
       <div class="order-info">
@@ -10313,7 +10288,7 @@ function renderReusableBasketBoard(candidateOrders, focusedBasketNumber) {
           <h2>Reusable baskets</h2>
           <p>Put the permanent numbered tag on each basket, then assign an order here.</p>
         </div>
-        <button type="button" onclick="window.printReusableBasketTags(this)">Print Basket 1–${REUSABLE_BASKET_COUNT} Tags</button>
+        <button type="button" onclick="window.printReusableBasketTags()">Create Basket Labels</button>
       </header>
       <div class="basket-slot-grid">
         ${Array.from({ length: REUSABLE_BASKET_COUNT }, (_, index) => {
@@ -10438,48 +10413,91 @@ window.clearOrderBasket = async function(orderId, button) {
   renderCurrentView();
 };
 
-window.printReusableBasketTags = async function(button) {
+function syncBasketLabelPreview() {
+  const width = Number(document.getElementById("basketLabelWidth")?.value || 50);
+  const height = Number(document.getElementById("basketLabelHeight")?.value || 30);
+  const shape = document.getElementById("basketLabelShape")?.value || "rounded";
+  const number = Number(document.getElementById("basketLabelStart")?.value || 1);
+  const preview = document.getElementById("basketLabelPreview");
+  if (!preview) return;
+  preview.style.setProperty("--label-ratio", `${Math.max(25, width)} / ${Math.max(25, height)}`);
+  preview.className = `basket-label-preview is-${shape}`;
+  preview.querySelector("b").textContent = String(Math.min(REUSABLE_BASKET_COUNT, Math.max(1, number)));
+}
+
+window.printReusableBasketTags = function() {
+  syncBasketLabelPreview();
+  basketLabelDialog.showModal();
+};
+
+async function createConfiguredBasketTags(button) {
+  const width = Math.min(150, Math.max(25, Number(document.getElementById("basketLabelWidth").value) || 50));
+  const height = Math.min(150, Math.max(25, Number(document.getElementById("basketLabelHeight").value) || 30));
+  const start = Math.min(REUSABLE_BASKET_COUNT, Math.max(1, Number(document.getElementById("basketLabelStart").value) || 1));
+  const requestedCount = Math.min(REUSABLE_BASKET_COUNT, Math.max(1, Number(document.getElementById("basketLabelCount").value) || 1));
+  const count = Math.min(requestedCount, REUSABLE_BASKET_COUNT - start + 1);
+  const shapeValue = document.getElementById("basketLabelShape").value;
+  const shape = ["rounded", "square", "circle"].includes(shapeValue) ? shapeValue : "rounded";
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     alert("Allow pop-ups once so the reusable basket tags can open for printing.");
     return;
   }
-  const previousLabel = button?.textContent || "Print Basket Tags";
+  const previousLabel = button?.textContent || "Create Labels";
   if (button) {
     button.disabled = true;
-    button.textContent = "Making tags…";
+    button.textContent = "Making labels…";
   }
-  printWindow.document.write("<p style='font:16px sans-serif;padding:24px'>Making your reusable basket tags…</p>");
+  printWindow.document.write("<p style='font:16px sans-serif;padding:24px'>Making your reusable basket labels…</p>");
   try {
-    const tags = await Promise.all(Array.from({ length: REUSABLE_BASKET_COUNT }, async (_, index) => {
-      const basketNumber = index + 1;
+    const tags = await Promise.all(Array.from({ length: count }, async (_, index) => {
+      const basketNumber = start + index;
       const qrDataUrl = await QRCode.toDataURL(getBasketLink(basketNumber), {
-        width: 220,
+        width: 320,
         margin: 1,
         errorCorrectionLevel: "M",
         color: { dark: "#000000", light: "#ffffff" }
       });
-      return `<article><b>${basketNumber}</b><img src="${qrDataUrl}" alt="QR code for Basket ${basketNumber}"><strong>Little Keeps</strong><span>Scan to view this basket</span></article>`;
+      return `<main class="label-page"><article class="tag is-${shape}"><b>${basketNumber}</b><img src="${qrDataUrl}" alt="QR code for Basket ${basketNumber}"><strong>Little Keeps</strong></article></main>`;
     }));
     printWindow.document.open();
-    const tagSheets = [tags.slice(0, 10), tags.slice(10, 20)]
-      .map(sheetTags => `<main class="sheet">${sheetTags.join("")}</main>`)
-      .join("");
-    printWindow.document.write(`<!doctype html><html><head><title>Little Keeps Reusable Basket Tags</title><style>
-      @page{size:A4;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#000}.sheet{height:281mm;display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(5,1fr);gap:4mm;page-break-after:always}.sheet:last-child{page-break-after:auto}article{min-height:0;border:2px solid #000;border-radius:5mm;padding:4mm;display:grid;grid-template-columns:1fr 30mm;grid-template-rows:1fr auto auto;align-items:center;page-break-inside:avoid}article>b{font-size:32mm;line-height:1;font-weight:900}article img{width:30mm;height:30mm;grid-column:2;grid-row:1}article strong{font-size:12pt;grid-column:1/-1}article span{font-size:8pt;grid-column:1/-1;margin-top:1mm}@media print{button{display:none}}
-    </style></head><body>${tagSheets}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+    const qrSize = Math.max(16, Math.min(width * .42, height - 6));
+    const numberSize = Math.max(12, Math.min(height * .58, width * .32));
+    const logoSize = Math.max(7, Math.min(11, height * .25));
+    printWindow.document.write(`<!doctype html><html><head><title>Little Keeps Basket Labels</title><style>
+      @page{size:${width}mm ${height}mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;color:#000;background:#fff;font-family:Arial,sans-serif}.label-page{width:${width}mm;height:${height}mm;display:grid;place-items:center;break-after:page;page-break-after:always;overflow:hidden}.label-page:last-child{break-after:auto;page-break-after:auto}.tag{width:calc(100% - 2mm);height:calc(100% - 2mm);position:relative;display:grid;grid-template-columns:minmax(0,1fr) ${qrSize}mm;grid-template-rows:1fr auto;align-items:center;gap:1mm;padding:2mm;border:.45mm solid #000;border-radius:3mm;overflow:hidden}.tag.is-square{border-radius:0}.tag.is-circle{width:calc(min(${width}mm,${height}mm) - 2mm);height:calc(min(${width}mm,${height}mm) - 2mm);border-radius:50%;padding:3mm}.tag>b{font-size:${numberSize}mm;line-height:.82;font-weight:900;text-align:center}.tag img{width:${qrSize}mm;height:${qrSize}mm;grid-column:2;grid-row:1 / span 2}.tag strong{align-self:end;grid-column:1;grid-row:2;font-size:${logoSize}pt;line-height:1;text-align:center}@media screen{body{background:#ddd}.label-page{margin:8px auto;background:#fff;box-shadow:0 3px 15px #888}}@media print{html,body{width:${width}mm;height:${height}mm}}
+    </style></head><body>${tags.join("")}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
     printWindow.document.close();
+    basketLabelDialog.close();
   } catch (error) {
-    console.error("Unable to create reusable basket tags:", error);
+    console.error("Unable to create reusable basket labels:", error);
     printWindow.close();
-    alert("Unable to create the basket tags. Please try again.");
+    alert("Unable to create the basket labels. Please try again.");
   } finally {
     if (button) {
       button.disabled = false;
       button.textContent = previousLabel;
     }
   }
-};
+}
+
+document.querySelectorAll("[data-label-width]").forEach(preset => {
+  preset.addEventListener("click", () => {
+    document.querySelectorAll("[data-label-width]").forEach(item => item.classList.toggle("active", item === preset));
+    document.getElementById("basketLabelWidth").value = preset.dataset.labelWidth;
+    document.getElementById("basketLabelHeight").value = preset.dataset.labelHeight;
+    syncBasketLabelPreview();
+  });
+});
+["basketLabelWidth", "basketLabelHeight", "basketLabelStart", "basketLabelShape"].forEach(id => {
+  document.getElementById(id)?.addEventListener("input", syncBasketLabelPreview);
+});
+document.getElementById("closeBasketLabelDialog").onclick = () => basketLabelDialog.close();
+document.getElementById("cancelBasketLabelPrint").onclick = () => basketLabelDialog.close();
+basketLabelForm.addEventListener("submit", event => {
+  event.preventDefault();
+  createConfiguredBasketTags(document.getElementById("printConfiguredBasketTags"));
+});
 
 async function renderAssemblyQueue() {
   await loadInventoryItems();
@@ -13201,7 +13219,7 @@ async function renderProductionPlanner(orders) {
               class="${productionQueueView === "batch" ? "active" : ""}"
               onclick="window.setProductionQueueView('batch')"
             >
-              <span>Combined Batch Plan</span>
+              <span><b aria-hidden="true">◎</b>Combined Batch Plan<small>Only your selected orders</small></span>
               <strong>${queuedPieces}</strong>
             </button>
           ` : ""}
@@ -13210,7 +13228,7 @@ async function renderProductionPlanner(orders) {
             class="${productionQueueView === "timeline" ? "active" : ""}"
             onclick="window.setProductionQueueView('timeline')"
           >
-            <span>Production Timeline</span>
+            <span><b aria-hidden="true">1</b>Production Timeline<small>See what should print first</small></span>
             <strong>${productionTimelineOrders.length}</strong>
           </button>
           <button
@@ -13218,7 +13236,7 @@ async function renderProductionPlanner(orders) {
             class="${productionQueueView === "clicky" ? "active" : ""}"
             onclick="window.setProductionQueueView('clicky')"
           >
-            <span>Clicky Keychains</span>
+            <span><b aria-hidden="true">2</b>Clicky Keychains<small>Bases and shared keycaps</small></span>
             <strong>${baseQueuedPieces + keycapQueuedPieces}</strong>
           </button>
           <button
@@ -13226,7 +13244,7 @@ async function renderProductionPlanner(orders) {
             class="${productionQueueView === "pencils" ? "active" : ""}"
             onclick="window.setProductionQueueView('pencils')"
           >
-            <span>Pencil Clickers</span>
+            <span><b aria-hidden="true">3</b>Pencil Clickers<small>Every pencil part by colour</small></span>
             <strong>${pencilQueuedPieces}</strong>
           </button>
           <button
@@ -13234,7 +13252,7 @@ async function renderProductionPlanner(orders) {
             class="${productionQueueView === "custom" ? "active" : ""}"
             onclick="window.setProductionQueueView('custom')"
           >
-            <span>AI Photos &amp; Other</span>
+            <span><b aria-hidden="true">4</b>AI Photos &amp; Other<small>Order-specific custom files</small></span>
             <strong>${otherCustomQueuedPieces}</strong>
           </button>
         </nav>
@@ -17043,10 +17061,8 @@ workshopNotesInput.addEventListener("input", () => {
   workshopNotesSaveTimer = setTimeout(saveWorkshopNotes, 650);
 });
 await loadWorkshopNotes();
-if (window.matchMedia("(max-width: 760px)").matches) {
-  workshopNotesBody.hidden = true;
-  workshopNotesToggle.setAttribute("aria-expanded", "false");
-}
+workshopNotesBody.hidden = true;
+workshopNotesToggle.setAttribute("aria-expanded", "false");
 if (getFocusedBasketNumber()) {
   currentView = "assembly";
   setActiveTab(assemblyViewBtn);
