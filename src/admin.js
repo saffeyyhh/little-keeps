@@ -10457,17 +10457,63 @@ async function createConfiguredBasketTags(button) {
         errorCorrectionLevel: "M",
         color: { dark: "#000000", light: "#ffffff" }
       });
-      return `<article class="tag is-${basketSize}"><b>${basketNumber}</b><img src="${qrDataUrl}" alt="QR code for Basket ${basketNumber}"><strong>Little Keeps</strong><small>${basketSize} basket</small></article>`;
+      return { basketNumber, qrDataUrl };
     }));
-    const pages = [];
-    for (let index = 0; index < tags.length; index += 3) {
-      pages.push(`<main class="label-page">${tags.slice(index, index + 3).join("")}</main>`);
-    }
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html><html><head><title>Little Keeps Basket Labels</title><style>
-      @page{size:100mm 150mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;color:#000;background:#fff;font-family:Arial,sans-serif}.label-page{width:100mm;height:150mm;display:grid;grid-template-rows:repeat(3,1fr);place-items:center;gap:2mm;padding:3mm;break-after:page;page-break-after:always;overflow:hidden}.label-page:last-child{break-after:auto;page-break-after:auto}.tag{width:92mm;height:44mm;position:relative;display:grid;grid-template-columns:minmax(0,1fr) 31mm;grid-template-rows:1fr auto auto;align-items:center;column-gap:2mm;padding:2.5mm 4mm;border:.55mm dashed #000;border-radius:5mm;overflow:hidden}.tag.is-medium{width:76mm;border-radius:8mm}.tag.is-small{width:44mm;height:44mm;grid-template-columns:1fr 18mm;column-gap:1mm;padding:3mm;border-radius:50%}.tag>b{font-size:22mm;line-height:.82;font-weight:900;text-align:center}.tag img{width:31mm;height:31mm;grid-column:2;grid-row:1 / span 3}.tag strong{grid-column:1;grid-row:2;font-size:11pt;line-height:1;text-align:center}.tag small{grid-column:1;grid-row:3;margin-top:1mm;font-size:6pt;font-weight:700;letter-spacing:.08em;text-align:center;text-transform:uppercase}.tag.is-small>b{font-size:12mm}.tag.is-small img{width:18mm;height:18mm}.tag.is-small strong{font-size:7pt}.tag.is-small small{display:none}@media screen{body{background:#ddd}.label-page{margin:8px auto;background:#fff;box-shadow:0 3px 15px #888}}@media print{html,body{width:100mm;height:150mm}}
-    </style></head><body>${pages.join("")}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
-    printWindow.document.close();
+
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: [100, 150],
+      compress: true
+    });
+    const layouts = {
+      small: { x: 28, width: 44, height: 44, radius: 22, qr: 18 },
+      medium: { x: 12, width: 76, height: 44, radius: 8, qr: 31 },
+      large: { x: 4, width: 92, height: 44, radius: 5, qr: 31 }
+    };
+    const layout = layouts[basketSize];
+
+    tags.forEach((tag, index) => {
+      const slot = index % 3;
+      if (index > 0 && slot === 0) pdf.addPage([100, 150], "portrait");
+      const y = 4 + slot * 49;
+
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.55);
+      pdf.setLineDashPattern([1.4, 1.4], 0);
+      if (basketSize === "small") {
+        pdf.circle(layout.x + layout.radius, y + layout.radius, layout.radius, "S");
+      } else {
+        pdf.roundedRect(layout.x, y, layout.width, layout.height, layout.radius, layout.radius, "S");
+      }
+      pdf.setLineDashPattern([], 0);
+
+      const qrX = layout.x + layout.width - layout.qr - (basketSize === "small" ? 4 : 4);
+      const qrY = y + (layout.height - layout.qr) / 2;
+      pdf.addImage(tag.qrDataUrl, "PNG", qrX, qrY, layout.qr, layout.qr, undefined, "FAST");
+
+      const leftWidth = qrX - layout.x;
+      const leftCentre = layout.x + leftWidth / 2;
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(basketSize === "small" ? 34 : 60);
+      pdf.text(String(tag.basketNumber), leftCentre, y + (basketSize === "small" ? 20 : 25), { align: "center" });
+      pdf.setFontSize(basketSize === "small" ? 6.5 : 11);
+      pdf.text("Little Keeps", leftCentre, y + (basketSize === "small" ? 30 : 36), { align: "center" });
+      if (basketSize !== "small") {
+        pdf.setFontSize(5.5);
+        pdf.text(`${basketSize.toUpperCase()} BASKET`, leftCentre, y + 41, { align: "center" });
+      }
+    });
+
+    pdf.setProperties({
+      title: `Little Keeps ${basketSize} basket tags`,
+      subject: "Three reusable basket tags per label",
+      author: "Little Keeps"
+    });
+    if (typeof pdf.autoPrint === "function") pdf.autoPrint();
+    const pdfUrl = pdf.output("bloburl");
+    printWindow.location.href = pdfUrl;
     basketLabelDialog.close();
   } catch (error) {
     console.error("Unable to create reusable basket labels:", error);
