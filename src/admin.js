@@ -10467,43 +10467,46 @@ async function createConfiguredBasketTags(button) {
       compress: true
     });
     const layouts = {
-      small: { x: 28, width: 44, height: 44, radius: 22, qr: 18 },
-      medium: { x: 12, width: 76, height: 44, radius: 8, qr: 31 },
-      large: { x: 4, width: 92, height: 44, radius: 5, qr: 31 }
+      small: { x: 16, width: 68, height: 42, radius: 12, numberWidth: 16 },
+      medium: { x: 9, width: 82, height: 42, radius: 8, numberWidth: 20 },
+      large: { x: 4, width: 92, height: 42, radius: 5, numberWidth: 23 }
     };
     const layout = layouts[basketSize];
+    const qrSize = 24;
 
     tags.forEach((tag, index) => {
       const slot = index % 3;
       if (index > 0 && slot === 0) pdf.addPage([100, 150], "portrait");
-      const y = 4 + slot * 49;
+      const y = 5 + slot * 48;
 
       pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.55);
-      pdf.setLineDashPattern([1.4, 1.4], 0);
-      if (basketSize === "small") {
-        pdf.circle(layout.x + layout.radius, y + layout.radius, layout.radius, "S");
-      } else {
-        pdf.roundedRect(layout.x, y, layout.width, layout.height, layout.radius, layout.radius, "S");
-      }
+      pdf.setLineWidth(0.45);
+      pdf.setLineDashPattern([1.2, 1.2], 0);
+      pdf.roundedRect(layout.x, y, layout.width, layout.height, layout.radius, layout.radius, "S");
       pdf.setLineDashPattern([], 0);
 
-      const qrX = layout.x + layout.width - layout.qr - (basketSize === "small" ? 4 : 4);
-      const qrY = y + (layout.height - layout.qr) / 2;
-      pdf.addImage(tag.qrDataUrl, "PNG", qrX, qrY, layout.qr, layout.qr, undefined, "FAST");
+      const dividerX = layout.x + layout.numberWidth;
+      const qrX = layout.x + layout.width - qrSize - 4;
+      const qrY = y + (layout.height - qrSize) / 2;
+      pdf.setDrawColor(175, 175, 175);
+      pdf.setLineWidth(0.25);
+      pdf.line(dividerX, y + 7, dividerX, y + layout.height - 7);
+      pdf.addImage(tag.qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize, undefined, "FAST");
 
-      const leftWidth = qrX - layout.x;
-      const leftCentre = layout.x + leftWidth / 2;
+      const numberCentre = layout.x + layout.numberWidth / 2;
+      const detailsCentre = dividerX + (qrX - dividerX) / 2;
       pdf.setTextColor(0, 0, 0);
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(basketSize === "small" ? 34 : 60);
-      pdf.text(String(tag.basketNumber), leftCentre, y + (basketSize === "small" ? 20 : 25), { align: "center" });
-      pdf.setFontSize(basketSize === "small" ? 6.5 : 11);
-      pdf.text("Little Keeps", leftCentre, y + (basketSize === "small" ? 30 : 36), { align: "center" });
-      if (basketSize !== "small") {
-        pdf.setFontSize(5.5);
-        pdf.text(`${basketSize.toUpperCase()} BASKET`, leftCentre, y + 41, { align: "center" });
-      }
+      pdf.setFontSize(basketSize === "small" ? 35 : 46);
+      pdf.text(String(tag.basketNumber), numberCentre, y + 26, { align: "center" });
+
+      pdf.setFontSize(basketSize === "small" ? 7 : 9);
+      pdf.text("Little Keeps", detailsCentre, y + 16, { align: "center" });
+      pdf.setFontSize(basketSize === "small" ? 5.2 : 6.2);
+      pdf.text(`${basketSize.toUpperCase()} BASKET`, detailsCentre, y + 22, { align: "center" });
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(4.8);
+      pdf.text("SCAN TO OPEN", detailsCentre, y + 29, { align: "center" });
     });
 
     pdf.setProperties({

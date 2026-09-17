@@ -9789,8 +9789,8 @@ body::before {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: 1fr 35%;
-  grid-template-rows: 1fr auto;
+  grid-template-columns: 24% 1fr 32%;
+  grid-template-rows: 1fr;
   align-items: center;
   gap: 4px;
   padding: 7px 12px;
@@ -9799,24 +9799,45 @@ body::before {
 }
 .basket-label-sheet-preview.is-medium > div { width: 82%; border-radius: 18px; }
 .basket-label-sheet-preview.is-small > div {
-  width: auto;
-  aspect-ratio: 1;
-  grid-template-columns: 1fr 34%;
+  width: 68%;
   padding: 8px;
-  border-radius: 50%;
+  border-radius: 22px;
 }
-.basket-label-sheet-preview b { font-size: 35px; line-height: .8; text-align: center; }
+.basket-label-sheet-preview b {
+  grid-column: 1;
+  padding-right: 4px;
+  border-right: 1px solid #bbb;
+  font-size: 32px;
+  line-height: .8;
+  text-align: center;
+}
 .basket-label-sheet-preview > div > span {
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-column: 3;
+  grid-row: 1;
   width: 100%;
   aspect-ratio: 1;
   background: repeating-conic-gradient(#111 0 25%, #fff 0 50%) 50% / 12px 12px;
   border: 8px solid #fff;
   outline: 2px solid #111;
 }
-.basket-label-sheet-preview small { text-align: center; font-size: 9px; font-weight: 900; }
-.basket-label-sheet-preview.is-small small { display: none; }
+.basket-label-sheet-preview small {
+  grid-column: 2;
+  grid-row: 1;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 900;
+}
+.basket-label-sheet-preview small::after {
+  display: block;
+  margin-top: 3px;
+  color: #666;
+  font-size: 6px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.basket-label-sheet-preview.is-small small::after { content: "Small basket"; }
+.basket-label-sheet-preview.is-medium small::after { content: "Medium basket"; }
+.basket-label-sheet-preview.is-large small::after { content: "Large basket"; }
 
 @media (max-width: 900px) {
   .workshop-tabs { grid-template-columns: 1fr; }
