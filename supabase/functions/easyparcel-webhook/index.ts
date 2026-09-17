@@ -27,6 +27,68 @@ function formatDate(value?: string | null) {
     : new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", year: "numeric" }).format(date);
 }
 
+function getWebhookEvent(payload: Record<string, unknown> | null) {
+  const asObject = (value: unknown) => value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  const firstResult = Array.isArray(payload?.result)
+    ? asObject(payload?.result[0])
+    : asObject(payload?.result);
+  const firstParcel = Array.isArray(firstResult?.parcel)
+    ? asObject(firstResult?.parcel[0])
+    : asObject(firstResult?.parcel);
+  const candidates = [
+    payload,
+    asObject(payload?.data),
+    firstResult,
+    firstParcel,
+    asObject(payload?.parcel)
+  ].filter(Boolean) as Record<string, unknown>[];
+  const value = (key: string) => candidates.find(candidate => candidate[key] != null)?.[key];
+  const shipmentNumber = String(
+    value("shipment_number") || value("parcel_number") || value("parcel_no") || ""
+  ).trim();
+  const awbNumber = String(
+    value("awb_number") || value("awb") || value("tracking_number") || ""
+  ).trim();
+  const statusCode = Number(
+    value("latest_shipment_status_code") ??
+    value("shipment_status_code") ??
+    value("ep_status_code") ??
+    -1
+  );
+  const statusText = String(
+    value("latest_tracking_status") ||
+    value("shipment_status") ||
+    value("ship_status") ||
+    value("ep_status") ||
+    value("status") ||
+    "Updated"
+  ).trim();
+  const trackingUrl = String(value("tracking_url") || "").trim();
+  const awbUrl = String(value("awb_url") || value("awb_id_link") || "").trim();
+  const normalizedStatus = statusText.toLowerCase();
+  const returned = /return(?:ed|ing)?|return to sender/.test(normalizedStatus);
+  const onHold = /on hold|held at/.test(normalizedStatus);
+  const completed = !returned && /successfully delivered|\bdelivered\b/.test(normalizedStatus);
+  const outForDelivery = !onHold && !returned && /out for delivery|delivering|in transit/.test(normalizedStatus);
+  const hasUsefulStatusText = statusText !== "Updated";
+
+  return {
+    shipmentNumber,
+    awbNumber,
+    trackingUrl,
+    awbUrl,
+    statusCode,
+    statusText,
+    emailStatus: completed || (!hasUsefulStatusText && statusCode === 5)
+      ? "Completed" as const
+      : outForDelivery || (!hasUsefulStatusText && statusCode === 4)
+        ? "Out for Delivery" as const
+        : null
+  };
+}
+
 async function sendAutomaticDeliveryEmail(
   supabase: ReturnType<typeof createClient>,
   orders: DeliveryOrder[],
@@ -107,7 +169,7 @@ Deno.serve(async request => {
   const suppliedSecret = new URL(request.url).searchParams.get("secret");
   if (!expectedSecret || suppliedSecret !== expectedSecret) return new Response("unauthorized", { status: 401 });
 
-  const payload = await request.json().catch(() => null);
+  const payload = await request.json().catch(() => null) as Record<string, unknown> | null;
   const topic = String(payload?.topic || "");
   const supportedTopics = new Set([
     "shipment.status.update",
@@ -116,40 +178,40 @@ Deno.serve(async request => {
     "shipment.created"
   ]);
   if (topic && !supportedTopics.has(topic)) return new Response("ok", { status: 200 });
-  const shipmentNumber = String(payload?.shipment_number || "");
-  if (!shipmentNumber) return new Response("ok", { status: 200 });
+  const event = getWebhookEvent(payload);
+  if (!event.shipmentNumber && !event.awbNumber) return new Response("ok", { status: 200 });
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) return new Response("server error", { status: 500 });
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  const { data: matchingOrders, error: lookupError } = await supabase
+  let { data: matchingOrders, error: lookupError } = await supabase
     .from("orders")
     .select("id,order_ref,linked_order_ref,customer_name,customer_email,collection_method,needed_by,tracking_number,tracking_url,courier_name,easyparcel_courier_name,status,status_email_type")
-    .eq("easyparcel_shipment_number", shipmentNumber);
+    .eq("easyparcel_shipment_number", event.shipmentNumber || "__missing__");
+  if (!lookupError && !matchingOrders?.length && event.awbNumber) {
+    const awbLookup = await supabase
+      .from("orders")
+      .select("id,order_ref,linked_order_ref,customer_name,customer_email,collection_method,needed_by,tracking_number,tracking_url,courier_name,easyparcel_courier_name,status,status_email_type")
+      .eq("tracking_number", event.awbNumber);
+    matchingOrders = awbLookup.data;
+    lookupError = awbLookup.error;
+  }
   if (lookupError) {
     console.error("Unable to find EasyParcel orders", lookupError);
     return new Response("server error", { status: 500 });
   }
 
-  const statusCode = Number(payload.latest_shipment_status_code ?? payload.shipment_status_code ?? -1);
-  const easyparcelStatus = String(
-    payload.latest_tracking_status || payload.shipment_status || payload.status || "Updated"
-  );
   const update: Record<string, unknown> = {
-    easyparcel_status: easyparcelStatus,
+    easyparcel_status: event.statusText,
     easyparcel_last_event_at: new Date().toISOString()
   };
-  if (payload.awb_number) update.tracking_number = String(payload.awb_number);
-  if (payload.tracking_url) update.tracking_url = String(payload.tracking_url);
-  if (payload.awb_url) update.easyparcel_awb_url = String(payload.awb_url);
-  if (statusCode === 4) {
-    update.status = "Out for Delivery";
-    update.status_updated_at = new Date().toISOString();
-  }
-  if (statusCode === 5) {
-    update.status = "Completed";
+  if (event.awbNumber) update.tracking_number = event.awbNumber;
+  if (event.trackingUrl) update.tracking_url = event.trackingUrl;
+  if (event.awbUrl) update.easyparcel_awb_url = event.awbUrl;
+  if (event.emailStatus) {
+    update.status = event.emailStatus;
     update.status_updated_at = new Date().toISOString();
   }
 
@@ -163,17 +225,12 @@ Deno.serve(async request => {
     return new Response("server error", { status: 500 });
   }
 
-  const emailStatus = statusCode === 4
-    ? "Out for Delivery"
-    : statusCode === 5
-      ? "Completed"
-      : null;
-  if (emailStatus && matchingOrders?.length) {
+  if (event.emailStatus && matchingOrders?.length) {
     try {
       await sendAutomaticDeliveryEmail(
         supabase,
         matchingOrders.map(order => ({ ...order, ...update })),
-        emailStatus
+        event.emailStatus
       );
     } catch (emailError) {
       console.error("EasyParcel status saved but customer email failed", emailError);

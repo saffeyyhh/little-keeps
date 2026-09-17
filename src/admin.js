@@ -5308,14 +5308,14 @@ function renderFulfilmentWorkspace(orders) {
           </button>
         ` : ""}
         ${order.collection_method === "delivery" && !hasActiveEasyParcelShipment(order) && ["Assembly Complete", "Pending Delivery"].includes(order.status) ? `
-          <button type="button" class="ready-btn" onclick='window.startDelivery(${JSON.stringify(String(order.id))})'>Start Hand Delivery</button>
+          <button type="button" class="ready-btn" onclick='window.startDelivery(${JSON.stringify(String(order.id))})'>Start Delivery + Email Customer</button>
         ` : ""}
         ${order.collection_method !== "delivery" && ["Assembly Complete", "Pending Pickup", "Ready for Pickup/Delivery"].includes(order.status) ? `
           <button type="button" class="ready-btn" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "customer")'>Customer Collected - Complete</button>
           <button type="button" class="approve-request-action" onclick='window.completePickupHandover(${JSON.stringify(String(order.id))}, "other")'>Passed to Someone Else</button>
         ` : ""}
         ${order.status === "Out for Delivery" && !hasActiveEasyParcelShipment(order) ? `
-          <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Hand Delivered - Complete</button>
+          <button type="button" class="ready-btn" onclick='window.completeFulfilment(${JSON.stringify(String(order.id))})'>Delivered + Email Customer</button>
         ` : ""}
         <details class="fulfilment-more-actions">
           <summary>More actions <span aria-hidden="true">⌄</span></summary>
@@ -15177,18 +15177,36 @@ window.startDelivery = async function(id) {
   };
   const { error } = await updateOrderFamily(order, updateData);
   if (error) return alert("Unable to start delivery.");
-  await sendOrderStatusEmail({ ...order, ...updateData }, "Out for Delivery");
+  try {
+    const emailResult = await sendOrderStatusEmail({ ...order, ...updateData }, "Out for Delivery");
+    alert(emailResult.sent
+      ? `Delivery started and the out-for-delivery email was sent to ${order.customer_email}.`
+      : `Delivery started, but the customer email was not sent.\n\n${emailResult.reason || "Check Customer updates under Settings."}`
+    );
+  } catch (emailError) {
+    console.error("Out-for-delivery email failed:", emailError);
+    alert("Delivery started, but the customer email failed to send. Use Resend customer email after checking the EmailJS settings.");
+  }
   await loadOrders();
 };
 
 window.completeFulfilment = async function(id) {
   const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
-  if (hasActiveEasyParcelShipment(order)) return;
-  if (!order || !confirm(`Complete ${order.order_ref}?`)) return;
+  if (!order || hasActiveEasyParcelShipment(order)) return;
+  if (!confirm(`Complete ${order.order_ref}?`)) return;
   const updateData = { status: "Completed", status_updated_at: new Date().toISOString() };
   const { error } = await updateOrderFamily(order, updateData);
   if (error) return alert("Unable to complete this order.");
-  await sendOrderStatusEmail({ ...order, ...updateData }, "Completed");
+  try {
+    const emailResult = await sendOrderStatusEmail({ ...order, ...updateData }, "Completed");
+    alert(emailResult.sent
+      ? `Order completed and the delivered email was sent to ${order.customer_email}.`
+      : `Order completed, but the customer email was not sent.\n\n${emailResult.reason || "Check Customer updates under Settings."}`
+    );
+  } catch (emailError) {
+    console.error("Completion email failed:", emailError);
+    alert("The order was completed, but the customer email failed to send. Use Resend customer email after checking the EmailJS settings.");
+  }
   await loadOrders();
 };
 
@@ -15286,7 +15304,10 @@ window.completePickupHandover = async function(id, recipientType = "customer") {
   }
 
   try {
-    await sendOrderStatusEmail({ ...order, ...updateData }, "Completed");
+    const emailResult = await sendOrderStatusEmail({ ...order, ...updateData }, "Completed");
+    if (!emailResult.sent) {
+      alert(`The pickup was completed, but the customer email was not sent.\n\n${emailResult.reason || "Check Customer updates under Settings."}`);
+    }
   } catch (error) {
     console.error("Pickup completion email failed:", error);
     alert("The pickup was completed, but the customer email could not be sent.");
@@ -15638,6 +15659,11 @@ async function updateOrderStatus(id, status) {
             .eq("id", id);
         }
         alert(`Status updated and email sent to ${order.customer_email}.`);
+      } else {
+        alert(
+          "Status updated, but the customer email was not sent.\n\n" +
+          (result.reason || "Check Customer updates under Settings.")
+        );
       }
     } catch (error) {
       console.error("Status email failed:", error);
