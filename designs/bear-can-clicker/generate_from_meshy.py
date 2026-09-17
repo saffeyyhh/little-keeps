@@ -42,6 +42,16 @@ def box(size, centre):
     return mesh
 
 
+def cylinder_y(radius, length, centre):
+    """Cylinder whose hole/axis runs front-to-back instead of vertically."""
+    mesh = trimesh.creation.cylinder(radius=radius, height=length, sections=SECTIONS)
+    mesh.apply_transform(
+        trimesh.transformations.rotation_matrix(np.pi / 2, (1, 0, 0))
+    )
+    mesh.apply_translation(centre)
+    return mesh
+
+
 def union(*meshes):
     return trimesh.boolean.union(list(meshes), engine="manifold")
 
@@ -82,21 +92,21 @@ def build_bear_top():
     centre_and_scale(bear, BEAR_WIDTH, GUIDE_HEIGHT)
     bear = manifold_simplify(bear, 0.02)
 
-    # The circular underside becomes the hidden moving can lid. The skirt guides
-    # it inside the can while the central boss carries the MX cross socket.
-    guide = difference(
-        cylinder(19.5, 10.8, 0.0),
-        cylinder(17.7, 11.2, -0.2),
-    )
+    # The bear's original circular underside is the moving top. The can rim
+    # guides it, while the central boss reaches the raised switch mount.
     boss = cylinder(4.8, 10.8, 0.0)
-    deck = cylinder(19.45, 1.2, 10.0)
-    top = union(bear, guide, boss, deck)
+
+    # Keyring loop behind the head. Its horizontal hole is cut through both the
+    # loop and the small area where it blends into the bear, keeping it usable.
+    loop_outer = cylinder_y(4.8, 4.2, (0.0, 9.5, 44.0))
+    top = union(bear, boss, loop_outer)
 
     cross = union(
         box((4.25, 1.35, 5.0), (0, 0, 2.4)),
         box((1.35, 4.25, 5.0), (0, 0, 2.4)),
     )
-    top = difference(top, cross)
+    loop_hole = cylinder_y(2.25, 8.0, (0.0, 9.5, 44.0))
+    top = difference(top, cross, loop_hole)
 
     # Remove microscopic disconnected triangles left by the AI source mesh.
     return max(top.split(only_watertight=False), key=lambda part: abs(part.volume))
@@ -108,27 +118,29 @@ def build_can_base():
     can = manifold_simplify(can, 0.02)
     can_height = can.bounds[1, 2]
 
-    # Preserve the solid exterior and bottom. Only the hidden moving cavity is
-    # removed, so the finished base still reads as a solid soda can.
+    # Preserve the solid exterior and bottom. Only the hidden mechanism cavity
+    # is removed. A high internal floor closes the visible opening afterward.
     shell = difference(can, cylinder(20.0, can_height, 3.0))
 
-    # Connected internal switch carrier. The plate overlaps the can wall by
-    # 0.3 mm so the base exports as one strong printable object.
-    plate = cylinder(20.3, 1.6, 9.0)
+    # Raise the switch so its stem reaches the bear's cross socket. The plate
+    # overlaps the can wall, so it cannot float as a separate internal piece.
+    plate_z = 18.4
+    plate = cylinder(20.3, 1.6, plate_z)
     chimney = difference(
-        box((17.0, 17.0, 6.2), (0, 0, 5.9)),
-        box((14.25, 14.25, 8.2), (0, 0, 6.0)),
+        box((17.0, 17.0, plate_z - 2.7), (0, 0, (plate_z + 2.7) / 2)),
+        box((14.25, 14.25, plate_z + 1.0), (0, 0, plate_z / 2)),
     )
 
-    lug = cylinder(6.2, 4.2, 4.0)
-    lug.apply_translation((23.5, 0, 0))
-    lug_bridge = box((10.0, 10.0, 4.2), (20.0, 0, 6.1))
-    base = union(shell, plate, chimney, lug, lug_bridge)
+    # This shallow ceiling makes the can look covered when the bear is removed.
+    # It sits just below the bear's full-press position; only the central boss
+    # passes through it into the concealed switch cavity.
+    ceiling_z = can_height - 5.2
+    ceiling = cylinder(20.3, 1.2, ceiling_z)
+    base = union(shell, plate, chimney, ceiling)
 
-    switch_opening = box((14.05, 14.05, 13.0), (0, 0, 5.5))
-    keyring_hole = cylinder(2.2, 7.0, 2.5)
-    keyring_hole.apply_translation((23.5, 0, 0))
-    return difference(base, switch_opening, keyring_hole), can_height
+    switch_opening = box((14.05, 14.05, plate_z + 3.0), (0, 0, plate_z / 2))
+    boss_passage = cylinder(5.2, 2.4, ceiling_z - 0.6)
+    return difference(base, switch_opening, boss_passage), can_height
 
 
 def validate(name, mesh):
