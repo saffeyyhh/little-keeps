@@ -1,6 +1,6 @@
 # Bear-in-a-Can Clicker Keychain
 
-Two-part prototype for a standard MX-style mechanical keyboard switch. The bear is the moving button; the soda can is the fixed body. The upper can wall hides the guide and switch structure at rest and throughout the click.
+Two-part prototype for a standard MX-style mechanical keyboard switch. The detailed supplied polar-bear STL is the moving button; the supplied soda-can STL is the fixed body. The can keeps its solid exterior while hiding the guide and switch cavity inside.
 
 ## Print files
 
@@ -39,10 +39,10 @@ A 0.2 mm nozzle will preserve the face best. A 0.4 mm nozzle should also work, b
 - Bear-to-can running clearance: 0.40 mm per side
 - MX cross socket: 4.25 mm overall width, 1.35 mm arm thickness, 4.8 mm usable depth
 - Planned button travel: 3.5 mm
-- Assembled size: approximately 49 × 42 × 61 mm, excluding the keyring
+- Assembled size: approximately 52 × 44 × 75 mm, excluding the keyring
 
 Printer calibration and switch-stem brands vary. Test one copy first. If the bear is tight on the stem, enlarge `4.25` and/or `1.35` slightly in `generate.py`; if loose, reduce them slightly. The can artwork is intentionally generic and does not include a beverage trademark.
 
 ## Regenerating the model
 
-The source model is parametric. Run `generate.py` with Python, `trimesh`, `numpy`, and the Manifold boolean engine installed. Run `render_preview.py` afterward to refresh the preview image.
+`generate_from_meshy.py` rebuilds the printable pieces from the two supplied Meshy STL files. It requires Python, `trimesh`, `numpy`, `manifold3d`, and the original source files at the paths listed near the top of the script. Run `render_preview.py` afterward to refresh the preview image. The earlier fully parametric concept remains in `generate.py` for reference.

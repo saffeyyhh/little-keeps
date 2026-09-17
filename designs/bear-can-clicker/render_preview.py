@@ -38,11 +38,12 @@ def shaded_faces(mesh, colour, view, light):
 def main():
     base = trimesh.load_mesh(STL / "bear_can_clicker_base.stl")
     top = trimesh.load_mesh(STL / "bear_can_clicker_top.stl")
-    top.apply_translation((0, 0, 21.0))
+    # Rest height generated from the 44 mm-wide Meshy can model.
+    top.apply_translation((0, 0, 26.71))
 
     view = camera_basis(
         np.array([78.0, -105.0, 73.0]),
-        np.array([0.0, 0.0, 29.0])
+        np.array([0.0, 0.0, 34.0])
     )
     light = np.array([-0.35, -0.65, 0.68])
     light /= np.linalg.norm(light)
