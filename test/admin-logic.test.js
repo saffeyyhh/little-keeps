@@ -53,6 +53,7 @@ import {
   sortEasyParcelQuotesByPrice,
   splitAmsCombinationsByPlateCapacity,
   supportsBaseOnlyAssembly,
+  shouldQueuePrintableBase,
   isEasyParcelPickupQuote,
   isEasyParcelShipmentCancelled,
   validateInventoryDecrement
@@ -343,6 +344,20 @@ test("does not route pencil products to base-only assembly", () => {
   assert.equal(supportsBaseOnlyAssembly("standard-name-keychain"), false);
   assert.equal(supportsBaseOnlyAssembly("ai-photo-keepsake"), false);
   assert.equal(supportsBaseOnlyAssembly("solid-clicky-keychain"), true);
+});
+
+test("does not queue a replacement base after that base was assembled", () => {
+  assert.equal(shouldQueuePrintableBase({}, false, 0), true);
+  assert.equal(shouldQueuePrintableBase({}, true, 0), true);
+  assert.equal(shouldQueuePrintableBase({}, true, 1), false);
+  assert.equal(
+    shouldQueuePrintableBase({ base_assembled: true }, false, 0),
+    false
+  );
+  assert.equal(
+    shouldQueuePrintableBase({ assembly_completed: true }, true, 0),
+    false
+  );
 });
 
 test("combines pencil character tops by colour pair and plate capacity", () => {

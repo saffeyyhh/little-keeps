@@ -56,6 +56,7 @@ import {
   splitAmsCombinationsByPlateCapacity,
   sortEasyParcelQuotesByPrice,
   supportsBaseOnlyAssembly,
+  shouldQueuePrintableBase,
   isEasyParcelPickupQuote,
   validateInventoryDecrement
 } from "./admin-logic.js";
@@ -7159,6 +7160,61 @@ window.markSelectedProductionQualityIssue = async function(button) {
   await renderProductionPlanner(latestOrders);
 };
 
+async function completeProductionJobsWithVerification(jobs = []) {
+  const pickedJobs = jobs.filter(job => job?.stage === "picked");
+  if (!pickedJobs.length) {
+    return { error: new Error("No picked production jobs were selected.") };
+  }
+
+  await loadInventoryItems();
+
+  const expectedByItem = new Map();
+  pickedJobs.forEach(job => {
+    const itemName = String(job.item_name || "");
+    if (!itemName) return;
+    const current = expectedByItem.get(itemName) || {
+      before: getInventoryQty(itemName),
+      added: 0
+    };
+    current.added += Math.max(0, Number(job.quantity) || 0);
+    expectedByItem.set(itemName, current);
+  });
+
+  const completedIds = pickedJobs.map(job => job.id);
+  const { error } = await supabase.rpc("complete_production_jobs", {
+    p_job_ids: completedIds
+  });
+  if (error) return { error };
+
+  await Promise.all([
+    loadInventoryItems(),
+    loadProductionJobs(),
+    loadPrinters()
+  ]);
+
+  const completedIdSet = new Set(completedIds.map(String));
+  const jobsStillSaved = productionJobs.filter(job =>
+    completedIdSet.has(String(job.id))
+  );
+  const inventoryShortfalls = Array.from(expectedByItem.entries())
+    .filter(([itemName, expected]) =>
+      getInventoryQty(itemName) < expected.before + expected.added
+    )
+    .map(([itemName]) => itemName);
+
+  if (jobsStillSaved.length || inventoryShortfalls.length) {
+    return {
+      error: new Error(
+        "The database did not preserve every completed print after reloading."
+      ),
+      jobsStillSaved,
+      inventoryShortfalls
+    };
+  }
+
+  return { error: null };
+}
+
 window.addSelectedProductionJobsToInventory = async function(button) {
   const selectedIds = Array.from(
     document.querySelectorAll(
@@ -7183,10 +7239,8 @@ window.addSelectedProductionJobsToInventory = async function(button) {
     button.textContent = "Adding to Inventory…";
   }
 
-  const { error } = await supabase.rpc(
-    "complete_production_jobs",
-    { p_job_ids: selectedJobs.map(job => job.id) }
-  );
+  const completion = await completeProductionJobsWithVerification(selectedJobs);
+  const { error } = completion;
 
   if (error) {
     console.error(
@@ -7194,8 +7248,11 @@ window.addSelectedProductionJobsToInventory = async function(button) {
       error
     );
     alert(
-      "Unable to add the selected prints to inventory.\n\n" +
-      "Run the latest supabase/production-workflow.sql, then try again."
+      "Unable to save the selected prints to inventory permanently.\n\n" +
+      (completion.inventoryShortfalls?.length
+        ? `Stock was not saved for: ${completion.inventoryShortfalls.join(", ")}.\n\n`
+        : "") +
+      "Nothing will be treated as complete until the saved quantities can be verified."
     );
 
     if (button) {
@@ -7205,11 +7262,6 @@ window.addSelectedProductionJobsToInventory = async function(button) {
     return;
   }
 
-  await Promise.all([
-    loadInventoryItems(),
-    loadProductionJobs(),
-    loadPrinters()
-  ]);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -7265,18 +7317,18 @@ window.completeProductionPlate = async function(jobIds, button) {
   if (IS_ADMIN_PREVIEW) {
     productionJobs = productionJobs.filter(job => !ids.includes(Number(job.id)));
   } else {
-    const { error } = await supabase.rpc("complete_production_jobs", {
-      p_job_ids: ids
-    });
+    const jobs = productionJobs.filter(job =>
+      ids.includes(Number(job.id)) && job.stage === "picked"
+    );
+    const { error } = await completeProductionJobsWithVerification(jobs);
     if (error) {
-      alert("Unable to add this whole plate to inventory.");
+      alert("Unable to save this whole plate to inventory permanently.");
       if (button) {
         button.disabled = false;
         button.textContent = previousLabel;
       }
       return;
     }
-    await Promise.all([loadInventoryItems(), loadProductionJobs()]);
   }
   await renderProductionPlanner(latestOrders);
 };
@@ -7312,24 +7364,17 @@ window.completeProductionJob = async function(jobId) {
   );
   if (!job || job.stage !== "picked") return;
 
-  const { error } = await supabase.rpc(
-    "complete_production_job",
-    { p_job_id: jobId }
-  );
+  const { error } = await completeProductionJobsWithVerification([job]);
 
   if (error) {
     console.error("Unable to add completed print to inventory:", error);
     alert(
-      "Unable to add this print to inventory.\n\n" +
-      "Run supabase/production-workflow.sql once, then try again."
+      "Unable to save this print to inventory permanently.\n\n" +
+      "The print was not accepted as complete because its saved stock could not be verified."
     );
     return;
   }
 
-  await Promise.all([
-    loadInventoryItems(),
-    loadProductionJobs()
-  ]);
   await renderProductionPlanner(latestOrders);
 };
 
@@ -7446,7 +7491,7 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
 
         const baseKey = `${baseShape}|${baseRole || "solid"}|${baseName}|${baseMaterial}`;
 
-        if (!solidProduct || index === 0) {
+        if (shouldQueuePrintableBase(item, solidProduct, index)) {
           if (!baseTotals[baseKey]) {
             baseTotals[baseKey] = {
               name: baseName,
@@ -7556,7 +7601,7 @@ function getOrderPrintableInventoryNeeds(order) {
         const capName = cap?.name || cap?.hex || cap;
         const letterName = letter?.name || letter?.hex || letter;
 
-        if (!solidProduct || index === 0) {
+        if (shouldQueuePrintableBase(item, solidProduct, index)) {
           const baseRole = solidProduct
             ? null
             : getModularBaseRole(index, characters.length);

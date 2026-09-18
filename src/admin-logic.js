@@ -223,6 +223,15 @@ export function supportsBaseOnlyAssembly(productKey) {
   ].includes(String(productKey || ""));
 }
 
+export function shouldQueuePrintableBase(
+  item = {},
+  solidProduct = false,
+  characterIndex = 0
+) {
+  if (item?.assembly_completed || item?.base_assembled) return false;
+  return !solidProduct || Number(characterIndex) === 0;
+}
+
 export function getModularBaseRole(index, characterCount) {
   const safeIndex = Math.max(0, Math.floor(Number(index) || 0));
   const safeCount = Math.max(1, Math.floor(Number(characterCount) || 1));
