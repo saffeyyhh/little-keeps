@@ -33,6 +33,31 @@ export function calculateBusinessFinancials({
   };
 }
 
+export async function collectPaginatedRows(
+  fetchPage,
+  { pageSize = 1000, maxPages = 100 } = {}
+) {
+  if (typeof fetchPage !== "function") {
+    throw new TypeError("A page loader is required");
+  }
+
+  const safePageSize = Math.max(1, Math.floor(Number(pageSize) || 1000));
+  const safeMaxPages = Math.max(1, Math.floor(Number(maxPages) || 100));
+  const rows = [];
+
+  for (let page = 0; page < safeMaxPages; page += 1) {
+    const from = page * safePageSize;
+    const pageRows = await fetchPage(from, from + safePageSize - 1);
+    if (!Array.isArray(pageRows)) {
+      throw new TypeError("The page loader must return an array");
+    }
+    rows.push(...pageRows);
+    if (pageRows.length < safePageSize) return rows;
+  }
+
+  throw new Error("The inventory result exceeded the safe pagination limit");
+}
+
 export function calculatePaidOrderRevenue(orders = []) {
   const revenue = orders.reduce((sum, order) => {
     if (!["Paid", "Refunded"].includes(order?.payment_type)) {

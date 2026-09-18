@@ -6,6 +6,7 @@ import {
   flattenSharedGroupContributions,
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
+  collectPaginatedRows,
   calculateGiftingBagTotal,
   calculatePaidOrderRevenue,
   calculateProductionTimeEstimate,
@@ -58,6 +59,23 @@ import {
   isEasyParcelShipmentCancelled,
   validateInventoryDecrement
 } from "../src/admin-logic.js";
+
+test("loads every inventory row beyond Supabase's 1,000-row page limit", async () => {
+  const source = Array.from({ length: 2005 }, (_, index) => ({ id: index + 1 }));
+  const requestedRanges = [];
+  const rows = await collectPaginatedRows((from, to) => {
+    requestedRanges.push([from, to]);
+    return Promise.resolve(source.slice(from, to + 1));
+  });
+
+  assert.equal(rows.length, 2005);
+  assert.deepEqual(requestedRanges, [
+    [0, 999],
+    [1000, 1999],
+    [2000, 2999]
+  ]);
+  assert.equal(rows.at(-1).id, 2005);
+});
 
 test("allows add-ons only before an order enters printing", () => {
   assert.equal(canOrderAcceptAddOn("Pending Payment"), true);

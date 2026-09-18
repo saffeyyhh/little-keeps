@@ -28,6 +28,7 @@ import {
   calculateProductionTimeEstimate,
   calculateQueuedProductionQuantity,
   calculateBusinessFinancials,
+  collectPaginatedRows,
   calculatePaidOrderRevenue,
   calculateSubscriptionSummary,
   distributeAmsPlatesAcrossPrinters,
@@ -6397,11 +6398,18 @@ async function loadInventoryItems() {
     return;
   }
 
-  const { data, error } = await supabase
-    .from("inventory_items")
-    .select("*");
-
-  if (error) {
+  let data = [];
+  try {
+    data = await collectPaginatedRows(async (from, to) => {
+      const { data: pageRows, error } = await supabase
+        .from("inventory_items")
+        .select("*")
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (error) throw error;
+      return pageRows || [];
+    });
+  } catch (error) {
     console.error(error);
     alert("Unable to load inventory.");
     return;
