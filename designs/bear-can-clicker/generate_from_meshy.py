@@ -92,9 +92,11 @@ def build_bear_top():
     centre_and_scale(bear, BEAR_WIDTH, GUIDE_HEIGHT)
     bear = manifold_simplify(bear, 0.02)
 
-    # The bear's original circular underside is the moving top. The can rim
-    # guides it, while the central boss reaches the raised switch mount.
-    boss = cylinder(4.8, 10.8, 0.0)
+    # Clear the underside around the MX housing, then add back only the central
+    # keycap boss. This lets the switch project upward from the can's top plate.
+    housing_clearance = box((15.6, 15.6, 6.4), (0, 0, 13.2))
+    bear = difference(bear, housing_clearance)
+    boss = cylinder(4.8, 8.2, 9.8)
 
     # Keyring loop behind the head. Its horizontal hole is cut through both the
     # loop and the small area where it blends into the bear, keeping it usable.
@@ -102,8 +104,8 @@ def build_bear_top():
     top = union(bear, boss, loop_outer)
 
     cross = union(
-        box((4.25, 1.35, 5.0), (0, 0, 2.4)),
-        box((1.35, 4.25, 5.0), (0, 0, 2.4)),
+        box((4.25, 1.35, 5.0), (0, 0, 12.3)),
+        box((1.35, 4.25, 5.0), (0, 0, 12.3)),
     )
     loop_hole = cylinder_y(2.25, 8.0, (0.0, 9.5, 44.0))
     top = difference(top, cross, loop_hole)
@@ -120,27 +122,22 @@ def build_can_base():
 
     # Preserve the solid exterior and bottom. Only the hidden mechanism cavity
     # is removed. A high internal floor closes the visible opening afterward.
-    shell = difference(can, cylinder(20.0, can_height, 3.0))
+    # Begin the hidden cavity above the source model's rounded bottom bead so
+    # the bottom and side wall remain one continuous solid.
+    shell = difference(can, cylinder(20.0, can_height, 4.5))
 
-    # Raise the switch so its stem reaches the bear's cross socket. The plate
-    # overlaps the can wall, so it cannot float as a separate internal piece.
-    plate_z = 18.4
-    plate = cylinder(20.3, 1.6, plate_z)
-    chimney = difference(
-        box((17.0, 17.0, plate_z - 2.7), (0, 0, (plate_z + 2.7) / 2)),
-        box((14.25, 14.25, plate_z + 1.0), (0, 0, plate_z / 2)),
-    )
-
-    # This shallow ceiling makes the can look covered when the bear is removed.
-    # It sits just below the bear's full-press position; only the central boss
-    # passes through it into the concealed switch cavity.
+    # This shallow ceiling is also the switch plate. The square opening is on
+    # the TOP, so the MX switch drops into the can in the normal orientation.
+    # Its underside remains completely closed.
     ceiling_z = can_height - 5.2
-    ceiling = cylinder(20.3, 1.2, ceiling_z)
-    base = union(shell, plate, chimney, ceiling)
+    ceiling = cylinder(20.3, 1.6, ceiling_z)
+    base = union(shell, ceiling)
 
-    switch_opening = box((14.05, 14.05, plate_z + 3.0), (0, 0, plate_z / 2))
-    boss_passage = cylinder(5.2, 2.4, ceiling_z - 0.6)
-    return difference(base, switch_opening, boss_passage), can_height
+    switch_opening = box(
+        (14.05, 14.05, 3.0),
+        (0, 0, ceiling_z + 0.8),
+    )
+    return difference(base, switch_opening), can_height
 
 
 def validate(name, mesh):

@@ -27,7 +27,7 @@ A 0.2 mm nozzle will preserve the face best. A 0.4 mm nozzle should also work, b
 
 ## Assembly
 
-1. Push the MX switch upward through the square opening in the bottom of the can until its side clips engage with the internal plate.
+1. Push the MX switch downward through the square opening in the recessed top of the can until its side clips engage with the plate.
 2. Align the cross socket under the bear with the switch stem.
 3. Press the bear straight down onto the stem.
 4. Confirm the bear moves freely and returns after every click.
@@ -35,7 +35,7 @@ A 0.2 mm nozzle will preserve the face best. A 0.4 mm nozzle should also work, b
 
 ## Prototype fit notes
 
-- Switch plate opening: 14.05 × 14.05 mm
+- Top switch plate opening: 14.05 × 14.05 mm; the can underside is closed
 - Bear-to-can running clearance: approximately 0.50 mm per side
 - MX cross socket: 4.25 mm overall width, 1.35 mm arm thickness, 4.8 mm usable depth
 - Planned button travel: 3.5 mm
