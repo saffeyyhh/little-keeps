@@ -6871,7 +6871,7 @@ a {
 
 .admin-colour-manager-row {
   display: grid;
-  grid-template-columns: 48px minmax(140px, 1fr) 105px 88px 90px auto auto auto;
+  grid-template-columns: 48px minmax(140px, 1fr) 105px minmax(165px, .8fr) 105px 90px auto auto auto;
   align-items: end;
   gap: 12px;
   padding: 12px;
@@ -6881,6 +6881,23 @@ a {
 }
 
 .admin-colour-hex input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-transform: uppercase;
+}
+
+.admin-secondary-colour-inputs {
+  display: grid;
+  grid-template-columns: 44px minmax(92px, 1fr);
+  gap: 7px;
+}
+
+.admin-secondary-colour-inputs .admin-colour-picker {
+  width: 44px;
+  height: 42px;
+}
+
+.admin-secondary-colour-inputs input[name="colour_secondary_hex"] {
+  min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-transform: uppercase;
 }
@@ -7502,6 +7519,7 @@ a {
 
   .admin-colour-visible { grid-column: 1 / -1; }
   .admin-colour-hex { grid-column: 1 / -1; }
+  .admin-colour-secondary { grid-column: 1 / -1; }
   .admin-colour-material { grid-column: 1 / -1; }
   .admin-colour-rolls { grid-column: 1 / -1; }
   .admin-colour-order-actions { grid-column: 1 / -1; }

@@ -29,3 +29,40 @@ test("drops duplicate or invalid colour entries", () => {
 test("uses the built-in palette when no saved colours exist", () => {
   assert.equal(normalizeColourOptions(null).length, DEFAULT_COLOUR_OPTIONS.length);
 });
+
+test("keeps both colours for a dual-tone filament", () => {
+  assert.deepEqual(normalizeColourOptions([
+    {
+      name: "Blue Raspberry",
+      hex: "#08c",
+      secondary_hex: "#c4f",
+      material_type: "dual-tone",
+      roll_count: 1,
+      active: true
+    }
+  ]), [
+    {
+      name: "Blue Raspberry",
+      hex: "#0088CC",
+      secondary_hex: "#CC44FF",
+      material_type: "DUAL-TONE",
+      roll_count: 1,
+      active: true
+    }
+  ]);
+});
+
+test("drops a dual-tone filament without a valid second colour", () => {
+  assert.deepEqual(normalizeColourOptions([
+    { name: "Pink", hex: "#F55A74", material_type: "BASIC" },
+    { name: "Incomplete", hex: "#0088CC", material_type: "DUAL-TONE" }
+  ]), [
+    {
+      name: "Pink",
+      hex: "#F55A74",
+      material_type: "BASIC",
+      roll_count: 1,
+      active: true
+    }
+  ]);
+});

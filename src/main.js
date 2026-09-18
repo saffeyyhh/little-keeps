@@ -1620,7 +1620,7 @@ Chloe</textarea>
           <div class="customisation-title colour-workspace-heading">
             <div>
               <h3>Choose Colours</h3>
-              <p>Select the part you want to change, then choose from BASIC or MATTE.</p>
+              <p>Select the part you want to change, then choose a filament finish. Dual-tone colours are available for bases only.</p>
             </div>
           </div>
 
@@ -2965,13 +2965,14 @@ const colours = shopSettings.colour_options
   .map(item => ({
     name: item.name,
     colour: item.hex,
+    secondaryColour: item.secondary_hex || "",
     materialType: item.material_type,
     available: !unavailableColourNames.has(item.name.toLowerCase()),
     note: ""
   }));
 const baseColours = colours;
-const capColours = colours;
-const letterColours = colours;
+const capColours = colours.filter(item => item.materialType !== "DUAL-TONE");
+const letterColours = colours.filter(item => item.materialType !== "DUAL-TONE");
 
 const DESIGN_PRESETS = Object.fromEntries(
   designPresets.map(preset => [
@@ -4289,6 +4290,45 @@ function createMat(colour) {
   });
 }
 
+function createBaseMesh(geometry, colour) {
+  const details = getColourDetails(colour);
+  if (details?.materialType !== "DUAL-TONE" || !details.secondaryColour) {
+    return new THREE.Mesh(geometry, createMat(colour));
+  }
+
+  const dualToneGeometry = geometry.clone();
+  dualToneGeometry.computeBoundingBox();
+  const position = dualToneGeometry.getAttribute("position");
+  const bounds = dualToneGeometry.boundingBox;
+  const colourA = new THREE.Color(colour);
+  const colourB = new THREE.Color(details.secondaryColour);
+  const vertexColours = new Float32Array(position.count * 3);
+  const min = bounds?.min.y ?? 0;
+  const range = Math.max(0.001, (bounds?.max.y ?? 1) - min);
+
+  for (let index = 0; index < position.count; index += 1) {
+    const blend = THREE.MathUtils.smoothstep((position.getY(index) - min) / range, 0.08, 0.92);
+    const vertexColour = colourA.clone().lerp(colourB, blend);
+    vertexColours[index * 3] = vertexColour.r;
+    vertexColours[index * 3 + 1] = vertexColour.g;
+    vertexColours[index * 3 + 2] = vertexColour.b;
+  }
+
+  dualToneGeometry.setAttribute(
+    "color",
+    new THREE.BufferAttribute(vertexColours, 3)
+  );
+
+  return new THREE.Mesh(
+    dualToneGeometry,
+    new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.38,
+      metalness: 0
+    })
+  );
+}
+
 function createPencilSymbolMesh(character, colour) {
   const symbolCanvas = document.createElement("canvas");
   symbolCanvas.width = 256;
@@ -4649,14 +4689,15 @@ async function checkPhotoSuitability(imageDataUrl) {
 
 function randomiseArticulatedColours() {
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY) return;
-  const availableHexes = colours.filter(item => item.available).map(item => item.colour);
+  const availableBaseHexes = baseColours.filter(item => item.available).map(item => item.colour);
+  const availableSingleHexes = capColours.filter(item => item.available).map(item => item.colour);
   const characterCount = Array.from(
     sanitizeName(names[selectedIndex]?.name || singleName?.value || "")
   ).length;
   const selected = pickRandomDesignColourSets({
-    baseColours: availableHexes,
-    capColours: availableHexes,
-    letterColours: availableHexes,
+    baseColours: availableBaseHexes,
+    capColours: availableSingleHexes,
+    letterColours: availableSingleHexes,
     characterCount,
     allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
@@ -4666,7 +4707,7 @@ function randomiseArticulatedColours() {
   design.caps = selected.caps;
   design.letters = selected.letters;
   if (activeProduct.product_key === PENCIL_PRODUCT_KEY) {
-    const randomPartColour = () => availableHexes[Math.floor(Math.random() * availableHexes.length)] || available[0];
+    const randomPartColour = () => availableSingleHexes[Math.floor(Math.random() * availableSingleHexes.length)] || available[0];
     design.pencil = normalizePencilDesign({
       ...design.pencil,
       eraser: randomPartColour(),
@@ -4704,14 +4745,15 @@ function randomiseArticulatedColours() {
 
 function randomiseColourPart(part) {
   if (activeProduct.product_key === STANDARD_PRODUCT_KEY && part === "caps") return;
-  const availableHexes = colours.filter(item => item.available).map(item => item.colour);
+  const availableBaseHexes = baseColours.filter(item => item.available).map(item => item.colour);
+  const availableSingleHexes = capColours.filter(item => item.available).map(item => item.colour);
   const characterCount = Array.from(
     sanitizeName(names[selectedIndex]?.name || singleName?.value || "")
   ).length;
   const selected = pickRandomDesignColourSets({
-    baseColours: availableHexes,
-    capColours: availableHexes,
-    letterColours: availableHexes,
+    baseColours: availableBaseHexes,
+    capColours: availableSingleHexes,
+    letterColours: availableSingleHexes,
     characterCount,
     allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
@@ -4748,7 +4790,12 @@ function makeSwatches(containerId, colourOptions, type) {
 
   container.classList.add("material-swatch-groups");
 
-  ["BASIC", "MATTE"].forEach(materialType => {
+  const materialTypes = ["BASIC", "MATTE", "DUAL-TONE"].filter(materialType =>
+    colourOptions.some(item => item.materialType === materialType)
+  );
+  container.classList.toggle("has-dual-tone", materialTypes.includes("DUAL-TONE"));
+
+  materialTypes.forEach(materialType => {
     const group = document.createElement("section");
     group.className = `material-swatch-group material-${materialType.toLowerCase()}`;
     const heading = document.createElement("h4");
@@ -4773,8 +4820,8 @@ function makeSwatches(containerId, colourOptions, type) {
 
     btn.type = "button";
     btn.className = "swatch";
-    btn.style.backgroundColor = item.colour;
-    const colourLabel = `${item.name} · ${item.materialType}`;
+    btn.style.background = getColourSwatchBackground(item.colour);
+    const colourLabel = `${item.name} · ${item.materialType}${item.materialType === "DUAL-TONE" ? " · Base only" : ""}`;
     btn.title = colourLabel;
     btn.setAttribute("aria-label", colourLabel);
 
@@ -4784,7 +4831,7 @@ function makeSwatches(containerId, colourOptions, type) {
       hint.innerHTML = `
         <span
           class="colour-hint-dot"
-          style="background:${item.colour}"
+          style="background:${getColourSwatchBackground(item.colour)}"
         ></span>
         ${colourLabel}
       `;
@@ -5444,7 +5491,7 @@ function renderSlots(containerId, colours, type) {
   } else {
     slot.classList.add("is-fixed-colour");
   }
-    slot.style.background = colour;
+    slot.style.background = getColourSwatchBackground(colour);
     container.appendChild(slot);
   });
 
@@ -5650,7 +5697,7 @@ async function createKeycap(letter, index, characterCount, design) {
   const baseGeo = await loadSTL(
     (BASE_SHAPES[selectedBaseShape] || BASE_SHAPES.ribbed).files[baseRole]
   );
-  const base = new THREE.Mesh(baseGeo, createMat(baseColour));
+  const base = createBaseMesh(baseGeo, baseColour);
   base.rotation.z = Math.PI / 2;
   group.add(base);
 
@@ -5855,10 +5902,7 @@ function createStandardBackground(
     geometry.translate(-centre.x, -centre.y, -centre.z);
   }
 
-  return new THREE.Mesh(
-    geometry,
-    createMat(backgroundColour)
-  );
+  return createBaseMesh(geometry, backgroundColour);
 }
 
 function addStandardKeyringLoop(
@@ -5911,18 +5955,15 @@ function addStandardKeyringLoop(
 
   ringGeometry.translate(0, 0, -depth / 2);
 
-  const loop = new THREE.Mesh(
-    ringGeometry,
-    createMat(backgroundColour)
-  );
+  const loop = createBaseMesh(ringGeometry, backgroundColour);
 
   loop.position.set(loopX, loopY, 0);
 
   group.add(loop);
 
-  const bridge = new THREE.Mesh(
+  const bridge = createBaseMesh(
     new THREE.CylinderGeometry(2, 2, depth, 48),
-    createMat(backgroundColour)
+    backgroundColour
   );
 
   bridge.rotation.x = Math.PI / 2;
@@ -6069,9 +6110,9 @@ async function buildKeychain(name, design) {
       baseGeometry.computeBoundingBox();
       const baseSize = new THREE.Vector3();
       baseGeometry.boundingBox?.getSize(baseSize);
-      const solidBase = new THREE.Mesh(
+      const solidBase = createBaseMesh(
         baseGeometry,
-        createMat(design.bases[0] || available[0])
+        design.bases[0] || available[0]
       );
       keychain.add(solidBase);
 
@@ -6776,7 +6817,7 @@ const parts =
         <strong>${part.label}</strong>
         <span>
           ${uniqueColours.map(colour => `
-            <i style="background:${colour}"></i>${getColourName(colour)} · ${getColourMaterial(colour)}
+            <i style="background:${getColourSwatchBackground(colour)}"></i>${getColourName(colour)} · ${getColourMaterial(colour)}
           `).join(" · ")}
         </span>
       </div>
@@ -7098,6 +7139,13 @@ function getColourName(hex) {
 
 function getColourMaterial(hex) {
   return getColourDetails(hex)?.materialType || "BASIC";
+}
+
+function getColourSwatchBackground(hex) {
+  const colour = getColourDetails(hex);
+  return colour?.materialType === "DUAL-TONE" && colour.secondaryColour
+    ? `linear-gradient(135deg, ${colour.colour} 0 46%, ${colour.secondaryColour} 54% 100%)`
+    : colour?.colour || hex;
 }
 
 async function saveOrderToDatabase(order) {
@@ -7786,7 +7834,7 @@ async function buildPencilClickerPreview(item, design) {
       const topColour = design.caps[index % design.caps.length];
       const characterColour = design.letters[index % design.letters.length];
 
-      const body = new THREE.Mesh(bodyGeometry.clone(), createMat(bodyColour));
+      const body = createBaseMesh(bodyGeometry.clone(), bodyColour);
       body.position.x = x;
       pencilGroup.add(body);
 

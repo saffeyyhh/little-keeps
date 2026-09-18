@@ -2246,9 +2246,13 @@ label {
 
 .material-swatch-groups {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   align-items: start;
+}
+
+.material-swatch-groups:not(.has-dual-tone) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .material-swatch-group {
@@ -2256,7 +2260,8 @@ label {
   padding: 3px 16px 5px 0;
 }
 
-.material-swatch-group.material-matte {
+.material-swatch-group.material-matte,
+.material-swatch-group.material-dual-tone {
   padding-right: 0;
   padding-left: 17px;
   border-left: 1px solid #dfcfd6;
@@ -4228,8 +4233,21 @@ label {
     padding-right: 9px;
   }
 
-  .material-swatch-group.material-matte {
+  .material-swatch-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .material-swatch-groups:not(.has-dual-tone) {
+    grid-template-columns: 1fr;
+  }
+
+  .material-swatch-group.material-matte,
+  .material-swatch-group.material-dual-tone {
+    margin-top: 8px;
+    padding-top: 12px;
     padding-left: 10px;
+    border-top: 1px solid #dfcfd6;
+    border-left: 0;
   }
 
   .material-swatches {

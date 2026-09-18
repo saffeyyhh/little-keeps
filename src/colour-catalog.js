@@ -1,4 +1,4 @@
-export const COLOUR_MATERIAL_TYPES = ["BASIC", "MATTE"];
+export const COLOUR_MATERIAL_TYPES = ["BASIC", "MATTE", "DUAL-TONE"];
 
 export const DEFAULT_COLOUR_OPTIONS = [
   { name: "Jade White", hex: "#FFFFFF", material_type: "BASIC", roll_count: 1, active: true },
@@ -32,20 +32,31 @@ export function normalizeColourOptions(value, fallback = DEFAULT_COLOUR_OPTIONS)
   const normalized = source.flatMap(item => {
     const name = String(item?.name || "").trim();
     const hex = normalizeHex(item?.hex || item?.colour);
+    const requestedMaterialType = String(
+      item?.material_type || item?.material || ""
+    ).trim().toUpperCase();
+    const materialType = COLOUR_MATERIAL_TYPES.includes(requestedMaterialType)
+      ? requestedMaterialType
+      : "BASIC";
+    const secondaryHex = materialType === "DUAL-TONE"
+      ? normalizeHex(item?.secondary_hex || item?.secondary_colour)
+      : "";
     const nameKey = name.toLowerCase();
 
-    if (!name || !hex || seenNames.has(nameKey) || seenHexes.has(hex)) return [];
+    if (
+      !name ||
+      !hex ||
+      (materialType === "DUAL-TONE" && !secondaryHex) ||
+      seenNames.has(nameKey) ||
+      seenHexes.has(hex)
+    ) return [];
     seenNames.add(nameKey);
     seenHexes.add(hex);
-    const materialType = COLOUR_MATERIAL_TYPES.includes(
-      String(item?.material_type || item?.material || "").trim().toUpperCase()
-    )
-      ? String(item?.material_type || item?.material).trim().toUpperCase()
-      : "BASIC";
     const rollCount = Math.max(1, Math.floor(Number(item?.roll_count) || 1));
     return [{
       name,
       hex,
+      ...(secondaryHex ? { secondary_hex: secondaryHex } : {}),
       material_type: materialType,
       roll_count: rollCount,
       active: item?.active !== false

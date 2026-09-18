@@ -1780,22 +1780,39 @@ function formatPromoDate(value) {
 function connectAdminColourInputs(row) {
   const picker = row?.querySelector('[name="colour_hex_picker"]');
   const hexInput = row?.querySelector('[name="colour_hex"]');
-  if (!picker || !hexInput) return;
+  const secondaryPicker = row?.querySelector('[name="colour_secondary_hex_picker"]');
+  const secondaryHexInput = row?.querySelector('[name="colour_secondary_hex"]');
+  const materialInput = row?.querySelector('[name="colour_material"]');
+  const secondaryField = row?.querySelector("[data-secondary-colour-field]");
 
-  picker.addEventListener("input", () => {
-    hexInput.value = picker.value.toUpperCase();
-  });
-  hexInput.addEventListener("input", () => {
-    let value = hexInput.value.trim().toUpperCase();
-    if (value && !value.startsWith("#")) value = `#${value}`;
-    hexInput.value = value;
-    if (/^#[0-9A-F]{6}$/.test(value)) picker.value = value;
-  });
-  hexInput.addEventListener("blur", () => {
-    if (!/^#[0-9A-F]{6}$/.test(hexInput.value)) {
-      hexInput.value = picker.value.toUpperCase();
-    }
-  });
+  const connectPair = (colourPicker, colourHexInput) => {
+    if (!colourPicker || !colourHexInput) return;
+    colourPicker.addEventListener("input", () => {
+      colourHexInput.value = colourPicker.value.toUpperCase();
+    });
+    colourHexInput.addEventListener("input", () => {
+      let value = colourHexInput.value.trim().toUpperCase();
+      if (value && !value.startsWith("#")) value = `#${value}`;
+      colourHexInput.value = value;
+      if (/^#[0-9A-F]{6}$/.test(value)) colourPicker.value = value;
+    });
+    colourHexInput.addEventListener("blur", () => {
+      if (!/^#[0-9A-F]{6}$/.test(colourHexInput.value)) {
+        colourHexInput.value = colourPicker.value.toUpperCase();
+      }
+    });
+  };
+
+  const refreshSecondaryField = () => {
+    const isDualTone = materialInput?.value === "DUAL-TONE";
+    secondaryField?.classList.toggle("hidden", !isDualTone);
+    if (secondaryHexInput) secondaryHexInput.required = isDualTone;
+  };
+
+  connectPair(picker, hexInput);
+  connectPair(secondaryPicker, secondaryHexInput);
+  materialInput?.addEventListener("change", refreshSecondaryField);
+  refreshSecondaryField();
 }
 
 function parseProductOptionsText(value = "") {
@@ -2204,7 +2221,7 @@ function renderSettingsWorkspace() {
           <div class="settings-card-heading">
             <div>
               <h3>Colours</h3>
-              <p class="hint">Manage the customer palette and tell the print planner how many rolls of each colour can run at once.</p>
+              <p class="hint">Manage the customer palette and tell the print planner how many rolls of each colour can run at once. Choose DUAL-TONE to save a two-colour base filament.</p>
             </div>
             <button id="addAdminColourBtn" class="ready-btn" type="button">+ Add Colour</button>
           </div>
@@ -2220,6 +2237,13 @@ function renderSettingsWorkspace() {
                 <label class="settings-field admin-colour-hex">
                   <span>Hex code</span>
                   <input name="colour_hex" maxlength="7" value="${escapeAdminHtml(colour.hex)}" placeholder="#F6A6B8" pattern="#[0-9A-Fa-f]{6}" required>
+                </label>
+                <label class="settings-field admin-colour-secondary ${colour.material_type === "DUAL-TONE" ? "" : "hidden"}" data-secondary-colour-field>
+                  <span>Second colour</span>
+                  <span class="admin-secondary-colour-inputs">
+                    <input class="admin-colour-picker" name="colour_secondary_hex_picker" type="color" value="${escapeAdminHtml(colour.secondary_hex || colour.hex)}" aria-label="${escapeAdminHtml(colour.name)} second colour picker">
+                    <input name="colour_secondary_hex" maxlength="7" value="${escapeAdminHtml(colour.secondary_hex || colour.hex)}" placeholder="#C084FC" pattern="#[0-9A-Fa-f]{6}">
+                  </span>
                 </label>
                 <label class="settings-field admin-colour-material">
                   <span>Material</span>
@@ -2413,7 +2437,8 @@ function renderSettingsWorkspace() {
       <input class="admin-colour-picker" name="colour_hex_picker" type="color" value="#F5A3C2" aria-label="New colour picker">
       <label class="settings-field admin-colour-name"><span>Colour name</span><input name="colour_name" maxlength="50" placeholder="e.g. Peach" required></label>
       <label class="settings-field admin-colour-hex"><span>Hex code</span><input name="colour_hex" maxlength="7" value="#F5A3C2" placeholder="#F6A6B8" pattern="#[0-9A-Fa-f]{6}" required></label>
-      <label class="settings-field admin-colour-material"><span>Material</span><select name="colour_material"><option value="BASIC">BASIC</option><option value="MATTE">MATTE</option></select></label>
+      <label class="settings-field admin-colour-secondary hidden" data-secondary-colour-field><span>Second colour</span><span class="admin-secondary-colour-inputs"><input class="admin-colour-picker" name="colour_secondary_hex_picker" type="color" value="#C084FC" aria-label="Second colour picker"><input name="colour_secondary_hex" maxlength="7" value="#C084FC" placeholder="#C084FC" pattern="#[0-9A-Fa-f]{6}"></span></label>
+      <label class="settings-field admin-colour-material"><span>Material</span><select name="colour_material">${COLOUR_MATERIAL_TYPES.map(material => `<option value="${material}">${material}</option>`).join("")}</select></label>
       <label class="settings-field admin-colour-rolls"><span>Rolls available</span><input name="colour_roll_count" type="number" min="1" max="20" step="1" value="1" required></label>
       <label class="admin-colour-visible"><input name="colour_active" type="checkbox" checked> Show to customers</label>
       <label class="admin-colour-visible admin-colour-oos"><input name="colour_unavailable" type="checkbox"> Out of stock</label>
@@ -2498,6 +2523,7 @@ async function saveShopSettings(event) {
     name: String(row.querySelector('[name="colour_name"]')?.value || "").trim(),
     hex: String(row.querySelector('[name="colour_hex"]')?.value || "").toUpperCase(),
     material_type: String(row.querySelector('[name="colour_material"]')?.value || "BASIC"),
+    secondary_hex: String(row.querySelector('[name="colour_secondary_hex"]')?.value || "").toUpperCase(),
     roll_count: Math.max(1, Math.floor(Number(
       row.querySelector('[name="colour_roll_count"]')?.value
     ) || 1)),
@@ -2506,11 +2532,16 @@ async function saveShopSettings(event) {
   const colourNameKeys = colourOptions.map(colour => colour.name.toLowerCase());
   const colourHexKeys = colourOptions.map(colour => colour.hex.toLowerCase());
   const coloursAreValid = colourOptions.every(colour =>
-    colour.name && /^#[0-9a-f]{6}$/i.test(colour.hex)
+    colour.name &&
+    /^#[0-9a-f]{6}$/i.test(colour.hex) &&
+    (colour.material_type !== "DUAL-TONE" || (
+      /^#[0-9a-f]{6}$/i.test(colour.secondary_hex) &&
+      colour.secondary_hex.toLowerCase() !== colour.hex.toLowerCase()
+    ))
   ) && new Set(colourNameKeys).size === colourOptions.length &&
     new Set(colourHexKeys).size === colourOptions.length;
   if (!coloursAreValid) {
-    alert("Every colour needs a unique name and colour value.");
+    alert("Every colour needs a unique name and colour value. Dual-tone filaments also need a different second colour.");
     return;
   }
   const normalizedColourOptions = normalizeColourOptions(colourOptions, []);
