@@ -1346,6 +1346,20 @@ export function isEasyParcelShipmentCancelled(status) {
   return String(status || "").trim().toLowerCase().includes("cancel");
 }
 
+export function getEasyParcelOrderStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  const returned = /return(?:ed|ing)?|return to sender/.test(normalized);
+  const onHold = /on hold|held at/.test(normalized);
+
+  if (!returned && /successfully delivered|\bdelivered\b|\bdeliverd\b/.test(normalized)) {
+    return "Completed";
+  }
+  if (!returned && !onHold && /out for delivery|delivering|delivery in transit|\bin transit\b/.test(normalized)) {
+    return "Out for Delivery";
+  }
+  return "";
+}
+
 export function hasActiveEasyParcelShipment(order = {}) {
   return Boolean(String(order?.easyparcel_shipment_number || "").trim()) &&
     !isEasyParcelShipmentCancelled(order?.easyparcel_status);

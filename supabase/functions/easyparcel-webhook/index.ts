@@ -59,6 +59,7 @@ function getWebhookEvent(payload: Record<string, unknown> | null) {
   );
   const statusText = String(
     value("latest_tracking_status") ||
+    value("latest_status") ||
     value("shipment_status") ||
     value("ship_status") ||
     value("ep_status") ||
@@ -70,8 +71,8 @@ function getWebhookEvent(payload: Record<string, unknown> | null) {
   const normalizedStatus = statusText.toLowerCase();
   const returned = /return(?:ed|ing)?|return to sender/.test(normalizedStatus);
   const onHold = /on hold|held at/.test(normalizedStatus);
-  const completed = !returned && /successfully delivered|\bdelivered\b/.test(normalizedStatus);
-  const outForDelivery = !onHold && !returned && /out for delivery|delivering|in transit/.test(normalizedStatus);
+  const completed = !returned && /successfully delivered|\bdelivered\b|\bdeliverd\b/.test(normalizedStatus);
+  const outForDelivery = !onHold && !returned && /out for delivery|delivering|delivery in transit|\bin transit\b/.test(normalizedStatus);
   const hasUsefulStatusText = statusText !== "Updated";
 
   return {
@@ -170,14 +171,6 @@ Deno.serve(async request => {
   if (!expectedSecret || suppliedSecret !== expectedSecret) return new Response("unauthorized", { status: 401 });
 
   const payload = await request.json().catch(() => null) as Record<string, unknown> | null;
-  const topic = String(payload?.topic || "");
-  const supportedTopics = new Set([
-    "shipment.status.update",
-    "shipment.awb.update",
-    "shipment.tracking.update",
-    "shipment.created"
-  ]);
-  if (topic && !supportedTopics.has(topic)) return new Response("ok", { status: 200 });
   const event = getWebhookEvent(payload);
   if (!event.shipmentNumber && !event.awbNumber) return new Response("ok", { status: 200 });
 

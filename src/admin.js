@@ -38,6 +38,7 @@ import {
   getBulkApprovalPolicy,
   getFreeAmsPrinters,
   getEasyParcelQuotePrices,
+  getEasyParcelOrderStatus,
   getEasyParcelVolumetricWeight,
   getHandDeliveryLabelData,
   hasActiveEasyParcelShipment,
@@ -5823,6 +5824,30 @@ window.refreshEasyParcelShipment = async function(id, button) {
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
     await loadOrders();
+    const refreshedOrder = groupLinkedOrdersForAdmin(latestOrders).find(
+      item => String(item.id) === String(id)
+    );
+    const deliveryStatus = String(
+      data?.little_keeps_status ||
+      getEasyParcelOrderStatus(data?.easyparcel_status || refreshedOrder?.easyparcel_status)
+    );
+    if (
+      refreshedOrder &&
+      ["Out for Delivery", "Completed"].includes(deliveryStatus) &&
+      refreshedOrder.status_email_type !== deliveryStatus
+    ) {
+      try {
+        const emailResult = await sendOrderStatusEmail(refreshedOrder, deliveryStatus);
+        alert(emailResult.sent
+          ? `${deliveryStatus === "Completed" ? "Delivered" : "Out-for-delivery"} email sent to ${refreshedOrder.customer_email}.`
+          : `EasyParcel status updated, but the customer email was not sent.\n\n${emailResult.reason || "Check Customer updates under Settings."}`
+        );
+        if (emailResult.sent) await loadOrders();
+      } catch (emailError) {
+        console.error("EasyParcel status email failed:", emailError);
+        alert("EasyParcel status updated, but the customer email failed to send. Use Resend customer email after checking the EmailJS settings.");
+      }
+    }
   } catch (error) {
     console.error("Unable to refresh EasyParcel shipment:", error);
     alert(error?.message || "EasyParcel shipment could not be refreshed.");

@@ -42,6 +42,7 @@ import {
   formatEasyParcelReceiver,
   formatEasyParcelDeliveryDuration,
   getEasyParcelVolumetricWeight,
+  getEasyParcelOrderStatus,
   getCustomerDueDate,
   formatProductionMinutes,
   isOrderReminderFinishedOrExpired,
@@ -112,6 +113,15 @@ test("treats a cancelled EasyParcel booking as available to rebook", () => {
   assert.equal(hasActiveEasyParcelShipment(cancelled), false);
   assert.equal(hasActiveEasyParcelShipment({}), false);
   assert.equal(isEasyParcelShipmentCancelled(cancelled.easyparcel_status), true);
+});
+
+test("maps EasyParcel courier updates to customer order statuses safely", () => {
+  assert.equal(getEasyParcelOrderStatus("Delivering(in transit)"), "Out for Delivery");
+  assert.equal(getEasyParcelOrderStatus("Delivery In Transit"), "Out for Delivery");
+  assert.equal(getEasyParcelOrderStatus("Successfully Delivered"), "Completed");
+  assert.equal(getEasyParcelOrderStatus("Deliverd"), "Completed");
+  assert.equal(getEasyParcelOrderStatus("On Hold"), "");
+  assert.equal(getEasyParcelOrderStatus("Returned"), "");
 });
 
 test("keeps EasyParcel's website rate separate from its payable total", () => {

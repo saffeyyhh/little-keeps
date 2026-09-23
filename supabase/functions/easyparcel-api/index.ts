@@ -116,6 +116,19 @@ function itemQuantity(order: any) {
   return Math.max(1, items.length);
 }
 
+function getLittleKeepsDeliveryStatus(status: unknown) {
+  const normalized = String(status || "").trim().toLowerCase();
+  const returned = /return(?:ed|ing)?|return to sender/.test(normalized);
+  const onHold = /on hold|held at/.test(normalized);
+  if (!returned && /successfully delivered|\bdelivered\b|\bdeliverd\b/.test(normalized)) {
+    return "Completed";
+  }
+  if (!returned && !onHold && /out for delivery|delivering|delivery in transit|\bin transit\b/.test(normalized)) {
+    return "Out for Delivery";
+  }
+  return "";
+}
+
 async function requireSingaporeAccount(accessToken: string) {
   const walletResult = await easyParcelRequest("wallet", accessToken, undefined, "GET");
   const currency = String(walletResult?.data?.wallet?.[0]?.currency || "").toUpperCase();
@@ -325,17 +338,42 @@ Deno.serve(async request => {
         "2026-03"
       );
       const detail = result.data?.[0];
+      let easyParcelStatus = "";
+      let littleKeepsStatus = "";
       if (detail) {
-        await supabase.from("orders").update({
-          easyparcel_status: detail.shipment_details?.shipment_status || null,
+        easyParcelStatus = String(
+          detail.shipment_details?.shipment_status ||
+          detail.shipment_details?.latest_tracking_status ||
+          detail.latest_tracking_status ||
+          detail.latest_status ||
+          detail.ship_status ||
+          detail.status ||
+          ""
+        ).trim();
+        littleKeepsStatus = getLittleKeepsDeliveryStatus(easyParcelStatus);
+        const orderUpdate: Record<string, unknown> = {
+          easyparcel_status: easyParcelStatus || null,
           easyparcel_awb_url: detail.shipment_details?.awb_url || null,
           easyparcel_last_event_at: new Date().toISOString(),
           tracking_number: detail.shipment_details?.awb_number || "",
           tracking_url: detail.shipment_details?.tracking_url || "",
           courier_name: detail.courier?.courier_name || ""
-        }).eq("easyparcel_shipment_number", shipmentNumber);
+        };
+        if (littleKeepsStatus) {
+          orderUpdate.status = littleKeepsStatus;
+          orderUpdate.status_updated_at = new Date().toISOString();
+        }
+        const { error: refreshSaveError } = await supabase
+          .from("orders")
+          .update(orderUpdate)
+          .eq("easyparcel_shipment_number", shipmentNumber);
+        if (refreshSaveError) throw new Error("EasyParcel status was received, but Little Keeps could not save it.");
       }
-      return json(result);
+      return json({
+        ...result,
+        easyparcel_status: easyParcelStatus,
+        little_keeps_status: littleKeepsStatus
+      });
     }
 
     if (action === "cancel") {
