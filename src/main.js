@@ -1204,14 +1204,14 @@ ${requestedPreviewProductKey ? `
         <label class="photo-upload-zone" for="photoKeepsakeInput">
           <input id="photoKeepsakeInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
           <span>Choose a clear photo</span>
-          <small>A bright photo with one person, one pet, both together, or one object works best · maximum 8 MB</small>
+          <small>A bright photo with up to two people or pets, one person with one pet, or one object works best · maximum 8 MB</small>
           <img id="photoOriginalPreview" class="hidden" alt="Your uploaded photo preview">
         </label>
 
         <div id="photoSuitabilityCheck" class="photo-suitability-check hidden" aria-live="polite"></div>
 
         <div class="photo-option-grid">
-          <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person</option><option value="pet">Pet</option><option value="pet_person">Pet + person</option><option value="object">Object or keepsake</option></select></label>
+          <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person or people · max 2</option><option value="pet">Pet or pets · max 2</option><option value="pet_person">1 pet + 1 person</option><option value="object">Object or keepsake</option></select></label>
           <label><span>Artwork detail</span><select id="photoColourCount"><option value="2">Simple · 2 colours</option><option value="3">Balanced · 3 colours</option><option value="4" selected>More detail · 4 colours</option></select></label>
           <label><span>Name for this design</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
@@ -1245,8 +1245,7 @@ ${requestedPreviewProductKey ? `
         </label>
         <div id="photoKeepsakeLivePrice" class="photo-keepsake-live-price" aria-live="polite"></div>
 
-        <label class="photo-permission-check"><input id="photoPermissionCheck" type="checkbox"><span>I own this photo or have permission to use it, including permission from the person or guardian shown.</span></label>
-        <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I agree to private AI processing of this photo. It may be kept for up to 30 days so Little Keeps can make my order.</span></label>
+        <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I have permission to use this photo and agree to private AI processing. It may be kept for up to 30 days so Little Keeps can make my order.</span></label>
         <button id="generatePhotoArtworkBtn" type="button" class="photo-generate-btn">Create My Artwork</button>
         <p id="photoGenerationStatus" class="hint" aria-live="polite"></p>
       </section>
@@ -2605,7 +2604,6 @@ const photoKeepsakeLabel = document.getElementById("photoKeepsakeLabel");
 const photoKeepsakeQuantity = document.getElementById("photoKeepsakeQuantity");
 const photoClickerUpgrade = document.getElementById("photoClickerUpgrade");
 const photoKeepsakeLivePrice = document.getElementById("photoKeepsakeLivePrice");
-const photoPermissionCheck = document.getElementById("photoPermissionCheck");
 const photoAiConsentCheck = document.getElementById("photoAiConsentCheck");
 const generatePhotoArtworkBtn = document.getElementById("generatePhotoArtworkBtn");
 const regeneratePhotoArtworkBtn = document.getElementById("regeneratePhotoArtworkBtn");
@@ -4710,7 +4708,8 @@ async function checkPhotoSuitability(imageDataUrl) {
       body: {
         mode: "photo_check",
         image_data_url: imageDataUrl,
-        subject_type: photoSubjectType?.value || "person"
+        subject_type: photoSubjectType?.value || "person",
+        admin_preview: isProductPreview
       }
     });
     if (error) {
@@ -9792,8 +9791,8 @@ async function generatePhotoKeepsakeArtwork() {
     photoGenerationStatus.textContent = "Upload one clear photo first.";
     return;
   }
-  if (!photoPermissionCheck.checked || !photoAiConsentCheck.checked) {
-    photoGenerationStatus.textContent = "Please confirm photo permission and AI processing first.";
+  if (!photoAiConsentCheck.checked) {
+    photoGenerationStatus.textContent = "Please confirm photo permission and private AI processing first.";
     return;
   }
 
@@ -10162,6 +10161,15 @@ photoColourCount?.addEventListener("change", () => {
     photoGenerationStatus.textContent = "Artwork detail changed — create the artwork again to preview the selected number of colours.";
   }
   renderPhotoKeepsakeLivePrice();
+});
+photoSubjectType?.addEventListener("change", () => {
+  if (photoKeepsakeState.artworkUrl) {
+    resetPhotoArtworkResult();
+    photoGenerationStatus.textContent = "Subject changed — create the artwork again with the correct subject type.";
+  }
+  if (photoKeepsakeState.inputDataUrl) {
+    void checkPhotoSuitability(photoKeepsakeState.inputDataUrl);
+  }
 });
 photoArtworkStyleInputs.forEach(input => input.addEventListener("change", () => {
   if (photoKeepsakeState.artworkUrl) {

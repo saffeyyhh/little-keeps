@@ -159,6 +159,20 @@ Deno.serve(async request => {
 
     const body = await request.json();
     const mode = cleanText(body.mode, 40);
+    let isVerifiedAdminPreview = false;
+    if (body.admin_preview === true) {
+      const accessToken = String(request.headers.get("Authorization") || "")
+        .replace(/^Bearer\s+/i, "")
+        .trim();
+      if (accessToken) {
+        const authClient = createClient(supabaseUrl, serviceRoleKey, {
+          global: { headers: { Authorization: `Bearer ${accessToken}` } },
+          auth: { persistSession: false, autoRefreshToken: false }
+        });
+        const { data: userData, error: userError } = await authClient.auth.getUser(accessToken);
+        isVerifiedAdminPreview = !userError && Boolean(userData.user);
+      }
+    }
 
     if (mode === "design_helper") {
       const limit = checkPublicLimit(request, "design");
@@ -187,7 +201,9 @@ Deno.serve(async request => {
     }
 
     if (mode === "photo_check") {
-      const limit = checkPublicLimit(request, "photo");
+      const limit = isVerifiedAdminPreview
+        ? { allowed: true, retryAfterSeconds: 0, maximum: Number.POSITIVE_INFINITY }
+        : checkPublicLimit(request, "photo");
       if (!limit.allowed) return json({ error: `You have used all ${limit.maximum} photo checks for this hour. You can still create an artwork preview.`, retry_after_seconds: limit.retryAfterSeconds }, 429, request);
       const imageDataUrl = cleanText(body.image_data_url, 12_000_000);
       const subjectType = ["person", "pet", "pet_person", "object"].includes(body.subject_type) ? body.subject_type : "subject";
@@ -197,7 +213,11 @@ Deno.serve(async request => {
       }
       const suitabilityRule = subjectType === "pet_person"
         ? "For a pet + person photo, return true only when one main person and one main pet are both clearly visible, large enough to recognize, and not heavily obstructed."
-        : "Return true when there is one clearly visible main subject with enough light and separation.";
+        : subjectType === "person"
+          ? "Return true when one or two main people are clearly visible, large enough to recognize, and not heavily obstructed. Return false when there are more than two people."
+          : subjectType === "pet"
+            ? "Return true when one or two main pets are clearly visible, large enough to recognize, and not heavily obstructed. Return false when there are more than two pets."
+            : "Return true when there is one clearly visible main object with enough light and separation.";
       const result = await respondWithSchema(
         openAiKey,
         `Decide only whether this photo is suitable for simplifying into recognizable flat-colour artwork for a small keychain. ${suitabilityRule} Return false when a required subject is unclear, too dark, heavily obstructed or too small. Do not provide an explanation.`,
