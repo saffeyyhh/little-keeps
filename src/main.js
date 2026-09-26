@@ -1217,6 +1217,25 @@ ${requestedPreviewProductKey ? `
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
         </div>
 
+        <fieldset class="photo-artwork-style-picker">
+          <legend>Choose your artwork style</legend>
+          <p>The AI will follow this look for every version you create.</p>
+          <div>
+            <label>
+              <input type="radio" name="photoArtworkStyle" value="true_to_photo" checked>
+              <span><strong>True to Photo</strong><small>Closest likeness and natural proportions</small></span>
+            </label>
+            <label>
+              <input type="radio" name="photoArtworkStyle" value="cute_cartoon">
+              <span><strong>Cute Cartoon</strong><small>Softer, rounder and extra adorable</small></span>
+            </label>
+            <label>
+              <input type="radio" name="photoArtworkStyle" value="bold_graphic">
+              <span><strong>Bold & Simple</strong><small>Chunky shapes with fewer tiny details</small></span>
+            </label>
+          </div>
+        </fieldset>
+
         <label class="photo-clicker-upgrade" for="photoClickerUpgrade">
           <input id="photoClickerUpgrade" type="checkbox">
           <span>
@@ -1242,7 +1261,7 @@ ${requestedPreviewProductKey ? `
         <div id="photoResultPlaceholder"><span>✦</span><strong>Your simplified artwork will appear here</strong><small>No payment is taken when you generate a preview.</small></div>
         <img id="photoArtworkResult" class="hidden" alt="AI simplified printable artwork preview">
         <div id="photoResultActions" class="photo-result-actions hidden">
-          <div class="photo-retry-action"><button id="regeneratePhotoArtworkBtn" type="button">Try Another Version</button><small id="photoAttemptStatus">Up to 5 previews per hour</small></div>
+          <div class="photo-retry-action"><button id="regeneratePhotoArtworkBtn" type="button">Create Another in This Style</button><small id="photoAttemptStatus">Up to 5 previews per hour</small></div>
           <button id="addPhotoArtworkToCartBtn" type="button">Approve & Add to Cart</button>
           ${isProductPreview ? `
             <button id="downloadPhotoPreviewArtworkBtn" class="photo-preview-download-btn hidden" type="button">Save Artwork PNG</button>
@@ -2581,6 +2600,7 @@ const photoKeepsakeInput = document.getElementById("photoKeepsakeInput");
 const photoOriginalPreview = document.getElementById("photoOriginalPreview");
 const photoSubjectType = document.getElementById("photoSubjectType");
 const photoColourCount = document.getElementById("photoColourCount");
+const photoArtworkStyleInputs = Array.from(document.querySelectorAll('input[name="photoArtworkStyle"]'));
 const photoKeepsakeLabel = document.getElementById("photoKeepsakeLabel");
 const photoKeepsakeQuantity = document.getElementById("photoKeepsakeQuantity");
 const photoClickerUpgrade = document.getElementById("photoClickerUpgrade");
@@ -4021,6 +4041,27 @@ let photoKeepsakeState = {
   filamentPalette: [],
   recolouring: false
 };
+
+function getSelectedPhotoArtworkStyle() {
+  return photoArtworkStyleInputs.find(input => input.checked)?.value || "true_to_photo";
+}
+
+function setSelectedPhotoArtworkStyle(value) {
+  const safeValue = ["true_to_photo", "cute_cartoon", "bold_graphic"].includes(value)
+    ? value
+    : "true_to_photo";
+  photoArtworkStyleInputs.forEach(input => {
+    input.checked = input.value === safeValue;
+  });
+}
+
+function getPhotoArtworkStyleLabel(value) {
+  return {
+    true_to_photo: "True to Photo",
+    cute_cartoon: "Cute Cartoon",
+    bold_graphic: "Bold & Simple"
+  }[value] || "True to Photo";
+}
 
 let cartHasItems = false;
 let draftHasMeaningfulChanges = false;
@@ -6557,9 +6598,10 @@ function getDesignDescription(design, product = activeProduct) {
       : "Ready-made design";
   }
   if (product.product_key === PHOTO_PRODUCT_KEY) {
+    const style = getPhotoArtworkStyleLabel(design.photo?.artworkStyle);
     return design.photo?.variant === "clicker"
-      ? "AI simplified artwork · Clicker keychain"
-      : "AI simplified artwork · Classic keychain";
+      ? `${style} artwork · Clicker keychain`
+      : `${style} artwork · Classic keychain`;
   }
 
   if (product.product_key === STANDARD_PRODUCT_KEY) {
@@ -6937,6 +6979,7 @@ function renderReviewOrder() {
           photoKeepsakeLabel.value = item?.name || "";
           photoColourCount.value = String(design.photo?.colourCount || 4);
           photoSubjectType.value = design.photo?.subjectType || "person";
+          setSelectedPhotoArtworkStyle(design.photo?.artworkStyle || "true_to_photo");
           photoKeepsakeQuantity.value = String(getItemQuantity(item));
           if (photoClickerUpgrade) {
             photoClickerUpgrade.checked = design.photo?.variant === "clicker";
@@ -7426,6 +7469,7 @@ async function submitOrderOnce() {
             artwork_url: design.photo.artworkUrl || "",
             generation_id: design.photo.generationId || "",
             subject_type: design.photo.subjectType || "person",
+            artwork_style: design.photo.artworkStyle || "true_to_photo",
             colour_count: Number(design.photo.colourCount || 4),
             variant: design.photo.variant || "classic",
             filament_palette: normalizePhotoFilamentPalette(
@@ -8895,6 +8939,7 @@ window.editCartItem = function(index) {
     photoKeepsakeLabel.value = item?.name || "";
     photoColourCount.value = String(design.photo?.colourCount || 4);
     photoSubjectType.value = design.photo?.subjectType || "person";
+    setSelectedPhotoArtworkStyle(design.photo?.artworkStyle || "true_to_photo");
     photoKeepsakeQuantity.value = String(getItemQuantity(item));
     if (photoClickerUpgrade) {
       photoClickerUpgrade.checked = design.photo?.variant === "clicker";
@@ -9643,6 +9688,13 @@ function formatPhotoRetryTime(seconds) {
 
 function updatePhotoAttemptStatus(details = {}) {
   if (!photoAttemptStatus) return;
+  if (isProductPreview || details.unlimited) {
+    photoRetryAvailableAt = 0;
+    photoAttemptStatus.textContent = "Unlimited previews in Admin";
+    generatePhotoArtworkBtn.disabled = false;
+    regeneratePhotoArtworkBtn.disabled = false;
+    return;
+  }
   const remaining = Number(details.attempts_remaining);
   if (!Number.isFinite(remaining)) {
     photoAttemptStatus.textContent = "Up to 5 previews per hour";
@@ -9683,6 +9735,7 @@ async function getPhotoFunctionErrorDetails(error) {
 function openPhotoKeepsakeStudio() {
   activeProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
   renderPhotoKeepsakeLivePrice();
+  updatePhotoAttemptStatus();
   photoKeepsakeModal?.classList.remove("hidden");
   document.body.classList.add("modal-open");
 }
@@ -9764,10 +9817,12 @@ async function generatePhotoKeepsakeArtwork() {
       body: {
         image_data_url: imageDataUrl,
         subject_type: photoSubjectType.value,
+        artwork_style: getSelectedPhotoArtworkStyle(),
         colour_count: Number(photoColourCount.value),
         variant: photoClickerUpgrade?.checked ? "clicker" : "classic",
         filament_palette: availableFilamentPalette,
-        client_token: currentSubmissionId
+        client_token: currentSubmissionId,
+        admin_preview: isProductPreview
       }
     });
     if (error) {
@@ -9834,7 +9889,7 @@ async function generatePhotoKeepsakeArtwork() {
     }
   } finally {
     photoGenerationLoader?.classList.add("hidden");
-    const rateLimited = photoRetryAvailableAt > Date.now();
+    const rateLimited = !isProductPreview && photoRetryAvailableAt > Date.now();
     generatePhotoArtworkBtn.disabled = rateLimited;
     regeneratePhotoArtworkBtn.disabled = rateLimited;
   }
@@ -9962,6 +10017,7 @@ function addPhotoKeepsakeToCart() {
         artworkUrl: photoKeepsakeState.artworkUrl,
         generationId: photoKeepsakeState.generationId,
         subjectType: photoSubjectType.value,
+        artworkStyle: getSelectedPhotoArtworkStyle(),
         colourCount: Number(photoColourCount.value),
         variant: photoClickerUpgrade?.checked ? "clicker" : "classic",
         filamentPalette: normalizePhotoFilamentPalette(photoKeepsakeState.filamentPalette)
@@ -10107,6 +10163,12 @@ photoColourCount?.addEventListener("change", () => {
   }
   renderPhotoKeepsakeLivePrice();
 });
+photoArtworkStyleInputs.forEach(input => input.addEventListener("change", () => {
+  if (photoKeepsakeState.artworkUrl) {
+    resetPhotoArtworkResult();
+    photoGenerationStatus.textContent = "Style changed — create the artwork again to preview this look.";
+  }
+}));
 photoKeepsakeQuantity?.addEventListener("input", renderPhotoKeepsakeLivePrice);
 photoMappedPalette?.addEventListener("change", event => {
   const select = event.target.closest("[data-photo-region-colour]");
@@ -11879,6 +11941,7 @@ window.reorderTrackedItems = function(items) {
           artworkUrl: design.photo.artwork_url || design.photo.artworkUrl || "",
           generationId: design.photo.generation_id || design.photo.generationId || "",
           subjectType: design.photo.subject_type || design.photo.subjectType || "person",
+          artworkStyle: design.photo.artwork_style || design.photo.artworkStyle || "true_to_photo",
           colourCount: Number(design.photo.colour_count || design.photo.colourCount || 4),
           variant: design.photo.variant || "classic",
           filamentPalette: normalizePhotoFilamentPalette(

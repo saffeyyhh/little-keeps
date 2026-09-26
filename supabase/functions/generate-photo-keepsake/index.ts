@@ -46,6 +46,16 @@ Deno.serve(async request => {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
+    let isVerifiedAdminPreview = false;
+    if (body.admin_preview === true) {
+      const accessToken = String(request.headers.get("Authorization") || "")
+        .replace(/^Bearer\s+/i, "")
+        .trim();
+      if (accessToken) {
+        const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+        isVerifiedAdminPreview = !userError && Boolean(userData.user);
+      }
+    }
 
     if (body.action === "recolour") {
       const generationId = String(body.generation_id || "").trim();
@@ -82,6 +92,9 @@ Deno.serve(async request => {
       ? body.subject_type
       : "person";
     const variant = body.variant === "clicker" ? "clicker" : "classic";
+    const artworkStyle = ["true_to_photo", "cute_cartoon", "bold_graphic"].includes(body.artwork_style)
+      ? body.artwork_style
+      : "true_to_photo";
     const filamentPalette = (Array.isArray(body.filament_palette) ? body.filament_palette : [])
       .slice(0, 40)
       .flatMap((item: Record<string, unknown>) => {
@@ -98,14 +111,20 @@ Deno.serve(async request => {
       request.headers.get("cf-connecting-ip") || "unknown";
     const requesterHash = await sha256(`${requester}:${Deno.env.get("PHOTO_RATE_LIMIT_SALT") || serviceRoleKey.slice(0, 24)}`);
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { data: recentAttempts, count } = await supabase
-      .from("photo_artwork_requests")
-      .select("created_at", { count: "exact" })
-      .eq("requester_hash", requesterHash)
-      .gte("created_at", oneHourAgo)
-      .order("created_at", { ascending: true })
-      .limit(1);
-    if ((count || 0) >= 5) {
+    let recentAttempts: Array<{ created_at: string }> | null = null;
+    let count: number | null = 0;
+    if (!isVerifiedAdminPreview) {
+      const attemptResult = await supabase
+        .from("photo_artwork_requests")
+        .select("created_at", { count: "exact" })
+        .eq("requester_hash", requesterHash)
+        .gte("created_at", oneHourAgo)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      recentAttempts = attemptResult.data;
+      count = attemptResult.count;
+    }
+    if (!isVerifiedAdminPreview && (count || 0) >= 5) {
       const resetAt = new Date(
         new Date(recentAttempts?.[0]?.created_at || Date.now()).getTime() + 60 * 60 * 1000
       );
@@ -137,16 +156,22 @@ Deno.serve(async request => {
     }
 
     const model = Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-1.5";
+    const styleDirection = artworkStyle === "cute_cartoon"
+      ? "Use a cute cartoon style: rounded friendly shapes, softly simplified features, a warm expression and slightly larger expressive eyes. Keep the subject clearly recognizable and do not invent accessories or markings."
+      : artworkStyle === "bold_graphic"
+        ? "Use a bold graphic style: chunky high-contrast shapes, very thick clean outlines and the fewest practical details. Favour strong recognizability and print reliability over realism."
+        : "Use a true-to-photo style: preserve the subject's real proportions, pose, expression, face or object shape and distinctive features as closely as possible. Simplify only what is necessary for a clean printable result; do not caricature the subject.";
     const prompt = [
       `Transform the main ${subjectType} in this image into clean artwork specifically for a small FDM 3D-printed keychain.`,
+      styleDirection,
       `Use no more than ${colourCount} flat solid colours including outlines.`,
       `Use only colours from this available physical filament palette: ${filamentPalette.map(item => `${item.name} (${item.hex})`).join(", ")}. Choose the closest matches and do not invent any colour outside this list.`,
       subjectType === "person"
         ? "Use exactly one single flat filament colour for all visible skin across every face, neck, ear, arm and hand. Completely ignore photographic lighting, highlights, shadows, blush and reflections on skin: never turn them into additional skin colours or white patches. Preserve each person's likeness through the face shape, hairstyle, eyebrows, eyes, nose, mouth, expression and bold outline—not through skin shading."
         : subjectType === "pet"
-          ? "Make the pet look especially cute, warm and friendly while remaining clearly recognizable. Use a charming rounded sticker style with slightly larger expressive eyes, a softly simplified face and muzzle, neat rounded paws, smooth fluffy contours and a gentle pleasant expression. Preserve the real species or breed, ear shape, face shape and distinctive coat markings so it does not become a generic cartoon animal. Do not invent clothes, bows, accessories, a protruding tongue or markings that are not in the photo. Avoid harsh, angry, uncanny or overly realistic facial features. Ignore photographic lighting, highlights, shadows and reflections when separating the pet into colour regions."
+          ? "Preserve the real species or breed, ear shape, face shape, expression and distinctive coat markings so the pet does not become a generic animal. Do not invent clothes, bows, accessories, a protruding tongue or markings that are not in the photo. Ignore photographic lighting, highlights, shadows and reflections when separating the pet into colour regions."
           : subjectType === "pet_person"
-            ? "Keep exactly the main person and their pet together as one compact, affectionate composition. Preserve the person's recognizable face shape, hairstyle, expression and key features. Use exactly one single flat filament colour for all visible human skin across the face, neck, ears, arms and hands; completely ignore skin lighting, highlights, shadows, blush and reflections. Make the pet cute, warm and friendly with slightly larger expressive eyes, a softly simplified face and muzzle, neat rounded paws and smooth fluffy contours, while preserving its species or breed, ear shape and distinctive coat markings. Keep the natural pose and relationship between the person and pet. Do not omit either subject, merge their features, add extra people or animals, or invent clothing, accessories or markings."
+            ? "Keep exactly the main person and their pet together as one compact composition. Preserve the person's recognizable face shape, hairstyle, expression and key features. Use exactly one single flat filament colour for all visible human skin across the face, neck, ears, arms and hands; completely ignore skin lighting, highlights, shadows, blush and reflections. Preserve the pet's species or breed, ear shape, face shape and distinctive coat markings. Keep the natural pose and relationship between the person and pet. Do not omit either subject, merge their features, add extra people or animals, or invent clothing, accessories or markings."
           : "Ignore photographic lighting, highlights, shadows and reflections when separating the subject into colour regions.",
       "Keep the subject recognizable and charming, with bold connected shapes, smooth closed outlines, and no gradients, shadows, texture, text, logos, scenery, frame, or background.",
       "Remove tiny details and isolated specks. Every important stroke and gap must remain thick enough to print at approximately 60 mm wide; target at least 1.2 mm features.",
@@ -229,8 +254,9 @@ Deno.serve(async request => {
       artwork_url: signedArtwork.signedUrl,
       recolour_token: recolourUpload.token,
       attempts_used: (count || 0) + 1,
-      attempts_remaining: Math.max(0, 4 - (count || 0)),
-      retry_at: new Date(
+      attempts_remaining: isVerifiedAdminPreview ? null : Math.max(0, 4 - (count || 0)),
+      unlimited: isVerifiedAdminPreview,
+      retry_at: isVerifiedAdminPreview ? null : new Date(
         new Date(recentAttempts?.[0]?.created_at || Date.now()).getTime() + 60 * 60 * 1000
       ).toISOString()
     });
