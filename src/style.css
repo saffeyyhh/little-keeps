@@ -7775,3 +7775,13 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
   .design-wizard-next::before,
   .add-cart-btn::before { display: none; }
 }
+
+/* Keep the desktop preview and style panels visually level. */
+@media (min-width: 1021px) {
+  .product-customiser { align-items: stretch; }
+  .preview-card,
+  .style-controls-card {
+    height: 100%;
+    align-self: stretch;
+  }
+}
