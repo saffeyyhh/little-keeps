@@ -1512,8 +1512,12 @@ Chloe</textarea>
       </div>
       </div>
 
-      <div id="designInspiration" class="design-inspiration">
-        <h3>Need inspiration? ✨</h3>
+      <details id="designInspiration" class="design-inspiration" open>
+        <summary>
+          <span><strong>Need inspiration?</strong><small>Optional colour ideas ✨</small></span>
+          <b>Show ideas</b>
+        </summary>
+        <div class="design-inspiration-content">
         <div class="ai-design-helper">
           <label for="aiDesignBrief">Tell us the vibe, occasion or person</label>
           <div class="ai-design-helper-input">
@@ -1528,7 +1532,8 @@ Chloe</textarea>
         </div>
 
         <p id="inspirationStatus" class="inspiration-status" aria-live="polite"></p>
-      </div>
+        </div>
+      </details>
     </section>
 
     <section class="options-column">
@@ -4360,6 +4365,16 @@ scene.add(keychain);
 
 const designInspiration =
   document.getElementById("designInspiration");
+
+if (designInspiration && window.matchMedia("(max-width: 760px)").matches) {
+  designInspiration.removeAttribute("open");
+
+  const mobileColourTabs = document.querySelector(".colour-part-tabs");
+  const randomColourCard = document.querySelector(".random-colour-card");
+  if (mobileColourTabs && randomColourCard) {
+    mobileColourTabs.insertAdjacentElement("afterend", randomColourCard);
+  }
+}
 
 const geometryCache = {};
 
