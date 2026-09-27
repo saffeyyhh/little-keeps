@@ -1459,6 +1459,7 @@ Chloe</textarea>
 
   <div class="product-customiser">
     <section class="preview-column">
+      <span class="mobile-preview-sentinel" aria-hidden="true"></span>
       <div class="preview-sticky">
         <div class="preview-card">
           <span id="authorisedSellerRibbon" class="authorised-seller-ribbon authorised-seller-ribbon-preview">Authorised Seller</span>
@@ -2729,6 +2730,15 @@ const previewLoading =
 const previewCard =
   document.querySelector(".preview-card");
 
+const previewSticky =
+  document.querySelector(".preview-sticky");
+
+const mobilePreviewSentinel =
+  document.querySelector(".mobile-preview-sentinel");
+
+const productCustomiser =
+  document.querySelector(".product-customiser");
+
 const mobilePreviewToggle =
   document.getElementById("mobilePreviewToggle");
 
@@ -3893,6 +3903,35 @@ window.addEventListener(
   "resize",
   updateAddCartVisibility
 );
+
+function updateMobilePreviewDock() {
+  if (!previewSticky || !previewCard || !mobilePreviewSentinel || !productCustomiser) return;
+
+  const isMobile = window.matchMedia("(max-width: 760px)").matches;
+  const isStyleStep = designArea?.dataset.designStep === "style";
+  const sentinelTop = mobilePreviewSentinel.getBoundingClientRect().top;
+  const customiserBottom = productCustomiser.getBoundingClientRect().bottom;
+  const shouldDock =
+    isMobile &&
+    isStyleStep &&
+    !previewCard.classList.contains("mobile-collapsed") &&
+    sentinelTop < 64 &&
+    customiserBottom > 190;
+
+  if (shouldDock && !previewSticky.classList.contains("mobile-preview-docked")) {
+    previewSticky.style.height = `${previewCard.offsetHeight}px`;
+  }
+
+  previewSticky.classList.toggle("mobile-preview-docked", shouldDock);
+  designArea?.classList.toggle("mobile-preview-is-docked", shouldDock);
+
+  if (!shouldDock) {
+    previewSticky.style.height = "";
+  }
+}
+
+window.addEventListener("scroll", updateMobilePreviewDock, { passive: true });
+window.addEventListener("resize", updateMobilePreviewDock);
 
 updateAddCartVisibility();
 
@@ -9309,6 +9348,7 @@ function setDesignWizardStep(nextStep, { scroll = true } = {}) {
   buildSelectedPreview();
   requestAnimationFrame(() => {
     resize();
+    updateMobilePreviewDock();
     if (scroll) {
       designWizardTitle.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -12164,6 +12204,7 @@ mobilePreviewToggle?.addEventListener("click", () => {
     "aria-expanded",
     String(!collapsed)
   );
+  updateMobilePreviewDock();
 });
 
 setOrderType("single");
