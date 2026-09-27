@@ -91,16 +91,39 @@ async function easyParcelRequest(
   if (!response) throw new Error("EasyParcel did not respond.");
   const data = await response.json().catch(() => ({}));
   if (!response.ok || Number(data.status_code || response.status) >= 400) {
-    throw new Error(data.message || "EasyParcel request failed.");
+    throw new Error(getEasyParcelErrorMessage(data, "EasyParcel request failed."));
   }
   return data;
+}
+
+function collectEasyParcelErrors(value: unknown): string[] {
+  if (typeof value === "string") {
+    const message = value.trim();
+    return message ? [message] : [];
+  }
+  if (Array.isArray(value)) return value.flatMap(collectEasyParcelErrors);
+  if (!value || typeof value !== "object") return [];
+
+  const record = value as Record<string, unknown>;
+  return [
+    ...collectEasyParcelErrors(record.error),
+    ...collectEasyParcelErrors(record.errors),
+    ...collectEasyParcelErrors(record.detail),
+    ...collectEasyParcelErrors(record.details)
+  ];
+}
+
+function getEasyParcelErrorMessage(item: any, fallback: string) {
+  const details = [...new Set(collectEasyParcelErrors(item))].slice(0, 6);
+  if (details.length) return details.join("\n");
+  return String(item?.message || item?.remarks || fallback).trim() || fallback;
 }
 
 function requireSuccessfulItem(item: any, fallback: string) {
   if (!item) throw new Error(fallback);
   const status = String(item?.status || "").toLowerCase();
-  if (["error", "failed", "failure"].includes(status)) {
-    throw new Error(item?.message || item?.remarks || fallback);
+  if (["error", "failed", "failure"].includes(status) || collectEasyParcelErrors(item).length) {
+    throw new Error(getEasyParcelErrorMessage(item, fallback));
   }
   return item;
 }

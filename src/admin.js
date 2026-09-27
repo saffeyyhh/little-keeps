@@ -5600,6 +5600,21 @@ function getEasyParcelFormPayload() {
   };
 }
 
+async function getEasyParcelFunctionErrorMessage(error, fallback) {
+  try {
+    const response = error?.context;
+    if (response?.clone) {
+      const body = await response.clone().json();
+      if (body?.error) return String(body.error);
+    }
+  } catch {
+    // Keep the useful client error or friendly fallback below.
+  }
+
+  const message = String(error?.message || "").trim();
+  return message && !message.includes("non-2xx") ? message : fallback;
+}
+
 function updateEasyParcelChargeableWeight() {
   const actual = Number(document.getElementById("easyParcelWeight")?.value || 0);
   const volumetric = getEasyParcelVolumetricWeight(
@@ -5755,7 +5770,10 @@ document.getElementById("getEasyParcelQuotes").addEventListener("click", async e
     }).join("");
   } catch (error) {
     console.error("Unable to get EasyParcel quotes:", error);
-    document.getElementById("easyParcelQuoteStatus").textContent = error?.message || "Courier quotes could not be loaded.";
+    document.getElementById("easyParcelQuoteStatus").textContent = await getEasyParcelFunctionErrorMessage(
+      error,
+      "Courier quotes could not be loaded."
+    );
   } finally {
     button.disabled = false;
     button.textContent = "Compare Couriers";
@@ -5806,7 +5824,7 @@ window.bookEasyParcelQuote = async function(index, button) {
     alert(`EasyParcel shipment booked for ${currency} ${charged.toFixed(2)}. Download and attach the courier label before handover.`);
   } catch (error) {
     console.error("Unable to book EasyParcel shipment:", error);
-    alert(error?.message || "EasyParcel could not create the shipment.");
+    alert(await getEasyParcelFunctionErrorMessage(error, "EasyParcel could not create the shipment."));
     button.disabled = false;
     button.textContent = "Book";
   }
@@ -5850,7 +5868,7 @@ window.refreshEasyParcelShipment = async function(id, button) {
     }
   } catch (error) {
     console.error("Unable to refresh EasyParcel shipment:", error);
-    alert(error?.message || "EasyParcel shipment could not be refreshed.");
+    alert(await getEasyParcelFunctionErrorMessage(error, "EasyParcel shipment could not be refreshed."));
   } finally {
     if (button) { button.disabled = false; button.textContent = previousLabel; }
   }
@@ -5883,7 +5901,7 @@ window.cancelEasyParcelShipment = async function(id, button) {
     alert("Courier cancellation submitted. Any eligible refund is handled by EasyParcel.");
   } catch (error) {
     console.error("Unable to cancel EasyParcel shipment:", error);
-    alert(error?.message || "EasyParcel could not cancel this shipment.");
+    alert(await getEasyParcelFunctionErrorMessage(error, "EasyParcel could not cancel this shipment."));
   } finally {
     if (button) { button.disabled = false; button.textContent = previousLabel; }
   }
