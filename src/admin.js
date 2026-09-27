@@ -53,6 +53,7 @@ import {
   getProductionJobGroup,
   getTrackedProductionQuantity,
   normalizeAssemblyProgress,
+  normalizeEasyParcelShipmentNumber,
   optimizeAmsPlateSequence,
   partitionAmsCombinationsByBusyColours,
   splitAmsCombinationsByPlateCapacity,
@@ -5334,6 +5335,7 @@ function renderFulfilmentWorkspace(orders) {
             ${order.tracking_url ? `<a class="fulfilment-action-link" href="${escapeAdminHtml(order.tracking_url)}" target="_blank" rel="noopener">Open Tracking</a>` : ""}
           ` : `
             <button type="button" class="ready-btn" onclick='window.openEasyParcelBooking(${JSON.stringify(String(order.id))})'>Compare &amp; Book EasyParcel</button>
+            <button type="button" onclick='window.linkExistingEasyParcelShipment(${JSON.stringify(String(order.id))}, this)'>Attach Existing EasyParcel Booking</button>
           `}
         ` : ""}
         ${order.status === "Assembly Complete" && order.collection_method !== "delivery" ? `
@@ -5830,6 +5832,75 @@ window.bookEasyParcelQuote = async function(index, button) {
   }
 };
 
+async function sendLinkedEasyParcelStatusEmail(orderId, data) {
+  const refreshedOrder = groupLinkedOrdersForAdmin(latestOrders).find(
+    item => String(item.id) === String(orderId)
+  );
+  const deliveryStatus = String(
+    data?.little_keeps_status ||
+    getEasyParcelOrderStatus(data?.easyparcel_status || refreshedOrder?.easyparcel_status)
+  );
+  if (
+    !refreshedOrder ||
+    !["Out for Delivery", "Completed"].includes(deliveryStatus) ||
+    refreshedOrder.status_email_type === deliveryStatus
+  ) return "";
+
+  try {
+    const emailResult = await sendOrderStatusEmail(refreshedOrder, deliveryStatus);
+    if (emailResult.sent) {
+      await loadOrders();
+      return `${deliveryStatus === "Completed" ? "Delivered" : "Out-for-delivery"} email sent to ${refreshedOrder.customer_email}.`;
+    }
+    return `The booking was linked, but the customer email was not sent: ${emailResult.reason || "check Customer updates under Settings."}`;
+  } catch (emailError) {
+    console.error("EasyParcel status email failed:", emailError);
+    return "The booking was linked, but the customer email failed to send. Use Resend customer email after checking the EmailJS settings.";
+  }
+}
+
+window.linkExistingEasyParcelShipment = async function(id, button) {
+  const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
+  if (!order || order.collection_method !== "delivery") return;
+
+  const entered = window.prompt(
+    "Paste the EasyParcel shipment number from your EasyParcel booking. It starts with ES-.",
+    ""
+  );
+  if (entered === null) return;
+  const shipmentNumber = normalizeEasyParcelShipmentNumber(entered);
+  if (!shipmentNumber) {
+    alert("Enter a valid EasyParcel shipment number, for example ES-2601-K8S32.");
+    return;
+  }
+  if (!confirm(`Attach ${shipmentNumber} to ${order.order_ref || "this order"}? The receiver postcode will be checked first.`)) return;
+
+  const previousLabel = button?.textContent || "Attach Existing EasyParcel Booking";
+  if (button) { button.disabled = true; button.textContent = "Checking…"; }
+  try {
+    const { data, error } = await supabase.functions.invoke("easyparcel-api", {
+      body: { action: "link", order_id: order.id, shipment_number: shipmentNumber }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+
+    if (order.status === "Assembly Complete" && !data?.little_keeps_status) {
+      await window.markReady(String(order.id), true);
+    } else {
+      await loadOrders();
+    }
+    const emailMessage = await sendLinkedEasyParcelStatusEmail(order.id, data);
+    const courier = data?.courier_name ? ` with ${data.courier_name}` : "";
+    const awb = data?.tracking_number ? `\nAWB: ${data.tracking_number}` : "";
+    alert(`EasyParcel booking ${shipmentNumber} is now linked${courier}.${awb}${emailMessage ? `\n\n${emailMessage}` : ""}`);
+  } catch (error) {
+    console.error("Unable to attach EasyParcel shipment:", error);
+    alert(await getEasyParcelFunctionErrorMessage(error, "EasyParcel booking could not be attached."));
+  } finally {
+    if (button) { button.disabled = false; button.textContent = previousLabel; }
+  }
+};
+
 window.refreshEasyParcelShipment = async function(id, button) {
   const order = groupLinkedOrdersForAdmin(latestOrders).find(item => String(item.id) === String(id));
   if (!order?.easyparcel_shipment_number) return;
@@ -5842,30 +5913,8 @@ window.refreshEasyParcelShipment = async function(id, button) {
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
     await loadOrders();
-    const refreshedOrder = groupLinkedOrdersForAdmin(latestOrders).find(
-      item => String(item.id) === String(id)
-    );
-    const deliveryStatus = String(
-      data?.little_keeps_status ||
-      getEasyParcelOrderStatus(data?.easyparcel_status || refreshedOrder?.easyparcel_status)
-    );
-    if (
-      refreshedOrder &&
-      ["Out for Delivery", "Completed"].includes(deliveryStatus) &&
-      refreshedOrder.status_email_type !== deliveryStatus
-    ) {
-      try {
-        const emailResult = await sendOrderStatusEmail(refreshedOrder, deliveryStatus);
-        alert(emailResult.sent
-          ? `${deliveryStatus === "Completed" ? "Delivered" : "Out-for-delivery"} email sent to ${refreshedOrder.customer_email}.`
-          : `EasyParcel status updated, but the customer email was not sent.\n\n${emailResult.reason || "Check Customer updates under Settings."}`
-        );
-        if (emailResult.sent) await loadOrders();
-      } catch (emailError) {
-        console.error("EasyParcel status email failed:", emailError);
-        alert("EasyParcel status updated, but the customer email failed to send. Use Resend customer email after checking the EmailJS settings.");
-      }
-    }
+    const emailMessage = await sendLinkedEasyParcelStatusEmail(id, data);
+    if (emailMessage) alert(emailMessage);
   } catch (error) {
     console.error("Unable to refresh EasyParcel shipment:", error);
     alert(await getEasyParcelFunctionErrorMessage(error, "EasyParcel shipment could not be refreshed."));

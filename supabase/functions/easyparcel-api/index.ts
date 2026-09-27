@@ -351,6 +351,101 @@ Deno.serve(async request => {
       return json({ ...result, shipment: { ...shipment, order_number: submitted.order_details?.order_number } });
     }
 
+    if (action === "link") {
+      await requireSingaporeAccount(token);
+      const orderId = String(payload.order_id || "");
+      const shipmentNumber = String(payload.shipment_number || "").trim().toUpperCase();
+      if (!/^ES-\d{4}-[A-Z0-9]+$/.test(shipmentNumber)) {
+        throw new Error("Enter a valid EasyParcel shipment number, for example ES-2601-K8S32.");
+      }
+
+      const { data: order } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
+      if (!order || order.collection_method !== "delivery") throw new Error("Delivery order not found.");
+      const currentShipment = String(order.easyparcel_shipment_number || "").trim().toUpperCase();
+      const currentWasCancelled = String(order.easyparcel_status || "").toLowerCase().includes("cancel");
+      if (currentShipment && currentShipment !== shipmentNumber && !currentWasCancelled) {
+        throw new Error(`This order is already linked to ${currentShipment}.`);
+      }
+
+      const { data: allOrders } = await supabase.from("orders").select("*");
+      const familyRoot = String(order.linked_order_ref || order.order_ref || "").toLowerCase();
+      const family = (allOrders || []).filter(item =>
+        String(item.linked_order_ref || item.order_ref || "").toLowerCase() === familyRoot
+      );
+      const linkedOrders = family.length ? family : [order];
+      const linkedIds = new Set(linkedOrders.map(item => String(item.id)));
+      const conflictingOrder = (allOrders || []).find(item =>
+        String(item.easyparcel_shipment_number || "").trim().toUpperCase() === shipmentNumber &&
+        !linkedIds.has(String(item.id))
+      );
+      if (conflictingOrder) {
+        throw new Error(`This EasyParcel shipment is already linked to ${conflictingOrder.order_ref || "another order"}.`);
+      }
+
+      const result = await easyParcelRequest(
+        "shipment/details",
+        token,
+        { shipment_number: shipmentNumber },
+        "POST",
+        "2026-03"
+      );
+      const detail = requireSuccessfulItem(result.data?.[0], "EasyParcel could not find that shipment.");
+      if (String(detail.shipment_number || "").trim().toUpperCase() !== shipmentNumber) {
+        throw new Error("EasyParcel returned a different shipment. Nothing was linked.");
+      }
+
+      const orderPostcode = postal(order.delivery_address);
+      const receiverPostcode = postal(detail.receiver?.postal_code || detail.receiver?.postcode);
+      if (orderPostcode && receiverPostcode && orderPostcode !== receiverPostcode) {
+        throw new Error(`The shipment receiver postcode (${receiverPostcode}) does not match this order (${orderPostcode}).`);
+      }
+
+      const shipmentDetails = detail.shipment_details || {};
+      const easyParcelStatus = String(shipmentDetails.shipment_status || detail.status || "Linked").trim();
+      const littleKeepsStatus = getLittleKeepsDeliveryStatus(easyParcelStatus);
+      const courierName = String(detail.courier?.courier_name || detail.courier?.service_types || "EasyParcel courier");
+      const totalPrice = Number(detail.pricing?.total_price || 0);
+      const shipmentPrice = Number(detail.pricing?.shipment_price || 0);
+      const bookedAtValue = new Date(shipmentDetails.coll_date || "").getTime();
+      const update: Record<string, unknown> = {
+        easyparcel_order_number: detail.order_number || null,
+        easyparcel_shipment_number: shipmentNumber,
+        easyparcel_service_id: detail.courier?.service_id || null,
+        easyparcel_courier_name: courierName,
+        easyparcel_amount: totalPrice > 0 ? totalPrice : shipmentPrice,
+        easyparcel_currency: detail.pricing?.currency_code || null,
+        easyparcel_awb_url: shipmentDetails.awb_url || null,
+        easyparcel_status: easyParcelStatus,
+        easyparcel_booked_at: Number.isFinite(bookedAtValue)
+          ? new Date(bookedAtValue).toISOString()
+          : new Date().toISOString(),
+        easyparcel_last_event_at: new Date().toISOString(),
+        courier_name: courierName,
+        tracking_number: shipmentDetails.awb_number || "",
+        tracking_url: shipmentDetails.tracking_url || ""
+      };
+      if (littleKeepsStatus) {
+        update.status = littleKeepsStatus;
+        update.status_updated_at = new Date().toISOString();
+      }
+
+      const { error: saveError } = await supabase.from("orders")
+        .update(update)
+        .in("id", [...linkedIds]);
+      if (saveError) throw new Error("EasyParcel verified the shipment, but Little Keeps could not link it to the order.");
+
+      return json({
+        linked: true,
+        shipment_number: shipmentNumber,
+        courier_name: courierName,
+        tracking_number: shipmentDetails.awb_number || "",
+        tracking_url: shipmentDetails.tracking_url || "",
+        awb_url: shipmentDetails.awb_url || "",
+        easyparcel_status: easyParcelStatus,
+        little_keeps_status: littleKeepsStatus
+      });
+    }
+
     if (action === "refresh") {
       const shipmentNumber = String(payload.shipment_number || "");
       const result = await easyParcelRequest(

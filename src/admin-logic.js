@@ -1346,6 +1346,11 @@ export function isEasyParcelShipmentCancelled(status) {
   return String(status || "").trim().toLowerCase().includes("cancel");
 }
 
+export function normalizeEasyParcelShipmentNumber(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return /^ES-\d{4}-[A-Z0-9]+$/.test(normalized) ? normalized : "";
+}
+
 export function getEasyParcelOrderStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
   const returned = /return(?:ed|ing)?|return to sender/.test(normalized);

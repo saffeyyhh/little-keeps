@@ -37,6 +37,7 @@ import {
   getModularPreviewPlacement,
   getTrackedProductionQuantity,
   normalizeAssemblyProgress,
+  normalizeEasyParcelShipmentNumber,
   assessRushDateCapacity,
   formatDateRange,
   formatEasyParcelReceiver,
@@ -113,6 +114,12 @@ test("treats a cancelled EasyParcel booking as available to rebook", () => {
   assert.equal(hasActiveEasyParcelShipment(cancelled), false);
   assert.equal(hasActiveEasyParcelShipment({}), false);
   assert.equal(isEasyParcelShipmentCancelled(cancelled.easyparcel_status), true);
+});
+
+test("normalizes only valid EasyParcel shipment numbers for manual linking", () => {
+  assert.equal(normalizeEasyParcelShipmentNumber(" es-2601-k8s32 "), "ES-2601-K8S32");
+  assert.equal(normalizeEasyParcelShipmentNumber("EI-2601-K8S32"), "");
+  assert.equal(normalizeEasyParcelShipmentNumber("ES-26-K8S32"), "");
 });
 
 test("maps EasyParcel courier updates to customer order statuses safely", () => {
