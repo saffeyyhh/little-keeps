@@ -7970,20 +7970,28 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
     font-size: 8px;
     pointer-events: auto;
   }
-  #previewCanvas { height: 145px; min-height: 145px; }
+  #previewCanvas { height: 155px; min-height: 155px; }
   .dimension-estimate {
     top: auto;
     bottom: 7px;
     right: 7px;
-    width: min(310px, calc(100% - 14px));
-    padding: 4px;
-    border-radius: 10px;
+    width: min(205px, calc(100% - 14px));
+    padding: 3px;
+    border-radius: 9px;
+    background: rgba(255, 250, 252, .84);
+    box-shadow: 0 4px 12px rgba(70, 42, 53, .08);
+    backdrop-filter: blur(6px);
   }
   .dimension-estimate-heading { display: none; }
-  .dimension-estimate-grid { gap: 3px; }
-  .dimension-estimate-grid > span { padding: 2px 3px; border-radius: 7px; }
-  .dimension-estimate-grid small { font-size: 6px; }
-  .dimension-estimate-grid b { font-size: 8px; }
+  .dimension-estimate-grid { gap: 2px; }
+  .dimension-estimate-grid > span {
+    gap: 0;
+    padding: 2px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, .88);
+  }
+  .dimension-estimate-grid small { font-size: 5px; }
+  .dimension-estimate-grid b { font-size: 7px; }
   .dimension-estimate .dimension-long-name-warning { display: none; }
   .preview-colour-legend {
     display: none;
