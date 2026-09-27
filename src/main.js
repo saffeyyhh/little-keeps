@@ -793,7 +793,7 @@ ${requestedPreviewProductKey ? `
       Design
     </button>
     <button type="button" data-view-target="track">
-      Track / Pay
+      Track / pay
     </button>
   </nav>
 
@@ -817,7 +817,7 @@ ${requestedPreviewProductKey ? `
     <span id="pendingOrderBannerText">Your order is saved, but payment is not complete.</span>
   </div>
   <div class="pending-order-banner-actions">
-    <button id="resumePendingOrderBtn" type="button">Continue Payment</button>
+    <button id="resumePendingOrderBtn" type="button">Continue payment</button>
     <button id="dismissPendingOrderBtn" type="button" class="pending-order-dismiss" aria-label="Dismiss unfinished order reminder">×</button>
   </div>
 </section>
@@ -826,9 +826,9 @@ ${requestedPreviewProductKey ? `
   <div>
     <small>Group order</small>
     <strong id="sharedGroupBannerTitle">Loading…</strong>
-    <span id="sharedGroupBannerText">Design your keychain, then add your basket to the group.</span>
+    <span id="sharedGroupBannerText">Design your keychain, then add your cart to the group.</span>
   </div>
-  <button id="sharedGroupBannerAction" type="button">View Group</button>
+  <button id="sharedGroupBannerAction" type="button">View group</button>
 </section>
 
 <div id="menuOverlay" class="menu-overlay hidden"></div>
@@ -866,7 +866,7 @@ ${requestedPreviewProductKey ? `
       data-view-target="design"
     >
       <span>✿</span>
-      Create a Custom Piece
+      Create a custom piece
     </button>
 
     <button
@@ -875,7 +875,7 @@ ${requestedPreviewProductKey ? `
       data-view-target="track"
     >
       <span>◎</span>
-      Track / Pay Order
+      Track / pay for an order
     </button>
 
     <button
@@ -885,7 +885,7 @@ ${requestedPreviewProductKey ? `
       data-view-scroll="policiesSection"
     >
       <span>◎</span>
-      Shop Policies
+      Shop policies
     </button>
 
     <button
@@ -905,7 +905,7 @@ ${requestedPreviewProductKey ? `
     >
       <span>🛍</span>
 
-      <span>View Cart</span>
+      <span>View cart</span>
 
       <span id="sideCartCount" class="side-cart-count">
         0
@@ -930,7 +930,7 @@ ${requestedPreviewProductKey ? `
   <div class="cart-drawer-header">
     <div>
       <p class="side-menu-eyebrow">Your order</p>
-      <h2>Your Cart</h2>
+      <h2>Your cart</h2>
     </div>
 
     <button
@@ -960,7 +960,7 @@ ${requestedPreviewProductKey ? `
       type="button"
       class="cart-secondary-btn"
     >
-      Continue Designing
+      Continue designing
     </button>
 
     <button
@@ -968,7 +968,7 @@ ${requestedPreviewProductKey ? `
       type="button"
       class="shared-group-cart-btn hidden"
     >
-      Save My Cart to Group Order
+      Save my cart to group order
     </button>
 
     <button
@@ -976,7 +976,7 @@ ${requestedPreviewProductKey ? `
       type="button"
       class="prepared-checkout-cart-btn hidden"
     >
-      Send Checkout to Customer
+      Send checkout to customer
     </button>
 
     <button
@@ -984,7 +984,7 @@ ${requestedPreviewProductKey ? `
       type="button"
       class="submit-btn"
     >
-      Checkout
+      Proceed to checkout
     </button>
   </div>
 </aside>
@@ -1020,11 +1020,11 @@ ${requestedPreviewProductKey ? `
       </label>
     </div>
 
-    <button id="createPreparedCheckoutBtn" type="button" class="submit-btn">Create Customer Checkout Link</button>
+    <button id="createPreparedCheckoutBtn" type="button" class="submit-btn">Create customer checkout link</button>
     <p id="preparedCheckoutStatus" class="hint" aria-live="polite"></p>
     <div id="preparedCheckoutResult" class="prepared-checkout-result hidden">
       <label for="preparedCheckoutLink">Customer link</label>
-      <div><input id="preparedCheckoutLink" readonly><button id="copyPreparedCheckoutLinkBtn" type="button">Copy Link</button></div>
+      <div><input id="preparedCheckoutLink" readonly><button id="copyPreparedCheckoutLinkBtn" type="button">Copy link</button></div>
       <small>The discount is already included. Your customer only needs to review, enter their details and pay.</small>
     </div>
   </div>
@@ -1291,7 +1291,7 @@ ${requestedPreviewProductKey ? `
         <div id="photoKeepsakeLivePrice" class="photo-keepsake-live-price" aria-live="polite"></div>
 
         <label class="photo-permission-check"><input id="photoAiConsentCheck" type="checkbox"><span>I have permission to use this photo and agree to private AI processing. It may be kept for up to 30 days so Little Keeps can make my order.</span></label>
-        <button id="generatePhotoArtworkBtn" type="button" class="photo-generate-btn">Create My Artwork</button>
+        <button id="generatePhotoArtworkBtn" type="button" class="photo-generate-btn">Create my artwork</button>
         <p id="photoGenerationStatus" class="hint" aria-live="polite"></p>
       </section>
 
@@ -1305,11 +1305,11 @@ ${requestedPreviewProductKey ? `
         <div id="photoResultPlaceholder"><span>✦</span><strong>Your simplified artwork will appear here</strong><small>No payment is taken when you generate a preview.</small></div>
         <img id="photoArtworkResult" class="hidden" alt="AI simplified printable artwork preview">
         <div id="photoResultActions" class="photo-result-actions hidden">
-          <div class="photo-retry-action"><button id="regeneratePhotoArtworkBtn" type="button">Create Another in This Style</button><small id="photoAttemptStatus">Up to 5 previews per hour</small></div>
-          <button id="addPhotoArtworkToCartBtn" type="button">Approve & Add to Cart</button>
+          <div class="photo-retry-action"><button id="regeneratePhotoArtworkBtn" type="button">Create another in this style</button><small id="photoAttemptStatus">Up to 5 previews per hour</small></div>
+          <button id="addPhotoArtworkToCartBtn" type="button">Approve & add to cart</button>
           ${isProductPreview ? `
-            <button id="downloadPhotoPreviewArtworkBtn" class="photo-preview-download-btn hidden" type="button">Save Artwork PNG</button>
-            <button id="downloadPhotoTestStlsBtn" class="photo-preview-download-btn" type="button">Download Test STL Pack</button>
+            <button id="downloadPhotoPreviewArtworkBtn" class="photo-preview-download-btn hidden" type="button">Save artwork PNG</button>
+            <button id="downloadPhotoTestStlsBtn" class="photo-preview-download-btn" type="button">Download test STL pack</button>
           ` : ""}
         </div>
         <div id="photoMappedPalette" class="photo-mapped-palette hidden"></div>
@@ -1322,8 +1322,8 @@ ${requestedPreviewProductKey ? `
 <section id="designArea" class="shop-section" data-store-view="design" data-design-step="names">
   <div class="customer-progress" aria-label="Order progress">
     <div class="customer-progress-step is-active"><span>1</span>Design</div>
-    <div class="customer-progress-step"><span>2</span>Details</div>
-    <div class="customer-progress-step"><span>3</span>Review</div>
+    <div class="customer-progress-step"><span>2</span>Review</div>
+    <div class="customer-progress-step"><span>3</span>Details</div>
     <div class="customer-progress-step"><span>4</span>Payment</div>
   </div>
 
@@ -1372,16 +1372,16 @@ ${requestedPreviewProductKey ? `
         <div id="sharedGroupStartCard" class="friends-family-share-card">
           <span>Recommended</span>
           <div>
-            <h3 id="sharedGroupStartCardTitle">Create a shared Group Order</h3>
+            <h3 id="sharedGroupStartCardTitle">Create a shared group order</h3>
             <p id="sharedGroupStartCardText">Add your own design first, then create a private link for everyone else to add theirs. You review everything and pay once.</p>
           </div>
-          <button id="friendsFamilyStartBtn" type="button">Create Group Order</button>
+          <button id="friendsFamilyStartBtn" type="button">Create group order</button>
         </div>
       </div>
 
       <div class="card names-card">
         <div id="singleSection">
-          <h3>Enter Name</h3>
+          <h3>Enter name</h3>
 
           <input
             id="singleName"
@@ -1438,7 +1438,7 @@ Chloe</textarea>
     <div id="nameCardsSection" class="card keychain-selector">
       <div class="keychain-selector-heading">
         <div>
-          <h3 id="designSelectionHeading">Choose a Keychain to Edit</h3>
+          <h3 id="designSelectionHeading">Choose a keychain to edit</h3>
 
         </div>
 
@@ -1463,7 +1463,7 @@ Chloe</textarea>
           <span id="authorisedSellerRibbon" class="authorised-seller-ribbon authorised-seller-ribbon-preview">Authorised Seller</span>
           <div class="preview-card-heading">
             <div>
-              <h2>Your Keychain</h2>
+              <h2>Your keychain</h2>
             </div>
 
             <button
@@ -1472,7 +1472,7 @@ Chloe</textarea>
               class="mobile-preview-toggle"
               aria-expanded="true"
             >
-              Hide Preview
+              Hide preview
             </button>
           </div>
 
@@ -1521,7 +1521,7 @@ Chloe</textarea>
           <label for="aiDesignBrief">Tell us the vibe, occasion or person</label>
           <div class="ai-design-helper-input">
             <input id="aiDesignBrief" maxlength="300" placeholder="e.g. cute purple birthday gift for a cat lover">
-            <button id="aiDesignHelperBtn" type="button">Suggest Ideas</button>
+            <button id="aiDesignHelperBtn" type="button">Suggest ideas</button>
           </div>
           <p id="aiDesignHelperStatus" aria-live="polite"></p>
           <div id="aiDesignSuggestions" class="ai-design-suggestions hidden"></div>
@@ -1539,13 +1539,13 @@ Chloe</textarea>
       <div class="card colours-card">
         <div class="style-controls-card">
         <div class="customiser-heading">
-          <h2>Choose Your Style</h2>
+          <h2>Choose your style</h2>
         </div>
 
         <div id="standardKeychainOptions" class="standard-keychain-options" style="display:none">
           <div class="customisation-title">
             <div>
-              <h3>Letter Size</h3>
+              <h3>Letter size</h3>
               <p>Choose the physical height of the raised name. Your finished measurements update in the preview.</p>
             </div>
           </div>
@@ -1560,7 +1560,7 @@ Chloe</textarea>
         <div id="pencilClickerOptions" class="pencil-clicker-options" style="display:none">
           <div class="customisation-title">
             <div>
-              <h3>Personalise Your Pencil</h3>
+              <h3>Personalise your pencil</h3>
               <p>Every character gets its own clicky block. Choose colours for the pencil ends, blocks, tops and characters.</p>
             </div>
           </div>
@@ -1597,7 +1597,7 @@ Chloe</textarea>
               <span>We’ll create one complete colour combination for you.</span>
             </div>
             <button id="randomiseColoursBtn" type="button" class="randomise-colours-btn">
-              Surprise Me - All Parts
+              Surprise me — all parts
             </button>
           </div>
           <details id="randomColourOptions" class="random-colour-options">
@@ -1622,7 +1622,7 @@ Chloe</textarea>
 >
   <div class="customisation-title">
     <div>
-      <h3>Base Shape</h3>
+      <h3>Base shape</h3>
     </div>
   </div>
 
@@ -1659,7 +1659,7 @@ Chloe</textarea>
           >
           <div class="customisation-title">
             <div>
-              <h3>Letter Orientation</h3>
+              <h3>Letter orientation</h3>
             </div>
           </div>
 
@@ -1690,7 +1690,7 @@ Chloe</textarea>
         <div class="customisation-section colour-workspace">
           <div class="customisation-title colour-workspace-heading">
             <div>
-              <h3>Choose Colours</h3>
+              <h3>Choose colours</h3>
               <p>Select the part you want to change, then choose a filament finish. Dual-tone colours are available for bases only.</p>
             </div>
           </div>
@@ -1704,7 +1704,7 @@ Chloe</textarea>
           <div class="colour-part-panel active" data-colour-part-panel="base" role="tabpanel">
             <div id="baseSlots" class="slot-row"></div>
 
-            <button id="randomiseBaseColoursBtn" type="button" class="part-surprise-btn">Surprise Me for Base Only ✨</button>
+            <button id="randomiseBaseColoursBtn" type="button" class="part-surprise-btn">Surprise me for base only ✨</button>
             <p id="baseColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="baseColourHint" class="colour-hint">
@@ -1717,7 +1717,7 @@ Chloe</textarea>
           <div id="clickyCapColourSection" class="colour-part-panel clicky-only-option" data-colour-part-panel="cap" role="tabpanel" hidden>
             <div id="capSlots" class="slot-row"></div>
 
-            <button id="randomiseCapColoursBtn" type="button" class="part-surprise-btn">Surprise Me for Cap Only ✨</button>
+            <button id="randomiseCapColoursBtn" type="button" class="part-surprise-btn">Surprise me for cap only ✨</button>
             <p id="capColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="capColourHint" class="colour-hint">
@@ -1730,7 +1730,7 @@ Chloe</textarea>
           <div class="colour-part-panel" data-colour-part-panel="letter" role="tabpanel" hidden>
             <div id="letterSlots" class="slot-row"></div>
 
-            <button id="randomiseLetterColoursBtn" type="button" class="part-surprise-btn">Surprise Me for Letter Only ✨</button>
+            <button id="randomiseLetterColoursBtn" type="button" class="part-surprise-btn">Surprise me for letter only ✨</button>
             <p id="letterColourPriceNotice" class="colour-price-notice"></p>
 
             <p id="letterColourHint" class="colour-hint">
@@ -1794,7 +1794,7 @@ Chloe</textarea>
       type="button"
       class="submit-btn add-cart-btn"
     >
-      <span id="addCartButtonLabel">Add to Cart</span>
+      <span id="addCartButtonLabel">Add to cart</span>
       <span>♡</span>
     </button>
   </div>
@@ -1812,13 +1812,13 @@ Chloe</textarea>
       </div>
 
       <button id="backBtn" class="secondary-btn">
-        ← Back to Design
+        ← Back to design
       </button>
 
       <div class="contact-box" data-checkout-step-panel="details">
 <div class="checkout-heading">
   <p class="section-eyebrow">Checkout</p>
-  <h2>Your Details</h2>
+  <h2>Your details</h2>
 </div>
 
         <label for="customerName">Full name</label>
@@ -1836,13 +1836,13 @@ Chloe</textarea>
           placeholder="Email"
         >
 
-        <label for="customerPhone">Contact number</label>
+        <label for="customerPhone">Phone number</label>
         <input
           id="customerPhone"
           type="tel"
           inputmode="numeric"
           autocomplete="tel"
-          placeholder="Contact Number"
+          placeholder="Phone number"
         >
 
         <div class="add-on-link-box">
@@ -1850,7 +1850,7 @@ Chloe</textarea>
             <input id="linkExistingOrderToggle" type="checkbox">
             <span>
               <strong>Add this to an existing order</strong>
-              <small>Available only before the original order enters Printing.</small>
+              <small>Available only before the original order enters printing.</small>
             </span>
           </label>
 
@@ -1858,7 +1858,7 @@ Chloe</textarea>
             <label for="existingOrderRef">Original order ID</label>
             <div class="add-on-link-row">
               <input id="existingOrderRef" type="text" autocomplete="off" placeholder="e.g. LK-1042">
-              <button id="verifyExistingOrderBtn" type="button" class="secondary-btn">Verify & Link</button>
+              <button id="verifyExistingOrderBtn" type="button" class="secondary-btn">Verify & link</button>
             </div>
             <p id="existingOrderLinkStatus" class="hint" aria-live="polite">
               Enter the original order ID and use the same email address above.
@@ -1867,7 +1867,7 @@ Chloe</textarea>
         </div>
 
         <div id="automaticDateCard" class="automatic-date-card">
-          <span id="automaticDateLabel">Estimated ready for collection</span>
+          <span id="automaticDateLabel">Estimated ready for pickup</span>
           <strong id="automaticDateRange">Calculating…</strong>
           <small id="automaticDateNote">Based on our current production schedule.</small>
         </div>
@@ -1894,20 +1894,20 @@ Chloe</textarea>
         <div id="bulkOrderNotice" class="bulk-order-notice hidden"></div>
 
         <label for="collectionMethod">
-          Collection or Delivery Method
+          Pickup or delivery
         </label>
 
         <select id="collectionMethod">
           <option value="pickup">
-            📍 Pick Up at Woodlands MRT
+            📍 Pickup at Woodlands MRT
           </option>
 
           <option value="pickup_marsiling">
-            📍 Pick Up at Marsiling MRT
+            📍 Pickup at Marsiling MRT
           </option>
 
           <option value="delivery">
-            🚚 Islandwide Delivery (+${displaySettingMoney(deliveryFeeSetting)})
+            🚚 Islandwide delivery (+${displaySettingMoney(deliveryFeeSetting)})
           </option>
         </select>
 
@@ -1953,7 +1953,7 @@ Chloe</textarea>
             >
 
             <button id="verifyDeliveryAddressBtn" type="button" class="secondary-btn">
-              Find Address
+              Find address
             </button>
           </div>
 
@@ -2022,7 +2022,7 @@ Chloe</textarea>
           <strong>Little Keeps prepared this order for you ♡</strong>
           <span>Please check every name and design below, then fill in your details to continue.</span>
         </div>
-<h3>Order Summary</h3>
+<h3>Order summary</h3>
 
         <div class="review-summary">
           <p>
@@ -2064,12 +2064,12 @@ Chloe</textarea>
       </div>
 
       <div class="checkout-review-action" data-checkout-step-panel="preview">
-        <button id="continueToCheckoutDetailsBtn" type="button" class="submit-btn">Continue to Details →</button>
-        <small>Next, add your contact and collection or delivery details.</small>
+        <button id="continueToCheckoutDetailsBtn" type="button" class="submit-btn">Continue to details →</button>
+        <small>Next, add your contact and pickup or delivery details.</small>
       </div>
 
       <div class="payment-box" data-checkout-step-panel="details">
-<h3>Ready to Order?</h3>
+<h3>Ready to order?</h3>
 
         ${isManualOrder ? `
           <div id="manualOrderPaymentChoice" class="manual-order-payment-choice">
@@ -2110,7 +2110,7 @@ Chloe</textarea>
       class="submit-btn"
       disabled
     >
-      Submit Order & Continue to Payment
+      Submit order & continue to payment
     </button>
 
     <p id="formStatus" class="checkout-submit-status" aria-live="polite"></p>
@@ -2150,18 +2150,18 @@ Chloe</textarea>
           <p>The confirmation email has been requested. Send this secure return link to the customer so they can pay.</p>
           <a id="manualPaymentLink" href="#" target="_blank" rel="noopener"></a>
           <button id="copyManualPaymentLinkBtn" type="button" class="secondary-btn">Copy payment-request link</button>
-          <a class="secondary-btn" href="./admin.html">Return to Admin</a>
+          <a class="secondary-btn" href="./admin.html">Return to admin</a>
           <p id="manualPaymentLinkStatus" class="hint" aria-live="polite"></p>
         </div>
 
-        <h2>Secure Payment</h2>
+        <h2>Secure payment</h2>
         <p class="payment-total-label">Total due</p>
         <strong id="paymentTotal" class="payment-total-value"></strong>
 
         ${shopSettings.stripe_enabled ? `
           <div class="online-payment-panel">
             <p>Your secure payment session holds this production slot for about 30 minutes.</p>
-            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to Secure Payment</button>
+            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to secure payment</button>
             <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
           <p class="hint">We’ll email your confirmation and order PDF after payment.</p>
@@ -2176,14 +2176,14 @@ Chloe</textarea>
   id="paymentDoneBtn"
   class="secondary-btn"
 >
-  Pay later - Return to Shop
+  Pay later — return to shop
 </button>
       </div>
     </section>
 
     <div id="successModal" class="modal hidden">
       <div class="modal-card">
-        <h2>Order Submitted ♡</h2>
+        <h2>Order submitted ♡</h2>
 
         <p id="orderRefText"></p>
 
@@ -2199,8 +2199,8 @@ Chloe</textarea>
         </div>
 
         <div class="success-modal-actions">
-          <button id="copySubmittedOrderBtn" type="button" class="secondary-btn">Copy Order ID</button>
-          <button id="trackSubmittedOrderBtn" type="button" class="secondary-btn">Track This Order</button>
+          <button id="copySubmittedOrderBtn" type="button" class="secondary-btn">Copy order ID</button>
+          <button id="trackSubmittedOrderBtn" type="button" class="secondary-btn">Track this order</button>
           <a id="successWhatsAppLink" class="secondary-btn" href="${contactWhatsAppUrl}" target="_blank" rel="noopener noreferrer">Ask on WhatsApp</a>
         </div>
 
@@ -2215,7 +2215,7 @@ Chloe</textarea>
 
     <div id="draftModal" class="modal hidden">
       <div class="modal-card">
-        <h2>🩷 Welcome Back!</h2>
+        <h2>🩷 Welcome back!</h2>
 
         <p>We found an unfinished order.</p>
 
@@ -2234,7 +2234,7 @@ Chloe</textarea>
           id="discardDraftBtn"
           class="secondary-btn"
         >
-          Start New
+          Start new
         </button>
       </div>
     </div>
@@ -2242,7 +2242,7 @@ Chloe</textarea>
     <div id="sharedGroupStartModal" class="modal hidden">
       <form id="sharedGroupStartForm" class="modal-card shared-group-modal-card">
         <span class="shared-group-modal-icon">♡</span>
-        <h2>Start a Group Order</h2>
+        <h2>Start a group order</h2>
         <p>We’ll create one private link. Each person adds their own design, then you review and pay once.</p>
 
         <label for="sharedGroupTitle">Group name</label>
@@ -2255,7 +2255,7 @@ Chloe</textarea>
         <input id="sharedGroupOrganiserEmail" type="email" autocomplete="email" required>
 
         <p id="sharedGroupStartStatus" class="hint" aria-live="polite"></p>
-        <button type="submit" class="submit-btn">Create Share Link</button>
+        <button type="submit" class="submit-btn">Create share link</button>
         <button id="cancelSharedGroupStartBtn" type="button" class="secondary-btn">Cancel</button>
       </form>
     </div>
@@ -2263,14 +2263,14 @@ Chloe</textarea>
     <div id="sharedGroupContributeModal" class="modal hidden">
       <form id="sharedGroupContributeForm" class="modal-card shared-group-modal-card">
         <span class="shared-group-modal-icon">✿</span>
-        <h2>Add Your Designs</h2>
-        <p id="sharedGroupContributeIntro">Your basket will be sent to the organiser. You won’t need to pay here.</p>
+        <h2>Add your designs</h2>
+        <p id="sharedGroupContributeIntro">Your cart will be sent to the organiser. You won’t need to pay here.</p>
 
         <label for="sharedGroupContributorName">Your name</label>
         <input id="sharedGroupContributorName" maxlength="100" autocomplete="name" required>
 
         <p id="sharedGroupContributeStatus" class="hint" aria-live="polite"></p>
-        <button type="submit" class="submit-btn">Add My Basket to the Group</button>
+        <button type="submit" class="submit-btn">Add my cart to the group</button>
         <button id="cancelSharedGroupContributeBtn" type="button" class="secondary-btn">Cancel</button>
       </form>
     </div>
@@ -2278,7 +2278,7 @@ Chloe</textarea>
     <div id="sharedGroupHowModal" class="modal hidden">
       <div class="modal-card shared-group-how-card">
         <span class="shared-group-modal-icon">?</span>
-        <h2>How Group Orders Work</h2>
+        <h2>How group orders work</h2>
         <div class="shared-group-how-steps">
           <div><b>1</b><span><strong>Create your design</strong><small>Choose your name, colours and style as usual.</small></span></div>
           <div><b>2</b><span><strong>Add it to your cart</strong><small>Once you are happy with your design, add it to your cart as usual.</small></span></div>
@@ -2286,14 +2286,14 @@ Chloe</textarea>
           <div><b>4</b><span><strong>The organiser reviews everything</strong><small>You can update your submitted designs until the organiser checks out.</small></span></div>
           <div><b>5</b><span><strong>One person pays</strong><small>Only the organiser checks out. Adding designs here does not create an order or charge you.</small></span></div>
         </div>
-        <button id="closeSharedGroupHowBtn" type="button" class="submit-btn">Got It</button>
+        <button id="closeSharedGroupHowBtn" type="button" class="submit-btn">Got it</button>
       </div>
     </div>
 
     <div id="sharedGroupSuccessModal" class="modal hidden">
       <div class="modal-card shared-group-success-card">
         <span class="shared-group-success-icon">✓</span>
-        <h2>Designs Added Successfully!</h2>
+        <h2>Designs added successfully!</h2>
         <p id="sharedGroupSuccessText">The organiser can now see your designs.</p>
         <div class="shared-group-success-note">
           <strong>No payment needed from you</strong>
@@ -2308,7 +2308,7 @@ Chloe</textarea>
         <div class="shared-group-owner-heading">
           <div>
             <small>Group order</small>
-            <h2 id="sharedGroupOwnerTitle">Your Group</h2>
+            <h2 id="sharedGroupOwnerTitle">Your group</h2>
             <p id="sharedGroupOwnerSummary"></p>
           </div>
           <button id="closeSharedGroupOwnerBtn" type="button" class="shared-group-close" aria-label="Close">×</button>
@@ -2318,7 +2318,7 @@ Chloe</textarea>
           <label for="sharedGroupInviteLink">Private invite link</label>
           <div>
             <input id="sharedGroupInviteLink" readonly>
-            <button id="copySharedGroupLinkBtn" type="button">Copy Link</button>
+            <button id="copySharedGroupLinkBtn" type="button">Copy link</button>
           </div>
           <small>Anyone with this link can add designs. Only your organiser link can review them.</small>
         </div>
@@ -2327,11 +2327,11 @@ Chloe</textarea>
         <p id="sharedGroupOwnerStatus" class="hint" aria-live="polite"></p>
 
         <div class="shared-group-owner-actions">
-          <button id="editSharedGroupOwnerDesignsBtn" type="button" class="secondary-btn">Add / Edit My Designs</button>
+          <button id="editSharedGroupOwnerDesignsBtn" type="button" class="secondary-btn">Add or edit my designs</button>
           <button id="refreshSharedGroupBtn" type="button" class="secondary-btn">Refresh</button>
-          <button id="checkoutSharedGroupBtn" type="button" class="submit-btn">Review Combined Basket</button>
+          <button id="checkoutSharedGroupBtn" type="button" class="submit-btn">Review combined cart</button>
         </div>
-        <button id="cancelSharedGroupOrderBtn" type="button" class="shared-group-cancel-btn">Cancel Group Order</button>
+        <button id="cancelSharedGroupOrderBtn" type="button" class="shared-group-cancel-btn">Cancel group order</button>
       </div>
     </div>
 
@@ -2360,7 +2360,7 @@ Chloe</textarea>
     >
 
     <button id="checkOrderStatusBtn" type="submit" class="submit-btn">
-      View Order
+      View order
     </button>
 
     <p id="orderStatusMessage" class="order-status-message" aria-live="polite"></p>
@@ -2371,7 +2371,7 @@ Chloe</textarea>
 <section id="policiesSection" class="policies-section" data-store-view="shop">
   <div class="section-heading">
     <p class="section-eyebrow">Good to know</p>
-    <h2>Shop Policies</h2>
+    <h2>Shop policies</h2>
   </div>
 
   <div class="policy-grid">
@@ -2390,11 +2390,11 @@ Chloe</textarea>
 
     <details>
       <summary>Cancellations, problems and refunds</summary>
-      <p>Because each item is personalised, change-of-mind cancellations may not be accepted after production begins. If your order is incorrect, damaged or faulty, contact us within 7 days of collection or delivery so we can assess a replacement or refund. This does not limit rights provided by Singapore consumer law.</p>
+      <p>Because each item is personalised, change-of-mind cancellations may not be accepted after production begins. If your order is incorrect, damaged or faulty, contact us within 7 days of pickup or delivery so we can assess a replacement or refund. This does not limit rights provided by Singapore consumer law.</p>
     </details>
 
     <details>
-      <summary>Collection and delivery</summary>
+      <summary>Pickup and delivery</summary>
       <p>Choose your pickup slot during checkout. Pickup is available on Wednesdays and Fridays after 7pm, and on weekends. For delivery, the date shown is the estimated dispatch date; allow 1–3 days for arrival. Tracking is emailed unless we deliver your order by hand.</p>
     </details>
 
@@ -2965,7 +2965,7 @@ async function verifyDeliveryAddress() {
       "We couldn’t verify this postal code right now. Check it again or enter the address manually.";
   } finally {
     verifyDeliveryAddressBtn.disabled = false;
-    verifyDeliveryAddressBtn.textContent = "Find Address";
+    verifyDeliveryAddressBtn.textContent = "Find address";
     renderDeliveryAddressConfirmation();
     validateForm();
   }
@@ -3728,7 +3728,7 @@ function updateTurnaroundMessaging() {
 
   automaticDateLabel.textContent = methodIsDelivery
     ? "Estimated dispatch"
-    : "Estimated ready for collection";
+    : "Estimated ready for pickup";
   automaticDateRange.textContent = formatDateRange(
     estimateStart,
     estimateEnd,
@@ -3805,11 +3805,11 @@ function updateTurnaroundMessaging() {
   if (submitOrderBtn) {
     submitOrderBtn.textContent = isManualOrder
       ? manualPaymentPaid?.checked
-        ? "Save Paid Order"
-        : "Save Order & Create Payment Link"
+        ? "Save paid order"
+        : "Save order & create payment link"
       : isRush
-        ? "Submit Rush Request"
-        : "Submit Order & Continue to Payment";
+        ? "Submit rush request"
+        : "Submit order & continue to payment";
   }
 
   updateCheckoutPickupOptions();
@@ -4648,7 +4648,7 @@ function renderAiDesignSuggestions(suggestions) {
       </div>
       <strong>${escapePresetText(suggestion.title)}</strong>
       <span>${escapePresetText(suggestion.description || suggestion.reason)}</span>
-      <button type="button" data-ai-design-index="${index}">Use These Colours</button>
+      <button type="button" data-ai-design-index="${index}">Use these colours</button>
     </article>
   `).join("");
 }
@@ -4694,7 +4694,7 @@ async function requestAiDesignSuggestions() {
     aiDesignHelperStatus.textContent = error.message || "Suggestions are unavailable right now.";
   } finally {
     aiDesignHelperBtn.disabled = false;
-    aiDesignHelperBtn.textContent = "Suggest Ideas";
+    aiDesignHelperBtn.textContent = "Suggest ideas";
   }
 }
 
@@ -5040,7 +5040,7 @@ async function verifyExistingOrderLink() {
   });
 
   verifyExistingOrderBtn.disabled = false;
-  verifyExistingOrderBtn.textContent = "Verify & Link";
+  verifyExistingOrderBtn.textContent = "Verify & link";
 
   if (error || !data?.allowed) {
     verifiedLinkedOrder = null;
@@ -5065,7 +5065,7 @@ async function verifyExistingOrderLink() {
   deliveryAddressSection.classList.add("hidden");
   existingOrderLinkStatus.className = "hint is-success";
   existingOrderLinkStatus.textContent =
-    `Linked to ${verifiedLinkedOrder.orderRef} ✓ Same collection method and no second delivery fee. Admin will see everything together under this order ID.`;
+    `Linked to ${verifiedLinkedOrder.orderRef} ✓ Same pickup or delivery method and no second delivery fee. Admin will see everything together under this order ID.`;
   updateCollectionNote();
   renderReviewOrder();
   validateForm();
@@ -5193,7 +5193,7 @@ function updateCartDisplay() {
     const selectedItem = names[selectedIndex];
     const isNewDesign = selectedItem?.cartAdded === false;
     addCartButtonLabel.textContent =
-      cartHasItems && !isNewDesign ? "Update Cart" : "Add to Cart";
+      cartHasItems && !isNewDesign ? "Update cart" : "Add to cart";
   }
 
   headerCartBtn.setAttribute(
@@ -6655,8 +6655,8 @@ function renderNameCards() {
   nameCards.classList.toggle("is-batch-list", useBatchCards);
   if (designSelectionHeading) {
     designSelectionHeading.textContent = useBatchCards
-      ? "Choose a Design Batch to Edit"
-      : "Choose a Keychain to Edit";
+      ? "Choose a design batch to edit"
+      : "Choose a keychain to edit";
   }
 
   if (useBatchCards) {
@@ -6803,7 +6803,7 @@ function updateEditModeText() {
     orderType === "group"
       ? "block"
       : "none";
-  resetSelected.textContent = "Reset Selected";
+  resetSelected.textContent = "Reset selected";
 }
 
 function updatePreviewColourLegend() {
@@ -7702,7 +7702,7 @@ async function submitOrderOnce() {
 
   if (manualOrderAlreadyPaid) {
     orderRefText.innerHTML = `<strong>${orderRef}</strong>`;
-    successModal.querySelector("h2").textContent = "Paid Order Saved ✓";
+    successModal.querySelector("h2").textContent = "Paid order saved ✓";
     const modalParagraphs = successModal.querySelectorAll(".modal-card > p");
     if (modalParagraphs[1]) {
       modalParagraphs[1].textContent = "The order is recorded as paid and ready for production. No customer payment page was created.";
@@ -7717,7 +7717,7 @@ async function submitOrderOnce() {
       `;
     }
     successModal.dataset.returnAdmin = "true";
-    closeModalBtn.textContent = "Return to Admin";
+    closeModalBtn.textContent = "Return to admin";
     checkoutScreen.classList.add("hidden");
     successModal.classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -7731,7 +7731,7 @@ async function submitOrderOnce() {
   paymentTotal.innerText = `$${total.toFixed(2)}`;
   if (order.linked_order_ref) {
     paymentLinkedOrderNote.textContent =
-      `Added to order ${order.linked_order_ref}. It keeps the same collection method and there is no second delivery fee.`;
+      `Added to order ${order.linked_order_ref}. It keeps the same pickup or delivery method and there is no second delivery fee.`;
     paymentLinkedOrderNote.classList.remove("hidden");
   } else {
     paymentLinkedOrderNote.classList.add("hidden");
@@ -8189,11 +8189,11 @@ function renderSharedGroupBanner() {
   if (activeSharedGroup.is_owner) {
     sharedGroupBannerText.textContent =
       `${activeSharedGroup.contribution_count} contributor${Number(activeSharedGroup.contribution_count) === 1 ? "" : "s"} · ${activeSharedGroup.item_count} design${Number(activeSharedGroup.item_count) === 1 ? "" : "s"}`;
-    sharedGroupBannerAction.textContent = "Review Group";
+    sharedGroupBannerAction.textContent = "Review group";
   } else if (activeSharedGroup.status === "open") {
     sharedGroupBannerText.textContent =
-      `Design your keychain for ${activeSharedGroup.organiser_name}, then add your basket to the group.`;
-    sharedGroupBannerAction.textContent = "How It Works";
+      `Design your keychain for ${activeSharedGroup.organiser_name}, then add your cart to the group.`;
+    sharedGroupBannerAction.textContent = "How it works";
   } else {
     sharedGroupBannerText.textContent = activeSharedGroup.final_order_ref
       ? `The organiser has checked out as order ${activeSharedGroup.final_order_ref}.`
@@ -8209,17 +8209,17 @@ function renderSharedGroupStartCard() {
   if (isInvitedContributor) return;
 
   if (activeSharedGroup?.is_owner) {
-    sharedGroupStartCardTitle.textContent = "Your shared Group Order";
+    sharedGroupStartCardTitle.textContent = "Your shared group order";
     sharedGroupStartCardText.textContent =
-      "Add or update your own designs in the cart. They will be saved into the Group Order automatically.";
-    friendsFamilyStartBtn.textContent = "Review Group Order";
+      "Add or update your own designs in the cart. They will be saved into the group order automatically.";
+    friendsFamilyStartBtn.textContent = "Review group order";
     return;
   }
 
-  sharedGroupStartCardTitle.textContent = "Create a shared Group Order";
+  sharedGroupStartCardTitle.textContent = "Create a shared group order";
   sharedGroupStartCardText.textContent =
     "Add your own design first, then create a private link for everyone else to add theirs. You review everything and pay once.";
-  friendsFamilyStartBtn.textContent = "Create Group Order";
+  friendsFamilyStartBtn.textContent = "Create group order";
 }
 
 function renderSharedGroupOwner() {
@@ -8263,10 +8263,10 @@ function renderSharedGroupOwner() {
     : `<div class="shared-group-empty"><strong>No designs yet</strong><span>Share the invite link with your group.</span></div>`;
   checkoutSharedGroupBtn.disabled = !contributions.length || activeSharedGroup.status !== "open";
   checkoutSharedGroupBtn.textContent = activeSharedGroup.status === "open"
-    ? "Review Combined Basket"
+    ? "Review combined cart"
     : activeSharedGroup.status === "cancelled"
-      ? "Group Order Cancelled"
-      : `Checked Out${activeSharedGroup.final_order_ref ? ` · ${activeSharedGroup.final_order_ref}` : ""}`;
+      ? "Group order cancelled"
+      : `Checked out${activeSharedGroup.final_order_ref ? ` · ${activeSharedGroup.final_order_ref}` : ""}`;
   cancelSharedGroupOrderBtn.classList.toggle("hidden", activeSharedGroup.status !== "open");
   sharedGroupOwnerModal.classList.remove("hidden");
 }
@@ -8279,9 +8279,9 @@ async function syncSharedGroupOwnerBasket({ openOwner = false } = {}) {
   ) return true;
 
   const ownerReviewWasOpen = !sharedGroupOwnerModal.classList.contains("hidden");
-  sharedGroupBannerText.textContent = "Saving your cart to the Group Order…";
+  sharedGroupBannerText.textContent = "Saving your cart to the group order…";
   sharedGroupCartBtn.disabled = true;
-  sharedGroupCartBtn.textContent = "Saving to Group Order…";
+  sharedGroupCartBtn.textContent = "Saving to group order…";
   try {
     let { error } = await supabase.rpc("save_shared_group_owner_contribution", {
       p_owner_token: activeSharedGroupOwnerToken,
@@ -8310,9 +8310,9 @@ async function syncSharedGroupOwnerBasket({ openOwner = false } = {}) {
   } catch (error) {
     console.error("Unable to update organiser group designs:", error);
     sharedGroupBannerText.textContent =
-      "Your cart changed, but the Group Order could not be updated. Please try again.";
+      "Your cart changed, but the group order could not be updated. Please try again.";
     renderCartDrawer();
-    alert("Your cart is saved on this device, but it could not update the Group Order. Please try again.");
+    alert("Your cart is saved on this device, but it could not update the group order. Please try again.");
     return false;
   }
 }
@@ -8477,7 +8477,7 @@ sharedGroupStartForm.addEventListener("submit", async event => {
       "Group orders are not ready yet. Please apply the supplied Supabase update, then try again.";
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "Create Share Link";
+    submitButton.textContent = "Create share link";
   }
 });
 
@@ -8501,7 +8501,7 @@ sharedGroupContributeForm.addEventListener("submit", async event => {
       `Added ✓ ${activeSharedGroup.organiser_name} can now see your designs.`;
     sharedGroupBannerText.textContent =
       `Your designs are saved. You can update them before the organiser checks out.`;
-    submitButton.textContent = "Update My Group Designs";
+    submitButton.textContent = "Update my group designs";
     activeSharedGroup.contribution_count = data.contribution_count;
     sharedGroupSuccessText.textContent =
       `${sharedGroupContributorName.value.trim()}, your ${getTotalKeychainQuantity()} keychain${getTotalKeychainQuantity() === 1 ? " is" : "s are"} saved in “${activeSharedGroup.title}”.`;
@@ -8514,7 +8514,7 @@ sharedGroupContributeForm.addEventListener("submit", async event => {
   } finally {
     submitButton.disabled = false;
     if (!submitButton.textContent.includes("Update")) {
-      submitButton.textContent = "Add My Basket to the Group";
+      submitButton.textContent = "Add my cart to the group";
     }
   }
 });
@@ -8578,7 +8578,7 @@ editSharedGroupOwnerDesignsBtn.addEventListener("click", () => {
   setStorefrontView("design", { scrollTo: "designArea" });
   nameList.focus();
   sharedGroupBannerText.textContent =
-    "Add another name on a new line, design it, then save your cart to the Group Order.";
+    "Add another name on a new line, design it, then save your cart to the group order.";
 });
 checkoutSharedGroupBtn.addEventListener("click", checkoutSharedGroup);
 cancelSharedGroupOrderBtn.addEventListener("click", async () => {
@@ -8605,13 +8605,13 @@ cancelSharedGroupOrderBtn.addEventListener("click", async () => {
       "Unable to cancel this group order. Please try again.";
   } finally {
     cancelSharedGroupOrderBtn.disabled = false;
-    cancelSharedGroupOrderBtn.textContent = "Cancel Group Order";
+    cancelSharedGroupOrderBtn.textContent = "Cancel group order";
   }
 });
 copySharedGroupLinkBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(sharedGroupInviteLink.value);
   copySharedGroupLinkBtn.textContent = "Copied ✓";
-  setTimeout(() => { copySharedGroupLinkBtn.textContent = "Copy Link"; }, 1400);
+  setTimeout(() => { copySharedGroupLinkBtn.textContent = "Copy link"; }, 1400);
 });
 
 function openCartDrawer() {
@@ -8654,22 +8654,22 @@ function renderCartDrawer() {
     checkoutFromCartBtn.textContent = "Add an item first";
     sharedGroupCartBtn.classList.toggle("hidden", !activeSharedGroup?.is_owner);
     sharedGroupCartBtn.disabled = !activeSharedGroup?.is_owner;
-    sharedGroupCartBtn.textContent = "Review Group Order";
-    continueShoppingBtn.textContent = "Shop Products";
+    sharedGroupCartBtn.textContent = "Review group order";
+    continueShoppingBtn.textContent = "Shop products";
     return;
   }
 
   checkoutFromCartBtn.disabled = false;
   checkoutFromCartBtn.textContent = activeSharedGroup && !activeSharedGroup.is_owner
     ? `Add to ${activeSharedGroup.title}`
-    : "Checkout";
+    : "Proceed to checkout";
   sharedGroupCartBtn.classList.toggle(
     "hidden",
     !activeSharedGroup?.is_owner
   );
   sharedGroupCartBtn.disabled = false;
-  sharedGroupCartBtn.textContent = "Save My Cart to Group Order";
-  continueShoppingBtn.textContent = "Continue Designing";
+  sharedGroupCartBtn.textContent = "Save my cart to group order";
+  continueShoppingBtn.textContent = "Continue designing";
   continueShoppingBtn.classList.toggle("hidden", preparedCheckoutMode);
 
   const renderCartEntry = ({ item, index }) => {
@@ -8841,7 +8841,7 @@ async function createPreparedCustomerCheckout() {
     preparedCheckoutStatus.textContent = error.message || "The customer link could not be created.";
   } finally {
     createPreparedCheckoutBtn.disabled = false;
-    createPreparedCheckoutBtn.textContent = "Create Customer Checkout Link";
+    createPreparedCheckoutBtn.textContent = "Create customer checkout link";
   }
 }
 
@@ -8908,7 +8908,7 @@ createPreparedCheckoutBtn?.addEventListener("click", createPreparedCustomerCheck
 copyPreparedCheckoutLinkBtn?.addEventListener("click", async () => {
   await navigator.clipboard.writeText(preparedCheckoutLink.value);
   copyPreparedCheckoutLinkBtn.textContent = "Copied ✓";
-  setTimeout(() => { copyPreparedCheckoutLinkBtn.textContent = "Copy Link"; }, 1400);
+  setTimeout(() => { copyPreparedCheckoutLinkBtn.textContent = "Copy link"; }, 1400);
 });
 
 window.editCartItem = function(index) {
@@ -9229,7 +9229,7 @@ function setDesignWizardStep(nextStep, { scroll = true } = {}) {
 
   if (safeStep === "style" && previewCard?.classList.contains("mobile-collapsed")) {
     previewCard.classList.remove("mobile-collapsed");
-    mobilePreviewToggle.textContent = "Hide Preview";
+    mobilePreviewToggle.textContent = "Hide preview";
     mobilePreviewToggle.setAttribute("aria-expanded", "true");
   }
 
@@ -9681,7 +9681,7 @@ function updatePhotoAttemptStatus(details = {}) {
   if (!photoAttemptStatus) return;
   if (isProductPreview || details.unlimited) {
     photoRetryAvailableAt = 0;
-    photoAttemptStatus.textContent = "Unlimited previews in Admin";
+    photoAttemptStatus.textContent = "Unlimited previews in admin";
     generatePhotoArtworkBtn.disabled = false;
     regeneratePhotoArtworkBtn.disabled = false;
     return;
@@ -9934,7 +9934,7 @@ async function downloadPhotoTestStlPack() {
   const previousLabel = downloadPhotoTestStlsBtn?.textContent || "Download Test STL Pack";
   if (downloadPhotoTestStlsBtn) {
     downloadPhotoTestStlsBtn.disabled = true;
-    downloadPhotoTestStlsBtn.textContent = "Building Test STLs…";
+    downloadPhotoTestStlsBtn.textContent = "Building test STLs…";
   }
 
   try {
@@ -10665,7 +10665,7 @@ paymentBackBtn.onclick = () => {
     paymentScreen.classList.add("hidden");
     checkoutScreen.classList.remove("hidden");
     setCheckoutStep("details", { scroll: false });
-    submitOrderBtn.textContent = "Save Changes & Return to Payment";
+    submitOrderBtn.textContent = "Save changes & return to payment";
     submitStatus.textContent = "Your unpaid order is editable for 30 minutes after submission.";
     validateForm();
 
@@ -10698,7 +10698,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
 
   stripeCheckoutBtn.disabled = true;
   stripeCheckoutBtn.textContent = "Opening secure payment…";
-  stripeCheckoutStatus.textContent = "Creating your secure checkout…";
+  stripeCheckoutStatus.textContent = "Preparing secure payment…";
 
   try {
     const { data, error } = await supabase.functions.invoke("stripe-create-checkout", {
@@ -10722,7 +10722,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
       "Online payment is temporarily unavailable. Please contact Little Keeps and quote your order reference."
     );
     stripeCheckoutBtn.disabled = false;
-    stripeCheckoutBtn.textContent = "Try Secure Payment Again";
+    stripeCheckoutBtn.textContent = "Try secure payment again";
   }
 });
 
@@ -10758,7 +10758,7 @@ function validateForm() {
         !customerPhone.value.match(/^[0-9]{8}$/)
     ) {
         valid = false;
-        message = "Contact number must be 8 digits.";
+        message = "Phone number must be 8 digits.";
     }
 
     else if (
@@ -10838,7 +10838,7 @@ else if (
   !deliveryAddressManualOverride
 ) {
   valid = false;
-  message = "Please use Find Address to verify your postal code.";
+  message = "Please use Find address to verify your postal code.";
 }
 
 else if (
@@ -10892,7 +10892,7 @@ copySubmittedOrderBtn?.addEventListener("click", async () => {
   const orderRef = successModal.dataset.orderRef || currentSubmissionOrderRef;
   if (!orderRef) return;
   await navigator.clipboard.writeText(orderRef);
-  copySubmittedOrderBtn.textContent = "Order ID Copied ✓";
+  copySubmittedOrderBtn.textContent = "Order ID copied ✓";
 });
 
 trackSubmittedOrderBtn?.addEventListener("click", () => {
@@ -11586,7 +11586,7 @@ window.scheduleTrackedPickup = async function(
     return;
   }
 
-  const previousLabel = button?.textContent || "Confirm Pickup Time";
+  const previousLabel = button?.textContent || "Confirm pickup time";
 
   if (button) {
     button.disabled = true;
@@ -11654,7 +11654,7 @@ function renderCustomerOrderStatus(order) {
       : "Preferred completion date"
     : methodIsDelivery
       ? "Estimated dispatch"
-      : "Estimated ready for collection";
+      : "Estimated ready for pickup";
   const timingValue = isSpecialRequest
     ? formatPreferredDate(order.requested_completion_date || order.needed_by)
     : order.estimated_ready_from && order.estimated_ready_to
@@ -11755,15 +11755,15 @@ function renderCustomerOrderStatus(order) {
           date: order.pickup_scheduled_date,
           time: order.pickup_time_range,
           location: pickupLocation
-        })})'>Add Pickup to Calendar</button>
+        })})'>Add pickup to calendar</button>
       ` : ""}
       ${reorderItems.length ? `
-        <button type="button" onclick='window.reorderTrackedItems(${JSON.stringify(reorderItems)})'>Order These Designs Again</button>
+        <button type="button" onclick='window.reorderTrackedItems(${JSON.stringify(reorderItems)})'>Order these designs again</button>
       ` : ""}
     </div>
 
     ${methodIsDelivery && trackingUrl ? `
-      <a class="order-tracking-link" href="${escapePresetText(trackingUrl)}" target="_blank" rel="noopener">Track Delivery</a>
+      <a class="order-tracking-link" href="${escapePresetText(trackingUrl)}" target="_blank" rel="noopener">Track delivery</a>
     ` : ""}
 
     ${canSchedulePickup ? `
@@ -11772,7 +11772,7 @@ function renderCustomerOrderStatus(order) {
           ${order.pickup_scheduled_date ? "Manage pickup appointment" : "Choose your pickup appointment"}
         </span>
         <h3>
-          ${order.pickup_scheduled_date ? "Need another timing?" : "Your order is ready for collection!"}
+          ${order.pickup_scheduled_date ? "Need another timing?" : "Your order is ready for pickup!"}
         </h3>
         <p>
           Select an available date and exact time for ${escapePresetText(pickupLocation)}.
@@ -11816,7 +11816,7 @@ function renderCustomerOrderStatus(order) {
             this
           )'
         >
-          ${order.pickup_scheduled_date ? "Reschedule Pickup" : "Confirm Pickup Time"}
+          ${order.pickup_scheduled_date ? "Reschedule pickup" : "Confirm pickup time"}
         </button>
       </div>
     ` : !methodIsDelivery && !order.pickup_scheduled_date ? `
@@ -11830,7 +11830,7 @@ function renderCustomerOrderStatus(order) {
 
     ${canPay ? `
       <div class="approved-request-payment">
-        <span>${isSpecialRequest ? "Request approved ✓" : paymentExpired ? "Fresh payment slot needed" : "Secure payment checkout"}</span>
+        <span>${isSpecialRequest ? "Request approved ✓" : paymentExpired ? "Fresh payment slot needed" : "Secure payment"}</span>
         <h3>Total: ${displaySettingMoney(order.total)}</h3>
         ${order.payment_expires_at && !paymentExpired ? `
           <p class="payment-hold-countdown" data-payment-expiry="${escapePresetText(order.payment_expires_at)}"></p>
@@ -11840,7 +11840,7 @@ function renderCustomerOrderStatus(order) {
             : "A production slot will be held for about 30 minutes when the secure payment page opens."}</p>
         `}
         ${shopSettings.stripe_enabled ? `
-          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Open a Fresh Payment Checkout" : "Pay Securely"}</button>
+          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Start a new payment" : "Pay securely"}</button>
         ` : `<p>Online payment is temporarily unavailable. Please contact Little Keeps.</p>`}
       </div>
     ` : ""}
@@ -11954,7 +11954,7 @@ window.reorderTrackedItems = function(items) {
 };
 
 window.payTrackedOrder = async function(orderRef, email, button) {
-  const previousLabel = button?.textContent || "Pay Securely";
+  const previousLabel = button?.textContent || "Pay securely";
   if (button) {
     button.disabled = true;
     button.textContent = "Opening secure payment…";
@@ -12036,7 +12036,7 @@ orderStatusForm?.addEventListener("submit", async event => {
     orderStatusMessage.classList.add("error");
   } finally {
     checkOrderStatusBtn.disabled = false;
-    checkOrderStatusBtn.textContent = "View Order";
+    checkOrderStatusBtn.textContent = "View order";
   }
 });
 
@@ -12058,8 +12058,8 @@ mobilePreviewToggle?.addEventListener("click", () => {
   const collapsed = previewCard.classList.toggle("mobile-collapsed");
 
   mobilePreviewToggle.textContent = collapsed
-    ? "Show Preview"
-    : "Hide Preview";
+    ? "Show preview"
+    : "Hide preview";
   mobilePreviewToggle.setAttribute(
     "aria-expanded",
     String(!collapsed)
@@ -12138,7 +12138,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
       : "Your Little Keeps order";
     if (modalParagraphs[2]) {
       modalParagraphs[2].textContent =
-        "Your payment slot is held only briefly. Use Track / Pay Order with your reference and email whenever you’re ready to reopen payment.";
+        "Your payment slot is held only briefly. Use Track / pay with your reference and email whenever you’re ready to reopen payment.";
     }
     if (modalParagraphs[3]) {
       modalParagraphs[3].textContent =
@@ -12146,7 +12146,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
     }
   }
 
-  closeModalBtn.textContent = "Return to Shop";
+  closeModalBtn.textContent = "Return to shop";
   successModal.classList.remove("hidden");
   window.history.replaceState({}, "", window.location.pathname);
 }
