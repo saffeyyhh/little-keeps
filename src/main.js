@@ -7808,7 +7808,6 @@ function refreshUI() {
   updateLetterOrientationButtons();
   updateStandardFontSizeButtons();
   updatePencilControls();
-  updateGiftingBagOptions();
   updateCartDisplay();
   updateTurnaroundMessaging();
   renderReviewOrder();
