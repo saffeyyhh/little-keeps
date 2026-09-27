@@ -313,17 +313,25 @@ try {
 productCatalog = applyProductCatalogOverrides(productCatalog, productCatalogOverrides);
 productCatalog = applyProductStatusOverrides(productCatalog, productStatusOverrides);
 
-let modularUnitsSold = null;
-try {
-  const { data, error } = await supabase.rpc("get_product_units_sold", {
-    p_product_key: MODULAR_PRODUCT_KEY
-  });
-  if (error) throw error;
-  const total = Math.max(0, Math.floor(Number(data)));
-  if (Number.isFinite(total)) modularUnitsSold = total;
-} catch (error) {
-  console.warn("Unable to load the public product sales count:", error);
-}
+const productUnitsSoldByKey = new Map();
+await Promise.all(
+  productCatalog
+    .filter(product => product.status !== "hidden")
+    .map(async product => {
+      try {
+        const { data, error } = await supabase.rpc("get_product_units_sold", {
+          p_product_key: product.product_key
+        });
+        if (error) throw error;
+        const total = Math.max(0, Math.floor(Number(data)));
+        if (Number.isFinite(total)) {
+          productUnitsSoldByKey.set(product.product_key, total);
+        }
+      } catch (error) {
+        console.warn(`Unable to load the sales count for ${product.product_key}:`, error);
+      }
+    })
+);
 
 let previewProduct = requestedPreviewProductKey
   ? productCatalog.find(product => product.product_key === requestedPreviewProductKey) || null
@@ -649,6 +657,13 @@ function renderProductCardPricingGuide(product) {
   `;
 }
 
+function renderProductUnitsSoldBadge(product) {
+  const total = productUnitsSoldByKey.get(product?.product_key) || 0;
+  return total > 0
+    ? `<span class="product-card-sales-badge">${formatProductUnitsSold(total)}</span>`
+    : "";
+}
+
 function renderReadyMadeProductCard(product) {
   if (product.status === "hidden") return "";
   const soldOut = Number(product.stock_quantity || 0) <= 0;
@@ -660,6 +675,7 @@ function renderReadyMadeProductCard(product) {
           ? `<img src="${escapePresetText(product.image_path)}" alt="${escapePresetText(product.name)}" loading="lazy">`
           : `<div class="ready-made-image-placeholder">Little Keeps</div>`}
         <span class="product-card-badge">${soldOut ? "Sold out" : product.status === "active" ? "Ready to order" : "Coming soon"}</span>
+        ${renderProductUnitsSoldBadge(product)}
       </div>
       <div class="product-card-content">
         <div><small>${escapePresetText(product.eyebrow || "Ready-made collection")}</small><h3>${escapePresetText(product.name)}</h3></div>
@@ -1043,7 +1059,7 @@ ${requestedPreviewProductKey ? `
           loading="eager"
         >
         <span class="product-card-badge">Available now</span>
-        ${modularUnitsSold > 0 ? `<span class="product-card-sales-badge">${formatProductUnitsSold(modularUnitsSold)}</span>` : ""}
+        ${renderProductUnitsSoldBadge(modularProduct)}
       </div>
 
       <div class="product-card-content">
@@ -1074,6 +1090,7 @@ ${requestedPreviewProductKey ? `
           loading="lazy"
         >
         <span class="product-card-badge">${solidProduct.status === "active" ? "Available now" : "Coming soon"}</span>
+        ${renderProductUnitsSoldBadge(solidProduct)}
       </div>
 
       <div class="product-card-content">
@@ -1108,6 +1125,7 @@ ${requestedPreviewProductKey ? `
           loading="lazy"
         >
         <span class="product-card-badge">${pencilProduct.status === "active" ? "Available now" : "Coming soon"}</span>
+        ${renderProductUnitsSoldBadge(pencilProduct)}
       </div>
       <div class="product-card-content">
         <div>
@@ -1139,6 +1157,7 @@ ${requestedPreviewProductKey ? `
             ? "Coming soon"
             : "Available now"}
         </span>
+        ${renderProductUnitsSoldBadge(standardProduct)}
       </div>
 
       <div class="product-card-content">
@@ -1182,6 +1201,7 @@ ${requestedPreviewProductKey ? `
       <div class="product-card-visual photo-keepsake-visual" aria-hidden="true">
         <div class="photo-artwork-sample"><span>♡</span><b>PHOTO</b></div>
         <span class="product-card-badge">${photoProduct.status === "active" ? "Available now" : "AI studio coming soon"}</span>
+        ${renderProductUnitsSoldBadge(photoProduct)}
       </div>
       <div class="product-card-content">
         <div>
