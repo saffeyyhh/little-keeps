@@ -1020,7 +1020,16 @@ ${requestedPreviewProductKey ? `
 <section id="productsSection" class="products-section" data-store-view="shop" aria-labelledby="productsHeading">
   <div class="products-heading">
     <p class="section-eyebrow">The Little Keeps collection</p>
-    <h2 id="productsHeading">Find something made for you</h2>
+    <h2 id="productsHeading">What would you like to make?</h2>
+    <p>Pick a keepsake, personalise it, and see the finished look before you order.</p>
+  </div>
+
+  <div class="shop-journey" aria-label="How ordering works">
+    <span><b>1</b><strong>Choose</strong><small>your keepsake</small></span>
+    <i aria-hidden="true">→</i>
+    <span><b>2</b><strong>Personalise</strong><small>names & colours</small></span>
+    <i aria-hidden="true">→</i>
+    <span><b>3</b><strong>Preview</strong><small>then add to cart</small></span>
   </div>
 
   <div class="product-card-grid">
@@ -1043,10 +1052,13 @@ ${requestedPreviewProductKey ? `
           <h3>${escapePresetText(modularProduct.name)}</h3>
         </div>
         <p>${escapePresetText(modularProduct.description)}</p>
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>Moves & bends</span><span>Every block clicks</span><span>Up to ${Number(modularProduct.maximum_characters) || 10} characters</span>
+        </div>
         ${renderProductCardPrice(modularProduct)}
         ${renderProductCardPricingGuide(modularProduct)}
         <button type="button" data-product-key="${MODULAR_PRODUCT_KEY}" data-view-target="design">
-          Design yours <span>→</span>
+          Customise this <span>→</span>
         </button>
       </div>
     </article>
@@ -1072,11 +1084,15 @@ ${requestedPreviewProductKey ? `
 
         <p>${escapePresetText(solidProduct.description)}</p>
 
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>One-piece base</span><span>Compact & sturdy</span><span>Up to ${Number(solidProduct.maximum_characters) || 10} characters</span>
+        </div>
+
         ${renderProductCardPrice(solidProduct)}
         ${renderProductCardPricingGuide(solidProduct)}
 
         ${solidProduct.status === "active" ? `
-          <button type="button" data-product-key="${SOLID_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>
+          <button type="button" data-product-key="${SOLID_PRODUCT_KEY}" data-view-target="design">Customise this <span>→</span></button>
         ` : `<button type="button" disabled>Coming soon</button>`}
       </div>
     </article>
@@ -1099,10 +1115,13 @@ ${requestedPreviewProductKey ? `
           <h3>${escapePresetText(pencilProduct.name)}</h3>
         </div>
         <p>${escapePresetText(pencilProduct.description)}</p>
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>Pencil-shaped</span><span>Every block clicks</span><span>Choose every part</span>
+        </div>
         ${renderProductCardPrice(pencilProduct)}
         ${renderProductCardPricingGuide(pencilProduct)}
         ${pencilProduct.status === "active"
-          ? `<button type="button" data-product-key="${PENCIL_PRODUCT_KEY}" data-view-target="design">Design yours <span>→</span></button>`
+          ? `<button type="button" data-product-key="${PENCIL_PRODUCT_KEY}" data-view-target="design">Customise this <span>→</span></button>`
           : `<button type="button" disabled>Coming soon</button>`}
       </div>
     </article>
@@ -1130,6 +1149,10 @@ ${requestedPreviewProductKey ? `
 
         <p>${escapePresetText(standardProduct.description)}</p>
 
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>Raised name</span><span>Choose the size</span><span>Live dimensions</span>
+        </div>
+
         ${renderProductCardPrice(standardProduct)}
         ${renderProductCardPricingGuide(standardProduct)}
 
@@ -1141,7 +1164,7 @@ ${requestedPreviewProductKey ? `
                 data-product-key="${STANDARD_PRODUCT_KEY}"
                 data-view-target="design"
               >
-                Design yours <span>→</span>
+                Customise this <span>→</span>
               </button>
             `
             : `
@@ -1166,10 +1189,13 @@ ${requestedPreviewProductKey ? `
           <h3>${escapePresetText(photoProduct.name)}</h3>
         </div>
         <p>${escapePresetText(photoProduct.description)}</p>
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>Your photo</span><span>2–4 print colours</span><span>Clicker optional</span>
+        </div>
         ${renderProductCardPrice(photoProduct)}
         ${renderProductCardPricingGuide(photoProduct)}
         ${photoProduct.status === "active"
-          ? `<button type="button" data-photo-product-start>Upload your photo <span>→</span></button>`
+          ? `<button type="button" data-photo-product-start>Create from a photo <span>→</span></button>`
           : `<button type="button" disabled>Coming soon</button>`}
       </div>
     </article>
@@ -1284,9 +1310,12 @@ ${requestedPreviewProductKey ? `
 
   <div class="design-wizard-heading">
     <div>
-      <p class="section-eyebrow">Create yours, one easy step at a time</p>
+      <div class="design-product-context">
+        <p class="section-eyebrow">Create yours, one easy step at a time</p>
+        <button type="button" data-view-target="shop">Change product</button>
+      </div>
       <h1 id="designWizardTitle">Add your name</h1>
-      <p id="designWizardDescription">Choose a single design or paste a list of names. Nothing is lost when you go back.</p>
+      <p id="designWizardDescription">Start with one name or paste a whole list. You can go back without losing your work.</p>
     </div>
     <nav id="designWizardNav" class="design-wizard-nav" aria-label="Design steps">
       <button type="button" class="is-active" data-design-wizard-step="names" aria-current="step"><span>1</span><strong>Names</strong></button>
@@ -1301,7 +1330,7 @@ ${requestedPreviewProductKey ? `
 
     <div class="setup-grid">
       <div class="card order-type-card">
-        <h3>Order Type</h3>
+        <h3>How many names are you making?</h3>
 
         <div class="toggle-row">
           <button
@@ -1309,7 +1338,7 @@ ${requestedPreviewProductKey ? `
             type="button"
             class="toggle active"
           >
-            Single Order
+            One name
           </button>
 
           <button
@@ -1317,7 +1346,7 @@ ${requestedPreviewProductKey ? `
             type="button"
             class="toggle"
           >
-            Group Order
+            A list of names
           </button>
         </div>
 
