@@ -2571,6 +2571,50 @@ label {
   grid-column: 1 / -1;
 }
 
+.checkout-screen > .customer-progress {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.checkout-screen > .customer-progress button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.checkout-screen[data-checkout-step="preview"] .review-box,
+.checkout-screen[data-checkout-step="preview"] .promo-box,
+.checkout-review-action {
+  grid-column: 1 / -1;
+}
+
+.checkout-screen[data-checkout-step="preview"] .review-box {
+  width: 100%;
+}
+
+.checkout-screen[data-checkout-step="preview"] .checkout-submit-bar {
+  display: none;
+}
+
+.checkout-review-action {
+  padding: 16px;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.checkout-review-action .submit-btn {
+  width: min(100%, 360px);
+}
+
+.checkout-review-action small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .checkout-submit-action {
   min-width: 0;
 }

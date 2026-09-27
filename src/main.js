@@ -1807,17 +1807,16 @@ Chloe</textarea>
   class="checkout-screen hidden"
 >
       <div class="customer-progress" aria-label="Order progress">
-        <div class="customer-progress-step is-complete"><span>✓</span>Design</div>
-        <div class="customer-progress-step is-active"><span>2</span>Details</div>
-        <div class="customer-progress-step is-active"><span>3</span>Review</div>
-        <div class="customer-progress-step"><span>4</span>Payment</div>
+        <button type="button" class="customer-progress-step is-active" data-checkout-step-target="preview"><span>1</span>Review</button>
+        <button type="button" class="customer-progress-step" data-checkout-step-target="details"><span>2</span>Details</button>
+        <div class="customer-progress-step"><span>3</span>Payment</div>
       </div>
 
       <button id="backBtn" class="secondary-btn">
         ← Back to Design
       </button>
 
-      <div class="contact-box">
+      <div class="contact-box" data-checkout-step-panel="details">
 <div class="checkout-heading">
   <p class="section-eyebrow">Checkout</p>
   <h2>Your Details</h2>
@@ -2061,7 +2060,7 @@ Chloe</textarea>
         ></textarea>
       </div>
 
-      <div class="review-box">
+      <div class="review-box" data-checkout-step-panel="preview">
         <div id="preparedCheckoutCustomerNotice" class="prepared-checkout-customer-notice hidden">
           <strong>Little Keeps prepared this order for you ♡</strong>
           <span>Please check every name and design below, then fill in your details to continue.</span>
@@ -2083,7 +2082,7 @@ Chloe</textarea>
         <div id="reviewList"></div>
       </div>
 
-      <div id="promoBox" class="promo-box">
+      <div id="promoBox" class="promo-box" data-checkout-step-panel="preview">
         <h3>Have a promo code? ♡</h3>
 
         <div class="promo-code-row">
@@ -2107,7 +2106,12 @@ Chloe</textarea>
         ></p>
       </div>
 
-      <div class="payment-box">
+      <div class="checkout-review-action" data-checkout-step-panel="preview">
+        <button id="continueToCheckoutDetailsBtn" type="button" class="submit-btn">Continue to Details →</button>
+        <small>Next, add your contact and collection or delivery details.</small>
+      </div>
+
+      <div class="payment-box" data-checkout-step-panel="details">
 <h3>Ready to Order?</h3>
 
         ${isManualOrder ? `
@@ -2163,10 +2167,9 @@ Chloe</textarea>
       class="checkout-screen hidden"
     >
       <div class="customer-progress" aria-label="Order progress">
-        <div class="customer-progress-step is-complete"><span>✓</span>Design</div>
-        <div class="customer-progress-step is-complete"><span>✓</span>Details</div>
         <div class="customer-progress-step is-complete"><span>✓</span>Review</div>
-        <div class="customer-progress-step is-active"><span>4</span>Payment</div>
+        <div class="customer-progress-step is-complete"><span>✓</span>Details</div>
+        <div class="customer-progress-step is-active"><span>3</span>Payment</div>
       </div>
 
       <button
@@ -2810,6 +2813,9 @@ const designWizardBackBtn = document.getElementById("designWizardBackBtn");
 const designWizardNextBtn = document.getElementById("designWizardNextBtn");
 const designWizardActionHint = document.getElementById("designWizardActionHint");
 const checkoutScreen = document.getElementById("checkoutScreen");
+const continueToCheckoutDetailsBtn = document.getElementById("continueToCheckoutDetailsBtn");
+const checkoutStepPanels = Array.from(document.querySelectorAll("[data-checkout-step-panel]"));
+const checkoutStepTargets = Array.from(document.querySelectorAll("[data-checkout-step-target]"));
 const paymentScreen =
 document.getElementById("paymentScreen");
 const paymentOrderRef =
@@ -4979,12 +4985,55 @@ function makeSwatches(containerId, colourOptions, type) {
   });
 }
 
+function setCheckoutStep(step, { scroll = true } = {}) {
+  const safeStep = step === "details" ? "details" : "preview";
+  checkoutScreen.dataset.checkoutStep = safeStep;
+
+  checkoutStepPanels.forEach(panel => {
+    panel.classList.toggle("hidden", panel.dataset.checkoutStepPanel !== safeStep);
+  });
+
+  checkoutStepTargets.forEach((target, index) => {
+    const active = target.dataset.checkoutStepTarget === safeStep;
+    target.classList.toggle("is-active", active);
+    target.classList.toggle("is-complete", safeStep === "details" && index === 0);
+    if (active) target.setAttribute("aria-current", "step");
+    else target.removeAttribute("aria-current");
+  });
+
+  backBtn.textContent = safeStep === "details"
+    ? "← Back to Review"
+    : "← Back to Design";
+
+  refreshUI();
+  validateForm();
+
+  if (scroll) {
+    checkoutScreen.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
 backBtn.onclick = () => {
+  if (checkoutScreen.dataset.checkoutStep === "details") {
+    setCheckoutStep("preview");
+    return;
+  }
+
   setDesignWizardStep("style", { scroll: false });
   setStorefrontView("design", {
     scrollTo: "designArea"
   });
 };
+
+continueToCheckoutDetailsBtn?.addEventListener("click", () => {
+  setCheckoutStep("details");
+});
+
+checkoutStepTargets.forEach(target => {
+  target.addEventListener("click", () => {
+    setCheckoutStep(target.dataset.checkoutStepTarget);
+  });
+});
 
 function getOrderSubtotal() {
   const pricedItems = cartHasItems ? getCartItems() : names;
@@ -9136,6 +9185,7 @@ function proceedToCheckout() {
   paymentScreen.classList.add("hidden");
   hideStorefrontViews();
 
+  setCheckoutStep("preview", { scroll: false });
   refreshUI();
   validateForm();
 
@@ -10760,6 +10810,7 @@ paymentBackBtn.onclick = () => {
     cartHasItems = true;
     paymentScreen.classList.add("hidden");
     checkoutScreen.classList.remove("hidden");
+    setCheckoutStep("details", { scroll: false });
     submitOrderBtn.textContent = "Save Changes & Return to Payment";
     submitStatus.textContent = "Your unpaid order is editable for 30 minutes after submission.";
     validateForm();
