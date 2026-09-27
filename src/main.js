@@ -25,7 +25,6 @@ import {
   formatDateRange,
   getCustomerDueDate,
   getBulkApprovalPolicy,
-  getGiftingBagSelectionLimit,
   getModularBaseRole,
   getModularPreviewPlacement,
   getPickupTimeRanges,
@@ -2007,48 +2006,6 @@ Chloe</textarea>
 
         <p id="deliveryNote" class="hint"></p>
 
-        <div class="gifting-bag-addon">
-          <a
-            class="gifting-bag-photo-link"
-            href="/images/gifting-bag.png"
-            target="_blank"
-            rel="noopener"
-            aria-label="View a larger photo of the gifting bags"
-          >
-            <img
-              class="gifting-bag-photo"
-              src="/images/gifting-bag.png"
-              alt="Frosted gifting bags with a white star pattern"
-              loading="lazy"
-            >
-          </a>
-          <div class="gifting-bag-copy">
-            <div>
-              <strong>Add gifting bags?</strong>
-              <small>S$0.50 each · fits 2 keychains up to 6 characters each; longer names will protrude</small>
-              <small class="gifting-bag-disclaimer">Bags will be provided separately. Keychains will not be packed inside them.</small>
-            </div>
-          </div>
-          <div class="gifting-bag-quantity-control">
-            <span class="gifting-bag-quantity-label">Quantity</span>
-            <div class="quantity-stepper">
-              <button id="giftingBagDecrease" type="button" aria-label="Remove one gifting bag">−</button>
-              <input
-                id="giftingBagQuantity"
-                type="number"
-                min="0"
-                max="0"
-                step="1"
-                value="0"
-                inputmode="numeric"
-                aria-label="Gifting bag quantity"
-              >
-              <button id="giftingBagIncrease" type="button" aria-label="Add one gifting bag">+</button>
-            </div>
-            <small id="giftingBagStockStatus" class="gifting-bag-stock-status">Checking stock…</small>
-          </div>
-        </div>
-
         <label class="final-order-confirmation" for="confirmFinalOrderDetails">
           <input id="confirmFinalOrderDetails" type="checkbox">
           <span>I checked every name, icon, colour, letter direction, and pickup or delivery detail.</span>
@@ -2643,10 +2600,6 @@ const checkoutPickupDate = document.getElementById("checkoutPickupDate");
 const checkoutPickupTime = document.getElementById("checkoutPickupTime");
 const checkoutPickupStatus = document.getElementById("checkoutPickupStatus");
 const deliveryNote = document.getElementById("deliveryNote");
-const giftingBagQuantityInput = document.getElementById("giftingBagQuantity");
-const giftingBagDecrease = document.getElementById("giftingBagDecrease");
-const giftingBagIncrease = document.getElementById("giftingBagIncrease");
-const giftingBagStockStatus = document.getElementById("giftingBagStockStatus");
 const readyMadeProductModal = document.getElementById("readyMadeProductModal");
 const closeReadyMadeProductModal = document.getElementById("closeReadyMadeProductModal");
 const readyMadeProductModalContent = document.getElementById("readyMadeProductModalContent");
@@ -4077,8 +4030,6 @@ function displayIcon(char) {
 let draftData = null;
 let orderType = "single";
 let giftingBagQuantity = 0;
-let giftingBagStock = 0;
-let giftingBagStockConfirmed = false;
 let selectedIndex = 0;
 let orderSubmitted = false;
 let orderSubmissionInProgress = false;
@@ -5048,64 +4999,6 @@ function getOrderSubtotal() {
   return roundMoney(
     keychainSubtotal + calculateGiftingBagTotal(giftingBagQuantity, GIFTING_BAG_PRICE)
   );
-}
-
-function getMaxGiftingBagQuantity() {
-  if (!giftingBagStockConfirmed) return 0;
-  return getGiftingBagSelectionLimit(0, giftingBagStock);
-}
-
-function updateGiftingBagOptions() {
-  if (!giftingBagQuantityInput) return;
-
-  const maxGiftingBagQuantity = getMaxGiftingBagQuantity();
-
-  giftingBagQuantity = Math.min(
-    Math.max(0, Math.floor(Number(giftingBagQuantity) || 0)),
-    maxGiftingBagQuantity
-  );
-
-  giftingBagQuantityInput.max = String(maxGiftingBagQuantity);
-  giftingBagQuantityInput.value = String(giftingBagQuantity);
-  giftingBagQuantityInput.disabled = !giftingBagStockConfirmed || maxGiftingBagQuantity === 0;
-  giftingBagDecrease.disabled = giftingBagQuantity <= 0;
-  giftingBagIncrease.disabled =
-    !giftingBagStockConfirmed || giftingBagQuantity >= maxGiftingBagQuantity;
-
-  if (giftingBagStockStatus) {
-    giftingBagStockStatus.textContent = !giftingBagStockConfirmed
-      ? "Stock unavailable"
-      : giftingBagStock <= 0
-        ? "Currently out of stock"
-        : `${giftingBagStock} available`;
-  }
-}
-
-async function refreshGiftingBagStock() {
-  let stockValue = null;
-
-  const rpcResult = await supabase.rpc("get_gifting_bag_stock");
-
-  if (!rpcResult.error) {
-    stockValue = rpcResult.data;
-  } else {
-    const fallback = await supabase
-      .from("inventory_items")
-      .select("qty")
-      .eq("item_name", "Gifting Bag")
-      .maybeSingle();
-
-    if (!fallback.error) stockValue = fallback.data?.qty;
-  }
-
-  const parsedStock = Number(stockValue);
-  giftingBagStockConfirmed = Number.isFinite(parsedStock);
-  giftingBagStock = giftingBagStockConfirmed
-    ? Math.max(0, Math.floor(parsedStock))
-    : 0;
-  updateGiftingBagOptions();
-
-  return giftingBagStockConfirmed;
 }
 
 function hasVerifiedLinkedOrder() {
@@ -7418,21 +7311,6 @@ async function submitOrderOnce() {
     return;
   }
 
-  if (giftingBagQuantity > 0) {
-    submitStatus.innerText = "Checking gifting bag stock…";
-    await refreshGiftingBagStock();
-
-    if (
-      !giftingBagStockConfirmed ||
-      giftingBagQuantity > getMaxGiftingBagQuantity()
-    ) {
-      submitStatus.innerText = giftingBagStockConfirmed
-        ? `Only ${giftingBagStock} gifting bag${giftingBagStock === 1 ? " is" : "s are"} currently available. Please update the quantity.`
-        : "Gifting bag stock cannot be confirmed right now. Please remove the bag add-on or try again shortly.";
-      return;
-    }
-  }
-
   const orderRef = currentSubmissionOrderRef || generateOrderRef();
   currentSubmissionOrderRef = orderRef;
   successModal.dataset.orderRef = orderRef;
@@ -8989,7 +8867,7 @@ async function loadPreparedCheckoutFromUrl() {
     orderType = names.length > 1 || payload.orderType === "group" ? "group" : "single";
     selectedIndex = 0;
     cartHasItems = true;
-    giftingBagQuantity = Math.max(0, Number(payload.giftingBagQuantity) || 0);
+    giftingBagQuantity = 0;
     preparedDiscount = normalizePreparedDiscount(
       data.discount_type,
       data.discount_value,
@@ -10638,30 +10516,6 @@ checkoutPickupTime?.addEventListener("change", () => {
   validateForm();
 });
 
-function setGiftingBagQuantity(value) {
-  giftingBagQuantity = Math.min(
-    Math.max(0, Math.floor(Number(value) || 0)),
-    getMaxGiftingBagQuantity()
-  );
-  draftHasMeaningfulChanges = true;
-  updateGiftingBagOptions();
-  updateCartDisplay();
-  renderReviewOrder();
-  saveDraft();
-}
-
-giftingBagQuantityInput?.addEventListener("change", () => {
-  setGiftingBagQuantity(giftingBagQuantityInput.value);
-});
-
-giftingBagDecrease?.addEventListener("click", () => {
-  setGiftingBagQuantity(giftingBagQuantity - 1);
-});
-
-giftingBagIncrease?.addEventListener("click", () => {
-  setGiftingBagQuantity(giftingBagQuantity + 1);
-});
-
 linkExistingOrderToggle.addEventListener("change", () => {
   linkExistingOrderPanel.classList.toggle("hidden", !linkExistingOrderToggle.checked);
   if (!linkExistingOrderToggle.checked) {
@@ -11282,12 +11136,7 @@ continueDraftBtn.onclick = () => {
   collectionMethod.value =
     draftData.collectionMethod || "pickup";
 
-  giftingBagQuantity = Math.min(
-    Math.max(0, Number(draftData.giftingBagQuantity) || 0),
-    giftingBagStockConfirmed
-      ? getMaxGiftingBagQuantity()
-      : Math.ceil(getTotalKeychainQuantity() / 2)
-  );
+  giftingBagQuantity = 0;
 
   checkoutPickupDate.value =
     draftData.checkoutPickupDate || "";
@@ -12219,7 +12068,6 @@ mobilePreviewToggle?.addEventListener("click", () => {
 
 setOrderType("single");
 setDesignWizardStep("names", { scroll: false });
-void refreshGiftingBagStock();
 cartHasItems = false;
 draftHasMeaningfulChanges = false;
 
