@@ -4113,9 +4113,7 @@ label {
     overflow: visible;
   }
 
-  .preview-column {
-    display: block;
-  }
+  .preview-column { display: contents; }
 
   .preview-sticky {
     position: sticky;
@@ -7940,36 +7938,58 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
   }
 
   .preview-sticky { top: 64px; }
-  .mobile-preview-sentinel {
-    display: block;
-    width: 1px;
-    height: 1px;
-    pointer-events: none;
-  }
   .preview-card {
+    min-height: 0;
     margin-bottom: 8px;
-    padding: 9px;
-    border-radius: 17px;
+    padding: 5px;
+    border-radius: 15px;
   }
   .authorised-seller-ribbon-preview { display: none; }
-  .preview-card-heading h2 { font-size: 16px; }
-  #previewCanvas { height: 140px; min-height: 140px; }
+  .preview-card-heading {
+    position: absolute;
+    z-index: 9;
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    margin: 0;
+    pointer-events: none;
+  }
+  .preview-card-heading h2 {
+    padding: 4px 8px;
+    border: 1px solid rgba(231, 205, 215, .92);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .92);
+    box-shadow: 0 3px 10px rgba(56, 35, 43, .08);
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .mobile-preview-toggle {
+    min-height: 25px;
+    padding-inline: 8px;
+    background: rgba(255, 240, 245, .94);
+    font-size: 8px;
+    pointer-events: auto;
+  }
+  #previewCanvas { height: 145px; min-height: 145px; }
   .dimension-estimate {
-    top: 7px;
+    top: auto;
+    bottom: 7px;
     right: 7px;
     width: min(310px, calc(100% - 14px));
-    padding: 5px;
+    padding: 4px;
+    border-radius: 10px;
   }
-  .dimension-estimate-heading { margin-bottom: 4px; }
-  .dimension-estimate-grid > span { padding-block: 3px; }
+  .dimension-estimate-heading { display: none; }
+  .dimension-estimate-grid { gap: 3px; }
+  .dimension-estimate-grid > span { padding: 2px 3px; border-radius: 7px; }
+  .dimension-estimate-grid small { font-size: 6px; }
+  .dimension-estimate-grid b { font-size: 8px; }
+  .dimension-estimate .dimension-long-name-warning { display: none; }
   .preview-colour-legend {
-    display: flex;
-    gap: 5px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    display: none;
   }
-  .preview-colour-legend > * { flex: 0 0 auto; }
-  .preview-editing-text { margin-bottom: 0; }
+  .preview-editing-text { display: none; }
+  .preview-card.mobile-collapsed { min-height: 38px; }
 
   .design-inspiration {
     margin: 8px 0;
@@ -8033,7 +8053,8 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
   .colour-workspace-heading { margin-bottom: 9px; }
   .colour-workspace-heading p { display: none; }
   .colour-part-tabs {
-    top: 64px;
+    position: static;
+    top: auto;
     gap: 3px;
     padding: 4px;
     border-radius: 14px;
@@ -8044,19 +8065,55 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
   .part-surprise-btn { min-height: 40px; }
   .colour-price-notice { font-size: 10px; }
   .colour-hint { display: none; }
-  .material-swatch-group { padding-inline: 0; }
-  .material-swatch-group h4 { margin-bottom: 9px; }
+  .material-swatch-group,
+  .material-swatch-group.material-matte,
+  .material-swatch-group.material-dual-tone {
+    margin-top: 0;
+    padding: 8px 0;
+    border-top: 1px solid #eadde2;
+    border-left: 0;
+  }
+  .material-swatch-group:first-child { border-top: 0; }
+  .material-swatch-group h4 {
+    margin-bottom: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .material-swatch-group h4::after {
+    content: "Swipe colours →";
+    color: #9a828c;
+    font-size: 8px;
+    font-weight: 750;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .material-swatches {
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 2px 2px 7px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .material-swatches::-webkit-scrollbar { display: none; }
   .swatch-option { width: 58px; }
+  .material-swatches .swatch-option {
+    flex: 0 0 58px;
+    scroll-snap-align: start;
+  }
   .swatch { width: 39px; height: 39px; }
 
   .special-colour-note {
-    padding: 9px 10px;
+    padding: 7px 9px;
     align-items: center;
     border-radius: 13px;
   }
   .special-colour-icon { width: 30px; height: 30px; flex-basis: 30px; }
   .special-colour-note strong,
   .special-colour-note a { font-size: 10px; }
+  .special-colour-note p { margin: 0; }
   .screen-colour-note { margin-bottom: 0; }
   .reset-btn {
     min-height: 34px;
@@ -8072,61 +8129,4 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
     font-size: 9px;
   }
 
-  .preview-sticky.mobile-preview-docked .preview-card {
-    position: fixed;
-    z-index: 490;
-    top: 64px;
-    right: 8px;
-    left: 8px;
-    margin: 0;
-    padding: 5px;
-    border: 1px solid rgba(225, 198, 208, .96);
-    border-radius: 14px;
-    box-shadow: 0 12px 28px rgba(54, 34, 42, .2);
-  }
-  .preview-sticky.mobile-preview-docked .preview-card-heading,
-  .preview-sticky.mobile-preview-docked .dimension-estimate,
-  .preview-sticky.mobile-preview-docked .preview-colour-legend,
-  .preview-sticky.mobile-preview-docked .preview-editing-text,
-  .preview-sticky.mobile-preview-docked .authorised-seller-ribbon-preview {
-    display: none;
-  }
-  .preview-sticky.mobile-preview-docked .preview-canvas-wrap,
-  .preview-sticky.mobile-preview-docked #previewCanvas {
-    height: 92px;
-    min-height: 92px;
-    border-radius: 10px;
-  }
-  .preview-sticky.mobile-preview-docked .preview-canvas-wrap::after {
-    content: "Live preview";
-    position: absolute;
-    z-index: 8;
-    top: 6px;
-    left: 6px;
-    padding: 3px 7px;
-    border: 1px solid rgba(231, 205, 215, .92);
-    border-radius: 999px;
-    color: #7c485c;
-    background: rgba(255, 255, 255, .92);
-    box-shadow: 0 3px 10px rgba(56, 35, 43, .08);
-    font-size: 8px;
-    font-weight: 900;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    pointer-events: none;
-  }
-  .preview-sticky.mobile-preview-docked .photo-design-preview,
-  .preview-sticky.mobile-preview-docked .pencil-design-preview {
-    height: 92px;
-    min-height: 92px;
-  }
-  .preview-sticky.mobile-preview-docked .pencil-design-preview {
-    padding: 4px 8px;
-  }
-  .preview-sticky.mobile-preview-docked .pencil-preview-object {
-    height: 44px;
-  }
-  #designArea.mobile-preview-is-docked .colour-part-tabs {
-    top: 166px;
-  }
 }
