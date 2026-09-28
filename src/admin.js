@@ -3641,6 +3641,108 @@ window.sendSelectedPrintedPartsToReprint = async function(
   }
 };
 
+window.syncReprintSelection = function() {
+  const selected = Array.from(document.querySelectorAll(
+    "[data-reprint-part]:checked"
+  ));
+  const toolbar = document.getElementById("reprintSelectionToolbar");
+  const count = document.getElementById("selectedReprintPartCount");
+  const button = document.getElementById("sendSelectedReprintsBtn");
+
+  if (toolbar) toolbar.classList.toggle("has-selection", selected.length > 0);
+  if (count) {
+    count.textContent = selected.length
+      ? `${selected.length} part${selected.length === 1 ? "" : "s"} selected across all names`
+      : "Select failed parts from any names below";
+  }
+  if (button) {
+    button.disabled = selected.length === 0;
+    button.textContent = selected.length
+      ? `Return Selected (${selected.length})`
+      : "Return Selected";
+  }
+};
+
+window.sendAllSelectedPrintedPartsToReprint = async function(button) {
+  const selected = Array.from(document.querySelectorAll(
+    "[data-reprint-part]:checked"
+  ));
+  if (!selected.length) {
+    alert("Tick the bases and keycaps that need reprinting first.");
+    return;
+  }
+
+  const needs = {};
+  const orderRefs = new Set();
+  const selectedNames = new Set();
+
+  selected.forEach(input => {
+    const order = latestOrders.find(
+      item => String(item.id) === String(input.dataset.orderId)
+    );
+    const itemIndex = Number(input.dataset.itemIndex);
+    const keychain = order?.order_data?.[itemIndex];
+    if (!order || !keychain || keychain.assembly_completed) return;
+
+    const partNeeds = getKeychainPrintablePartNeeds(
+      keychain,
+      input.dataset.partType,
+      Number(input.dataset.characterIndex)
+    );
+    Object.entries(partNeeds).forEach(([itemName, quantity]) => {
+      needs[itemName] = Number(needs[itemName] || 0) + Number(quantity || 0);
+    });
+    if (order.order_ref) orderRefs.add(order.order_ref);
+    selectedNames.add(keychain.name || "Unnamed keychain");
+  });
+
+  const printLines = Object.entries(needs)
+    .map(([itemName, quantity]) => `${quantity} × ${itemName}`);
+  if (!printLines.length) {
+    alert("The selected printed parts could not be identified. Refresh Assembly and try again.");
+    return;
+  }
+
+  const keepForClearance = Boolean(
+    document.getElementById("globalReprintClearance")?.checked
+  );
+  const previewLines = printLines.slice(0, 14);
+  if (!confirm(
+    `Return ${selected.length} selected part${selected.length === 1 ? "" : "s"} from ${selectedNames.size} name${selectedNames.size === 1 ? "" : "s"} in one shot?\n\n` +
+    `${previewLines.join("\n")}` +
+    (printLines.length > previewLines.length
+      ? `\n…and ${printLines.length - previewLines.length} more print group${printLines.length - previewLines.length === 1 ? "" : "s"}.`
+      : "") +
+    "\n\nProduction will recalculate the exact quantities after this."
+  )) return;
+
+  const previousLabel = button?.textContent || "Return Selected";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Returning parts…";
+  }
+
+  try {
+    const result = await saveInventoryReprint(
+      needs,
+      Array.from(orderRefs).join(", "),
+      keepForClearance
+    );
+    await loadOrders();
+    alert(
+      `${selected.length} part${selected.length === 1 ? "" : "s"} from ${selectedNames.size} name${selectedNames.size === 1 ? "" : "s"} returned to Production ✓` +
+      (result.warning ? `\n\n${result.warning}` : "")
+    );
+  } catch (error) {
+    console.error("Unable to return selected printed parts:", error);
+    alert(error?.message || "Unable to send the selected parts back to Production.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
+  }
+};
+
 window.sendPrintedPartToReprint = async function(
   orderId,
   itemIndex,
@@ -11099,7 +11201,7 @@ async function renderAssemblyQueue() {
                         </div>
 
                         <label class="reprint-checkbox-option reprint-part-identity">
-                          <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="base" data-character-index="${characterIndex}">
+                          <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="base" data-character-index="${characterIndex}" onchange="window.syncReprintSelection()">
                           <i style="background:${base.hex}"></i>
                           <span>
                             <b>BASE · ${escapeAdminHtml(base.name)} · ${escapeAdminHtml(base.material)}</b>
@@ -11108,7 +11210,7 @@ async function renderAssemblyQueue() {
                         </label>
 
                         <label class="reprint-checkbox-option reprint-part-identity">
-                          <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="keycap" data-character-index="${characterIndex}">
+                          <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="keycap" data-character-index="${characterIndex}" onchange="window.syncReprintSelection()">
                           <span class="reprint-keycap-swatches">
                             <i style="background:${cap.hex}"></i>
                             <i style="background:${letter.hex}"></i>
@@ -11145,7 +11247,7 @@ async function renderAssemblyQueue() {
                   class="reprint-all-btn"
                   onclick="window.sendSelectedPrintedPartsToReprint('${order.id}', ${itemIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
                 >
-                  Send Checked Parts to Production
+                  Send Checked Parts From This Name Only
                 </button>
 
                 <button
@@ -11315,6 +11417,18 @@ async function renderAssemblyQueue() {
             <span>Select all ready keychains</span>
           </label>
           <button id="completeSelectedKeychainsBtn" type="button" disabled onclick="window.completeSelectedKeychains(this)">Complete Selected</button>
+        </div>
+
+        <div class="reprint-selection-toolbar" id="reprintSelectionToolbar">
+          <div>
+            <strong>Bad prints from different names?</strong>
+            <span id="selectedReprintPartCount">Select failed parts from any names below</span>
+          </div>
+          <label>
+            <input id="globalReprintClearance" type="checkbox" checked>
+            <span>Keep as clearance</span>
+          </label>
+          <button id="sendSelectedReprintsBtn" type="button" disabled onclick="window.sendAllSelectedPrintedPartsToReprint(this)">Return Selected</button>
         </div>
       ` : ""}
 
