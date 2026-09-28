@@ -3539,6 +3539,56 @@ window.markBaseAssemblyComplete = async function(orderId, itemIndex) {
   await loadOrders();
 };
 
+async function getWorkshopFunctionErrorMessage(error, fallback) {
+  try {
+    const response = error?.context;
+    if (response?.clone) {
+      const body = await response.clone().json();
+      if (body?.error) return String(body.error);
+    }
+  } catch {
+    // Use the readable client error or the friendly fallback below.
+  }
+
+  const message = String(error?.message || "").trim();
+  return message && !message.includes("non-2xx") ? message : fallback;
+}
+
+async function saveInventoryReprint(needs, orderRef, keepForClearance) {
+  if (IS_ADMIN_PREVIEW) {
+    Object.entries(needs).forEach(([itemName, quantity]) => {
+      if (inventoryItems[itemName]) {
+        inventoryItems[itemName].qty = Math.max(
+          0,
+          Number(inventoryItems[itemName].qty || 0) - Number(quantity || 0)
+        );
+      }
+    });
+    return { ok: true, warning: "" };
+  }
+
+  const { data, error } = await supabase.functions.invoke(
+    "reprint-inventory",
+    {
+      body: {
+        needs,
+        keep_for_clearance: Boolean(keepForClearance),
+        order_ref: orderRef || null,
+        reason: "Failed quality check"
+      }
+    }
+  );
+
+  if (error) {
+    throw new Error(await getWorkshopFunctionErrorMessage(
+      error,
+      "Unable to save this reprint. Please refresh and try again."
+    ));
+  }
+  if (data?.error) throw new Error(String(data.error));
+  return data || { ok: true, warning: "" };
+}
+
 window.sendSelectedPrintedPartsToReprint = async function(
   orderId,
   itemIndex,
@@ -3574,18 +3624,21 @@ window.sendSelectedPrintedPartsToReprint = async function(
     "All checked parts will be processed together before Assembly refreshes."
   )) return;
 
-  const { error } = await supabase.rpc("mark_inventory_for_reprint", {
-    p_needs: needs,
-    p_keep_for_clearance: Boolean(keepForClearance),
-    p_order_ref: order.order_ref || null,
-    p_reason: "Failed quality check"
-  });
-  if (error) {
+  try {
+    const result = await saveInventoryReprint(
+      needs,
+      order.order_ref,
+      keepForClearance
+    );
+    await loadOrders();
+    alert(
+      `Sent ${selected.length} printed part${selected.length === 1 ? "" : "s"} back to Production ✓` +
+      (result.warning ? `\n\n${result.warning}` : "")
+    );
+  } catch (error) {
     console.error("Unable to batch reprint parts:", error);
-    alert("Unable to send the checked parts back to Production. Run the latest reprint SQL once, then try again.");
-    return;
+    alert(error?.message || "Unable to send the checked parts back to Production.");
   }
-  await loadOrders();
 };
 
 window.sendPrintedPartToReprint = async function(
@@ -3641,27 +3694,21 @@ window.sendPrintedPartToReprint = async function(
 
   if (!ok) return;
 
-  const { error } = await supabase.rpc(
-    "mark_inventory_for_reprint",
-    {
-      p_needs: needs,
-      p_keep_for_clearance: Boolean(keepForClearance),
-      p_order_ref: order.order_ref || null,
-      p_reason: "Failed quality check"
-    }
-  );
-
-  if (error) {
-    console.error("Unable to send printed part for reprint:", error);
-    alert(
-      "Unable to send this part back to Production.\n\n" +
-      "Run the latest reprint SQL once, then refresh the admin page.\n\n" +
-      `Supabase: ${error.message || error.details || "Unknown database error"}`
+  try {
+    const result = await saveInventoryReprint(
+      needs,
+      order.order_ref,
+      keepForClearance
     );
-    return;
+    await loadOrders();
+    alert(
+      `${label.charAt(0).toUpperCase()}${label.slice(1)} is back in Production ✓` +
+      (result.warning ? `\n\n${result.warning}` : "")
+    );
+  } catch (error) {
+    console.error("Unable to send printed part for reprint:", error);
+    alert(error?.message || "Unable to send this part back to Production.");
   }
-
-  await loadOrders();
 };
 
 function formatMoney(value) {
@@ -6891,6 +6938,12 @@ window.startProductionJob = async function(
     return;
   }
 
+  if (!confirm(
+    `Start this exact ${String(category || "part").toLowerCase()} print?\n\n` +
+    `${quantity} × ${itemName}\n\n` +
+    "Double-check the written colour name before loading filament."
+  )) return;
+
   const job = {
     item_name: itemName,
     category,
@@ -9182,6 +9235,21 @@ window.startKeycapCombination = async function(jobId, button, printerId = null) 
     return;
   }
 
+  const combinationQuantity = jobs.reduce(
+    (sum, job) => sum + Number(job.quantity || 0),
+    0
+  );
+  const characterSummary = jobs
+    .map(job => `${String(job.item_name).split(" - ").pop()} × ${job.quantity}`)
+    .join(" · ");
+  if (!confirm(
+    `Start this exact keycap group?\n\n` +
+    `CAP: ${combination.capName}\n` +
+    `LETTER: ${combination.letterName}\n` +
+    `TOTAL: ${combinationQuantity} pieces\n\n` +
+    characterSummary
+  )) return;
+
   const previousLabel = button?.textContent || "Start Printing";
 
   if (button) {
@@ -9351,6 +9419,20 @@ window.startAmsLitePlate = async function(plateId, button) {
     alert("This AMS Lite plate has no remaining quantities to print.");
     return;
   }
+
+  const slotSummary = (plate.slotAssignments || [])
+    .filter(assignment => assignment.colour)
+    .map(assignment => `Slot ${assignment.slot}: ${assignment.colour.name}`)
+    .join("\n");
+  const plateQuantity = jobs.reduce(
+    (sum, job) => sum + Number(job.quantity || 0),
+    0
+  );
+  if (!confirm(
+    `Start this exact AMS plate on ${plate.printerName || "the selected printer"}?\n\n` +
+    `${slotSummary}\n\n` +
+    `${plateQuantity} total pieces. Check every written colour name before starting.`
+  )) return;
 
   const previousLabel = button?.textContent || "Start Printing";
 
@@ -10848,6 +10930,15 @@ async function renderAssemblyQueue() {
     const characters = Array.from(
       item.clean_name || sanitizeName(item.name || "")
     );
+    const reprintBases = Array.isArray(item.design?.bases) && item.design.bases.length
+      ? item.design.bases
+      : ["#d9d9d9"];
+    const reprintCaps = Array.isArray(item.design?.caps) && item.design.caps.length
+      ? item.design.caps
+      : ["#d9d9d9"];
+    const reprintLetters = Array.isArray(item.design?.letters) && item.design.letters.length
+      ? item.design.letters
+      : ["#d9d9d9"];
     const customNameProduct = String(item.product_key || order.product_key || "") === "standard-name-keychain";
     const photoProduct = String(item.product_key || order.product_key || "") === "ai-photo-keepsake";
     const pencilProduct = String(item.product_key || order.product_key || "") === PENCIL_PRODUCT_KEY;
@@ -10975,37 +11066,78 @@ async function renderAssemblyQueue() {
                 </label>
 
                 <div class="reprint-part-grid">
-                  ${characters.map((character, characterIndex) => `
-                    <div class="reprint-character-group">
-                      <strong>Position ${characterIndex + 1} - ${displayIcon(character)}</strong>
+                  ${characters.map((character, characterIndex) => {
+                    const base = getAssemblyColourDetails(
+                      reprintBases[characterIndex % reprintBases.length],
+                      "Base colour"
+                    );
+                    const cap = getAssemblyColourDetails(
+                      reprintCaps[characterIndex % reprintCaps.length],
+                      "Cap colour"
+                    );
+                    const letter = getAssemblyColourDetails(
+                      reprintLetters[characterIndex % reprintLetters.length],
+                      "Letter colour"
+                    );
+                    const baseItemName = Object.keys(getKeychainPrintablePartNeeds(
+                      item,
+                      "base",
+                      characterIndex
+                    ))[0] || `${base.name} base`;
+                    const keycapItemName = Object.keys(getKeychainPrintablePartNeeds(
+                      item,
+                      "keycap",
+                      characterIndex
+                    ))[0] || `${cap.name} cap + ${letter.name} letter`;
 
-                      <label class="reprint-checkbox-option">
-                        <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="base" data-character-index="${characterIndex}">
-                        <span>Base</span>
-                      </label>
+                    return `
+                      <div class="reprint-character-group">
+                        <div class="reprint-position-heading">
+                          <b>${characterIndex + 1}</b>
+                          <strong>${displayIcon(character)}</strong>
+                          <span>Check the exact failed piece</span>
+                        </div>
 
-                      <label class="reprint-checkbox-option">
-                        <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="keycap" data-character-index="${characterIndex}">
-                        <span>Keycap</span>
-                      </label>
+                        <label class="reprint-checkbox-option reprint-part-identity">
+                          <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="base" data-character-index="${characterIndex}">
+                          <i style="background:${base.hex}"></i>
+                          <span>
+                            <b>BASE · ${escapeAdminHtml(base.name)} · ${escapeAdminHtml(base.material)}</b>
+                            <small>${escapeAdminHtml(baseItemName)}</small>
+                          </span>
+                        </label>
 
-                      <button
-                        type="button"
-                        class="reprint-part-btn"
-                        onclick="window.sendPrintedPartToReprint('${order.id}', ${itemIndex}, 'base', ${characterIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
-                      >
-                        Reprint Base
-                      </button>
+                        <label class="reprint-checkbox-option reprint-part-identity">
+                          <input type="checkbox" data-reprint-part data-order-id="${escapeAdminHtml(String(order.id))}" data-item-index="${itemIndex}" data-part-type="keycap" data-character-index="${characterIndex}">
+                          <span class="reprint-keycap-swatches">
+                            <i style="background:${cap.hex}"></i>
+                            <i style="background:${letter.hex}"></i>
+                          </span>
+                          <span>
+                            <b>KEYCAP · ${escapeAdminHtml(cap.name)} CAP</b>
+                            <small>${escapeAdminHtml(letter.name)} · ${escapeAdminHtml(letter.material)} letter “${displayIcon(character)}”</small>
+                            <small>${escapeAdminHtml(keycapItemName)}</small>
+                          </span>
+                        </label>
 
-                      <button
-                        type="button"
-                        class="reprint-part-btn"
-                        onclick="window.sendPrintedPartToReprint('${order.id}', ${itemIndex}, 'keycap', ${characterIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
-                      >
-                        Reprint Keycap
-                      </button>
-                    </div>
-                  `).join("")}
+                        <button
+                          type="button"
+                          class="reprint-part-btn"
+                          onclick="window.sendPrintedPartToReprint('${order.id}', ${itemIndex}, 'base', ${characterIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
+                        >
+                          Reprint This Base
+                        </button>
+
+                        <button
+                          type="button"
+                          class="reprint-part-btn"
+                          onclick="window.sendPrintedPartToReprint('${order.id}', ${itemIndex}, 'keycap', ${characterIndex}, document.getElementById('clearance-${order.id}-${itemIndex}').checked)"
+                        >
+                          Reprint This Keycap
+                        </button>
+                      </div>
+                    `;
+                  }).join("")}
                 </div>
 
                 <button
@@ -12359,6 +12491,7 @@ async function renderProductionPlanner(orders) {
               printerId: plate.assignedPrinterId,
               printerName: plate.assignedPrinterName,
               colourNames: colours.map(colour => colour.name),
+              slotAssignments: plate.slotAssignments,
               waveIndex: plate.waveIndex
             });
 
