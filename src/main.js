@@ -1097,14 +1097,23 @@ ${requestedPreviewProductKey ? `
   ${modularProduct.status !== "hidden" ? `
     <article class="product-card product-card-current">
       <span class="authorised-seller-ribbon">Authorised Seller</span>
-      <div class="product-card-visual">
-        <img
-          src="/images/modular-clicky-keychain.jpg"
-          alt="Colourful modular clicky keychains"
-          loading="eager"
-        >
+      <div class="product-card-visual product-card-video-visual">
+        <video
+          class="product-card-video"
+          src="/media/clicker-demo.m4v"
+          poster="/images/modular-clicky-keychain.jpg"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
+          aria-label="Colourful modular clicky keychains being pressed"
+        ></video>
         <span class="product-card-badge">Available now</span>
         ${renderProductUnitsSoldBadge(modularProduct)}
+        <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle aria-pressed="false">
+          <span aria-hidden="true">🔊</span> Tap to hear the click
+        </button>
       </div>
 
       <div class="product-card-content">
@@ -10168,6 +10177,31 @@ function openReadyMadeProduct(productKey, existingItem = null) {
 document.querySelectorAll("[data-ready-product]").forEach(button => {
   button.addEventListener("click", () => openReadyMadeProduct(button.dataset.readyProduct));
 });
+
+document.querySelectorAll("[data-clicker-sound-toggle]").forEach(button => {
+  button.addEventListener("click", async () => {
+    const video = button.closest(".product-card-video-visual")?.querySelector("video");
+    if (!video) return;
+
+    const turnSoundOn = video.muted;
+    video.muted = !turnSoundOn;
+    button.setAttribute("aria-pressed", String(turnSoundOn));
+    button.innerHTML = turnSoundOn
+      ? '<span aria-hidden="true">🔊</span> Click sound on'
+      : '<span aria-hidden="true">🔇</span> Tap to hear the click';
+
+    if (turnSoundOn) {
+      try {
+        await video.play();
+      } catch {
+        video.muted = true;
+        button.setAttribute("aria-pressed", "false");
+        button.innerHTML = '<span aria-hidden="true">🔇</span> Tap to hear the click';
+      }
+    }
+  });
+});
+
 closeReadyMadeProductModal?.addEventListener("click", closeReadyMadeProduct);
 readyMadeProductModal?.addEventListener("click", event => {
   if (event.target === readyMadeProductModal) closeReadyMadeProduct();
