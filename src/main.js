@@ -1093,14 +1093,19 @@ ${requestedPreviewProductKey ? `
     <span><b>3</b><strong>Preview</strong><small>then add to cart</small></span>
   </div>
 
-  <div class="product-card-grid">
+  <div class="product-group-heading product-group-heading-primary">
+    <span>Most loved</span>
+    <div><h3>Start with our clicker bestsellers</h3><p>See and hear the difference, then choose your favourite style.</p></div>
+  </div>
+
+  <div class="product-card-grid product-card-grid-featured">
   ${modularProduct.status !== "hidden" ? `
-    <article class="product-card product-card-current">
+    <article class="product-card product-card-current product-card-featured">
       <span class="authorised-seller-ribbon">Authorised Seller</span>
       <div class="product-card-visual product-card-video-visual">
         <video
           class="product-card-video"
-          src="/media/modular-clicker-demo.m4v"
+          src="/media/modular-clicker-demo.mp4"
           poster="/images/modular-clicky-keychain.jpg"
           autoplay
           muted
@@ -1109,7 +1114,7 @@ ${requestedPreviewProductKey ? `
           preload="metadata"
           aria-label="Colourful modular clicky keychains being pressed"
         ></video>
-        <span class="product-card-badge">Available now</span>
+        <span class="product-card-badge product-card-bestseller-badge">Bestseller</span>
         ${renderProductUnitsSoldBadge(modularProduct)}
         <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle aria-pressed="false">
           <span aria-hidden="true">🔊</span> Tap to hear the click
@@ -1126,6 +1131,12 @@ ${requestedPreviewProductKey ? `
           <span>Moves & bends</span><span>Every block clicks</span><span>Up to ${Number(modularProduct.maximum_characters) || 10} characters</span>
         </div>
         ${renderProductCardPrice(modularProduct)}
+        <div class="product-price-example">
+          <span>Example</span>
+          <strong>ALICIA · 6 characters</strong>
+          <b>${displaySettingMoney(getProductDisplayPrice(modularProduct))}</b>
+          <small>Base, caps, letters and keyring included</small>
+        </div>
         ${renderProductCardPricingGuide(modularProduct)}
         <button type="button" data-product-key="${MODULAR_PRODUCT_KEY}" data-view-target="design">
           Customise this <span>→</span>
@@ -1140,7 +1151,7 @@ ${requestedPreviewProductKey ? `
       <div class="product-card-visual product-card-video-visual">
         <video
           class="product-card-video"
-          src="/media/compact-clicker-demo.m4v"
+          src="/media/compact-clicker-demo.mp4"
           poster="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}"
           autoplay
           muted
@@ -1177,6 +1188,15 @@ ${requestedPreviewProductKey ? `
       </div>
     </article>
   ` : ""}
+
+  </div>
+
+  <div class="product-group-heading product-group-heading-secondary">
+    <span>More ways to personalise</span>
+    <div><h3>Make something a little different</h3><p>Try a pencil clicker or turn a meaningful photo into a keepsake.</p></div>
+  </div>
+
+  <div class="product-card-grid product-card-grid-more">
 
   ${pencilProduct.status !== "hidden" ? `
     <article class="product-card pencil-product-card ${pencilProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${pencilProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
@@ -2325,7 +2345,14 @@ Chloe</textarea>
           id="discardDraftBtn"
           class="secondary-btn"
         >
-          Start new
+          Start over
+        </button>
+
+        <button
+          id="browseWithoutDraftBtn"
+          class="draft-browse-btn"
+        >
+          Browse for now
         </button>
       </div>
     </div>
@@ -2894,6 +2921,9 @@ document.getElementById("continueDraftBtn");
 
 const discardDraftBtn =
 document.getElementById("discardDraftBtn");
+
+const browseWithoutDraftBtn =
+document.getElementById("browseWithoutDraftBtn");
 const sharedGroupStartModal = document.getElementById("sharedGroupStartModal");
 const sharedGroupStartForm = document.getElementById("sharedGroupStartForm");
 const sharedGroupTitle = document.getElementById("sharedGroupTitle");
@@ -11334,6 +11364,10 @@ continueDraftBtn.onclick = () => {
   delete checkoutPickupTime.dataset.draftValue;
   buildSelectedPreview();
   validateForm();
+};
+
+browseWithoutDraftBtn.onclick = () => {
+  draftModal.classList.add("hidden");
 };
 
 discardDraftBtn.onclick = () => {
