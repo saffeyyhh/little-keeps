@@ -500,6 +500,14 @@ const standardProduct = getProductByKey(
 const photoProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
 const pencilProduct = getProductByKey(productCatalog, PENCIL_PRODUCT_KEY);
 const readyMadeProducts = productCatalog.filter(isReadyMadeProduct);
+const visibleProductCount = [
+  modularProduct,
+  solidProduct,
+  pencilProduct,
+  standardProduct,
+  photoProduct,
+  ...readyMadeProducts
+].filter(product => product?.status !== "hidden").length;
 
 let activeProduct = modularProduct;
 
@@ -693,7 +701,7 @@ function renderProductCardPricingGuide(product) {
 function renderProductUnitsSoldBadge(product) {
   const total = productUnitsSoldByKey.get(product?.product_key) || 0;
   return total > 0
-    ? `<span class="product-card-sales-badge">${formatProductUnitsSold(total)}</span>`
+    ? `<span class="product-card-sales-note">${formatProductUnitsSold(total)}</span>`
     : "";
 }
 
@@ -707,13 +715,13 @@ function renderReadyMadeProductCard(product) {
         ${product.image_path
           ? `<img src="${escapePresetText(product.image_path)}" alt="${escapePresetText(product.name)}" loading="lazy">`
           : `<div class="ready-made-image-placeholder">Little Keeps</div>`}
-        <span class="product-card-badge">${soldOut ? "Sold out" : product.status === "active" ? "Ready to order" : "Coming soon"}</span>
-        ${renderProductUnitsSoldBadge(product)}
+        ${soldOut ? `<span class="product-card-badge">Sold out</span>` : product.status === "active" ? "" : `<span class="product-card-badge">Coming soon</span>`}
       </div>
       <div class="product-card-content">
         <div><small>${escapePresetText(product.eyebrow || "Ready-made collection")}</small><h3>${escapePresetText(product.name)}</h3></div>
         <p>${escapePresetText(product.description || "A small-batch Little Keeps design.")}</p>
         ${renderProductCardPrice(product)}
+        ${renderProductUnitsSoldBadge(product)}
         <button type="button" data-ready-product="${escapePresetText(product.product_key)}" ${unavailable ? "disabled" : ""}>
           ${soldOut ? "Sold out" : product.status === "active" ? "Choose options" : "Coming soon"}<span>→</span>
         </button>
@@ -1080,34 +1088,19 @@ ${requestedPreviewProductKey ? `
 
 <section id="productsSection" class="products-section" data-store-view="shop" aria-labelledby="productsHeading">
   <div class="products-heading">
-    <p class="section-eyebrow">The Little Keeps collection</p>
-    <h2 id="productsHeading">What would you like to make?</h2>
-    <p>Pick a keepsake, personalise it, and see the finished look before you order.</p>
+    <p class="section-eyebrow">Little Keeps</p>
+    <h2 id="productsHeading">Personalised keepsakes</h2>
+    <p class="products-count">${visibleProductCount} ${visibleProductCount === 1 ? "product" : "products"}</p>
   </div>
 
-  <div class="shop-journey" aria-label="How ordering works">
-    <span><b>1</b><strong>Choose</strong><small>your keepsake</small></span>
-    <i aria-hidden="true">→</i>
-    <span><b>2</b><strong>Personalise</strong><small>names & colours</small></span>
-    <i aria-hidden="true">→</i>
-    <span><b>3</b><strong>Preview</strong><small>then add to cart</small></span>
-  </div>
-
-  <div class="product-group-heading product-group-heading-primary">
-    <span>Most loved</span>
-    <div><h3>Start with our clicker bestsellers</h3><p>See and hear the difference, then choose your favourite style.</p></div>
-  </div>
-
-  <div class="product-card-grid product-card-grid-featured">
+  <div class="product-card-grid product-catalog-grid">
   ${modularProduct.status !== "hidden" ? `
     <article class="product-card product-card-current product-card-featured">
-      <span class="authorised-seller-ribbon">Authorised Seller</span>
       <div class="product-card-visual product-card-video-visual">
         <video
           class="product-card-video"
           src="/media/modular-clicker-demo.mp4"
           poster="/images/modular-clicky-keychain.jpg"
-          autoplay
           muted
           loop
           playsinline
@@ -1115,9 +1108,8 @@ ${requestedPreviewProductKey ? `
           aria-label="Colourful modular clicky keychains being pressed"
         ></video>
         <span class="product-card-badge product-card-bestseller-badge">Bestseller</span>
-        ${renderProductUnitsSoldBadge(modularProduct)}
         <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle aria-pressed="false">
-          <span aria-hidden="true">🔊</span> Tap to hear the click
+          <span aria-hidden="true">▶</span> See it click
         </button>
       </div>
 
@@ -1131,6 +1123,7 @@ ${requestedPreviewProductKey ? `
           <span>Moves & bends</span><span>Every block clicks</span><span>Up to ${Number(modularProduct.maximum_characters) || 10} characters</span>
         </div>
         ${renderProductCardPrice(modularProduct)}
+        ${renderProductUnitsSoldBadge(modularProduct)}
         <div class="product-price-example">
           <span>Example</span>
           <strong>ALICIA · 6 characters</strong>
@@ -1147,23 +1140,20 @@ ${requestedPreviewProductKey ? `
 
   ${solidProduct.status !== "hidden" ? `
     <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
-      <span class="authorised-seller-ribbon">Authorised Seller</span>
       <div class="product-card-visual product-card-video-visual">
         <video
           class="product-card-video"
           src="/media/compact-clicker-demo.mp4"
           poster="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}"
-          autoplay
           muted
           loop
           playsinline
           preload="metadata"
           aria-label="A compact solid clicky keychain being pressed"
         ></video>
-        <span class="product-card-badge">${solidProduct.status === "active" ? "Available now" : "Coming soon"}</span>
-        ${renderProductUnitsSoldBadge(solidProduct)}
+        ${solidProduct.status === "active" ? "" : `<span class="product-card-badge">Coming soon</span>`}
         <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle aria-pressed="false">
-          <span aria-hidden="true">🔊</span> Tap to hear the click
+          <span aria-hidden="true">▶</span> See it click
         </button>
       </div>
 
@@ -1180,6 +1170,7 @@ ${requestedPreviewProductKey ? `
         </div>
 
         ${renderProductCardPrice(solidProduct)}
+        ${renderProductUnitsSoldBadge(solidProduct)}
         ${renderProductCardPricingGuide(solidProduct)}
 
         ${solidProduct.status === "active" ? `
@@ -1189,26 +1180,15 @@ ${requestedPreviewProductKey ? `
     </article>
   ` : ""}
 
-  </div>
-
-  <div class="product-group-heading product-group-heading-secondary">
-    <span>More ways to personalise</span>
-    <div><h3>Make something a little different</h3><p>Try a pencil clicker or turn a meaningful photo into a keepsake.</p></div>
-  </div>
-
-  <div class="product-card-grid product-card-grid-more">
-
   ${pencilProduct.status !== "hidden" ? `
     <article class="product-card pencil-product-card ${pencilProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${pencilProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
-      <span class="authorised-seller-ribbon">Authorised Seller</span>
       <div class="product-card-visual pencil-product-visual">
         <img
           src="${escapePresetText(pencilProduct.image_path || "/images/custom-pencil-clicker.jpg")}"
           alt="A colourful collection of custom pencil clicker keychains"
           loading="lazy"
         >
-        <span class="product-card-badge">${pencilProduct.status === "active" ? "Available now" : "Coming soon"}</span>
-        ${renderProductUnitsSoldBadge(pencilProduct)}
+        ${pencilProduct.status === "active" ? "" : `<span class="product-card-badge">Coming soon</span>`}
       </div>
       <div class="product-card-content">
         <div>
@@ -1220,6 +1200,7 @@ ${requestedPreviewProductKey ? `
           <span>Pencil-shaped</span><span>Every block clicks</span><span>Choose every part</span>
         </div>
         ${renderProductCardPrice(pencilProduct)}
+        ${renderProductUnitsSoldBadge(pencilProduct)}
         ${renderProductCardPricingGuide(pencilProduct)}
         ${pencilProduct.status === "active"
           ? `<button type="button" data-product-key="${PENCIL_PRODUCT_KEY}" data-view-target="design">Customise this <span>→</span></button>`
@@ -1235,12 +1216,7 @@ ${requestedPreviewProductKey ? `
           <i></i><i></i><i></i><b>ABC</b>
         </div>
 
-        <span class="product-card-badge">
-          ${standardProduct.status === "coming_soon"
-            ? "Coming soon"
-            : "Available now"}
-        </span>
-        ${renderProductUnitsSoldBadge(standardProduct)}
+        ${standardProduct.status === "coming_soon" ? `<span class="product-card-badge">Coming soon</span>` : ""}
       </div>
 
       <div class="product-card-content">
@@ -1256,6 +1232,7 @@ ${requestedPreviewProductKey ? `
         </div>
 
         ${renderProductCardPrice(standardProduct)}
+        ${renderProductUnitsSoldBadge(standardProduct)}
         ${renderProductCardPricingGuide(standardProduct)}
 
         ${
@@ -1283,8 +1260,7 @@ ${requestedPreviewProductKey ? `
     <article class="product-card ${photoProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${photoProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <div class="product-card-visual photo-keepsake-visual" aria-hidden="true">
         <div class="photo-artwork-sample"><span>♡</span><b>PHOTO</b></div>
-        <span class="product-card-badge">${photoProduct.status === "active" ? "Available now" : "AI studio coming soon"}</span>
-        ${renderProductUnitsSoldBadge(photoProduct)}
+        ${photoProduct.status === "active" ? "" : `<span class="product-card-badge">Coming soon</span>`}
       </div>
       <div class="product-card-content">
         <div>
@@ -1296,6 +1272,7 @@ ${requestedPreviewProductKey ? `
           <span>Your photo</span><span>2–4 print colours</span><span>Clicker optional</span>
         </div>
         ${renderProductCardPrice(photoProduct)}
+        ${renderProductUnitsSoldBadge(photoProduct)}
         ${renderProductCardPricingGuide(photoProduct)}
         ${photoProduct.status === "active"
           ? `<button type="button" data-photo-product-start>Create from a photo <span>→</span></button>`
@@ -1307,7 +1284,6 @@ ${requestedPreviewProductKey ? `
   ${readyMadeProducts.map(renderReadyMadeProductCard).join("")}
 
 </div>
-  </div>
 </section>
 
 ${showBoothSection ? `
@@ -10228,9 +10204,13 @@ document.querySelectorAll("[data-clicker-sound-toggle]").forEach(button => {
       document.querySelectorAll("[data-clicker-sound-toggle]").forEach(otherButton => {
         if (otherButton === button) return;
         const otherVideo = otherButton.closest(".product-card-video-visual")?.querySelector("video");
-        if (otherVideo) otherVideo.muted = true;
+        if (otherVideo) {
+          otherVideo.muted = true;
+          otherVideo.pause();
+          otherVideo.currentTime = 0;
+        }
         otherButton.setAttribute("aria-pressed", "false");
-        otherButton.innerHTML = '<span aria-hidden="true">🔇</span> Tap to hear the click';
+        otherButton.innerHTML = '<span aria-hidden="true">▶</span> See it click';
       });
     }
 
@@ -10238,7 +10218,7 @@ document.querySelectorAll("[data-clicker-sound-toggle]").forEach(button => {
     button.setAttribute("aria-pressed", String(turnSoundOn));
     button.innerHTML = turnSoundOn
       ? '<span aria-hidden="true">🔊</span> Click sound on'
-      : '<span aria-hidden="true">🔇</span> Tap to hear the click';
+      : '<span aria-hidden="true">▶</span> See it click';
 
     if (turnSoundOn) {
       try {
@@ -10246,8 +10226,11 @@ document.querySelectorAll("[data-clicker-sound-toggle]").forEach(button => {
       } catch {
         video.muted = true;
         button.setAttribute("aria-pressed", "false");
-        button.innerHTML = '<span aria-hidden="true">🔇</span> Tap to hear the click';
+        button.innerHTML = '<span aria-hidden="true">▶</span> See it click';
       }
+    } else {
+      video.pause();
+      video.currentTime = 0;
     }
   });
 });
