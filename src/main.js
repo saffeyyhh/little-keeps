@@ -1100,7 +1100,7 @@ ${requestedPreviewProductKey ? `
       <div class="product-card-visual product-card-video-visual">
         <video
           class="product-card-video"
-          src="/media/clicker-demo.m4v"
+          src="/media/modular-clicker-demo.m4v"
           poster="/images/modular-clicky-keychain.jpg"
           autoplay
           muted
@@ -1137,14 +1137,23 @@ ${requestedPreviewProductKey ? `
   ${solidProduct.status !== "hidden" ? `
     <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <span class="authorised-seller-ribbon">Authorised Seller</span>
-      <div class="product-card-visual">
-        <img
-          src="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}"
-          alt="Colourful compact solid clicky keychains"
-          loading="lazy"
-        >
+      <div class="product-card-visual product-card-video-visual">
+        <video
+          class="product-card-video"
+          src="/media/compact-clicker-demo.m4v"
+          poster="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
+          aria-label="A compact solid clicky keychain being pressed"
+        ></video>
         <span class="product-card-badge">${solidProduct.status === "active" ? "Available now" : "Coming soon"}</span>
         ${renderProductUnitsSoldBadge(solidProduct)}
+        <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle aria-pressed="false">
+          <span aria-hidden="true">🔊</span> Tap to hear the click
+        </button>
       </div>
 
       <div class="product-card-content">
@@ -10184,6 +10193,17 @@ document.querySelectorAll("[data-clicker-sound-toggle]").forEach(button => {
     if (!video) return;
 
     const turnSoundOn = video.muted;
+
+    if (turnSoundOn) {
+      document.querySelectorAll("[data-clicker-sound-toggle]").forEach(otherButton => {
+        if (otherButton === button) return;
+        const otherVideo = otherButton.closest(".product-card-video-visual")?.querySelector("video");
+        if (otherVideo) otherVideo.muted = true;
+        otherButton.setAttribute("aria-pressed", "false");
+        otherButton.innerHTML = '<span aria-hidden="true">🔇</span> Tap to hear the click';
+      });
+    }
+
     video.muted = !turnSoundOn;
     button.setAttribute("aria-pressed", String(turnSoundOn));
     button.innerHTML = turnSoundOn
