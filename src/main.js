@@ -120,6 +120,12 @@ const DEFAULT_SHOP_SETTINGS = {
   status_email_template_id: "",
   booth_notice_enabled: false,
   booth_notice_text: "",
+  booth_name: "",
+  booth_venue: "",
+  booth_date_text: "",
+  booth_address: "",
+  booth_note: "",
+  booth_map_url: "",
   unavailable_colours: [],
   colour_options: DEFAULT_COLOUR_OPTIONS,
   promo_code: "CHILDRENSDAY",
@@ -282,6 +288,24 @@ try {
   shopSettings.booth_notice_text = String(
     shopSettings.pickup_time_options?.booth_notice_text || ""
   ).trim();
+  shopSettings.booth_name = String(
+    shopSettings.pickup_time_options?.booth_name || ""
+  ).trim();
+  shopSettings.booth_venue = String(
+    shopSettings.pickup_time_options?.booth_venue || ""
+  ).trim();
+  shopSettings.booth_date_text = String(
+    shopSettings.pickup_time_options?.booth_date_text || ""
+  ).trim();
+  shopSettings.booth_address = String(
+    shopSettings.pickup_time_options?.booth_address || ""
+  ).trim();
+  shopSettings.booth_note = String(
+    shopSettings.pickup_time_options?.booth_note || ""
+  ).trim();
+  shopSettings.booth_map_url = String(
+    shopSettings.pickup_time_options?.booth_map_url || ""
+  ).trim();
   shopSettings.pickup_time_options = normalizePickupTimeOptions(
     shopSettings.pickup_time_options
   );
@@ -293,10 +317,20 @@ const contactWhatsAppNumber = String(
   shopSettings.contact_whatsapp_number || "6585121915"
 ).replace(/\D/g, "") || "6585121915";
 const contactWhatsAppUrl = `https://wa.me/${contactWhatsAppNumber}`;
-const boothNoticeEnabled = Boolean(
-  shopSettings.booth_notice_enabled && shopSettings.booth_notice_text
-);
 const boothNoticeText = String(shopSettings.booth_notice_text || "").trim();
+const boothEnabled = Boolean(shopSettings.booth_notice_enabled);
+const boothNoticeEnabled = Boolean(boothEnabled && boothNoticeText);
+const boothName = String(shopSettings.booth_name || "").trim();
+const boothVenue = String(shopSettings.booth_venue || "").trim();
+const boothDateText = String(shopSettings.booth_date_text || "").trim();
+const boothAddress = String(shopSettings.booth_address || "").trim();
+const boothNote = String(shopSettings.booth_note || "").trim();
+const boothMapUrl = isSecureWebUrl(shopSettings.booth_map_url)
+  ? String(shopSettings.booth_map_url).trim()
+  : "";
+const showBoothSection = Boolean(
+  boothEnabled && (boothName || boothVenue || boothDateText || boothAddress)
+);
 
 try {
   const { data, error } = await supabase
@@ -888,6 +922,18 @@ ${requestedPreviewProductKey ? `
       Shop policies
     </button>
 
+    ${showBoothSection ? `
+      <button
+        type="button"
+        class="side-nav-link"
+        data-view-target="shop"
+        data-view-scroll="nextBoothSection"
+      >
+        <span>⌖</span>
+        Next booth
+      </button>
+    ` : ""}
+
     <button
       type="button"
       class="side-nav-link"
@@ -1225,6 +1271,34 @@ ${requestedPreviewProductKey ? `
 </div>
   </div>
 </section>
+
+${showBoothSection ? `
+  <section id="nextBoothSection" class="next-booth-section" data-store-view="shop" aria-labelledby="nextBoothHeading">
+    <div class="next-booth-card">
+      <div class="next-booth-copy">
+        <p class="section-eyebrow">See the clicks in person</p>
+        <span class="next-booth-kicker">Next pop-up</span>
+        <h2 id="nextBoothHeading">${escapePresetText(boothName || "Find Little Keeps at our next booth")}</h2>
+        ${boothNote ? `<p class="next-booth-note">${escapePresetText(boothNote)}</p>` : `<p class="next-booth-note">Try the clickers, compare colours in person and order your own Little Keep.</p>`}
+
+        <div class="next-booth-details">
+          ${boothDateText ? `<div><span>▣</span><p><small>When</small><strong>${escapePresetText(boothDateText)}</strong></p></div>` : ""}
+          ${boothVenue || boothAddress ? `<div><span>⌖</span><p><small>Where</small><strong>${escapePresetText(boothVenue || boothAddress)}</strong>${boothVenue && boothAddress ? `<em>${escapePresetText(boothAddress)}</em>` : ""}</p></div>` : ""}
+        </div>
+
+        <div class="next-booth-actions">
+          ${boothMapUrl ? `<a href="${escapePresetText(boothMapUrl)}" target="_blank" rel="noopener noreferrer">Get directions <span>→</span></a>` : ""}
+          <button type="button" data-product-key="${MODULAR_PRODUCT_KEY}" data-view-target="design">Design yours before visiting</button>
+        </div>
+      </div>
+
+      <div class="next-booth-visual" aria-hidden="true">
+        <span>TRY</span><span>THE</span><span>CLICK</span>
+        <b>♡</b>
+      </div>
+    </div>
+  </section>
+` : ""}
 
 <div id="readyMadeProductModal" class="ready-made-product-modal hidden" role="dialog" aria-modal="true" aria-labelledby="readyMadeProductTitle">
   <div class="ready-made-product-dialog">

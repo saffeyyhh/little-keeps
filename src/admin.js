@@ -622,6 +622,12 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   status_email_template_id: "",
   booth_notice_enabled: false,
   booth_notice_text: "",
+  booth_name: "",
+  booth_venue: "",
+  booth_date_text: "",
+  booth_address: "",
+  booth_note: "",
+  booth_map_url: "",
   review_url: "https://www.instagram.com/madebylittlekeeps/",
   contact_whatsapp_number: "6585121915",
   stripe_enabled: false,
@@ -2320,15 +2326,41 @@ function renderSettingsWorkspace() {
         </section>
 
         <section class="settings-card settings-card-wide" data-settings-group="customer">
-          <h3>Storefront booth notice</h3>
-          <p class="hint">Show a short announcement when Little Keeps has a booth or pop-up.</p>
+          <h3>Next booth / pop-up</h3>
+          <p class="hint">Turn this on to show both a short announcement and a proper booth card on the storefront.</p>
           <label class="settings-toggle">
             <input name="booth_notice_enabled" type="checkbox" ${checked(adminShopSettings.booth_notice_enabled)}>
-            Show booth notice on the website
+            Show the next booth on the website
           </label>
+          <div class="settings-fields two-columns">
+            <label class="settings-field">
+              <span>Announcement bar text</span>
+              <input name="booth_notice_text" maxlength="140" value="${escapeAdminHtml(adminShopSettings.booth_notice_text || "")}" placeholder="Meet us at our next pop-up ✦">
+            </label>
+            <label class="settings-field">
+              <span>Event / booth name</span>
+              <input name="booth_name" maxlength="100" value="${escapeAdminHtml(adminShopSettings.booth_name || "")}" placeholder="Little Keeps at Makers' Market">
+            </label>
+            <label class="settings-field">
+              <span>Venue</span>
+              <input name="booth_venue" maxlength="100" value="${escapeAdminHtml(adminShopSettings.booth_venue || "")}" placeholder="Suntec Convention Centre, Hall 4">
+            </label>
+            <label class="settings-field">
+              <span>Date & time</span>
+              <input name="booth_date_text" maxlength="100" value="${escapeAdminHtml(adminShopSettings.booth_date_text || "")}" placeholder="12–13 October · 11am–8pm">
+            </label>
+            <label class="settings-field">
+              <span>Address / booth number</span>
+              <input name="booth_address" maxlength="160" value="${escapeAdminHtml(adminShopSettings.booth_address || "")}" placeholder="Booth B12 · 1 Raffles Boulevard">
+            </label>
+            <label class="settings-field">
+              <span>Google Maps link</span>
+              <input name="booth_map_url" type="url" value="${escapeAdminHtml(adminShopSettings.booth_map_url || "")}" placeholder="https://maps.google.com/…">
+            </label>
+          </div>
           <label class="settings-field">
-            <span>Notice text</span>
-            <input name="booth_notice_text" maxlength="140" value="${escapeAdminHtml(adminShopSettings.booth_notice_text || "")}" placeholder="Find us at our booth at…">
+            <span>What customers can do there</span>
+            <textarea name="booth_note" rows="3" maxlength="240" placeholder="Try every clicker, see all filament colours and order on the spot.">${escapeAdminHtml(adminShopSettings.booth_note || "")}</textarea>
           </label>
         </section>
 
@@ -2519,6 +2551,20 @@ async function saveShopSettings(event) {
   updates.review_url = String(form.get("review_url") || "").trim();
   const boothNoticeEnabled = form.has("booth_notice_enabled");
   const boothNoticeText = String(form.get("booth_notice_text") || "").trim();
+  const boothName = String(form.get("booth_name") || "").trim();
+  const boothVenue = String(form.get("booth_venue") || "").trim();
+  const boothDateText = String(form.get("booth_date_text") || "").trim();
+  const boothAddress = String(form.get("booth_address") || "").trim();
+  const boothNote = String(form.get("booth_note") || "").trim();
+  const boothMapUrl = String(form.get("booth_map_url") || "").trim();
+  if (boothMapUrl) {
+    try {
+      if (new URL(boothMapUrl).protocol !== "https:") throw new Error("https required");
+    } catch {
+      alert("Use a complete secure Google Maps link beginning with https://");
+      return;
+    }
+  }
   const colourRows = Array.from(
     event.currentTarget.querySelectorAll("[data-colour-row]")
   );
@@ -2643,6 +2689,12 @@ async function saveShopSettings(event) {
       .replace(/\D/g, "") || "6585121915",
     booth_notice_enabled: boothNoticeEnabled,
     booth_notice_text: boothNoticeText,
+    booth_name: boothName,
+    booth_venue: boothVenue,
+    booth_date_text: boothDateText,
+    booth_address: boothAddress,
+    booth_note: boothNote,
+    booth_map_url: boothMapUrl,
     colour_options: normalizedColourOptions,
     product_catalog_overrides: productCatalogOverrides,
     product_statuses: productStatusOverrides
@@ -2711,6 +2763,12 @@ async function saveShopSettings(event) {
     booth_notice_text: String(
       savedShopSettings.pickup_time_options?.booth_notice_text || ""
     ).trim(),
+    booth_name: String(savedShopSettings.pickup_time_options?.booth_name || "").trim(),
+    booth_venue: String(savedShopSettings.pickup_time_options?.booth_venue || "").trim(),
+    booth_date_text: String(savedShopSettings.pickup_time_options?.booth_date_text || "").trim(),
+    booth_address: String(savedShopSettings.pickup_time_options?.booth_address || "").trim(),
+    booth_note: String(savedShopSettings.pickup_time_options?.booth_note || "").trim(),
+    booth_map_url: String(savedShopSettings.pickup_time_options?.booth_map_url || "").trim(),
     pickup_time_options: normalizePickupTimeOptions(savedShopSettings.pickup_time_options)
   };
   adminShopSettings.easyparcel_settings = {
@@ -16256,6 +16314,24 @@ async function loadAdminSettings() {
     adminShopSettings.pickup_time_options?.booth_notice_text ??
     adminShopSettings.booth_notice_text ??
     ""
+  ).trim();
+  adminShopSettings.booth_name = String(
+    adminShopSettings.pickup_time_options?.booth_name ?? adminShopSettings.booth_name ?? ""
+  ).trim();
+  adminShopSettings.booth_venue = String(
+    adminShopSettings.pickup_time_options?.booth_venue ?? adminShopSettings.booth_venue ?? ""
+  ).trim();
+  adminShopSettings.booth_date_text = String(
+    adminShopSettings.pickup_time_options?.booth_date_text ?? adminShopSettings.booth_date_text ?? ""
+  ).trim();
+  adminShopSettings.booth_address = String(
+    adminShopSettings.pickup_time_options?.booth_address ?? adminShopSettings.booth_address ?? ""
+  ).trim();
+  adminShopSettings.booth_note = String(
+    adminShopSettings.pickup_time_options?.booth_note ?? adminShopSettings.booth_note ?? ""
+  ).trim();
+  adminShopSettings.booth_map_url = String(
+    adminShopSettings.pickup_time_options?.booth_map_url ?? adminShopSettings.booth_map_url ?? ""
   ).trim();
   adminShopSettings.bulk_buffer_days = Math.max(0, Number(
     adminShopSettings.pickup_time_options?.bulk_buffer_days ??
