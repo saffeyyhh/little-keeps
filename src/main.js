@@ -1288,7 +1288,6 @@ ${showBoothSection ? `
 
         <div class="next-booth-actions">
           ${boothMapUrl ? `<a href="${escapePresetText(boothMapUrl)}" target="_blank" rel="noopener noreferrer">Get directions <span>→</span></a>` : ""}
-          <button type="button" data-product-key="${MODULAR_PRODUCT_KEY}" data-view-target="design">Design yours before visiting</button>
         </div>
       </div>
 
