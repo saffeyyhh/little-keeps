@@ -1972,7 +1972,7 @@ function renderSettingsWorkspace() {
     .join("\n");
 
   ordersContainer.innerHTML = `
-    <form id="shopSettingsForm" class="settings-workspace">
+    <form id="shopSettingsForm" class="settings-workspace" novalidate>
       ${adminSettingsLoadFailed ? `
         <div class="stock-alert">
           <strong>Settings could not be loaded</strong>
@@ -2492,7 +2492,17 @@ function renderSettingsWorkspace() {
     </form>
   `;
 
-  document.getElementById("shopSettingsForm").addEventListener("submit", saveShopSettings);
+  document.getElementById("shopSettingsForm").addEventListener("submit", event => {
+    saveShopSettings(event).catch(error => {
+      console.error("Unable to save shop settings:", error);
+      const saveButton = event.currentTarget?.querySelector('[type="submit"]');
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = "Save Settings";
+      }
+      alert(`Unable to save the settings.\n\n${error.message || error}`);
+    });
+  });
   document.querySelectorAll("[data-product-media-manager]").forEach(manager => {
     const syncGallery = () => {
       const items = Array.from(manager.querySelectorAll("[data-product-media-item]"));
@@ -2558,7 +2568,7 @@ function renderSettingsWorkspace() {
           alert(`“${file.name}” could not be added. Use a JPG, PNG or WebP image up to 8 MB.`);
           return;
         }
-        const pendingId = crypto.randomUUID();
+        const pendingId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
         const previewUrl = URL.createObjectURL(file);
         pendingProductMediaFiles.set(pendingId, { file, previewUrl });
         const item = document.createElement("article");
@@ -2686,12 +2696,27 @@ window.copyProductPreviewLink = async function(productKey, button) {
 async function saveShopSettings(event) {
   event.preventDefault();
 
+  const settingsForm = event.currentTarget;
+  const saveButton = settingsForm.querySelector('[type="submit"]');
+  const stopSaving = message => {
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.textContent = "Save Settings";
+    }
+    if (message) alert(message);
+  };
+
   if (adminSettingsLoadFailed) {
-    alert("Your saved settings could not be loaded, so saving is disabled to protect them. Refresh and try again.");
+    stopSaving("Your saved settings could not be loaded, so saving is disabled to protect them. Refresh and try again.");
     return;
   }
 
-  const form = new FormData(event.currentTarget);
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.textContent = pendingProductMediaFiles.size ? "Uploading photos…" : "Saving…";
+  }
+
+  const form = new FormData(settingsForm);
   const numberFields = [
     "delivery_fee", "free_delivery_threshold", "max_orders_per_date", "large_order_quantity",
     "standard_min_working_days", "standard_max_working_days", "large_min_working_days",
@@ -2716,7 +2741,7 @@ async function saveShopSettings(event) {
     try {
       if (new URL(boothMapUrl).protocol !== "https:") throw new Error("https required");
     } catch {
-      alert("Use a complete secure Google Maps link beginning with https://");
+      stopSaving("Use a complete secure Google Maps link beginning with https://");
       return;
     }
   }
@@ -2745,12 +2770,12 @@ async function saveShopSettings(event) {
   ) && new Set(colourNameKeys).size === colourOptions.length &&
     new Set(colourHexKeys).size === colourOptions.length;
   if (!coloursAreValid) {
-    alert("Every colour needs a unique name and colour value. Dual-tone filaments also need a different second colour.");
+    stopSaving("Every colour needs a unique name and colour value. Dual-tone filaments also need a different second colour.");
     return;
   }
   const normalizedColourOptions = normalizeColourOptions(colourOptions, []);
   if (!normalizedColourOptions.some(colour => colour.active)) {
-    alert("Keep at least one colour visible to customers.");
+    stopSaving("Keep at least one colour visible to customers.");
     return;
   }
   updates.unavailable_colours = colourRows.flatMap((row, index) =>
@@ -2801,15 +2826,14 @@ async function saveShopSettings(event) {
         }
         const pendingId = String(path).replace(/^pending:/, "");
         const pending = pendingProductMediaFiles.get(pendingId);
-        if (pending?.file) {
-          uploadedGalleryPaths.push(await uploadProductImage(pending.file, product.product_key));
-        }
+        if (!pending?.file) throw new Error("A new photo was lost before it could upload. Please add that photo again.");
+        uploadedGalleryPaths.push(await uploadProductImage(pending.file, product.product_key));
       }
       form.set(galleryField, JSON.stringify(Array.from(new Set(uploadedGalleryPaths))));
       const videoFile = videoInput?.files?.[0];
       if (videoFile) form.set(videoField, await uploadProductVideo(videoFile, product.product_key));
     } catch (error) {
-      alert(`Unable to upload media for ${product.name}.\n\n${error.message || error}\n\nIf this is your first video upload, run product-media-gallery.sql once in Supabase.`);
+      stopSaving(`Unable to upload media for ${product.name}.\n\n${error.message || error}\n\nIf this is your first video upload, run product-media-gallery.sql once in Supabase.`);
       return;
     }
   }
