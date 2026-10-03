@@ -58,6 +58,26 @@ test("limits product options to usable named choices", () => {
   ]), [{ name: "Colour", values: ["Pink", "Blue"] }]);
 });
 
+test("normalizes editable product galleries and click videos", () => {
+  const modular = getProductByKey(normalizeProductCatalog([{
+    product_key: MODULAR_PRODUCT_KEY,
+    image_path: "/images/cover.jpg",
+    gallery_paths: [" /images/cover.jpg ", "/images/detail.jpg", "/images/detail.jpg", ""],
+    video_path: " https://example.com/click.mp4 "
+  }]), MODULAR_PRODUCT_KEY);
+  const pencil = getProductByKey(normalizeProductCatalog([{
+    product_key: PENCIL_PRODUCT_KEY,
+    image_path: "/images/pencil.jpg",
+    gallery_paths: [],
+    video_path: "__none__"
+  }]), PENCIL_PRODUCT_KEY);
+
+  assert.deepEqual(modular.gallery_paths, ["/images/cover.jpg", "/images/detail.jpg"]);
+  assert.equal(modular.video_path, "https://example.com/click.mp4");
+  assert.deepEqual(pencil.gallery_paths, ["/images/pencil.jpg"]);
+  assert.equal(pencil.video_path, "__none__");
+});
+
 test("formats product social proof by keychain quantity", () => {
   assert.equal(formatProductUnitsSold(1), "1 keychain sold ♡");
   assert.equal(formatProductUnitsSold(248), "248 keychains sold ♡");

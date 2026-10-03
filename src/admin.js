@@ -1856,6 +1856,20 @@ async function uploadProductImage(file, productKey) {
   return supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
 }
 
+async function uploadProductVideo(file, productKey) {
+  if (!file) return "";
+  if (!/^video\/(mp4|quicktime)$/i.test(file.type) || file.size > 50 * 1024 * 1024) {
+    throw new Error("Use an MP4 or MOV video up to 50 MB.");
+  }
+  const extension = file.type === "video/quicktime" ? "mov" : "mp4";
+  const path = `${productKey}/video-${crypto.randomUUID()}.${extension}`;
+  const { error } = await supabase.storage.from("product-images").upload(path, file, {
+    cacheControl: "3600", contentType: file.type, upsert: false
+  });
+  if (error) throw error;
+  return supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
+}
+
 window.createReadyMadeProduct = async function(button) {
   const name = document.getElementById("newProductName")?.value.trim();
   const price = Number(document.getElementById("newProductPrice")?.value);
@@ -2011,6 +2025,10 @@ function renderSettingsWorkspace() {
               const isSolidDraft = product.product_key === "solid-clicky-keychain";
               const isPencilDraft = product.product_key === PENCIL_PRODUCT_KEY;
               const isReadyMade = isReadyMadeProduct(product);
+              const productGalleryPaths = Array.isArray(product.gallery_paths)
+                ? product.gallery_paths.filter(Boolean)
+                : product.image_path ? [product.image_path] : [];
+              const productVideoPath = product.video_path === "__none__" ? "" : String(product.video_path || "");
 
               return `
                 <article class="product-settings-card ${product.status === "active" ? "is-active" : ""}">
@@ -2044,6 +2062,44 @@ function renderSettingsWorkspace() {
                         <p class="product-draft-note">Draft suggestion: S$7.90 launch, then S$9.90. Keep it Coming soon until you confirm the full pencil print time and final price.</p>
                       ` : ""}
 
+                      <section class="product-price-group product-media-manager" data-product-media-manager="${escapeAdminHtml(product.product_key)}">
+                        <div class="product-price-group-heading">
+                          <strong>Product photos & click video</strong>
+                          <small>The first photo is the cover. Customers can swipe through the rest.</small>
+                        </div>
+                        <div class="product-admin-gallery" data-product-admin-gallery>
+                          ${productGalleryPaths.map((path, index) => `
+                            <article class="product-admin-media-item" data-product-media-item data-media-path="${escapeAdminHtml(path)}">
+                              <img src="${escapeAdminHtml(path)}" alt="${escapeAdminHtml(product.name)} photo ${index + 1}">
+                              <span>${index === 0 ? "Cover" : `Photo ${index + 1}`}</span>
+                              <div>
+                                <button type="button" data-product-media-move="up" aria-label="Move photo left" ${index === 0 ? "disabled" : ""}>←</button>
+                                <button type="button" data-product-media-move="down" aria-label="Move photo right" ${index === productGalleryPaths.length - 1 ? "disabled" : ""}>→</button>
+                                <button type="button" data-product-media-remove aria-label="Remove photo">Remove</button>
+                              </div>
+                            </article>
+                          `).join("") || `<p class="product-media-empty" data-product-media-empty>No photos yet.</p>`}
+                        </div>
+                        <input class="product-gallery-paths-input" name="${escapeAdminHtml(prefix)}gallery_paths" type="hidden" value="${escapeAdminHtml(JSON.stringify(productGalleryPaths))}">
+                        <label class="settings-field product-media-upload">
+                          <span>Add gallery photos</span>
+                          <input type="file" accept="image/jpeg,image/png,image/webp" multiple data-product-gallery-upload="${escapeAdminHtml(product.product_key)}">
+                          <small>JPG, PNG or WebP · up to 8 MB each. New photos are added after the current ones.</small>
+                        </label>
+                        <div class="product-admin-video ${productVideoPath ? "has-video" : ""}" data-product-admin-video>
+                          ${productVideoPath ? `<video src="${escapeAdminHtml(productVideoPath)}" controls muted playsinline preload="metadata"></video>` : `<p>No click video added.</p>`}
+                          <div>
+                            <label class="settings-field">
+                              <span>${productVideoPath ? "Replace click video" : "Add click video"}</span>
+                              <input type="file" accept="video/mp4,video/quicktime" data-product-video-upload="${escapeAdminHtml(product.product_key)}">
+                              <small>MP4 or MOV · up to 50 MB. A square video looks best.</small>
+                            </label>
+                            ${productVideoPath ? `<button type="button" class="delete-product-btn" data-product-video-remove>Remove video</button>` : ""}
+                          </div>
+                        </div>
+                        <input class="product-video-path-input" name="${escapeAdminHtml(prefix)}video_path" type="hidden" value="${escapeAdminHtml(product.video_path || "")}">
+                      </section>
+
                       ${isReadyMade ? `
                         <section class="product-price-group ready-made-listing-fields">
                           <div class="product-price-group-heading"><strong>Listing details</strong><small>These appear on the shop card and product window.</small></div>
@@ -2055,8 +2111,6 @@ function renderSettingsWorkspace() {
                             ${productNumberField(product, "stock_quantity", "Available stock", "1")}
                           </div>
                           <label class="settings-field"><span>Description</span><textarea name="${escapeAdminHtml(prefix)}description" rows="3" maxlength="240">${escapeAdminHtml(product.description || "")}</textarea></label>
-                          <label class="settings-field"><span>Change cover photo</span><input type="file" accept="image/jpeg,image/png,image/webp" data-product-image="${escapeAdminHtml(product.product_key)}"></label>
-                          <input name="${escapeAdminHtml(prefix)}image_path" type="hidden" value="${escapeAdminHtml(product.image_path || "")}">
                           <label class="settings-field"><span>Options</span><textarea name="${escapeAdminHtml(prefix)}options" rows="4" placeholder="Size: Small, Large">${escapeAdminHtml(productOptionsText(product))}</textarea><small>Example: Colour: Pink, Blue</small></label>
                           <label class="settings-toggle"><input name="${escapeAdminHtml(prefix)}featured" type="checkbox" ${checked(product.featured)}> Feature this product</label>
                           <button type="button" class="delete-product-btn" onclick="window.deleteReadyMadeProduct('${escapeAdminHtml(product.product_key)}')">Delete draft/listing</button>
@@ -2425,6 +2479,57 @@ function renderSettingsWorkspace() {
   `;
 
   document.getElementById("shopSettingsForm").addEventListener("submit", saveShopSettings);
+  document.querySelectorAll("[data-product-media-manager]").forEach(manager => {
+    const syncGallery = () => {
+      const items = Array.from(manager.querySelectorAll("[data-product-media-item]"));
+      const hidden = manager.querySelector(".product-gallery-paths-input");
+      if (hidden) hidden.value = JSON.stringify(items.map(item => item.dataset.mediaPath).filter(Boolean));
+      items.forEach((item, index) => {
+        const label = item.querySelector("span");
+        if (label) label.textContent = index === 0 ? "Cover" : `Photo ${index + 1}`;
+        const up = item.querySelector('[data-product-media-move="up"]');
+        const down = item.querySelector('[data-product-media-move="down"]');
+        if (up) up.disabled = index === 0;
+        if (down) down.disabled = index === items.length - 1;
+      });
+      const gallery = manager.querySelector("[data-product-admin-gallery]");
+      const empty = manager.querySelector("[data-product-media-empty]");
+      if (!items.length && gallery && !empty) {
+        gallery.insertAdjacentHTML("beforeend", '<p class="product-media-empty" data-product-media-empty>No photos yet.</p>');
+      } else if (items.length) {
+        empty?.remove();
+      }
+    };
+
+    manager.addEventListener("click", event => {
+      const moveButton = event.target.closest("[data-product-media-move]");
+      const removeButton = event.target.closest("[data-product-media-remove]");
+      const videoRemoveButton = event.target.closest("[data-product-video-remove]");
+      const item = (moveButton || removeButton)?.closest("[data-product-media-item]");
+      if (moveButton && item) {
+        if (moveButton.dataset.productMediaMove === "up" && item.previousElementSibling?.matches("[data-product-media-item]")) {
+          item.parentElement.insertBefore(item, item.previousElementSibling);
+        }
+        if (moveButton.dataset.productMediaMove === "down" && item.nextElementSibling?.matches("[data-product-media-item]")) {
+          item.parentElement.insertBefore(item.nextElementSibling, item);
+        }
+        syncGallery();
+      }
+      if (removeButton && item) {
+        item.remove();
+        syncGallery();
+      }
+      if (videoRemoveButton) {
+        const hidden = manager.querySelector(".product-video-path-input");
+        if (hidden) hidden.value = "__none__";
+        manager.querySelector("[data-product-admin-video] video")?.remove();
+        const emptyVideo = document.createElement("p");
+        emptyVideo.textContent = "No click video added.";
+        manager.querySelector("[data-product-admin-video]")?.prepend(emptyVideo);
+        videoRemoveButton.remove();
+      }
+    });
+  });
   const showSettingsTab = tab => {
     const validTabs = ["products", "scheduling", "stock", "delivery", "customer"];
     adminSettingsTab = validTabs.includes(tab) ? tab : "products";
@@ -2624,19 +2729,30 @@ async function saveShopSettings(event) {
     "maximum_working_days",
     "stock_quantity"
   ];
-  for (const product of adminProductCatalog.filter(isReadyMadeProduct)) {
-    const input = Array.from(event.currentTarget.querySelectorAll("[data-product-image]"))
-      .find(element => element.dataset.productImage === product.product_key);
-    const file = input?.files?.[0];
-    if (!file) continue;
+  for (const product of adminProductCatalog) {
+    const prefix = `product:${product.product_key}:`;
+    const galleryField = `${prefix}gallery_paths`;
+    const videoField = `${prefix}video_path`;
+    let galleryPaths = [];
     try {
-      const imagePath = await uploadProductImage(file, product.product_key);
-      const fieldName = `product:${product.product_key}:image_path`;
-      const hidden = event.currentTarget.elements.namedItem(fieldName);
-      if (hidden) hidden.value = imagePath;
-      form.set(fieldName, imagePath);
+      galleryPaths = JSON.parse(String(form.get(galleryField) || "[]"));
+    } catch {
+      galleryPaths = [];
+    }
+    galleryPaths = Array.isArray(galleryPaths) ? galleryPaths.filter(Boolean) : [];
+    const galleryInput = Array.from(event.currentTarget.querySelectorAll("[data-product-gallery-upload]"))
+      .find(element => element.dataset.productGalleryUpload === product.product_key);
+    const videoInput = Array.from(event.currentTarget.querySelectorAll("[data-product-video-upload]"))
+      .find(element => element.dataset.productVideoUpload === product.product_key);
+    try {
+      for (const file of Array.from(galleryInput?.files || [])) {
+        galleryPaths.push(await uploadProductImage(file, product.product_key));
+      }
+      form.set(galleryField, JSON.stringify(Array.from(new Set(galleryPaths))));
+      const videoFile = videoInput?.files?.[0];
+      if (videoFile) form.set(videoField, await uploadProductVideo(videoFile, product.product_key));
     } catch (error) {
-      alert(`Unable to upload the photo for ${product.name}.\n\n${error.message || error}`);
+      alert(`Unable to upload media for ${product.name}.\n\n${error.message || error}\n\nIf this is your first video upload, run product-media-gallery.sql once in Supabase.`);
       return;
     }
   }
@@ -2648,16 +2764,24 @@ async function saveShopSettings(event) {
       launch_price_enabled: form.has(`${prefix}launch_price_enabled`),
       price_visible: form.has(`${prefix}price_visible`),
       production_notes: String(form.get(`${prefix}production_notes`) || "").trim(),
+      gallery_paths: (() => {
+        try {
+          const paths = JSON.parse(String(form.get(`${prefix}gallery_paths`) || "[]"));
+          return Array.isArray(paths) ? Array.from(new Set(paths.filter(Boolean))) : [];
+        } catch {
+          return [];
+        }
+      })(),
+      video_path: String(form.get(`${prefix}video_path`) || "").trim(),
       updated_at: new Date().toISOString()
     };
+    productUpdate.image_path = productUpdate.gallery_paths[0] || "";
 
     if (isReadyMadeProduct(product)) {
       productUpdate.name = String(form.get(`${prefix}name`) || product.name).trim();
       productUpdate.sku = String(form.get(`${prefix}sku`) || "").trim();
       productUpdate.eyebrow = String(form.get(`${prefix}eyebrow`) || "Ready-made collection").trim();
       productUpdate.description = String(form.get(`${prefix}description`) || "").trim();
-      productUpdate.image_path = String(form.get(`${prefix}image_path`) || product.image_path || "").trim();
-      productUpdate.gallery_paths = productUpdate.image_path ? [productUpdate.image_path] : [];
       productUpdate.options = parseProductOptionsText(form.get(`${prefix}options`));
       productUpdate.featured = form.has(`${prefix}featured`);
     }
@@ -2727,8 +2851,8 @@ async function saveShopSettings(event) {
 
     // Product visibility should still save against older databases that do
     // not have the optional per-product lead-time columns yet.
-    if (productsError && /minimum_working_days|maximum_working_days/i.test(String(productsError.message || ""))) {
-      const compatibleUpdates = productUpdates.map(({ minimum_working_days, maximum_working_days, ...product }) => product);
+    if (productsError && /minimum_working_days|maximum_working_days|video_path/i.test(String(productsError.message || ""))) {
+      const compatibleUpdates = productUpdates.map(({ minimum_working_days, maximum_working_days, video_path, ...product }) => product);
       ({ data: savedProducts, error: productsError } = await supabase
         .from("product_catalog")
         .upsert(compatibleUpdates, { onConflict: "product_key" })
@@ -2742,7 +2866,7 @@ async function saveShopSettings(event) {
       productSettingsSaveFailed = true;
     } else {
       adminProductCatalog = applyProductStatusOverrides(
-        normalizeProductCatalog(savedProducts),
+        applyProductCatalogOverrides(normalizeProductCatalog(savedProducts), productCatalogOverrides),
         productStatusOverrides
       );
     }

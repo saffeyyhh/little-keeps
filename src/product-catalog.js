@@ -96,6 +96,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     maximum_working_days: null,
     sort_order: 10,
     image_path: "/images/modular-clicky-keychain.jpg",
+    gallery_paths: ["/images/modular-clicky-keychain.jpg"],
+    video_path: "/media/modular-clicker-demo.mp4",
     production_notes: "One modular base and one keycap are printed for every character."
   },
   {
@@ -127,6 +129,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     maximum_working_days: null,
     sort_order: 20,
     image_path: "/images/compact-solid-clicky-keychain.jpg",
+    gallery_paths: ["/images/compact-solid-clicky-keychain.jpg"],
+    video_path: "/media/compact-clicker-demo.mp4",
     production_notes: "Use the matching licensed Compact Fidget Clicker solid base for 1–10 slots, plus one chunky keycap and switch per character."
   },
 
@@ -230,6 +234,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     maximum_working_days: null,
     sort_order: 25,
     image_path: "/images/custom-pencil-clicker.jpg",
+    gallery_paths: ["/images/custom-pencil-clicker.jpg"],
+    video_path: "",
     production_notes: "Prepare one licensed Clickify 3D Pencil Body and matching Flat/Raised top per character. Confirm block, top, character, eraser, ferrule, wood, tip and end-cap colours before slicing."
   }
 ];
@@ -355,9 +361,15 @@ export function normalizeProductCatalog(rows = []) {
     product.price_visible = product.status === "active" || product.price_visible === true;
     product.product_type = product.product_type || CUSTOM_PRODUCT_TYPE;
     product.options = normalizeProductOptions(product.options);
-    product.gallery_paths = Array.isArray(product.gallery_paths)
-      ? product.gallery_paths.filter(Boolean)
-      : [];
+    product.gallery_paths = Array.from(new Set(
+      (Array.isArray(product.gallery_paths) ? product.gallery_paths : [])
+        .map(path => String(path || "").trim())
+        .filter(Boolean)
+    ));
+    if (!product.gallery_paths.length && product.image_path) {
+      product.gallery_paths = [String(product.image_path)];
+    }
+    product.video_path = String(product.video_path || "").trim();
     return product;
   });
 
@@ -387,6 +399,7 @@ export function normalizeProductCatalog(rows = []) {
         stock_quantity: 0,
         options: [],
         gallery_paths: [],
+        video_path: "",
         ...row
       };
       numericFields.forEach(field => {
@@ -394,9 +407,15 @@ export function normalizeProductCatalog(rows = []) {
         product[field] = Number.isFinite(value) ? value : 0;
       });
       product.options = normalizeProductOptions(product.options);
-      product.gallery_paths = Array.isArray(product.gallery_paths)
-        ? product.gallery_paths.filter(Boolean)
-        : [];
+      product.gallery_paths = Array.from(new Set(
+        (Array.isArray(product.gallery_paths) ? product.gallery_paths : [])
+          .map(path => String(path || "").trim())
+          .filter(Boolean)
+      ));
+      if (!product.gallery_paths.length && product.image_path) {
+        product.gallery_paths = [String(product.image_path)];
+      }
+      product.video_path = String(product.video_path || "").trim();
       return product;
     });
 

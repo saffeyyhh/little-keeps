@@ -8069,6 +8069,91 @@ a {
 .product-admin-cover { width: 120px; aspect-ratio: 1; margin: 8px 0 14px; display: block; object-fit: cover; border-radius: 15px; }
 .delete-product-btn { color: #a43455 !important; background: #fff0f4 !important; }
 
+.product-admin-gallery {
+  margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.product-admin-media-item {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #dce6eb;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.product-admin-media-item img {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  border-radius: 9px;
+  object-fit: cover;
+}
+
+.product-admin-media-item > span {
+  margin: 7px 0 6px;
+  display: block;
+  color: #385b70;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.product-admin-media-item > div { display: flex; gap: 4px; }
+.product-admin-media-item button {
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 1px solid #d9e4ea;
+  border-radius: 8px;
+  color: #536c7b;
+  background: #f7fafb;
+  font-size: 9px;
+  font-weight: 800;
+}
+.product-admin-media-item button:last-child { margin-left: auto; color: #a43455; }
+.product-admin-media-item button:disabled { opacity: .35; }
+.product-media-empty { margin: 8px 0; color: #798b95; font-size: 11px; }
+.product-media-upload { margin-top: 12px; }
+
+.product-admin-video {
+  margin-top: 14px;
+  padding-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+  gap: 14px;
+  border-top: 1px solid #dce6eb;
+}
+
+.product-admin-video > video {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: #edf1f3;
+  object-fit: cover;
+}
+
+.product-admin-video > p {
+  min-height: 100px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #cad8df;
+  border-radius: 12px;
+  color: #7a8b94;
+  background: #f8fafb;
+  font-size: 10px;
+  text-align: center;
+}
+
+.product-admin-video .delete-product-btn { margin-top: 8px; }
+
+@media (max-width: 640px) {
+  .product-admin-video { grid-template-columns: 1fr; }
+  .product-admin-video > video,
+  .product-admin-video > p { max-width: 180px; }
+}
+
 .product-settings-card {
   padding: 16px;
   border: 1px solid #d9e5ec;
