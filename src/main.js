@@ -851,55 +851,46 @@ ${requestedPreviewProductKey ? `
 
 
 <div class="announcement-bar">
-  <div class="announcement-item">
-    <span class="announcement-icon">♡</span>
-    <span>Made in Singapore</span>
-  </div>
-
-  ${boothNoticeEnabled ? `
-    <span class="announcement-divider"></span>
-    <div class="announcement-item announcement-booth">
-      <span class="announcement-icon">⌂</span>
-      <span><strong>${escapePresetText(boothNoticeText)}</strong></span>
+  <button id="announcementPrevious" class="announcement-arrow" type="button" aria-label="Previous announcement">‹</button>
+  <div class="announcement-track" aria-live="polite">
+    <div id="holidayNotice" class="announcement-item announcement-holiday hidden">
+      <span class="announcement-icon">▧</span>
+      <span><strong>Shop Notice:</strong> <span id="holidayNoticeText"></span></span>
     </div>
-  ` : ""}
 
-  <span class="announcement-divider"></span>
+    ${boothNoticeEnabled ? `
+      <div class="announcement-item announcement-booth">
+        <span class="announcement-icon">⌂</span>
+        <span><strong>${escapePresetText(boothNoticeText)}</strong></span>
+      </div>
+    ` : ""}
 
-  <div class="announcement-item">
-    <span class="announcement-icon">▣</span>
-    <span>Free islandwide delivery above ${displaySettingMoney(freeDeliveryThreshold)}</span>
+    <div id="launchPriceCountdown" class="announcement-item announcement-launch ${launchPriceEnabled && launchPriceHasDeadline ? "" : "hidden"}">
+      <span class="announcement-icon">⌛</span>
+      <strong>Launch price ends in <span id="launchCountdownText"></span></strong>
+    </div>
+
+    <div id="featuredPromoAnnouncement" class="announcement-item announcement-promo ${featuredPromo ? "" : "hidden"}">
+      <span class="announcement-icon">✦</span>
+      <strong>
+        ${featuredPromo
+          ? `${escapePresetText(featuredPromoOffer)} with code <span class="announcement-code">${escapePresetText(featuredPromo.code)}</span>${Number(featuredPromo.minimum_spend || 0) > 0 ? ` - min. spend ${displaySettingMoney(featuredPromo.minimum_spend)}` : ""}`
+          : ""}
+        ${featuredPromoHasDeadline ? ` - ends in <span id="featuredPromoCountdownText"></span>` : ""}
+      </strong>
+    </div>
+
+    <div class="announcement-item">
+      <span class="announcement-icon">♡</span>
+      <span>Made in Singapore</span>
+    </div>
+
+    <div class="announcement-item">
+      <span class="announcement-icon">▣</span>
+      <span>Free islandwide delivery above ${displaySettingMoney(freeDeliveryThreshold)}</span>
+    </div>
   </div>
-
-  <span id="holidayNoticeDivider" class="announcement-divider hidden"></span>
-
-  <div id="holidayNotice" class="announcement-item announcement-holiday hidden">
-    <span class="announcement-icon">▧</span>
-
-    <span>
-      <strong>Shop Notice:</strong>
-      <span id="holidayNoticeText"></span>
-    </span>
-  </div>
-
-  <span id="launchCountdownDivider" class="announcement-divider ${launchPriceEnabled && launchPriceHasDeadline ? "" : "hidden"}"></span>
-
-  <div id="launchPriceCountdown" class="announcement-item announcement-launch ${launchPriceEnabled && launchPriceHasDeadline ? "" : "hidden"}">
-    <span class="announcement-icon">⌛</span>
-    <strong>Launch price ends in <span id="launchCountdownText"></span></strong>
-  </div>
-
-  <span id="featuredPromoDivider" class="announcement-divider ${featuredPromo ? "" : "hidden"}"></span>
-
-  <div id="featuredPromoAnnouncement" class="announcement-item announcement-promo ${featuredPromo ? "" : "hidden"}">
-    <span class="announcement-icon">✦</span>
-    <strong>
-      ${featuredPromo
-        ? `${escapePresetText(featuredPromoOffer)} with code <span class="announcement-code">${escapePresetText(featuredPromo.code)}</span>${Number(featuredPromo.minimum_spend || 0) > 0 ? ` - min. spend ${displaySettingMoney(featuredPromo.minimum_spend)}` : ""}`
-        : ""}
-      ${featuredPromoHasDeadline ? ` - ends in <span id="featuredPromoCountdownText"></span>` : ""}
-    </strong>
-  </div>
+  <button id="announcementNext" class="announcement-arrow" type="button" aria-label="Next announcement">›</button>
 </div>
 
 <header class="site-header">
@@ -5601,26 +5592,30 @@ async function loadShopNotices() {
 
 let announcementRotationIndex = 0;
 
-function rotateAnnouncementBar({ reset = false } = {}) {
+function rotateAnnouncementBar({ reset = false, step = 0 } = {}) {
   const bar = document.querySelector(".announcement-bar");
   if (!bar) return;
   const items = Array.from(bar.querySelectorAll(".announcement-item"))
     .filter(item => !item.classList.contains("hidden"));
   if (reset) announcementRotationIndex = 0;
-  if (window.innerWidth > 760) {
-    items.forEach(item => item.classList.remove("is-mobile-active"));
-    return;
-  }
   if (!items.length) return;
-  announcementRotationIndex %= items.length;
+  announcementRotationIndex = (announcementRotationIndex + step + items.length) % items.length;
   items.forEach((item, index) => {
-    item.classList.toggle("is-mobile-active", index === announcementRotationIndex);
+    item.classList.toggle("is-announcement-active", index === announcementRotationIndex);
   });
-  announcementRotationIndex = (announcementRotationIndex + 1) % items.length;
+  const arrowsShouldShow = items.length > 1;
+  document.getElementById("announcementPrevious")?.classList.toggle("hidden", !arrowsShouldShow);
+  document.getElementById("announcementNext")?.classList.toggle("hidden", !arrowsShouldShow);
 }
 
 window.addEventListener("resize", () => rotateAnnouncementBar({ reset: true }));
-setInterval(rotateAnnouncementBar, 4800);
+document.getElementById("announcementPrevious")?.addEventListener("click", () => {
+  rotateAnnouncementBar({ step: -1 });
+});
+document.getElementById("announcementNext")?.addEventListener("click", () => {
+  rotateAnnouncementBar({ step: 1 });
+});
+setInterval(() => rotateAnnouncementBar({ step: 1 }), 4800);
 
 function startLaunchPriceCountdown() {
   const countdown = document.getElementById("launchPriceCountdown");
