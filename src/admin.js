@@ -2493,9 +2493,10 @@ function renderSettingsWorkspace() {
   `;
 
   document.getElementById("shopSettingsForm").addEventListener("submit", event => {
+    const settingsForm = event.currentTarget;
     saveShopSettings(event).catch(error => {
       console.error("Unable to save shop settings:", error);
-      const saveButton = event.currentTarget?.querySelector('[type="submit"]');
+      const saveButton = settingsForm?.querySelector('[type="submit"]');
       if (saveButton) {
         saveButton.disabled = false;
         saveButton.textContent = "Save Settings";
@@ -2746,7 +2747,7 @@ async function saveShopSettings(event) {
     }
   }
   const colourRows = Array.from(
-    event.currentTarget.querySelectorAll("[data-colour-row]")
+    settingsForm.querySelectorAll("[data-colour-row]")
   );
   const colourOptions = colourRows.map(row => ({
     name: String(row.querySelector('[name="colour_name"]')?.value || "").trim(),
@@ -2815,7 +2816,7 @@ async function saveShopSettings(event) {
       galleryPaths = [];
     }
     galleryPaths = Array.isArray(galleryPaths) ? galleryPaths.filter(Boolean) : [];
-    const videoInput = Array.from(event.currentTarget.querySelectorAll("[data-product-video-upload]"))
+    const videoInput = Array.from(settingsForm.querySelectorAll("[data-product-video-upload]"))
       .find(element => element.dataset.productVideoUpload === product.product_key);
     try {
       const uploadedGalleryPaths = [];
