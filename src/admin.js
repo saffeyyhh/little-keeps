@@ -1858,13 +1858,22 @@ async function uploadProductImage(file, productKey) {
 
 async function uploadProductVideo(file, productKey) {
   if (!file) return "";
-  if (!/^video\/(mp4|quicktime)$/i.test(file.type) || file.size > 50 * 1024 * 1024) {
-    throw new Error("Use an MP4 or MOV video up to 50 MB.");
+  const extensionFromName = String(file.name || "").split(".").pop()?.toLowerCase() || "";
+  const supportedType = /^video\/(mp4|quicktime|x-m4v)$/i.test(file.type) ||
+    ["mp4", "mov", "m4v"].includes(extensionFromName);
+  const maximumBytes = 50 * 1024 * 1024;
+  if (!supportedType) {
+    throw new Error(`“${file.name || "This file"}” is not a supported video. Use an MP4 or MOV file.`);
   }
-  const extension = file.type === "video/quicktime" ? "mov" : "mp4";
+  if (file.size > maximumBytes) {
+    const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+    throw new Error(`“${file.name || "This video"}” is ${sizeMb} MB. Export or compress it to under 50 MB before uploading so the shop stays fast.`);
+  }
+  const extension = ["mov", "m4v"].includes(extensionFromName) ? extensionFromName : "mp4";
   const path = `${productKey}/video-${crypto.randomUUID()}.${extension}`;
+  const contentType = extension === "mov" ? "video/quicktime" : "video/mp4";
   const { error } = await supabase.storage.from("product-images").upload(path, file, {
-    cacheControl: "3600", contentType: file.type, upsert: false
+    cacheControl: "3600", contentType, upsert: false
   });
   if (error) throw error;
   return supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
@@ -2091,8 +2100,8 @@ function renderSettingsWorkspace() {
                           <div>
                             <label class="settings-field">
                               <span>${productVideoPath ? "Replace click video" : "Add click video"}</span>
-                              <input type="file" accept="video/mp4,video/quicktime" data-product-video-upload="${escapeAdminHtml(product.product_key)}">
-                              <small>MP4 or MOV · up to 50 MB. A square video looks best.</small>
+                              <input type="file" accept="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v" data-product-video-upload="${escapeAdminHtml(product.product_key)}">
+                              <small>MP4 or MOV · up to 50 MB. Large camera originals must be exported smaller first; a square video looks best.</small>
                             </label>
                             ${productVideoPath ? `<button type="button" class="delete-product-btn" data-product-video-remove>Remove video</button>` : ""}
                           </div>
