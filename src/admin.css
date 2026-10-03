@@ -8084,6 +8084,17 @@ a {
   background: #fff;
 }
 
+.product-admin-media-item.is-pending {
+  border-color: #a993ca;
+  background: #faf7ff;
+}
+
+.product-admin-media-item.is-pending > span::after {
+  content: " · saves when you press Save Settings";
+  color: #7b6698;
+  font-weight: 600;
+}
+
 .product-admin-media-item img {
   width: 100%;
   aspect-ratio: 1;

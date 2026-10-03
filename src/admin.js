@@ -664,6 +664,7 @@ let adminReviewsLoadFailed = false;
 let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 let adminProductsLoadFailed = false;
+const pendingProductMediaFiles = new Map();
 let adminSettingsTab = "products";
 let easyParcelConnectionStatus = { connected: false };
 let activeEasyParcelOrderId = "";
@@ -1939,6 +1940,10 @@ window.deleteReadyMadeProduct = async function(productKey) {
 };
 
 function renderSettingsWorkspace() {
+  pendingProductMediaFiles.forEach(entry => {
+    if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl);
+  });
+  pendingProductMediaFiles.clear();
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
   const pickupTimes = normalizePickupTimeOptions(adminShopSettings.pickup_time_options);
@@ -2525,6 +2530,12 @@ function renderSettingsWorkspace() {
         syncGallery();
       }
       if (removeButton && item) {
+        const pendingId = String(item.dataset.mediaPath || "").replace(/^pending:/, "");
+        if (String(item.dataset.mediaPath || "").startsWith("pending:")) {
+          const pending = pendingProductMediaFiles.get(pendingId);
+          if (pending?.previewUrl) URL.revokeObjectURL(pending.previewUrl);
+          pendingProductMediaFiles.delete(pendingId);
+        }
         item.remove();
         syncGallery();
       }
@@ -2537,6 +2548,36 @@ function renderSettingsWorkspace() {
         manager.querySelector("[data-product-admin-video]")?.prepend(emptyVideo);
         videoRemoveButton.remove();
       }
+    });
+
+    manager.querySelector("[data-product-gallery-upload]")?.addEventListener("change", event => {
+      const gallery = manager.querySelector("[data-product-admin-gallery]");
+      if (!gallery) return;
+      Array.from(event.currentTarget.files || []).forEach(file => {
+        if (!/^image\/(jpeg|png|webp)$/i.test(file.type) || file.size > 8 * 1024 * 1024) {
+          alert(`“${file.name}” could not be added. Use a JPG, PNG or WebP image up to 8 MB.`);
+          return;
+        }
+        const pendingId = crypto.randomUUID();
+        const previewUrl = URL.createObjectURL(file);
+        pendingProductMediaFiles.set(pendingId, { file, previewUrl });
+        const item = document.createElement("article");
+        item.className = "product-admin-media-item is-pending";
+        item.dataset.productMediaItem = "";
+        item.dataset.mediaPath = `pending:${pendingId}`;
+        item.innerHTML = `
+          <img src="${previewUrl}" alt="New product photo preview">
+          <span>New photo</span>
+          <div>
+            <button type="button" data-product-media-move="up" aria-label="Move photo left">←</button>
+            <button type="button" data-product-media-move="down" aria-label="Move photo right">→</button>
+            <button type="button" data-product-media-remove aria-label="Remove photo">Remove</button>
+          </div>
+        `;
+        gallery.append(item);
+      });
+      event.currentTarget.value = "";
+      syncGallery();
     });
   });
   const showSettingsTab = tab => {
@@ -2749,15 +2790,22 @@ async function saveShopSettings(event) {
       galleryPaths = [];
     }
     galleryPaths = Array.isArray(galleryPaths) ? galleryPaths.filter(Boolean) : [];
-    const galleryInput = Array.from(event.currentTarget.querySelectorAll("[data-product-gallery-upload]"))
-      .find(element => element.dataset.productGalleryUpload === product.product_key);
     const videoInput = Array.from(event.currentTarget.querySelectorAll("[data-product-video-upload]"))
       .find(element => element.dataset.productVideoUpload === product.product_key);
     try {
-      for (const file of Array.from(galleryInput?.files || [])) {
-        galleryPaths.push(await uploadProductImage(file, product.product_key));
+      const uploadedGalleryPaths = [];
+      for (const path of galleryPaths) {
+        if (!String(path).startsWith("pending:")) {
+          uploadedGalleryPaths.push(path);
+          continue;
+        }
+        const pendingId = String(path).replace(/^pending:/, "");
+        const pending = pendingProductMediaFiles.get(pendingId);
+        if (pending?.file) {
+          uploadedGalleryPaths.push(await uploadProductImage(pending.file, product.product_key));
+        }
       }
-      form.set(galleryField, JSON.stringify(Array.from(new Set(galleryPaths))));
+      form.set(galleryField, JSON.stringify(Array.from(new Set(uploadedGalleryPaths))));
       const videoFile = videoInput?.files?.[0];
       if (videoFile) form.set(videoField, await uploadProductVideo(videoFile, product.product_key));
     } catch (error) {
