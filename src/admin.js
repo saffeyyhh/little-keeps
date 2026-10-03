@@ -628,6 +628,7 @@ const DEFAULT_ADMIN_SHOP_SETTINGS = {
   booth_address: "",
   booth_note: "",
   booth_map_url: "",
+  booth_image_url: "",
   review_url: "https://www.instagram.com/madebylittlekeeps/",
   contact_whatsapp_number: "6585121915",
   stripe_enabled: false,
@@ -665,6 +666,7 @@ let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 let adminProductsLoadFailed = false;
 const pendingProductMediaFiles = new Map();
+let pendingBoothPreviewUrl = "";
 let adminSettingsTab = "products";
 let easyParcelConnectionStatus = { connected: false };
 let activeEasyParcelOrderId = "";
@@ -1944,6 +1946,8 @@ function renderSettingsWorkspace() {
     if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl);
   });
   pendingProductMediaFiles.clear();
+  if (pendingBoothPreviewUrl) URL.revokeObjectURL(pendingBoothPreviewUrl);
+  pendingBoothPreviewUrl = "";
   const checked = value => value ? "checked" : "";
   const unavailableColours = getUnavailableAdminColours();
   const pickupTimes = normalizePickupTimeOptions(adminShopSettings.pickup_time_options);
@@ -2430,6 +2434,22 @@ function renderSettingsWorkspace() {
             <span>What customers can do there</span>
             <textarea name="booth_note" rows="3" maxlength="240" placeholder="Try every clicker, see all filament colours and order on the spot.">${escapeAdminHtml(adminShopSettings.booth_note || "")}</textarea>
           </label>
+          <div class="booth-photo-admin">
+            <div class="booth-photo-preview ${adminShopSettings.booth_image_url ? "has-photo" : ""}" data-booth-photo-preview>
+              ${adminShopSettings.booth_image_url
+                ? `<img src="${escapeAdminHtml(adminShopSettings.booth_image_url)}" alt="Current booth photo">`
+                : `<p>Add a booth photo to make the storefront feature more eye-catching.</p>`}
+            </div>
+            <div>
+              <label class="settings-field">
+                <span>${adminShopSettings.booth_image_url ? "Replace booth photo" : "Add booth photo"}</span>
+                <input id="boothImageUpload" type="file" accept="image/jpeg,image/png,image/webp">
+                <small>JPG, PNG or WebP · up to 8 MB. A landscape or square photo works best.</small>
+              </label>
+              <input name="booth_image_url" type="hidden" value="${escapeAdminHtml(adminShopSettings.booth_image_url || "")}">
+              <button id="removeBoothImage" type="button" class="delete-product-btn ${adminShopSettings.booth_image_url ? "" : "hidden"}">Remove photo</button>
+            </div>
+          </div>
         </section>
 
         <section class="settings-card settings-card-wide" data-settings-group="customer">
@@ -2503,6 +2523,37 @@ function renderSettingsWorkspace() {
       }
       alert(`Unable to save the settings.\n\n${error.message || error}`);
     });
+  });
+  const boothImageInput = document.getElementById("boothImageUpload");
+  const boothImageHidden = document.querySelector('[name="booth_image_url"]');
+  const boothImagePreview = document.querySelector("[data-booth-photo-preview]");
+  const removeBoothImageButton = document.getElementById("removeBoothImage");
+  boothImageInput?.addEventListener("change", event => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type) || file.size > 8 * 1024 * 1024) {
+      alert("Use a JPG, PNG or WebP booth photo up to 8 MB.");
+      event.currentTarget.value = "";
+      return;
+    }
+    if (pendingBoothPreviewUrl) URL.revokeObjectURL(pendingBoothPreviewUrl);
+    pendingBoothPreviewUrl = URL.createObjectURL(file);
+    if (boothImagePreview) {
+      boothImagePreview.classList.add("has-photo");
+      boothImagePreview.innerHTML = `<img src="${pendingBoothPreviewUrl}" alt="New booth photo preview">`;
+    }
+    removeBoothImageButton?.classList.remove("hidden");
+  });
+  removeBoothImageButton?.addEventListener("click", () => {
+    if (pendingBoothPreviewUrl) URL.revokeObjectURL(pendingBoothPreviewUrl);
+    pendingBoothPreviewUrl = "";
+    if (boothImageInput) boothImageInput.value = "";
+    if (boothImageHidden) boothImageHidden.value = "";
+    if (boothImagePreview) {
+      boothImagePreview.classList.remove("has-photo");
+      boothImagePreview.innerHTML = "<p>No booth photo selected.</p>";
+    }
+    removeBoothImageButton.classList.add("hidden");
   });
   document.querySelectorAll("[data-product-media-manager]").forEach(manager => {
     const syncGallery = () => {
@@ -2714,7 +2765,8 @@ async function saveShopSettings(event) {
 
   if (saveButton) {
     saveButton.disabled = true;
-    saveButton.textContent = pendingProductMediaFiles.size ? "Uploading photos…" : "Saving…";
+    const hasBoothPhoto = Boolean(settingsForm.querySelector("#boothImageUpload")?.files?.length);
+    saveButton.textContent = pendingProductMediaFiles.size || hasBoothPhoto ? "Uploading photos…" : "Saving…";
   }
 
   const form = new FormData(settingsForm);
@@ -2738,11 +2790,21 @@ async function saveShopSettings(event) {
   const boothAddress = String(form.get("booth_address") || "").trim();
   const boothNote = String(form.get("booth_note") || "").trim();
   const boothMapUrl = String(form.get("booth_map_url") || "").trim();
+  let boothImageUrl = String(form.get("booth_image_url") || "").trim();
   if (boothMapUrl) {
     try {
       if (new URL(boothMapUrl).protocol !== "https:") throw new Error("https required");
     } catch {
       stopSaving("Use a complete secure Google Maps link beginning with https://");
+      return;
+    }
+  }
+  const boothImageFile = settingsForm.querySelector("#boothImageUpload")?.files?.[0];
+  if (boothImageFile) {
+    try {
+      boothImageUrl = await uploadProductImage(boothImageFile, "booth");
+    } catch (error) {
+      stopSaving(`Unable to upload the booth photo.\n\n${error.message || error}`);
       return;
     }
   }
@@ -2901,6 +2963,7 @@ async function saveShopSettings(event) {
     booth_address: boothAddress,
     booth_note: boothNote,
     booth_map_url: boothMapUrl,
+    booth_image_url: boothImageUrl,
     colour_options: normalizedColourOptions,
     product_catalog_overrides: productCatalogOverrides,
     product_statuses: productStatusOverrides
@@ -2975,6 +3038,7 @@ async function saveShopSettings(event) {
     booth_address: String(savedShopSettings.pickup_time_options?.booth_address || "").trim(),
     booth_note: String(savedShopSettings.pickup_time_options?.booth_note || "").trim(),
     booth_map_url: String(savedShopSettings.pickup_time_options?.booth_map_url || "").trim(),
+    booth_image_url: String(savedShopSettings.pickup_time_options?.booth_image_url || "").trim(),
     pickup_time_options: normalizePickupTimeOptions(savedShopSettings.pickup_time_options)
   };
   adminShopSettings.easyparcel_settings = {
@@ -16538,6 +16602,9 @@ async function loadAdminSettings() {
   ).trim();
   adminShopSettings.booth_map_url = String(
     adminShopSettings.pickup_time_options?.booth_map_url ?? adminShopSettings.booth_map_url ?? ""
+  ).trim();
+  adminShopSettings.booth_image_url = String(
+    adminShopSettings.pickup_time_options?.booth_image_url ?? adminShopSettings.booth_image_url ?? ""
   ).trim();
   adminShopSettings.bulk_buffer_days = Math.max(0, Number(
     adminShopSettings.pickup_time_options?.bulk_buffer_days ??

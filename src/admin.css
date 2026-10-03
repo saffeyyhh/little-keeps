@@ -8127,6 +8127,33 @@ a {
 .product-media-empty { margin: 8px 0; color: #798b95; font-size: 11px; }
 .product-media-upload { margin-top: 12px; }
 
+.booth-photo-admin {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.booth-photo-preview {
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border: 1px dashed #c9b5d6;
+  border-radius: 16px;
+  color: #7b6d82;
+  background: #faf7fc;
+  text-align: center;
+}
+
+.booth-photo-preview.has-photo { padding: 0; overflow: hidden; border-style: solid; }
+.booth-photo-preview img { width: 100%; height: 180px; display: block; object-fit: cover; }
+
+@media (max-width: 700px) {
+  .booth-photo-admin { grid-template-columns: 1fr; }
+}
+
 .product-admin-video {
   margin-top: 14px;
   padding-top: 14px;

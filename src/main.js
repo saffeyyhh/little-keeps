@@ -127,6 +127,7 @@ const DEFAULT_SHOP_SETTINGS = {
   booth_address: "",
   booth_note: "",
   booth_map_url: "",
+  booth_image_url: "",
   unavailable_colours: [],
   colour_options: DEFAULT_COLOUR_OPTIONS,
   promo_code: "CHILDRENSDAY",
@@ -307,6 +308,9 @@ try {
   shopSettings.booth_map_url = String(
     shopSettings.pickup_time_options?.booth_map_url || ""
   ).trim();
+  shopSettings.booth_image_url = String(
+    shopSettings.pickup_time_options?.booth_image_url || ""
+  ).trim();
   shopSettings.pickup_time_options = normalizePickupTimeOptions(
     shopSettings.pickup_time_options
   );
@@ -328,6 +332,9 @@ const boothAddress = String(shopSettings.booth_address || "").trim();
 const boothNote = String(shopSettings.booth_note || "").trim();
 const boothMapUrl = isSecureWebUrl(shopSettings.booth_map_url)
   ? String(shopSettings.booth_map_url).trim()
+  : "";
+const boothImageUrl = isSecureWebUrl(shopSettings.booth_image_url)
+  ? String(shopSettings.booth_image_url).trim()
   : "";
 const showBoothSection = Boolean(
   boothEnabled && (boothName || boothVenue || boothDateText || boothAddress)
@@ -1394,9 +1401,10 @@ ${showBoothSection ? `
         </div>
       </div>
 
-      <div class="next-booth-visual" aria-hidden="true">
-        <span>TRY</span><span>THE</span><span>CLICK</span>
-        <b>♡</b>
+      <div class="next-booth-visual ${boothImageUrl ? "has-photo" : ""}" ${boothImageUrl ? "" : 'aria-hidden="true"'}>
+        ${boothImageUrl
+          ? `<img src="${escapePresetText(boothImageUrl)}" alt="${escapePresetText(boothName ? `${boothName} booth` : "Little Keeps booth")}">`
+          : `<span>TRY</span><span>THE</span><span>CLICK</span><b>♡</b>`}
       </div>
     </div>
   </section>
