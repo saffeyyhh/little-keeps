@@ -1125,19 +1125,32 @@ ${requestedPreviewProductKey ? `
   <div class="product-card-grid product-catalog-grid">
   ${modularProduct.status !== "hidden" ? `
     <article class="product-card product-card-current product-card-featured" data-occasions="teacher birthdays couples kpop party gifts names">
-      <div class="product-card-visual product-card-video-visual">
-        <video
-          class="product-card-video"
-          src="/media/modular-clicker-demo.mp4"
-          poster="/images/modular-clicky-keychain.jpg"
-          muted
-          loop
-          playsinline
-          preload="metadata"
-          aria-label="Colourful modular clicky keychains being pressed"
-        ></video>
+      <div class="product-card-visual product-card-video-visual product-media-gallery" data-product-media-gallery>
+        <div class="product-media-track" data-product-media-track>
+          <div class="product-media-slide">
+            <img src="/images/modular-clicky-keychain.jpg" alt="Colourful modular clicky keychains" loading="lazy">
+          </div>
+          <div class="product-media-slide">
+            <video
+              class="product-card-video"
+              src="/media/modular-clicker-demo.mp4"
+              poster="/images/modular-clicky-keychain.jpg"
+              muted
+              loop
+              playsinline
+              preload="metadata"
+              aria-label="Colourful modular clicky keychains being pressed"
+            ></video>
+          </div>
+        </div>
         <span class="product-card-badge product-card-bestseller-badge">Bestseller</span>
-        <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle aria-pressed="false">
+        <button type="button" class="product-media-arrow product-media-arrow-prev" data-product-media-prev aria-label="Previous photo">‹</button>
+        <button type="button" class="product-media-arrow product-media-arrow-next" data-product-media-next aria-label="Next photo">›</button>
+        <div class="product-media-dots" aria-label="Product media">
+          <button type="button" class="is-active" data-product-media-dot="0" aria-label="Show product photo"></button>
+          <button type="button" data-product-media-dot="1" aria-label="Show click video"></button>
+        </div>
+        <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle data-playing="false" aria-pressed="false">
           <span aria-hidden="true">▶</span> See it click
         </button>
       </div>
@@ -1169,19 +1182,32 @@ ${requestedPreviewProductKey ? `
 
   ${solidProduct.status !== "hidden" ? `
     <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="teacher birthdays couples kpop party gifts names" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
-      <div class="product-card-visual product-card-video-visual">
-        <video
-          class="product-card-video"
-          src="/media/compact-clicker-demo.mp4"
-          poster="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}"
-          muted
-          loop
-          playsinline
-          preload="metadata"
-          aria-label="A compact solid clicky keychain being pressed"
-        ></video>
+      <div class="product-card-visual product-card-video-visual product-media-gallery" data-product-media-gallery>
+        <div class="product-media-track" data-product-media-track>
+          <div class="product-media-slide">
+            <img src="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}" alt="Compact solid clicky keychains" loading="lazy">
+          </div>
+          <div class="product-media-slide">
+            <video
+              class="product-card-video"
+              src="/media/compact-clicker-demo.mp4"
+              poster="${escapePresetText(solidProduct.image_path || "/images/compact-solid-clicky-keychain.jpg")}"
+              muted
+              loop
+              playsinline
+              preload="metadata"
+              aria-label="A compact solid clicky keychain being pressed"
+            ></video>
+          </div>
+        </div>
         ${solidProduct.status === "active" ? "" : `<span class="product-card-badge">Coming soon</span>`}
-        <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle aria-pressed="false">
+        <button type="button" class="product-media-arrow product-media-arrow-prev" data-product-media-prev aria-label="Previous photo">‹</button>
+        <button type="button" class="product-media-arrow product-media-arrow-next" data-product-media-next aria-label="Next photo">›</button>
+        <div class="product-media-dots" aria-label="Product media">
+          <button type="button" class="is-active" data-product-media-dot="0" aria-label="Show product photo"></button>
+          <button type="button" data-product-media-dot="1" aria-label="Show click video"></button>
+        </div>
+        <button type="button" class="clicker-sound-toggle" data-clicker-sound-toggle data-playing="false" aria-pressed="false">
           <span aria-hidden="true">▶</span> See it click
         </button>
       </div>
@@ -1318,19 +1344,6 @@ ${requestedPreviewProductKey ? `
 
 </div>
   <p class="occasion-empty hidden" id="occasionEmpty">No products match this occasion yet—try “All.”</p>
-</section>
-
-<section class="customer-gallery" data-store-view="shop" aria-labelledby="customerGalleryHeading">
-  <div class="customer-gallery-heading">
-    <p class="section-eyebrow">Made for you ♡</p>
-    <h2 id="customerGalleryHeading">See what you can create</h2>
-    <p>Every name, palette and little detail can be made differently.</p>
-  </div>
-  <div class="customer-gallery-grid">
-    <figure><img src="/images/modular-clicky-keychain.jpg" alt="Colourful personalised modular clicky keychains" loading="lazy"><figcaption>Mix every colour</figcaption></figure>
-    <figure><img src="/images/compact-solid-clicky-keychain.jpg" alt="A collection of compact personalised clicky keychains" loading="lazy"><figcaption>Choose your style</figcaption></figure>
-    <figure><img src="/images/custom-pencil-clicker.jpg" alt="Personalised pencil clicker keychains" loading="lazy"><figcaption>Make it completely yours</figcaption></figure>
-  </div>
 </section>
 
 ${showBoothSection ? `
@@ -10271,44 +10284,90 @@ document.querySelectorAll("[data-ready-product]").forEach(button => {
   button.addEventListener("click", () => openReadyMadeProduct(button.dataset.readyProduct));
 });
 
+function setProductMediaSlide(gallery, slideIndex, { smooth = true } = {}) {
+  const track = gallery?.querySelector("[data-product-media-track]");
+  if (!track) return;
+  const slides = Array.from(track.children);
+  const index = Math.max(0, Math.min(Number(slideIndex) || 0, slides.length - 1));
+  track.scrollTo({ left: track.clientWidth * index, behavior: smooth ? "smooth" : "auto" });
+  gallery.querySelectorAll("[data-product-media-dot]").forEach(dot => {
+    dot.classList.toggle("is-active", Number(dot.dataset.productMediaDot) === index);
+  });
+}
+
+function resetProductVideo(button, { returnToPhoto = false } = {}) {
+  const gallery = button?.closest("[data-product-media-gallery]");
+  const video = gallery?.querySelector("video");
+  if (video) {
+    video.pause();
+    video.muted = true;
+    video.currentTime = 0;
+    video.load();
+  }
+  if (button) {
+    button.dataset.playing = "false";
+    button.setAttribute("aria-pressed", "false");
+    button.innerHTML = '<span aria-hidden="true">▶</span> See it click';
+  }
+  if (returnToPhoto && gallery) setProductMediaSlide(gallery, 0);
+}
+
+document.querySelectorAll("[data-product-media-gallery]").forEach(gallery => {
+  const track = gallery.querySelector("[data-product-media-track]");
+  const playButton = gallery.querySelector("[data-clicker-sound-toggle]");
+  let scrollTimer;
+
+  gallery.querySelector("[data-product-media-prev]")?.addEventListener("click", () => {
+    resetProductVideo(playButton);
+    setProductMediaSlide(gallery, 0);
+  });
+  gallery.querySelector("[data-product-media-next]")?.addEventListener("click", () => {
+    resetProductVideo(playButton);
+    setProductMediaSlide(gallery, 1, { smooth: false });
+  });
+  gallery.querySelectorAll("[data-product-media-dot]").forEach(dot => {
+    dot.addEventListener("click", () => {
+      resetProductVideo(playButton);
+      setProductMediaSlide(gallery, Number(dot.dataset.productMediaDot));
+    });
+  });
+
+  track?.addEventListener("scroll", () => {
+    window.clearTimeout(scrollTimer);
+    scrollTimer = window.setTimeout(() => {
+      const index = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+      gallery.querySelectorAll("[data-product-media-dot]").forEach(dot => {
+        dot.classList.toggle("is-active", Number(dot.dataset.productMediaDot) === index);
+      });
+      if (index === 0 && playButton?.dataset.playing === "true") resetProductVideo(playButton);
+    }, 80);
+  }, { passive: true });
+});
+
 document.querySelectorAll("[data-clicker-sound-toggle]").forEach(button => {
   button.addEventListener("click", async () => {
-    const video = button.closest(".product-card-video-visual")?.querySelector("video");
+    const gallery = button.closest("[data-product-media-gallery]");
+    const video = gallery?.querySelector("video");
     if (!video) return;
 
-    const turnSoundOn = video.muted;
-
-    if (turnSoundOn) {
-      document.querySelectorAll("[data-clicker-sound-toggle]").forEach(otherButton => {
-        if (otherButton === button) return;
-        const otherVideo = otherButton.closest(".product-card-video-visual")?.querySelector("video");
-        if (otherVideo) {
-          otherVideo.muted = true;
-          otherVideo.pause();
-          otherVideo.currentTime = 0;
-        }
-        otherButton.setAttribute("aria-pressed", "false");
-        otherButton.innerHTML = '<span aria-hidden="true">▶</span> See it click';
-      });
+    const wasPlaying = button.dataset.playing === "true";
+    document.querySelectorAll("[data-clicker-sound-toggle]").forEach(otherButton => {
+      resetProductVideo(otherButton, { returnToPhoto: otherButton !== button });
+    });
+    if (wasPlaying) {
+      setProductMediaSlide(gallery, 0);
+      return;
     }
 
-    video.muted = !turnSoundOn;
-    button.setAttribute("aria-pressed", String(turnSoundOn));
-    button.innerHTML = turnSoundOn
-      ? '<span aria-hidden="true">🔊</span> Click sound on'
-      : '<span aria-hidden="true">▶</span> See it click';
-
-    if (turnSoundOn) {
-      try {
-        await video.play();
-      } catch {
-        video.muted = true;
-        button.setAttribute("aria-pressed", "false");
-        button.innerHTML = '<span aria-hidden="true">▶</span> See it click';
-      }
-    } else {
-      video.pause();
-      video.currentTime = 0;
+    setProductMediaSlide(gallery, 1);
+    video.muted = false;
+    button.dataset.playing = "true";
+    button.setAttribute("aria-pressed", "true");
+    button.innerHTML = '<span aria-hidden="true">■</span> Back to photo';
+    try {
+      await video.play();
+    } catch {
+      resetProductVideo(button, { returnToPhoto: true });
     }
   });
 });
