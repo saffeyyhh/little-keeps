@@ -79,6 +79,7 @@ import {
 const pageUrlParams = new URLSearchParams(window.location.search);
 const isManualOrder = pageUrlParams.get("manual") === "true";
 const requestedPreviewProductKey = String(pageUrlParams.get("preview_product") || "").trim();
+const requestedProductKey = String(pageUrlParams.get("product") || "").trim();
 
 console.log("Manual mode:", isManualOrder);
 
@@ -705,12 +706,26 @@ function renderProductUnitsSoldBadge(product) {
     : "";
 }
 
+function getProductCardName(product) {
+  return ({
+    [MODULAR_PRODUCT_KEY]: "Modular Clicky",
+    [SOLID_PRODUCT_KEY]: "Compact Clicky",
+    [PENCIL_PRODUCT_KEY]: "Pencil Clicker",
+    [STANDARD_PRODUCT_KEY]: "Name Keychain",
+    [PHOTO_PRODUCT_KEY]: "Photo Keepsake"
+  })[product?.product_key] || product?.name || "Little Keeps product";
+}
+
+function getProductPublicUrl(productKey) {
+  return `/?product=${encodeURIComponent(productKey)}`;
+}
+
 function renderReadyMadeProductCard(product) {
   if (product.status === "hidden") return "";
   const soldOut = Number(product.stock_quantity || 0) <= 0;
   const unavailable = product.status !== "active" || soldOut;
   return `
-    <article class="product-card ready-made-product-card ${unavailable ? "product-card-coming" : "product-card-current"}">
+    <article class="product-card ready-made-product-card ${unavailable ? "product-card-coming" : "product-card-current"}" data-occasions="gifts birthdays">
       <div class="product-card-visual">
         ${product.image_path
           ? `<img src="${escapePresetText(product.image_path)}" alt="${escapePresetText(product.name)}" loading="lazy">`
@@ -718,7 +733,7 @@ function renderReadyMadeProductCard(product) {
         ${soldOut ? `<span class="product-card-badge">Sold out</span>` : product.status === "active" ? "" : `<span class="product-card-badge">Coming soon</span>`}
       </div>
       <div class="product-card-content">
-        <div><small>${escapePresetText(product.eyebrow || "Ready-made collection")}</small><h3>${escapePresetText(product.name)}</h3></div>
+        <div><small>${escapePresetText(product.eyebrow || "Ready-made collection")}</small><h3><a href="${getProductPublicUrl(product.product_key)}">${escapePresetText(getProductCardName(product))}</a></h3></div>
         <p>${escapePresetText(product.description || "A small-batch Little Keeps design.")}</p>
         ${renderProductCardPrice(product)}
         ${renderProductUnitsSoldBadge(product)}
@@ -1091,11 +1106,25 @@ ${requestedPreviewProductKey ? `
     <p class="section-eyebrow">Little Keeps</p>
     <h2 id="productsHeading">Personalised keepsakes</h2>
     <p class="products-count">${visibleProductCount} ${visibleProductCount === 1 ? "product" : "products"}</p>
+    <div class="catalogue-value-line" aria-label="Why shop Little Keeps">
+      <span>Made in Singapore</span>
+      <span>Preview before ordering</span>
+      <span>From ${displaySettingMoney(getProductDisplayPrice(modularProduct))}</span>
+    </div>
   </div>
+
+  <nav class="occasion-filters" aria-label="Shop by occasion">
+    <button type="button" class="is-active" data-occasion-filter="all">All</button>
+    <button type="button" data-occasion-filter="teacher">Teacher gifts</button>
+    <button type="button" data-occasion-filter="birthdays">Birthdays</button>
+    <button type="button" data-occasion-filter="couples">Couples</button>
+    <button type="button" data-occasion-filter="kpop">K-pop</button>
+    <button type="button" data-occasion-filter="party">Party favours</button>
+  </nav>
 
   <div class="product-card-grid product-catalog-grid">
   ${modularProduct.status !== "hidden" ? `
-    <article class="product-card product-card-current product-card-featured">
+    <article class="product-card product-card-current product-card-featured" data-occasions="teacher birthdays couples kpop party gifts names">
       <div class="product-card-visual product-card-video-visual">
         <video
           class="product-card-video"
@@ -1116,7 +1145,7 @@ ${requestedPreviewProductKey ? `
       <div class="product-card-content">
         <div>
           <small>${escapePresetText(modularProduct.eyebrow)}</small>
-          <h3>${escapePresetText(modularProduct.name)}</h3>
+          <h3><a href="${getProductPublicUrl(MODULAR_PRODUCT_KEY)}">${escapePresetText(getProductCardName(modularProduct))}</a></h3>
         </div>
         <p>${escapePresetText(modularProduct.description)}</p>
         <div class="product-quick-facts" aria-label="Product highlights">
@@ -1139,7 +1168,7 @@ ${requestedPreviewProductKey ? `
   ` : ""}
 
   ${solidProduct.status !== "hidden" ? `
-    <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+    <article class="product-card ${solidProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="teacher birthdays couples kpop party gifts names" ${solidProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <div class="product-card-visual product-card-video-visual">
         <video
           class="product-card-video"
@@ -1160,7 +1189,7 @@ ${requestedPreviewProductKey ? `
       <div class="product-card-content">
         <div>
           <small>${escapePresetText(solidProduct.eyebrow)}</small>
-          <h3>${escapePresetText(solidProduct.name)}</h3>
+          <h3><a href="${getProductPublicUrl(SOLID_PRODUCT_KEY)}">${escapePresetText(getProductCardName(solidProduct))}</a></h3>
         </div>
 
         <p>${escapePresetText(solidProduct.description)}</p>
@@ -1181,7 +1210,7 @@ ${requestedPreviewProductKey ? `
   ` : ""}
 
   ${pencilProduct.status !== "hidden" ? `
-    <article class="product-card pencil-product-card ${pencilProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${pencilProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+    <article class="product-card pencil-product-card ${pencilProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="teacher birthdays party gifts names" ${pencilProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <div class="product-card-visual pencil-product-visual">
         <img
           src="${escapePresetText(pencilProduct.image_path || "/images/custom-pencil-clicker.jpg")}"
@@ -1193,7 +1222,7 @@ ${requestedPreviewProductKey ? `
       <div class="product-card-content">
         <div>
           <small>${escapePresetText(pencilProduct.eyebrow)}</small>
-          <h3>${escapePresetText(pencilProduct.name)}</h3>
+          <h3><a href="${getProductPublicUrl(PENCIL_PRODUCT_KEY)}">${escapePresetText(getProductCardName(pencilProduct))}</a></h3>
         </div>
         <p>${escapePresetText(pencilProduct.description)}</p>
         <div class="product-quick-facts" aria-label="Product highlights">
@@ -1210,7 +1239,7 @@ ${requestedPreviewProductKey ? `
   ` : ""}
 
   ${standardProduct.status !== "hidden" ? `
-    <article class="product-card ${standardProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${standardProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+    <article class="product-card ${standardProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="teacher birthdays party gifts names" ${standardProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <div class="product-card-visual mystery-product-visual" aria-hidden="true">
         <div class="mystery-solid-base">
           <i></i><i></i><i></i><b>ABC</b>
@@ -1222,7 +1251,7 @@ ${requestedPreviewProductKey ? `
       <div class="product-card-content">
         <div>
           <small>${escapePresetText(standardProduct.eyebrow)}</small>
-          <h3>${escapePresetText(standardProduct.name)}</h3>
+          <h3><a href="${getProductPublicUrl(STANDARD_PRODUCT_KEY)}">${escapePresetText(getProductCardName(standardProduct))}</a></h3>
         </div>
 
         <p>${escapePresetText(standardProduct.description)}</p>
@@ -1257,15 +1286,19 @@ ${requestedPreviewProductKey ? `
   ` : ""}
 
   ${photoProduct.status !== "hidden" ? `
-    <article class="product-card ${photoProduct.status === "active" ? "product-card-current" : "product-card-coming"}" ${photoProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+    <article class="product-card ${photoProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="birthdays couples gifts pets" ${photoProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       <div class="product-card-visual photo-keepsake-visual" aria-hidden="true">
-        <div class="photo-artwork-sample"><span>♡</span><b>PHOTO</b></div>
+        <div class="photo-before-after">
+          <span class="photo-before"><i>♡</i><b>Your photo</b></span>
+          <em>→</em>
+          <span class="photo-after"><i></i><b>3D artwork</b></span>
+        </div>
         ${photoProduct.status === "active" ? "" : `<span class="product-card-badge">Coming soon</span>`}
       </div>
       <div class="product-card-content">
         <div>
           <small>${escapePresetText(photoProduct.eyebrow)}</small>
-          <h3>${escapePresetText(photoProduct.name)}</h3>
+          <h3><a href="${getProductPublicUrl(PHOTO_PRODUCT_KEY)}">${escapePresetText(getProductCardName(photoProduct))}</a></h3>
         </div>
         <p>${escapePresetText(photoProduct.description)}</p>
         <div class="product-quick-facts" aria-label="Product highlights">
@@ -1284,6 +1317,20 @@ ${requestedPreviewProductKey ? `
   ${readyMadeProducts.map(renderReadyMadeProductCard).join("")}
 
 </div>
+  <p class="occasion-empty hidden" id="occasionEmpty">No products match this occasion yet—try “All.”</p>
+</section>
+
+<section class="customer-gallery" data-store-view="shop" aria-labelledby="customerGalleryHeading">
+  <div class="customer-gallery-heading">
+    <p class="section-eyebrow">Made for you ♡</p>
+    <h2 id="customerGalleryHeading">See what you can create</h2>
+    <p>Every name, palette and little detail can be made differently.</p>
+  </div>
+  <div class="customer-gallery-grid">
+    <figure><img src="/images/modular-clicky-keychain.jpg" alt="Colourful personalised modular clicky keychains" loading="lazy"><figcaption>Mix every colour</figcaption></figure>
+    <figure><img src="/images/compact-solid-clicky-keychain.jpg" alt="A collection of compact personalised clicky keychains" loading="lazy"><figcaption>Choose your style</figcaption></figure>
+    <figure><img src="/images/custom-pencil-clicker.jpg" alt="Personalised pencil clicker keychains" loading="lazy"><figcaption>Make it completely yours</figcaption></figure>
+  </div>
 </section>
 
 ${showBoothSection ? `
@@ -2181,7 +2228,7 @@ Chloe</textarea>
               </label>
             </div>
           </div>
-        ` : `<p>PayNow for all orders · Cards and wallets from $30</p>`}
+        ` : `<p><strong>PayNow is available for every order.</strong> Cards and wallets are also available for totals from $30.</p>`}
       </div>
 
 <div class="checkout-submit-bar">
@@ -2245,25 +2292,31 @@ Chloe</textarea>
         <p class="payment-total-label">Total due</p>
         <strong id="paymentTotal" class="payment-total-value"></strong>
 
+        <div class="paynow-payment-panel">
+          <span class="online-payment-badge">No minimum spend</span>
+          <h3>Pay instantly with PayNow</h3>
+          <p>Scan the QR code and include your order reference in the payment comment so we can match it quickly.</p>
+          <img class="paynowQR" src="/models/paynow.png" alt="Little Keeps PayNow QR code">
+          <small>Your order is already saved. We’ll confirm it after checking your payment.</small>
+        </div>
+
         ${shopSettings.stripe_enabled ? `
-          <div class="online-payment-panel">
-            <p>Your secure payment session holds this production slot for about 30 minutes.</p>
-            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to secure payment</button>
-            <p id="stripeCheckoutStatus" class="hint"></p>
+          <div id="cardPaymentSection">
+            <div class="payment-divider"><span>Or use a card or wallet for totals from $30</span></div>
+            <div class="online-payment-panel">
+              <p>Your secure payment session holds this production slot for about 30 minutes.</p>
+              <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to secure payment</button>
+              <p id="stripeCheckoutStatus" class="hint"></p>
+            </div>
+            <p class="hint">We’ll email your confirmation and order PDF after payment.</p>
           </div>
-          <p class="hint">We’ll email your confirmation and order PDF after payment.</p>
-        ` : `
-          <div class="online-payment-panel">
-            <h3>Online payment is temporarily unavailable</h3>
-            <p>Please contact Little Keeps and quote your order reference.</p>
-          </div>
-        `}
+        ` : ""}
 
 <button
-  id="paymentDoneBtn"
+id="paymentDoneBtn"
   class="secondary-btn"
 >
-  Pay later — return to shop
+  I’ve paid by PayNow — return to shop
 </button>
       </div>
     </section>
@@ -2883,6 +2936,7 @@ const stripeCheckoutBtn =
 document.getElementById("stripeCheckoutBtn");
 const stripeCheckoutStatus =
 document.getElementById("stripeCheckoutStatus");
+const cardPaymentSection = document.getElementById("cardPaymentSection");
 const paymentBackBtn =
 document.getElementById("paymentBackBtn");
 
@@ -5495,6 +5549,29 @@ async function loadShopNotices() {
   holidayNoticeDivider?.classList.remove("hidden");
 }
 
+let announcementRotationIndex = 0;
+
+function rotateAnnouncementBar({ reset = false } = {}) {
+  const bar = document.querySelector(".announcement-bar");
+  if (!bar) return;
+  const items = Array.from(bar.querySelectorAll(".announcement-item"))
+    .filter(item => !item.classList.contains("hidden"));
+  if (reset) announcementRotationIndex = 0;
+  if (window.innerWidth > 760) {
+    items.forEach(item => item.classList.remove("is-mobile-active"));
+    return;
+  }
+  if (!items.length) return;
+  announcementRotationIndex %= items.length;
+  items.forEach((item, index) => {
+    item.classList.toggle("is-mobile-active", index === announcementRotationIndex);
+  });
+  announcementRotationIndex = (announcementRotationIndex + 1) % items.length;
+}
+
+window.addEventListener("resize", () => rotateAnnouncementBar({ reset: true }));
+setInterval(rotateAnnouncementBar, 4800);
+
 function startLaunchPriceCountdown() {
   const countdown = document.getElementById("launchPriceCountdown");
   const divider = document.getElementById("launchCountdownDivider");
@@ -7826,6 +7903,7 @@ async function submitOrderOnce() {
   paymentOrderRef.innerText = order.linked_order_ref || orderRef;
   paymentOrderRef.dataset.paymentRef = orderRef;
   paymentTotal.innerText = `$${total.toFixed(2)}`;
+  cardPaymentSection?.classList.toggle("hidden", total < 30);
   if (order.linked_order_ref) {
     paymentLinkedOrderNote.textContent =
       `Added to order ${order.linked_order_ref}. It keeps the same pickup or delivery method and there is no second delivery fee.`;
@@ -10354,10 +10432,76 @@ document
     });
   });
 
+document.querySelectorAll("[data-occasion-filter]").forEach(button => {
+  button.addEventListener("click", () => {
+    const filter = button.dataset.occasionFilter || "all";
+    let visibleCount = 0;
+    document.querySelectorAll(".product-catalog-grid .product-card").forEach(card => {
+      const occasions = String(card.dataset.occasions || "").split(/\s+/);
+      const visible = filter === "all" || occasions.includes(filter);
+      card.classList.toggle("occasion-hidden", !visible);
+      if (visible) visibleCount += 1;
+    });
+    document.querySelectorAll("[data-occasion-filter]").forEach(item => {
+      item.classList.toggle("is-active", item === button);
+    });
+    const productsCount = document.querySelector(".products-count");
+    if (productsCount) {
+      productsCount.textContent = `${visibleCount} ${visibleCount === 1 ? "product" : "products"}`;
+    }
+    document.getElementById("occasionEmpty")?.classList.toggle("hidden", visibleCount > 0);
+  });
+});
+
 setStorefrontView("shop", {
   instant: true,
   scroll: false
 });
+
+const requestedProduct = requestedProductKey
+  ? productCatalog.find(product => product.product_key === requestedProductKey && product.status === "active")
+  : null;
+
+if (requestedProduct && !requestedPreviewProductKey) {
+  document.title = `${requestedProduct.name} Singapore | Little Keeps`;
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (canonical) canonical.href = `${window.location.origin}${getProductPublicUrl(requestedProduct.product_key)}`;
+  const description = document.querySelector('meta[name="description"]');
+  const productDescription = `${requestedProduct.description} Personalise yours with a live preview, made in Singapore by Little Keeps.`;
+  if (description) description.content = productDescription;
+  const openGraphTitle = document.querySelector('meta[property="og:title"]');
+  const openGraphDescription = document.querySelector('meta[property="og:description"]');
+  const openGraphUrl = document.querySelector('meta[property="og:url"]');
+  if (openGraphTitle) openGraphTitle.content = document.title;
+  if (openGraphDescription) openGraphDescription.content = productDescription;
+  if (openGraphUrl) openGraphUrl.content = canonical?.href || window.location.href;
+  const productStructuredData = document.createElement("script");
+  productStructuredData.type = "application/ld+json";
+  productStructuredData.textContent = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: requestedProduct.name,
+    description: requestedProduct.description,
+    image: requestedProduct.image_path
+      ? `${window.location.origin}${requestedProduct.image_path}`
+      : `${window.location.origin}/images/modular-clicky-keychain.jpg`,
+    brand: { "@type": "Brand", name: "Little Keeps" },
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "SGD",
+      price: getProductDisplayPrice(requestedProduct).toFixed(2),
+      availability: "https://schema.org/InStock",
+      url: canonical?.href || window.location.href
+    }
+  });
+  document.head.append(productStructuredData);
+  if (requestedProduct.product_key === PHOTO_PRODUCT_KEY) {
+    openPhotoKeepsakeStudio();
+  } else {
+    beginProductDesign(requestedProduct.product_key);
+    setStorefrontView("design", { instant: true, scroll: false });
+  }
+}
 
 if (isProductPreview && previewProduct) {
   activeProduct = getProductByKey(productCatalog, previewProduct.product_key);
@@ -11982,9 +12126,14 @@ function renderCustomerOrderStatus(order) {
             ? "Your previous checkout expired and no slot is being held. Open payment again to reserve a fresh slot."
             : "A production slot will be held for about 30 minutes when the secure payment page opens."}</p>
         `}
-        ${shopSettings.stripe_enabled ? `
+        <div class="tracked-paynow-payment">
+          <strong>PayNow · no minimum spend</strong>
+          <img class="paynowQR" src="/models/paynow.png" alt="Little Keeps PayNow QR code">
+          <small>Include ${escapePresetText(order.order_ref || "your order reference")} in the payment comment.</small>
+        </div>
+        ${shopSettings.stripe_enabled && Number(order.total || 0) >= 30 ? `
           <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Start a new payment" : "Pay securely"}</button>
-        ` : `<p>Online payment is temporarily unavailable. Please contact Little Keeps.</p>`}
+        ` : ""}
       </div>
     ` : ""}
 
@@ -12183,7 +12332,8 @@ orderStatusForm?.addEventListener("submit", async event => {
   }
 });
 
-loadShopNotices();
+void loadShopNotices().finally(() => rotateAnnouncementBar({ reset: true }));
+rotateAnnouncementBar({ reset: true });
 startLaunchPriceCountdown();
 startFeaturedPromoCountdown();
 renderIconPicker();
@@ -12224,6 +12374,8 @@ animate();
 if (pageUrlParams.get("prepared")) {
   draftModal.classList.add("hidden");
   void loadPreparedCheckoutFromUrl();
+} else if (requestedProduct) {
+  draftModal.classList.add("hidden");
 } else if (!loadSharedDesignFromUrl()) {
   loadDraft();
 } else {
@@ -12336,6 +12488,7 @@ if (
   paymentOrderRef.innerText = "LK-PREVIEW-1234";
   paymentOrderRef.dataset.paymentRef = "LK-PREVIEW-1234";
   paymentTotal.innerText = "$5.70";
+  cardPaymentSection?.classList.add("hidden");
 
   const paymentBox = paymentScreen.querySelector(".payment-box");
 
