@@ -1485,10 +1485,11 @@ ${showBoothSection ? `
               </label>
               <label class="image-clicker-permission"><input id="imageClickerPermission" type="checkbox"><span>I own this image or have permission to print it. It may be stored privately for up to 30 days to make my order.</span></label>
             </div>
-            <div class="image-clicker-fit-options" aria-label="Image fit">
-              <button type="button" class="is-active" data-image-clicker-fit="cover">Fill the cap</button>
-              <button type="button" data-image-clicker-fit="contain">Show whole image</button>
+            <div class="image-clicker-fit-options" aria-label="Cap shape">
+              <button type="button" class="is-active" data-image-clicker-fit="shape">Follow artwork shape</button>
+              <button type="button" data-image-clicker-fit="square">Square photo cap</button>
             </div>
+            <p class="image-clicker-shape-help">Logos and transparent PNGs work best. For photos, choose a square cap.</p>
           </div>
         </div>
 
@@ -1516,7 +1517,10 @@ ${showBoothSection ? `
         <span class="image-clicker-preview-kicker">Live preview</span>
         <div id="imageClickerPreview" class="image-clicker-preview">
           <span class="image-clicker-ring" aria-hidden="true"></span>
-          <span class="image-clicker-shell"><i id="imageClickerPreviewArtwork">Choose an image</i></span>
+          <span class="image-clicker-shell">
+            <span class="image-clicker-cap-depth" aria-hidden="true"></span>
+            <i id="imageClickerPreviewArtwork">Choose an image</i>
+          </span>
         </div>
         <div class="image-clicker-price"><span id="imageClickerPriceLabel">1 clicker</span><strong>${displaySettingMoney(getProductDisplayPrice(imageClickerProduct))}</strong></div>
         <button id="addImageClickerToCartBtn" type="button">Add to cart <span>→</span></button>
@@ -4380,9 +4384,10 @@ let imageClickerState = {
   imagePath: "",
   designName: "",
   bodyColour: getAvailableColours()[0] || "#F55A74",
-  fit: "cover",
+  fit: "shape",
   file: null,
-  inputDataUrl: ""
+  inputDataUrl: "",
+  shapedDataUrl: ""
 };
 
 function getSelectedPhotoArtworkStyle() {
@@ -6912,7 +6917,8 @@ function createMiniPreview(name, design, product = activeProduct) {
     return `<div class="mini-photo-keepsake"><img src="${escapePresetText(design.photo.artworkUrl)}" alt="${escapePresetText(name)} artwork"></div>`;
   }
   if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY && design.imageCap?.imageUrl) {
-    return `<div class="mini-image-clicker" style="--mini-image-clicker-body:${escapePresetText(design.bases?.[0] || "#F55A74")}"><span><img src="${escapePresetText(design.imageCap.imageUrl)}" alt="${escapePresetText(name)} image" style="object-fit:${design.imageCap.fit === "contain" ? "contain" : "cover"}"></span></div>`;
+    const shapedCap = design.imageCap.fit === "shape";
+    return `<div class="mini-image-clicker ${shapedCap ? "is-shaped" : ""}" style="--mini-image-clicker-body:${escapePresetText(design.bases?.[0] || "#F55A74")}"><span><img src="${escapePresetText(design.imageCap.imageUrl)}" alt="${escapePresetText(name)} image" style="object-fit:${shapedCap || design.imageCap.fit === "contain" ? "contain" : "cover"}"></span></div>`;
   }
 
   if (product.product_key === STANDARD_PRODUCT_KEY) {
@@ -7855,7 +7861,9 @@ async function submitOrderOnce() {
             image_url: design.imageCap.imageUrl || "",
             image_path: design.imageCap.imagePath || "",
             design_name: design.imageCap.designName || "Image cap",
-            fit: design.imageCap.fit === "contain" ? "contain" : "cover"
+            fit: ["shape", "square"].includes(design.imageCap.fit)
+              ? design.imageCap.fit
+              : (design.imageCap.fit === "contain" ? "square" : "shape")
           } : null,
           letter_orientation: design.letterOrientation || "vertical",
           base_shape: {
@@ -10174,6 +10182,130 @@ async function preparePhotoForAi(file) {
   }
 }
 
+async function prepareImageClickerArtwork(file) {
+  if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("Choose a JPG, PNG or WebP image.");
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("This image is larger than 8 MB. Please choose a smaller file.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("This image could not be read."));
+      element.src = objectUrl;
+    });
+    const maxSide = 1400;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function removeImageClickerEdgeBackground(dataUrl) {
+  return new Promise(resolve => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      context.drawImage(image, 0, 0);
+      const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = frame.data;
+      const width = canvas.width;
+      const height = canvas.height;
+      const total = width * height;
+      const cornerIndexes = [0, width - 1, (height - 1) * width, total - 1];
+      const corners = cornerIndexes.map(index => [pixels[index * 4], pixels[index * 4 + 1], pixels[index * 4 + 2]]);
+      const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      const hasTransparency = (() => {
+        const sampleStep = Math.max(1, Math.floor(total / 5000));
+        for (let index = 0; index < total; index += sampleStep) {
+          if (pixels[index * 4 + 3] < 245) return true;
+        }
+        return false;
+      })();
+      const cornersMatch = corners.every(colour => distance(colour, corners[0]) < 48);
+
+      if (!hasTransparency && cornersMatch) {
+        const background = corners.reduce((result, colour) => result.map((value, index) => value + colour[index] / corners.length), [0, 0, 0]);
+        const seen = new Uint8Array(total);
+        const queue = new Int32Array(total);
+        let head = 0;
+        let tail = 0;
+        const canRemove = index => {
+          const offset = index * 4;
+          return pixels[offset + 3] > 0 && distance([pixels[offset], pixels[offset + 1], pixels[offset + 2]], background) < 72;
+        };
+        const enqueue = index => {
+          if (index < 0 || index >= total || seen[index] || !canRemove(index)) return;
+          seen[index] = 1;
+          queue[tail++] = index;
+        };
+        for (let x = 0; x < width; x += 1) {
+          enqueue(x);
+          enqueue((height - 1) * width + x);
+        }
+        for (let y = 0; y < height; y += 1) {
+          enqueue(y * width);
+          enqueue(y * width + width - 1);
+        }
+        while (head < tail) {
+          const index = queue[head++];
+          pixels[index * 4 + 3] = 0;
+          const x = index % width;
+          if (x > 0) enqueue(index - 1);
+          if (x < width - 1) enqueue(index + 1);
+          if (index >= width) enqueue(index - width);
+          if (index < total - width) enqueue(index + width);
+        }
+        context.putImageData(frame, 0, 0);
+      }
+
+      let minX = width;
+      let minY = height;
+      let maxX = -1;
+      let maxY = -1;
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          if (pixels[(y * width + x) * 4 + 3] > 12) {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+      }
+      if (maxX < minX || maxY < minY) {
+        resolve(dataUrl);
+        return;
+      }
+      const padding = Math.max(8, Math.round(Math.max(maxX - minX, maxY - minY) * .04));
+      const sourceX = Math.max(0, minX - padding);
+      const sourceY = Math.max(0, minY - padding);
+      const sourceWidth = Math.min(width - sourceX, maxX - minX + 1 + padding * 2);
+      const sourceHeight = Math.min(height - sourceY, maxY - minY + 1 + padding * 2);
+      const trimmed = document.createElement("canvas");
+      trimmed.width = sourceWidth;
+      trimmed.height = sourceHeight;
+      trimmed.getContext("2d").drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight);
+      resolve(trimmed.toDataURL("image/png"));
+    };
+    image.onerror = () => resolve(dataUrl);
+    image.src = dataUrl;
+  });
+}
+
 async function generatePhotoKeepsakeArtwork() {
   if (!photoKeepsakeState.file) {
     photoGenerationStatus.textContent = "Upload one clear photo first.";
@@ -10434,7 +10566,9 @@ function setImageClickerSource(source) {
       button.classList.toggle("is-active", galleryPaths[index] === imageClickerState.imageUrl);
     });
   } else if (imageClickerState.inputDataUrl) {
-    imageClickerState.imageUrl = imageClickerState.inputDataUrl;
+    imageClickerState.imageUrl = imageClickerState.fit === "shape"
+      ? imageClickerState.shapedDataUrl || imageClickerState.inputDataUrl
+      : imageClickerState.inputDataUrl;
   }
   document.querySelectorAll("[data-image-clicker-source]").forEach(button => {
     button.classList.toggle("is-active", button.dataset.imageClickerSource === imageClickerState.source);
@@ -10448,10 +10582,19 @@ function renderImageClickerPreview() {
   if (!imageClickerPreview || !imageClickerPreviewArtwork) return;
   imageClickerPreview.style.setProperty("--image-clicker-body", imageClickerState.bodyColour || "#F55A74");
   const hasImage = Boolean(imageClickerState.imageUrl);
+  const followsShape = imageClickerState.fit === "shape";
   imageClickerPreview.classList.toggle("has-image", hasImage);
+  imageClickerPreview.classList.toggle("follows-artwork-shape", hasImage && followsShape);
+  imageClickerPreview.classList.toggle("uses-square-cap", hasImage && !followsShape);
   imageClickerPreviewArtwork.innerHTML = hasImage
-    ? `<img src="${escapePresetText(imageClickerState.imageUrl)}" alt="Selected image cap preview" style="object-fit:${imageClickerState.fit === "contain" ? "contain" : "cover"}">`
+    ? `<img src="${escapePresetText(imageClickerState.imageUrl)}" alt="Selected image cap preview">`
     : "Choose an image";
+  const depth = imageClickerPreview.querySelector(".image-clicker-cap-depth");
+  if (depth) {
+    const maskValue = hasImage && followsShape ? `url(${JSON.stringify(imageClickerState.imageUrl)})` : "none";
+    depth.style.maskImage = maskValue;
+    depth.style.webkitMaskImage = maskValue;
+  }
   const quantity = normalizeItemQuantity(imageClickerQuantity?.value);
   if (imageClickerPriceLabel) imageClickerPriceLabel.textContent = `${quantity} clicker${quantity === 1 ? "" : "s"}`;
   const product = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
@@ -10472,9 +10615,10 @@ function openImageClickerStudio(existingItem = null, itemIndex = null) {
     imagePath: saved?.imagePath || "",
     designName: saved?.designName || (galleryPaths.length ? "K-pop design 1" : ""),
     bodyColour: existingItem?.custom?.bases?.[0] || getAvailableColours()[0] || "#F55A74",
-    fit: saved?.fit === "contain" ? "contain" : "cover",
+    fit: ["shape", "square"].includes(saved?.fit) ? saved.fit : (saved?.fit === "contain" ? "square" : "shape"),
     file: null,
-    inputDataUrl: savedImageUrl
+    inputDataUrl: savedImageUrl,
+    shapedDataUrl: saved?.shapedDataUrl || saved?.shaped_data_url || (saved?.fit === "shape" ? savedImageUrl : "")
   });
   if (imageClickerLabel) imageClickerLabel.value = existingItem?.name || "";
   if (imageClickerQuantity) imageClickerQuantity.value = String(getItemQuantity(existingItem || { quantity: 1 }));
@@ -10501,7 +10645,9 @@ function closeImageClickerStudio() {
 }
 
 async function storeCustomerImageCap() {
-  const imageDataUrl = imageClickerState.inputDataUrl || await preparePhotoForAi(imageClickerState.file);
+  const imageDataUrl = imageClickerState.fit === "shape" && imageClickerState.shapedDataUrl
+    ? imageClickerState.shapedDataUrl
+    : imageClickerState.inputDataUrl || await prepareImageClickerArtwork(imageClickerState.file);
   const { data, error } = await supabase.functions.invoke("generate-photo-keepsake", {
     body: {
       action: "store_image_cap",
@@ -10555,7 +10701,8 @@ async function addImageClickerToCart() {
           imageUrl: imageClickerState.imageUrl,
           imagePath: imageClickerState.imagePath,
           designName: imageClickerState.designName || "Custom upload",
-          fit: imageClickerState.fit
+          fit: imageClickerState.fit,
+          shapedDataUrl: ""
         }
       }
     };
@@ -10790,7 +10937,12 @@ imageClickerModal?.addEventListener("click", event => {
   }
   const fitButton = event.target.closest("[data-image-clicker-fit]");
   if (fitButton) {
-    imageClickerState.fit = fitButton.dataset.imageClickerFit === "contain" ? "contain" : "cover";
+    imageClickerState.fit = fitButton.dataset.imageClickerFit === "square" ? "square" : "shape";
+    if (imageClickerState.source === "upload") {
+      imageClickerState.imageUrl = imageClickerState.fit === "shape"
+        ? imageClickerState.shapedDataUrl || imageClickerState.inputDataUrl
+        : imageClickerState.inputDataUrl || imageClickerState.shapedDataUrl;
+    }
     document.querySelectorAll("[data-image-clicker-fit]").forEach(button => button.classList.toggle("is-active", button === fitButton));
     renderImageClickerPreview();
   }
@@ -10799,16 +10951,19 @@ imageClickerInput?.addEventListener("change", async () => {
   const file = imageClickerInput.files?.[0];
   if (!file) return;
   try {
-    const dataUrl = await preparePhotoForAi(file);
+    imageClickerStatus.textContent = "Preparing the artwork shape…";
+    const dataUrl = await prepareImageClickerArtwork(file);
+    const shapedDataUrl = await removeImageClickerEdgeBackground(dataUrl);
     Object.assign(imageClickerState, {
       source: "upload",
       file,
       inputDataUrl: dataUrl,
-      imageUrl: dataUrl,
+      shapedDataUrl,
+      imageUrl: imageClickerState.fit === "square" ? dataUrl : shapedDataUrl,
       imagePath: "",
       designName: file.name.replace(/\.[^.]+$/, "").slice(0, 50) || "Custom upload"
     });
-    imageClickerStatus.textContent = "Image ready — check the preview, then add it to cart.";
+    imageClickerStatus.textContent = "Artwork shaped to the design — check the preview, then add it to cart.";
     renderImageClickerPreview();
   } catch (error) {
     imageClickerInput.value = "";
@@ -12712,7 +12867,9 @@ window.reorderTrackedItems = function(items) {
           imagePath: (design.image_cap || design.imageCap).image_path || (design.image_cap || design.imageCap).imagePath || "",
           imageUrl: (design.image_cap || design.imageCap).image_url || (design.image_cap || design.imageCap).imageUrl || "",
           designName: (design.image_cap || design.imageCap).design_name || (design.image_cap || design.imageCap).designName || "Image cap",
-          fit: (design.image_cap || design.imageCap).fit === "contain" ? "contain" : "cover"
+          fit: ["shape", "square"].includes((design.image_cap || design.imageCap).fit)
+            ? (design.image_cap || design.imageCap).fit
+            : ((design.image_cap || design.imageCap).fit === "contain" ? "square" : "shape")
         } : null,
         pencil: design.pencil ? normalizePencilDesign({
           textStyle: design.pencil.text_style || design.pencil.textStyle,
