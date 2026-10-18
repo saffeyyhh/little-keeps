@@ -77,6 +77,18 @@ import {
   parseDesignBatchNames
 } from "./design-batches.js";
 
+const KPOP_CLICKER_MODELS = [
+  { key: "babymonster", name: "BABYMONSTER", accent: "#f383a0", modelUrl: "/models/kpop/babymonster.3mf", thumbnail: "/images/kpop-models/babymonster/thumbnail_3mf.png" },
+  { key: "bts", name: "BTS", accent: "#8a5cd6", modelUrl: "/models/kpop/bts.3mf", thumbnail: "/images/kpop-models/bts/thumbnail_3mf.png" },
+  { key: "exo", name: "EXO", accent: "#bfc6ce", modelUrl: "/models/kpop/exo.3mf", thumbnail: "/images/kpop-models/exo/thumbnail_3mf.png" },
+  { key: "girls-generation", name: "Girls’ Generation", accent: "#f38fbd", modelUrl: "/models/kpop/girls-generation.3mf", thumbnail: "/images/kpop-models/girls-generation/thumbnail_3mf.png" },
+  { key: "cortis", name: "CORTIS", accent: "#759a62", modelUrl: "/models/kpop/cortis.3mf", thumbnail: "/images/kpop-models/cortis/thumbnail_3mf.png" },
+  { key: "enhypen", name: "ENHYPEN", accent: "#d5d1c7", modelUrl: "/models/kpop/enhypen.3mf", thumbnail: "/images/kpop-models/enhypen/thumbnail_3mf.png" },
+  { key: "kpop-collection", name: "K-pop Collection", accent: "#f1cb65", modelUrl: "/models/kpop/kpop-collection.3mf", thumbnail: "/images/kpop-models/kpop-collection/thumbnail_3mf.png" },
+  { key: "stray-kids-collection", name: "Stray Kids Collection", accent: "#e84f57", modelUrl: "/models/kpop/stray-kids-collection.3mf", thumbnail: "/images/kpop-models/stray-kids-collection/thumbnail_3mf.png" },
+  { key: "stray-kids", name: "Stray Kids", accent: "#e84f57", modelUrl: "/models/kpop/stray-kids.3mf", thumbnail: "/images/kpop-models/stray-kids/thumbnail_3mf.png" }
+];
+
 const pageUrlParams = new URLSearchParams(window.location.search);
 const isManualOrder = pageUrlParams.get("manual") === "true";
 const requestedPreviewProductKey = String(pageUrlParams.get("preview_product") || "").trim();
@@ -1452,9 +1464,9 @@ ${showBoothSection ? `
   <div class="image-clicker-dialog">
     <button id="closeImageClickerModal" type="button" class="photo-modal-close" aria-label="Close">×</button>
     <div class="image-clicker-heading">
-      <p class="section-eyebrow">K-pop &amp; custom image clicker</p>
-      <h2 id="imageClickerTitle">Make your image click</h2>
-      <p>Choose a ready design or upload one image. See the finished look while you customise.</p>
+      <p class="section-eyebrow">K-pop clickers</p>
+      <h2 id="imageClickerTitle">Choose your group</h2>
+      <p>Pick a ready-made design made from the actual print-ready 3MF file.</p>
     </div>
 
     <div class="image-clicker-layout">
@@ -1462,47 +1474,25 @@ ${showBoothSection ? `
         <div class="image-clicker-step">
           <span>1</span>
           <div>
-            <h3>Choose your artwork</h3>
-            <div class="image-clicker-source-tabs" role="tablist" aria-label="Artwork source">
-              <button type="button" class="is-active" data-image-clicker-source="gallery">K-pop designs</button>
-              <button type="button" data-image-clicker-source="upload">Upload my own</button>
-            </div>
+            <h3>Choose your K-pop design</h3>
             <div id="imageClickerGalleryPanel" class="image-clicker-source-panel">
               <div id="imageClickerGallery" class="image-clicker-gallery">
-                ${getProductMediaPaths(imageClickerProduct).map((path, index) => `
-                  <button type="button" data-image-clicker-design="${index}" aria-label="Choose design ${index + 1}">
-                    <img src="${escapePresetText(path)}" alt="K-pop cap design ${index + 1}">
-                    <span>Design ${index + 1}</span>
+                ${KPOP_CLICKER_MODELS.map((design, index) => `
+                  <button type="button" data-image-clicker-design="${index}" aria-label="Choose ${escapePresetText(design.name)}" class="${index === 0 ? "is-active" : ""}">
+                    <img src="${escapePresetText(design.thumbnail)}" alt="${escapePresetText(design.name)} clicker model">
+                    <span>${escapePresetText(design.name)}</span>
                   </button>
-                `).join("") || `<p>Add K-pop cap artwork in Admin → Products &amp; pricing. Customers can still upload their own.</p>`}
+                `).join("")}
               </div>
             </div>
-            <div id="imageClickerUploadPanel" class="image-clicker-source-panel hidden">
-              <label class="image-clicker-upload" for="imageClickerInput">
-                <input id="imageClickerInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-                <strong>Choose a JPG, PNG or WebP</strong>
-                <small>Square images work best · maximum 8 MB</small>
-              </label>
-            </div>
-            <p class="image-clicker-shape-help">Logos and transparent PNGs work best. The cap follows the artwork shape.</p>
+            <p class="image-clicker-shape-help">These previews use the actual print-ready 3MF models.</p>
           </div>
         </div>
 
         <div class="image-clicker-step">
           <span>2</span>
-          <div>
-            <h3>Pick the clicker colour</h3>
-            <div id="imageClickerColours" class="image-clicker-colours">
-              ${initialImageClickerColours.map((colour, index) => `<button type="button" data-image-clicker-colour="${escapePresetText(colour.hex)}" style="--image-clicker-colour:${escapePresetText(colour.hex)}" aria-label="${escapePresetText(colour.name)}" class="${index === 0 ? "is-active" : ""}"><i></i><span>${escapePresetText(colour.name)}</span></button>`).join("")}
-            </div>
-          </div>
-        </div>
-
-        <div class="image-clicker-step">
-          <span>3</span>
           <div class="image-clicker-final-fields">
-            <h3>Name it and add to cart</h3>
-            <label><span>Design name</span><input id="imageClickerLabel" maxlength="40" placeholder="e.g. My K-pop clicker"></label>
+            <h3>Choose quantity</h3>
             <label><span>Quantity</span><input id="imageClickerQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
           </div>
         </div>
@@ -1511,9 +1501,7 @@ ${showBoothSection ? `
       <aside class="image-clicker-preview-panel">
         <span class="image-clicker-preview-kicker">Live preview</span>
         <div id="imageClickerPreview" class="image-clicker-preview">
-          <canvas id="imageClicker3DCanvas" aria-label="Rotatable 3D image clicker preview"></canvas>
-          <i id="imageClickerPreviewArtwork">Choose an image</i>
-          <span class="image-clicker-drag-hint">Drag to rotate · scroll to zoom</span>
+          <img id="imageClickerModelPreview" class="image-clicker-model-preview" src="${escapePresetText(KPOP_CLICKER_MODELS[0].thumbnail)}" alt="${escapePresetText(KPOP_CLICKER_MODELS[0].name)} clicker preview">
         </div>
         <div class="image-clicker-price"><span id="imageClickerPriceLabel">1 clicker</span><strong>${displaySettingMoney(getProductDisplayPrice(imageClickerProduct))}</strong></div>
         <button id="addImageClickerToCartBtn" type="button">Add to cart <span>→</span></button>
@@ -2933,14 +2921,11 @@ const photoMappedPalette = document.getElementById("photoMappedPalette");
 const photoAttemptStatus = document.getElementById("photoAttemptStatus");
 const imageClickerModal = document.getElementById("imageClickerModal");
 const closeImageClickerModal = document.getElementById("closeImageClickerModal");
-const imageClickerGalleryPanel = document.getElementById("imageClickerGalleryPanel");
-const imageClickerUploadPanel = document.getElementById("imageClickerUploadPanel");
-const imageClickerInput = document.getElementById("imageClickerInput");
-const imageClickerLabel = document.getElementById("imageClickerLabel");
 const imageClickerQuantity = document.getElementById("imageClickerQuantity");
 const imageClickerPreview = document.getElementById("imageClickerPreview");
 const imageClicker3DCanvas = document.getElementById("imageClicker3DCanvas");
 const imageClickerPreviewArtwork = document.getElementById("imageClickerPreviewArtwork");
+const imageClickerModelPreview = document.getElementById("imageClickerModelPreview");
 const imageClickerPriceLabel = document.getElementById("imageClickerPriceLabel");
 const addImageClickerToCartBtn = document.getElementById("addImageClickerToCartBtn");
 const imageClickerStatus = document.getElementById("imageClickerStatus");
@@ -4373,19 +4358,14 @@ let photoKeepsakeState = {
 let editingImageClickerIndex = null;
 let imageClickerState = {
   source: "gallery",
-  imageUrl: "",
-  imagePath: "",
-  designName: "",
-  bodyColour: getAvailableColours()[0] || "#F55A74",
-  fit: "shape",
-  file: null,
-  inputDataUrl: "",
-  shapedDataUrl: ""
+  modelKey: KPOP_CLICKER_MODELS[0].key,
+  modelUrl: KPOP_CLICKER_MODELS[0].modelUrl,
+  imageUrl: KPOP_CLICKER_MODELS[0].thumbnail,
+  designName: KPOP_CLICKER_MODELS[0].name
 };
 
 let imageClicker3D = null;
 let imageClicker3DBuild = 0;
-const imageClickerShapeCache = new Map();
 
 function initialiseImageClicker3D() {
   if (!imageClicker3DCanvas || imageClicker3D) return imageClicker3D;
@@ -4400,7 +4380,7 @@ function initialiseImageClicker3D() {
 
   const previewScene = new THREE.Scene();
   const previewCamera = new THREE.PerspectiveCamera(32, 1, .1, 500);
-  previewCamera.position.set(0, -92, 96);
+  previewCamera.position.set(0, -.01, 120);
   const previewControls = new OrbitControls(previewCamera, imageClicker3DCanvas);
   previewControls.enableDamping = true;
   previewControls.enablePan = false;
@@ -4408,7 +4388,7 @@ function initialiseImageClicker3D() {
   previewControls.maxDistance = 170;
   previewControls.minPolarAngle = Math.PI * .12;
   previewControls.maxPolarAngle = Math.PI * .78;
-  previewControls.target.set(0, 2, 2);
+  previewControls.target.set(0, 0, 4);
 
   previewScene.add(new THREE.HemisphereLight(0xffffff, 0x8d6575, 2.2));
   const key = new THREE.DirectionalLight(0xffffff, 3.2);
@@ -4433,15 +4413,6 @@ function getImageClickerPreviewImage(url) {
     image.onerror = () => reject(new Error("The artwork preview could not be loaded."));
     image.src = url;
   });
-}
-
-async function getImageClickerShapedPreviewUrl(url) {
-  const source = String(url || "");
-  if (!source) return source;
-  if (!imageClickerShapeCache.has(source)) {
-    imageClickerShapeCache.set(source, removeImageClickerEdgeBackground(source));
-  }
-  return imageClickerShapeCache.get(source);
 }
 
 function buildImageClickerOutline(image) {
@@ -4605,74 +4576,81 @@ async function buildImageClicker3DPreview() {
   if (!preview) return;
   const build = ++imageClicker3DBuild;
   while (preview.group.children.length) disposePreviewObject(preview.group.children.pop());
-  if (!imageClickerState.imageUrl) return;
+  if (!imageClickerState.modelUrl) return;
   try {
-    const shapedUrl = imageClickerState.shapedDataUrl
-      || await getImageClickerShapedPreviewUrl(imageClickerState.imageUrl);
-    const image = await getImageClickerPreviewImage(shapedUrl);
-    const backingImage = imageClickerState.source === "upload" && imageClickerState.inputDataUrl
-      ? await getImageClickerPreviewImage(imageClickerState.inputDataUrl)
-      : await getImageClickerPreviewImage(imageClickerState.imageUrl);
+    if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "Loading 3D model…";
+    const sourceModel = await new ThreeMFLoader().loadAsync(imageClickerState.modelUrl);
     if (build !== imageClicker3DBuild) return;
-    const outline = buildImageClickerOutline(image);
-    const shape = new THREE.Shape(outline);
-    const bounds = new THREE.Box2().setFromPoints(outline);
-    const bodyDepth = 8.2;
-    const bodyGeometry = new THREE.ExtrudeGeometry(shape, {
-      depth: bodyDepth,
-      bevelEnabled: true,
-      bevelSize: 1.15,
-      bevelThickness: 1.15,
-      bevelSegments: 4,
-      curveSegments: 12
-    });
-    const body = new THREE.Mesh(bodyGeometry, createMat(imageClickerState.bodyColour || "#F55A74"));
-    body.castShadow = true;
-    body.receiveShadow = true;
-    preview.group.add(body);
-
-    const capGeometry = new THREE.ExtrudeGeometry(shape, {
-      depth: 1,
-      bevelEnabled: true,
-      bevelSize: .38,
-      bevelThickness: .3,
-      bevelSegments: 3,
-      curveSegments: 12
-    });
-    const cap = new THREE.Mesh(capGeometry, createMat(getImageClickerBackingColour(backingImage)));
-    cap.scale.set(.95, .95, 1);
-    cap.position.z = bodyDepth + .35;
-    cap.castShadow = true;
-    preview.group.add(cap);
-
-    const texture = new THREE.Texture(image);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.needsUpdate = true;
-    const aspect = image.naturalWidth / Math.max(1, image.naturalHeight);
-    let artworkWidth = Math.min(bounds.getSize(new THREE.Vector2()).x * .86, 61);
-    let artworkHeight = artworkWidth / aspect;
-    if (artworkHeight > bounds.getSize(new THREE.Vector2()).y * .86) {
-      artworkHeight = bounds.getSize(new THREE.Vector2()).y * .86;
-      artworkWidth = artworkHeight * aspect;
+    const model = new THREE.Group();
+    const printableParts = sourceModel.children.filter(child => !new THREE.Box3().setFromObject(child).isEmpty());
+    if (printableParts.length >= 2) {
+      const flattenPart = source => {
+        const flattened = new THREE.Group();
+        source.updateWorldMatrix(true, true);
+        source.traverse(object => {
+          if (!object.isMesh) return;
+          const geometry = object.geometry.clone();
+          geometry.applyMatrix4(object.matrixWorld);
+          flattened.add(new THREE.Mesh(geometry, object.material?.clone?.() || createMat("#ffffff")));
+        });
+        return flattened;
+      };
+      const base = flattenPart(printableParts[0]);
+      const cap = flattenPart(printableParts[1]);
+      const selectedDesign = KPOP_CLICKER_MODELS.find(design => design.key === imageClickerState.modelKey) || KPOP_CLICKER_MODELS[0];
+      base.traverse(object => {
+        if (object.isMesh) object.material = createMat("#f7f3ee");
+      });
+      const capMeshes = [];
+      cap.traverse(object => {
+        if (object.isMesh) capMeshes.push(object);
+      });
+      capMeshes.forEach((mesh, index) => {
+        mesh.material = createMat(index === capMeshes.length - 1 ? "#242126" : selectedDesign.accent);
+      });
+      const centrePart = (part, groundZ = 0) => {
+        part.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(part);
+        const centre = box.getCenter(new THREE.Vector3());
+        const wrapper = new THREE.Group();
+        wrapper.add(part);
+        wrapper.position.set(-centre.x, -centre.y, groundZ - box.min.z);
+        wrapper.updateMatrixWorld(true);
+        return { wrapper, size: box.getSize(new THREE.Vector3()) };
+      };
+      const placedBase = centrePart(base);
+      const placedCap = centrePart(cap, Math.max(0, placedBase.size.z - 2.4));
+      model.add(placedBase.wrapper, placedCap.wrapper);
+      model.updateMatrixWorld(true);
+    } else if (printableParts[0]) {
+      model.add(printableParts[0].clone(true));
     }
-    const alphaMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: .08, side: THREE.DoubleSide });
-    const artworkGeometry = new THREE.PlaneGeometry(artworkWidth, artworkHeight);
-    for (let layer = 0; layer < 2; layer += 1) {
-      const artwork = new THREE.Mesh(artworkGeometry, alphaMaterial.clone());
-      artwork.position.z = bodyDepth + 1.65 + layer * .2;
-      preview.group.add(artwork);
-    }
-
-    const ring = createImageClickerRing(imageClickerState.bodyColour || "#F55A74", bounds.max.y, bodyDepth);
-    ring.castShadow = true;
-    preview.group.add(ring);
-    const bridge = new THREE.Mesh(new THREE.BoxGeometry(7, 5, bodyDepth), createMat(imageClickerState.bodyColour || "#F55A74"));
-    bridge.position.set(0, bounds.max.y + .5, bodyDepth / 2);
-    preview.group.add(bridge);
+    model.rotation.set(0, 0, 0);
+    model.traverse(object => {
+      if (!object.isMesh) return;
+      object.castShadow = true;
+      object.receiveShadow = true;
+      if (Array.isArray(object.material)) object.material = object.material.map(material => material.clone());
+      else if (object.material) object.material = object.material.clone();
+    });
+    model.updateMatrixWorld(true);
+    const initialBox = new THREE.Box3().setFromObject(model);
+    const initialSize = initialBox.getSize(new THREE.Vector3());
+    const modelScale = 68 / Math.max(1, initialSize.x, initialSize.y);
+    model.scale.setScalar(modelScale);
+    model.updateMatrixWorld(true);
+    const scaledBox = new THREE.Box3().setFromObject(model);
+    const centre = scaledBox.getCenter(new THREE.Vector3());
+    model.position.set(-centre.x, -centre.y, -scaledBox.min.z);
+    preview.group.add(model);
     preview.group.rotation.z = -.08;
     preview.group.position.y = -3;
+    if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "";
+    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected.`;
   } catch (error) {
-    console.warn("Unable to build the 3D image clicker preview:", error);
+    if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "Preview unavailable";
+    if (imageClickerStatus) imageClickerStatus.textContent = "This 3D model could not be opened.";
+    console.warn("Unable to load the K-pop clicker 3MF preview:", error);
   }
 }
 
@@ -10851,41 +10829,11 @@ function addPhotoKeepsakeToCart() {
   openCartDrawer();
 }
 
-function setImageClickerSource(source) {
-  imageClickerState.source = source === "upload" ? "upload" : "gallery";
-  if (imageClickerState.source === "gallery") {
-    const galleryPaths = getProductMediaPaths(getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY));
-    if (!galleryPaths.includes(imageClickerState.imageUrl)) {
-      imageClickerState.imageUrl = galleryPaths[0] || "";
-      imageClickerState.imagePath = "";
-      imageClickerState.designName = galleryPaths.length ? "K-pop design 1" : "";
-    }
-    document.querySelectorAll("[data-image-clicker-design]").forEach((button, index) => {
-      button.classList.toggle("is-active", galleryPaths[index] === imageClickerState.imageUrl);
-    });
-  } else if (imageClickerState.inputDataUrl) {
-    imageClickerState.imageUrl = imageClickerState.fit === "shape"
-      ? imageClickerState.shapedDataUrl || imageClickerState.inputDataUrl
-      : imageClickerState.inputDataUrl;
-  }
-  document.querySelectorAll("[data-image-clicker-source]").forEach(button => {
-    button.classList.toggle("is-active", button.dataset.imageClickerSource === imageClickerState.source);
-  });
-  imageClickerGalleryPanel?.classList.toggle("hidden", imageClickerState.source !== "gallery");
-  imageClickerUploadPanel?.classList.toggle("hidden", imageClickerState.source !== "upload");
-  renderImageClickerPreview();
-}
-
 function renderImageClickerPreview() {
-  if (!imageClickerPreview || !imageClickerPreviewArtwork) return;
-  imageClickerPreview.style.setProperty("--image-clicker-body", imageClickerState.bodyColour || "#F55A74");
-  const hasImage = Boolean(imageClickerState.imageUrl);
-  const followsShape = imageClickerState.fit === "shape";
-  imageClickerPreview.classList.toggle("has-image", hasImage);
-  imageClickerPreview.classList.toggle("follows-artwork-shape", hasImage && followsShape);
-  imageClickerPreview.classList.toggle("uses-square-cap", hasImage && !followsShape);
-  imageClickerPreviewArtwork.textContent = hasImage ? "" : "Choose an image";
-  void buildImageClicker3DPreview();
+  if (!imageClickerPreview || !imageClickerModelPreview) return;
+  imageClickerPreview.classList.toggle("has-image", Boolean(imageClickerState.modelUrl));
+  imageClickerModelPreview.src = imageClickerState.imageUrl;
+  imageClickerModelPreview.alt = `${imageClickerState.designName} clicker preview`;
   const quantity = normalizeItemQuantity(imageClickerQuantity?.value);
   if (imageClickerPriceLabel) imageClickerPriceLabel.textContent = `${quantity} clicker${quantity === 1 ? "" : "s"}`;
   const product = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
@@ -10898,31 +10846,23 @@ function openImageClickerStudio(existingItem = null, itemIndex = null) {
   activeProduct = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
   editingImageClickerIndex = Number.isInteger(itemIndex) ? itemIndex : null;
   const saved = existingItem ? getDesign(existingItem).imageCap : null;
-  const galleryPaths = getProductMediaPaths(activeProduct);
-  const savedImageUrl = saved?.imageUrl || "";
+  const selectedModel = KPOP_CLICKER_MODELS.find(model => model.key === saved?.modelKey || model.modelUrl === saved?.modelUrl)
+    || KPOP_CLICKER_MODELS[0];
   Object.assign(imageClickerState, {
-    source: saved?.source === "upload" ? "upload" : "gallery",
-    imageUrl: savedImageUrl || galleryPaths[0] || "",
-    imagePath: saved?.imagePath || "",
-    designName: saved?.designName || (galleryPaths.length ? "K-pop design 1" : ""),
-    bodyColour: existingItem?.custom?.bases?.[0] || getAvailableColours()[0] || "#F55A74",
-    fit: "shape",
-    file: null,
-    inputDataUrl: savedImageUrl,
-    shapedDataUrl: saved?.shapedDataUrl || saved?.shaped_data_url || (saved?.fit === "shape" ? savedImageUrl : "")
+    source: "gallery",
+    modelKey: selectedModel.key,
+    modelUrl: selectedModel.modelUrl,
+    imageUrl: selectedModel.thumbnail,
+    designName: selectedModel.name
   });
-  if (imageClickerLabel) imageClickerLabel.value = existingItem?.name || "";
   if (imageClickerQuantity) imageClickerQuantity.value = String(getItemQuantity(existingItem || { quantity: 1 }));
   document.querySelectorAll("[data-image-clicker-design]").forEach((button, index) => {
-    button.classList.toggle("is-active", Boolean(imageClickerState.source === "gallery" && galleryPaths[index] === imageClickerState.imageUrl));
-  });
-  document.querySelectorAll("[data-image-clicker-colour]").forEach(button => {
-    button.classList.toggle("is-active", button.dataset.imageClickerColour === imageClickerState.bodyColour);
+    button.classList.toggle("is-active", KPOP_CLICKER_MODELS[index]?.key === selectedModel.key);
   });
   if (imageClickerStatus) imageClickerStatus.textContent = "";
-  setImageClickerSource(imageClickerState.source);
   imageClickerModal?.classList.remove("hidden");
   document.body.classList.add("modal-open");
+  renderImageClickerPreview();
 }
 
 function closeImageClickerStudio() {
@@ -10931,43 +10871,17 @@ function closeImageClickerStudio() {
   editingImageClickerIndex = null;
 }
 
-async function storeCustomerImageCap() {
-  const imageDataUrl = imageClickerState.fit === "shape" && imageClickerState.shapedDataUrl
-    ? imageClickerState.shapedDataUrl
-    : imageClickerState.inputDataUrl || await prepareImageClickerArtwork(imageClickerState.file);
-  const { data, error } = await supabase.functions.invoke("generate-photo-keepsake", {
-    body: {
-      action: "store_image_cap",
-      image_data_url: imageDataUrl,
-      client_token: currentSubmissionId
-    }
-  });
-  if (error) {
-    const details = await getPhotoFunctionErrorDetails(error);
-    throw new Error(details.error || error.message || "The image could not be saved.");
-  }
-  if (!data?.artwork_path || !data?.artwork_url) throw new Error("The image upload did not finish. Please try again.");
-  imageClickerState.imagePath = data.artwork_path;
-  imageClickerState.imageUrl = data.artwork_url;
-  imageClickerState.inputDataUrl = data.artwork_url;
-}
-
 async function addImageClickerToCart() {
-  if (!imageClickerState.imageUrl) {
-    imageClickerStatus.textContent = "Choose a K-pop design or upload your own image first.";
+  if (!imageClickerState.modelUrl) {
+    imageClickerStatus.textContent = "Choose a K-pop design first.";
     return;
   }
   addImageClickerToCartBtn.disabled = true;
-  imageClickerStatus.textContent = imageClickerState.source === "upload" && !imageClickerState.imagePath
-    ? "Saving your image privately…"
-    : "Adding your clicker…";
+  imageClickerStatus.textContent = "Adding your clicker…";
   try {
-    if (imageClickerState.source === "upload" && !imageClickerState.imagePath) {
-      await storeCustomerImageCap();
-    }
     const fallbackColours = getAvailableColours();
     const item = {
-      name: imageClickerLabel.value.trim() || (imageClickerState.source === "upload" ? "Custom Image Clicker" : imageClickerState.designName || "K-pop Clicker"),
+      name: `${imageClickerState.designName || "K-pop"} Clicker`,
       quantity: normalizeItemQuantity(imageClickerQuantity?.value),
       product_key: IMAGE_CLICKER_PRODUCT_KEY,
       cartAdded: true,
@@ -10976,15 +10890,17 @@ async function addImageClickerToCart() {
         baseShape: "single-clicker",
         letterOrientation: "vertical",
         fontSize: 24,
-        bases: [imageClickerState.bodyColour],
+        bases: ["#FFFFFF"],
         caps: [fallbackColours.find(colour => getColourName(colour) === "Jade White") || "#FFFFFF"],
         letters: [],
         imageCap: {
-          source: imageClickerState.source,
+          source: "3mf",
           imageUrl: imageClickerState.imageUrl,
-          imagePath: imageClickerState.imagePath,
-          designName: imageClickerState.designName || "Custom upload",
-          fit: imageClickerState.fit,
+          imagePath: "",
+          designName: imageClickerState.designName || "K-pop design",
+          modelKey: imageClickerState.modelKey,
+          modelUrl: imageClickerState.modelUrl,
+          fit: "model",
           shapedDataUrl: ""
         }
       }
@@ -11198,48 +11114,20 @@ document.querySelectorAll("[data-image-clicker-start]").forEach(button => {
 closeImageClickerModal?.addEventListener("click", closeImageClickerStudio);
 imageClickerModal?.addEventListener("click", event => {
   if (event.target === imageClickerModal) closeImageClickerStudio();
-  const sourceButton = event.target.closest("[data-image-clicker-source]");
-  if (sourceButton) setImageClickerSource(sourceButton.dataset.imageClickerSource);
   const designButton = event.target.closest("[data-image-clicker-design]");
   if (designButton) {
     const index = Number(designButton.dataset.imageClickerDesign);
-    const path = getProductMediaPaths(getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY))[index];
-    if (!path) return;
-    imageClickerState.source = "gallery";
-    imageClickerState.imageUrl = path;
-    imageClickerState.imagePath = "";
-    imageClickerState.designName = `K-pop design ${index + 1}`;
+    const design = KPOP_CLICKER_MODELS[index];
+    if (!design) return;
+    Object.assign(imageClickerState, {
+      source: "gallery",
+      modelKey: design.key,
+      modelUrl: design.modelUrl,
+      imageUrl: design.thumbnail,
+      designName: design.name
+    });
     document.querySelectorAll("[data-image-clicker-design]").forEach(button => button.classList.toggle("is-active", button === designButton));
     renderImageClickerPreview();
-  }
-  const colourButton = event.target.closest("[data-image-clicker-colour]");
-  if (colourButton) {
-    imageClickerState.bodyColour = colourButton.dataset.imageClickerColour;
-    document.querySelectorAll("[data-image-clicker-colour]").forEach(button => button.classList.toggle("is-active", button === colourButton));
-    renderImageClickerPreview();
-  }
-});
-imageClickerInput?.addEventListener("change", async () => {
-  const file = imageClickerInput.files?.[0];
-  if (!file) return;
-  try {
-    imageClickerStatus.textContent = "Preparing the artwork shape…";
-    const dataUrl = await prepareImageClickerArtwork(file);
-    const shapedDataUrl = await removeImageClickerEdgeBackground(dataUrl);
-    Object.assign(imageClickerState, {
-      source: "upload",
-      file,
-      inputDataUrl: dataUrl,
-      shapedDataUrl,
-      imageUrl: shapedDataUrl,
-      imagePath: "",
-      designName: file.name.replace(/\.[^.]+$/, "").slice(0, 50) || "Custom upload"
-    });
-    imageClickerStatus.textContent = "Artwork shaped to the design — check the preview, then add it to cart.";
-    renderImageClickerPreview();
-  } catch (error) {
-    imageClickerInput.value = "";
-    imageClickerStatus.textContent = error.message || "This image could not be opened.";
   }
 });
 imageClickerQuantity?.addEventListener("input", renderImageClickerPreview);
