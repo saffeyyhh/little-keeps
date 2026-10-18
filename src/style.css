@@ -7628,6 +7628,12 @@ body {
 .image-clicker-preview-panel { position: sticky; top: 0; display: grid; gap: 16px; padding: 26px; border-radius: 26px; background: linear-gradient(145deg, #f6edf8, #fff2f6); border: 1px solid #e8ccda; }
 .image-clicker-preview-kicker { width: fit-content; padding: 7px 11px; border-radius: 999px; background: white; color: #91405d; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
 .image-clicker-preview { --image-clicker-body:#F55A74; position: relative; display: grid; place-items: center; min-height: 330px; }
+.image-clicker-preview canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:grab; }
+.image-clicker-preview canvas:active { cursor:grabbing; }
+#imageClickerPreviewArtwork { position:relative; z-index:1; pointer-events:none; color:#9a8a90; font-size:15px; font-style:normal; font-weight:800; }
+.image-clicker-preview.has-image #imageClickerPreviewArtwork { display:none; }
+.image-clicker-drag-hint { position:absolute; z-index:2; right:10px; bottom:8px; padding:5px 8px; border-radius:999px; background:rgba(255,255,255,.82); color:#79676f; font-size:10px; font-weight:800; pointer-events:none; box-shadow:0 3px 12px rgba(74,46,58,.1); }
+.image-clicker-preview:not(.has-image) .image-clicker-drag-hint { display:none; }
 .image-clicker-shell { position: relative; display: grid; place-items: center; width: 230px; height: 230px; padding: 28px; border-radius: 52px; background: var(--image-clicker-body); box-shadow: inset 0 -18px 0 rgba(0,0,0,.12), 0 24px 38px rgba(78,46,58,.2); transform: rotate(-4deg); }
 .image-clicker-shell::before { content:""; position:absolute; inset:18px; border-radius:38px; background:#fdfcf9; box-shadow: 0 8px 0 rgba(0,0,0,.1); }
 .image-clicker-cap-depth { display:none; }
@@ -7662,6 +7668,7 @@ body {
   .image-clicker-preview-panel { top: 0; z-index: 4; grid-template-columns: 132px 1fr; gap: 8px 14px; padding: 12px; border-radius: 20px; box-shadow: 0 12px 30px rgba(56,35,44,.14); }
   .image-clicker-preview-kicker { grid-column: 2; align-self:end; }
   .image-clicker-preview { grid-row: 1 / 4; min-height: 150px; }
+  .image-clicker-drag-hint { right:2px; bottom:2px; padding:4px 6px; font-size:8px; }
   .image-clicker-shell { width: 112px; height: 112px; padding: 16px; border-radius: 28px; box-shadow: inset 0 -9px rgba(0,0,0,.12), 0 12px 20px rgba(78,46,58,.18); }
   .image-clicker-shell::before { inset: 9px; border-radius: 21px; }
   .image-clicker-shell i { border-radius: 14px; font-size: 11px; }

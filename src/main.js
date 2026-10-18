@@ -1516,11 +1516,9 @@ ${showBoothSection ? `
       <aside class="image-clicker-preview-panel">
         <span class="image-clicker-preview-kicker">Live preview</span>
         <div id="imageClickerPreview" class="image-clicker-preview">
-          <span class="image-clicker-ring" aria-hidden="true"></span>
-          <span class="image-clicker-shell">
-            <span class="image-clicker-cap-depth" aria-hidden="true"></span>
-            <i id="imageClickerPreviewArtwork">Choose an image</i>
-          </span>
+          <canvas id="imageClicker3DCanvas" aria-label="Rotatable 3D image clicker preview"></canvas>
+          <i id="imageClickerPreviewArtwork">Choose an image</i>
+          <span class="image-clicker-drag-hint">Drag to rotate · scroll to zoom</span>
         </div>
         <div class="image-clicker-price"><span id="imageClickerPriceLabel">1 clicker</span><strong>${displaySettingMoney(getProductDisplayPrice(imageClickerProduct))}</strong></div>
         <button id="addImageClickerToCartBtn" type="button">Add to cart <span>→</span></button>
@@ -2947,6 +2945,7 @@ const imageClickerPermission = document.getElementById("imageClickerPermission")
 const imageClickerLabel = document.getElementById("imageClickerLabel");
 const imageClickerQuantity = document.getElementById("imageClickerQuantity");
 const imageClickerPreview = document.getElementById("imageClickerPreview");
+const imageClicker3DCanvas = document.getElementById("imageClicker3DCanvas");
 const imageClickerPreviewArtwork = document.getElementById("imageClickerPreviewArtwork");
 const imageClickerPriceLabel = document.getElementById("imageClickerPriceLabel");
 const addImageClickerToCartBtn = document.getElementById("addImageClickerToCartBtn");
@@ -4389,6 +4388,250 @@ let imageClickerState = {
   inputDataUrl: "",
   shapedDataUrl: ""
 };
+
+let imageClicker3D = null;
+let imageClicker3DBuild = 0;
+
+function initialiseImageClicker3D() {
+  if (!imageClicker3DCanvas || imageClicker3D) return imageClicker3D;
+  const previewRenderer = new THREE.WebGLRenderer({
+    canvas: imageClicker3DCanvas,
+    antialias: true,
+    alpha: true
+  });
+  previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  previewRenderer.shadowMap.enabled = true;
+
+  const previewScene = new THREE.Scene();
+  const previewCamera = new THREE.PerspectiveCamera(32, 1, .1, 500);
+  previewCamera.position.set(0, -92, 96);
+  const previewControls = new OrbitControls(previewCamera, imageClicker3DCanvas);
+  previewControls.enableDamping = true;
+  previewControls.enablePan = false;
+  previewControls.minDistance = 72;
+  previewControls.maxDistance = 170;
+  previewControls.minPolarAngle = Math.PI * .12;
+  previewControls.maxPolarAngle = Math.PI * .78;
+  previewControls.target.set(0, 2, 2);
+
+  previewScene.add(new THREE.HemisphereLight(0xffffff, 0x8d6575, 2.2));
+  const key = new THREE.DirectionalLight(0xffffff, 3.2);
+  key.position.set(-45, -55, 90);
+  key.castShadow = true;
+  previewScene.add(key);
+  const rim = new THREE.DirectionalLight(0xffddeb, 1.2);
+  rim.position.set(55, 25, 45);
+  previewScene.add(rim);
+
+  const group = new THREE.Group();
+  previewScene.add(group);
+  imageClicker3D = { renderer: previewRenderer, scene: previewScene, camera: previewCamera, controls: previewControls, group };
+  return imageClicker3D;
+}
+
+function getImageClickerPreviewImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    if (!String(url || "").startsWith("data:")) image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("The artwork preview could not be loaded."));
+    image.src = url;
+  });
+}
+
+function buildImageClickerOutline(image) {
+  const size = 104;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const scale = Math.min((size - 18) / image.naturalWidth, (size - 18) / image.naturalHeight);
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const offsetX = Math.round((size - width) / 2);
+  const offsetY = Math.round((size - height) / 2);
+  context.drawImage(image, offsetX, offsetY, width, height);
+  const pixels = context.getImageData(0, 0, size, size).data;
+  let mask = new Uint8Array(size * size);
+  for (let index = 0; index < mask.length; index += 1) {
+    mask[index] = pixels[index * 4 + 3] > 20 ? 1 : 0;
+  }
+
+  for (let pass = 0; pass < 4; pass += 1) {
+    const expanded = mask.slice();
+    for (let y = 1; y < size - 1; y += 1) {
+      for (let x = 1; x < size - 1; x += 1) {
+        const index = y * size + x;
+        if (mask[index]) continue;
+        if (mask[index - 1] || mask[index + 1] || mask[index - size] || mask[index + size]) expanded[index] = 1;
+      }
+    }
+    mask = expanded;
+  }
+
+  const segments = [];
+  const segmentTable = {
+    1: [["left", "top"]], 2: [["top", "right"]], 3: [["left", "right"]],
+    4: [["right", "bottom"]], 5: [["left", "bottom"], ["top", "right"]],
+    6: [["top", "bottom"]], 7: [["left", "bottom"]], 8: [["bottom", "left"]],
+    9: [["top", "bottom"]], 10: [["top", "left"], ["right", "bottom"]],
+    11: [["right", "bottom"]], 12: [["left", "right"]], 13: [["top", "right"]], 14: [["left", "top"]]
+  };
+  const edgePoint = (edge, x, y) => ({
+    top: [x * 2 + 1, y * 2],
+    right: [x * 2 + 2, y * 2 + 1],
+    bottom: [x * 2 + 1, y * 2 + 2],
+    left: [x * 2, y * 2 + 1]
+  })[edge];
+  for (let y = 0; y < size - 1; y += 1) {
+    for (let x = 0; x < size - 1; x += 1) {
+      const state = mask[y * size + x]
+        | (mask[y * size + x + 1] << 1)
+        | (mask[(y + 1) * size + x + 1] << 2)
+        | (mask[(y + 1) * size + x] << 3);
+      (segmentTable[state] || []).forEach(([start, end]) => {
+        segments.push([edgePoint(start, x, y), edgePoint(end, x, y)]);
+      });
+    }
+  }
+
+  const adjacency = new Map();
+  const pointKey = point => `${point[0]},${point[1]}`;
+  segments.forEach(([start, end]) => {
+    const startKey = pointKey(start);
+    const endKey = pointKey(end);
+    if (!adjacency.has(startKey)) adjacency.set(startKey, []);
+    if (!adjacency.has(endKey)) adjacency.set(endKey, []);
+    adjacency.get(startKey).push(end);
+    adjacency.get(endKey).push(start);
+  });
+  const visitedEdges = new Set();
+  const loops = [];
+  segments.forEach(([first, second]) => {
+    const initialEdge = [pointKey(first), pointKey(second)].sort().join("|");
+    if (visitedEdges.has(initialEdge)) return;
+    const loop = [first];
+    let previous = first;
+    let current = second;
+    for (let guard = 0; guard < segments.length + 4; guard += 1) {
+      loop.push(current);
+      const edge = [pointKey(previous), pointKey(current)].sort().join("|");
+      visitedEdges.add(edge);
+      const neighbours = adjacency.get(pointKey(current)) || [];
+      const next = neighbours.find(candidate => {
+        const candidateEdge = [pointKey(current), pointKey(candidate)].sort().join("|");
+        return !visitedEdges.has(candidateEdge);
+      });
+      if (!next || pointKey(next) === pointKey(loop[0])) break;
+      previous = current;
+      current = next;
+    }
+    if (loop.length >= 4) loops.push(loop);
+  });
+  const area = loop => Math.abs(loop.reduce((sum, point, index) => {
+    const next = loop[(index + 1) % loop.length];
+    return sum + point[0] * next[1] - next[0] * point[1];
+  }, 0));
+  const outline = loops.sort((a, b) => area(b) - area(a))[0];
+  if (!outline?.length) {
+    return [new THREE.Vector2(-30, -25), new THREE.Vector2(30, -25), new THREE.Vector2(30, 25), new THREE.Vector2(-30, 25)];
+  }
+  const sampled = outline.filter((_, index) => index % 2 === 0);
+  const minX = Math.min(...sampled.map(point => point[0]));
+  const maxX = Math.max(...sampled.map(point => point[0]));
+  const minY = Math.min(...sampled.map(point => point[1]));
+  const maxY = Math.max(...sampled.map(point => point[1]));
+  const outlineScale = Math.min(70 / Math.max(1, maxX - minX), 54 / Math.max(1, maxY - minY));
+  return sampled.map(point => new THREE.Vector2(
+    (point[0] - (minX + maxX) / 2) * outlineScale,
+    ((minY + maxY) / 2 - point[1]) * outlineScale
+  ));
+}
+
+function createImageClickerRing(colour, topY, depth) {
+  const ring = new THREE.Shape();
+  ring.absarc(0, 0, 6.2, 0, Math.PI * 2, false);
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, 3.1, 0, Math.PI * 2, true);
+  ring.holes.push(hole);
+  const geometry = new THREE.ExtrudeGeometry(ring, { depth, bevelEnabled: true, bevelSize: .45, bevelThickness: .45, curveSegments: 32 });
+  geometry.translate(0, topY + 3.4, 0);
+  return new THREE.Mesh(geometry, createMat(colour));
+}
+
+async function buildImageClicker3DPreview() {
+  const preview = initialiseImageClicker3D();
+  if (!preview) return;
+  const build = ++imageClicker3DBuild;
+  while (preview.group.children.length) disposePreviewObject(preview.group.children.pop());
+  if (!imageClickerState.imageUrl) return;
+  try {
+    const image = await getImageClickerPreviewImage(imageClickerState.imageUrl);
+    if (build !== imageClicker3DBuild) return;
+    const outline = imageClickerState.fit === "square"
+      ? [new THREE.Vector2(-30, -25), new THREE.Vector2(30, -25), new THREE.Vector2(30, 25), new THREE.Vector2(-30, 25)]
+      : buildImageClickerOutline(image);
+    const shape = new THREE.Shape(outline);
+    const bounds = new THREE.Box2().setFromPoints(outline);
+    const bodyDepth = 7;
+    const bodyGeometry = new THREE.ExtrudeGeometry(shape, {
+      depth: bodyDepth,
+      bevelEnabled: true,
+      bevelSize: 1.15,
+      bevelThickness: 1.15,
+      bevelSegments: 4,
+      curveSegments: 12
+    });
+    const body = new THREE.Mesh(bodyGeometry, createMat(imageClickerState.bodyColour || "#F55A74"));
+    body.castShadow = true;
+    body.receiveShadow = true;
+    preview.group.add(body);
+
+    const capGeometry = new THREE.ExtrudeGeometry(shape, {
+      depth: 2,
+      bevelEnabled: true,
+      bevelSize: .55,
+      bevelThickness: .5,
+      bevelSegments: 3,
+      curveSegments: 12
+    });
+    const cap = new THREE.Mesh(capGeometry, createMat("#fffdf7"));
+    cap.scale.set(.93, .93, 1);
+    cap.position.z = bodyDepth + .5;
+    cap.castShadow = true;
+    preview.group.add(cap);
+
+    const texture = new THREE.Texture(image);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+    const aspect = image.naturalWidth / Math.max(1, image.naturalHeight);
+    let artworkWidth = Math.min(bounds.getSize(new THREE.Vector2()).x * .86, 61);
+    let artworkHeight = artworkWidth / aspect;
+    if (artworkHeight > bounds.getSize(new THREE.Vector2()).y * .86) {
+      artworkHeight = bounds.getSize(new THREE.Vector2()).y * .86;
+      artworkWidth = artworkHeight * aspect;
+    }
+    const alphaMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: .08, side: THREE.DoubleSide });
+    const artworkGeometry = new THREE.PlaneGeometry(artworkWidth, artworkHeight);
+    for (let layer = 0; layer < 7; layer += 1) {
+      const artwork = new THREE.Mesh(artworkGeometry, alphaMaterial.clone());
+      artwork.position.z = bodyDepth + 2.55 + layer * (2 / 6);
+      preview.group.add(artwork);
+    }
+
+    const ring = createImageClickerRing(imageClickerState.bodyColour || "#F55A74", bounds.max.y, bodyDepth);
+    ring.castShadow = true;
+    preview.group.add(ring);
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(7, 5, bodyDepth), createMat(imageClickerState.bodyColour || "#F55A74"));
+    bridge.position.set(0, bounds.max.y + .5, bodyDepth / 2);
+    preview.group.add(bridge);
+    preview.group.rotation.z = -.08;
+    preview.group.position.y = -3;
+  } catch (error) {
+    console.warn("Unable to build the 3D image clicker preview:", error);
+  }
+}
 
 function getSelectedPhotoArtworkStyle() {
   return photoArtworkStyleInputs.find(input => input.checked)?.value || "true_to_photo";
@@ -8428,6 +8671,17 @@ function animate() {
   resize();
   controls.update();
   renderer.render(scene, camera);
+  if (imageClicker3D && imageClicker3DCanvas) {
+    const previewWidth = imageClicker3DCanvas.clientWidth;
+    const previewHeight = imageClicker3DCanvas.clientHeight;
+    if (previewWidth && previewHeight) {
+      imageClicker3D.renderer.setSize(previewWidth, previewHeight, false);
+      imageClicker3D.camera.aspect = previewWidth / previewHeight;
+      imageClicker3D.camera.updateProjectionMatrix();
+      imageClicker3D.controls.update();
+      imageClicker3D.renderer.render(imageClicker3D.scene, imageClicker3D.camera);
+    }
+  }
   requestAnimationFrame(animate);
 }
 
@@ -10586,15 +10840,8 @@ function renderImageClickerPreview() {
   imageClickerPreview.classList.toggle("has-image", hasImage);
   imageClickerPreview.classList.toggle("follows-artwork-shape", hasImage && followsShape);
   imageClickerPreview.classList.toggle("uses-square-cap", hasImage && !followsShape);
-  imageClickerPreviewArtwork.innerHTML = hasImage
-    ? `<img src="${escapePresetText(imageClickerState.imageUrl)}" alt="Selected image cap preview">`
-    : "Choose an image";
-  const depth = imageClickerPreview.querySelector(".image-clicker-cap-depth");
-  if (depth) {
-    const maskValue = hasImage && followsShape ? `url(${JSON.stringify(imageClickerState.imageUrl)})` : "none";
-    depth.style.maskImage = maskValue;
-    depth.style.webkitMaskImage = maskValue;
-  }
+  imageClickerPreviewArtwork.textContent = hasImage ? "" : "Choose an image";
+  void buildImageClicker3DPreview();
   const quantity = normalizeItemQuantity(imageClickerQuantity?.value);
   if (imageClickerPriceLabel) imageClickerPriceLabel.textContent = `${quantity} clicker${quantity === 1 ? "" : "s"}`;
   const product = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
