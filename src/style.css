@@ -7610,9 +7610,6 @@ body {
 .image-clicker-upload { display: grid; place-items: center; min-height: 130px; padding: 18px; border: 2px dashed #d9b8c4; border-radius: 16px; background: #fff8fa; text-align: center; cursor: pointer; }
 .image-clicker-upload strong { color: #8d3f5a; }
 .image-clicker-upload small { margin-top: 6px; color: #81747a; }
-.image-clicker-fit-options { display:flex; gap:8px; margin-top:12px; }
-.image-clicker-fit-options button { flex:1; padding:9px 11px; border:1px solid #e2d3d9; border-radius:12px; background:#fff; color:#6b5a62; font-weight:800; }
-.image-clicker-fit-options button.is-active { border-color:#c9557e; background:#fff1f6; color:#8f3858; }
 .image-clicker-shape-help { margin:8px 2px 0; color:#84757c; font-size:12px; line-height:1.35; }
 .image-clicker-permission { display: flex; gap: 9px; margin-top: 12px; color: #685d62; font-size: 13px; line-height: 1.4; }
 .image-clicker-permission input { width: 18px; height: 18px; flex: 0 0 auto; }

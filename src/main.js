@@ -1483,13 +1483,9 @@ ${showBoothSection ? `
                 <strong>Choose a JPG, PNG or WebP</strong>
                 <small>Square images work best · maximum 8 MB</small>
               </label>
-              <label class="image-clicker-permission"><input id="imageClickerPermission" type="checkbox"><span>I own this image or have permission to print it. It may be stored privately for up to 30 days to make my order.</span></label>
+              <label class="image-clicker-permission"><input id="imageClickerPermission" type="checkbox"><span>I own this image or have permission to print it.</span></label>
             </div>
-            <div class="image-clicker-fit-options" aria-label="Cap shape">
-              <button type="button" class="is-active" data-image-clicker-fit="shape">Follow artwork shape</button>
-              <button type="button" data-image-clicker-fit="square">Square photo cap</button>
-            </div>
-            <p class="image-clicker-shape-help">Logos and transparent PNGs work best. For photos, choose a square cap.</p>
+            <p class="image-clicker-shape-help">Logos and transparent PNGs work best. The cap follows the artwork shape.</p>
           </div>
         </div>
 
@@ -4608,9 +4604,7 @@ async function buildImageClicker3DPreview() {
       ? await getImageClickerPreviewImage(imageClickerState.inputDataUrl)
       : image;
     if (build !== imageClicker3DBuild) return;
-    const outline = imageClickerState.fit === "square"
-      ? [new THREE.Vector2(-30, -25), new THREE.Vector2(30, -25), new THREE.Vector2(30, 25), new THREE.Vector2(-30, 25)]
-      : buildImageClickerOutline(image);
+    const outline = buildImageClickerOutline(image);
     const shape = new THREE.Shape(outline);
     const bounds = new THREE.Box2().setFromPoints(outline);
     const bodyDepth = 8.2;
@@ -10901,7 +10895,7 @@ function openImageClickerStudio(existingItem = null, itemIndex = null) {
     imagePath: saved?.imagePath || "",
     designName: saved?.designName || (galleryPaths.length ? "K-pop design 1" : ""),
     bodyColour: existingItem?.custom?.bases?.[0] || getAvailableColours()[0] || "#F55A74",
-    fit: ["shape", "square"].includes(saved?.fit) ? saved.fit : (saved?.fit === "contain" ? "square" : "shape"),
+    fit: "shape",
     file: null,
     inputDataUrl: savedImageUrl,
     shapedDataUrl: saved?.shapedDataUrl || saved?.shaped_data_url || (saved?.fit === "shape" ? savedImageUrl : "")
@@ -10914,9 +10908,6 @@ function openImageClickerStudio(existingItem = null, itemIndex = null) {
   });
   document.querySelectorAll("[data-image-clicker-colour]").forEach(button => {
     button.classList.toggle("is-active", button.dataset.imageClickerColour === imageClickerState.bodyColour);
-  });
-  document.querySelectorAll("[data-image-clicker-fit]").forEach(button => {
-    button.classList.toggle("is-active", button.dataset.imageClickerFit === imageClickerState.fit);
   });
   if (imageClickerStatus) imageClickerStatus.textContent = "";
   setImageClickerSource(imageClickerState.source);
@@ -11221,17 +11212,6 @@ imageClickerModal?.addEventListener("click", event => {
     document.querySelectorAll("[data-image-clicker-colour]").forEach(button => button.classList.toggle("is-active", button === colourButton));
     renderImageClickerPreview();
   }
-  const fitButton = event.target.closest("[data-image-clicker-fit]");
-  if (fitButton) {
-    imageClickerState.fit = fitButton.dataset.imageClickerFit === "square" ? "square" : "shape";
-    if (imageClickerState.source === "upload") {
-      imageClickerState.imageUrl = imageClickerState.fit === "shape"
-        ? imageClickerState.shapedDataUrl || imageClickerState.inputDataUrl
-        : imageClickerState.inputDataUrl || imageClickerState.shapedDataUrl;
-    }
-    document.querySelectorAll("[data-image-clicker-fit]").forEach(button => button.classList.toggle("is-active", button === fitButton));
-    renderImageClickerPreview();
-  }
 });
 imageClickerInput?.addEventListener("change", async () => {
   const file = imageClickerInput.files?.[0];
@@ -11245,7 +11225,7 @@ imageClickerInput?.addEventListener("change", async () => {
       file,
       inputDataUrl: dataUrl,
       shapedDataUrl,
-      imageUrl: imageClickerState.fit === "square" ? dataUrl : shapedDataUrl,
+      imageUrl: shapedDataUrl,
       imagePath: "",
       designName: file.name.replace(/\.[^.]+$/, "").slice(0, 50) || "Custom upload"
     });
