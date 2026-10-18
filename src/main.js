@@ -1483,7 +1483,6 @@ ${showBoothSection ? `
                 <strong>Choose a JPG, PNG or WebP</strong>
                 <small>Square images work best · maximum 8 MB</small>
               </label>
-              <label class="image-clicker-permission"><input id="imageClickerPermission" type="checkbox"><span>I own this image or have permission to print it.</span></label>
             </div>
             <p class="image-clicker-shape-help">Logos and transparent PNGs work best. The cap follows the artwork shape.</p>
           </div>
@@ -2937,7 +2936,6 @@ const closeImageClickerModal = document.getElementById("closeImageClickerModal")
 const imageClickerGalleryPanel = document.getElementById("imageClickerGalleryPanel");
 const imageClickerUploadPanel = document.getElementById("imageClickerUploadPanel");
 const imageClickerInput = document.getElementById("imageClickerInput");
-const imageClickerPermission = document.getElementById("imageClickerPermission");
 const imageClickerLabel = document.getElementById("imageClickerLabel");
 const imageClickerQuantity = document.getElementById("imageClickerQuantity");
 const imageClickerPreview = document.getElementById("imageClickerPreview");
@@ -10915,7 +10913,6 @@ function openImageClickerStudio(existingItem = null, itemIndex = null) {
   });
   if (imageClickerLabel) imageClickerLabel.value = existingItem?.name || "";
   if (imageClickerQuantity) imageClickerQuantity.value = String(getItemQuantity(existingItem || { quantity: 1 }));
-  if (imageClickerPermission) imageClickerPermission.checked = saved?.source === "upload";
   document.querySelectorAll("[data-image-clicker-design]").forEach((button, index) => {
     button.classList.toggle("is-active", Boolean(imageClickerState.source === "gallery" && galleryPaths[index] === imageClickerState.imageUrl));
   });
@@ -10958,10 +10955,6 @@ async function storeCustomerImageCap() {
 async function addImageClickerToCart() {
   if (!imageClickerState.imageUrl) {
     imageClickerStatus.textContent = "Choose a K-pop design or upload your own image first.";
-    return;
-  }
-  if (imageClickerState.source === "upload" && !imageClickerPermission?.checked) {
-    imageClickerStatus.textContent = "Please confirm that you have permission to print this image.";
     return;
   }
   addImageClickerToCartBtn.disabled = true;

@@ -7611,8 +7611,6 @@ body {
 .image-clicker-upload strong { color: #8d3f5a; }
 .image-clicker-upload small { margin-top: 6px; color: #81747a; }
 .image-clicker-shape-help { margin:8px 2px 0; color:#84757c; font-size:12px; line-height:1.35; }
-.image-clicker-permission { display: flex; gap: 9px; margin-top: 12px; color: #685d62; font-size: 13px; line-height: 1.4; }
-.image-clicker-permission input { width: 18px; height: 18px; flex: 0 0 auto; }
 .image-clicker-colours { display: flex; gap: 12px; overflow-x: auto; padding: 3px 2px 9px; scrollbar-width: thin; }
 .image-clicker-colours button { flex: 0 0 72px; padding: 5px; border: 2px solid transparent; border-radius: 14px; background: transparent; color: #65565d; }
 .image-clicker-colours button.is-active { border-color: #c84674; background: #fff3f7; }
