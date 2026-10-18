@@ -8126,6 +8126,14 @@ a {
 .product-admin-media-item button:disabled { opacity: .35; }
 .product-media-empty { margin: 8px 0; color: #798b95; font-size: 11px; }
 .product-media-upload { margin-top: 12px; }
+.kpop-model-list { display:grid; gap:9px; margin:12px 0; }
+.kpop-model-item { display:grid; grid-template-columns:52px minmax(150px,1fr) minmax(130px,.55fr) auto; gap:10px; align-items:end; padding:10px; border:1px solid #dce6eb; border-radius:13px; background:#fff; }
+.kpop-model-item.is-pending { border-color:#a993ca; background:#faf7ff; }
+.kpop-model-icon { align-self:center; display:grid; place-items:center; width:48px; height:48px; border-radius:12px; background:#26333d; color:#fff; font-size:11px; font-weight:900; letter-spacing:.08em; }
+.kpop-model-item label { display:grid; gap:5px; color:#536c7b; font-size:10px; font-weight:850; }
+.kpop-model-item input[type="text"] { width:100%; min-height:38px; padding:8px 10px; border:1px solid #d6e1e7; border-radius:9px; font:inherit; }
+.kpop-model-item input[type="color"] { width:100%; min-height:38px; padding:3px; border:1px solid #d6e1e7; border-radius:9px; background:#fff; }
+@media (max-width:700px) { .kpop-model-item { grid-template-columns:48px minmax(0,1fr); } .kpop-model-item .delete-product-btn { grid-column:1 / -1; } }
 
 .booth-photo-admin {
   margin-top: 14px;

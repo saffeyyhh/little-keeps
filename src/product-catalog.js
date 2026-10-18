@@ -11,7 +11,32 @@ export const PHOTO_KEEPSAKE_COLOUR_PRICES = Object.freeze({
   3: 7.5,
   4: 8.5
 });
+export const DEFAULT_KPOP_CLICKER_MODELS = Object.freeze([
+  { key: "babymonster", name: "BABYMONSTER", accent: "#f383a0", modelUrl: "/models/kpop/babymonster.3mf", thumbnail: "/images/kpop-models/babymonster/thumbnail_3mf.png" },
+  { key: "bts", name: "BTS", accent: "#8a5cd6", modelUrl: "/models/kpop/bts.3mf", thumbnail: "/images/kpop-models/bts/thumbnail_3mf.png" },
+  { key: "exo", name: "EXO", accent: "#bfc6ce", modelUrl: "/models/kpop/exo.3mf", thumbnail: "/images/kpop-models/exo/thumbnail_3mf.png" },
+  { key: "girls-generation", name: "Girls’ Generation", accent: "#f38fbd", modelUrl: "/models/kpop/girls-generation.3mf", thumbnail: "/images/kpop-models/girls-generation/thumbnail_3mf.png" },
+  { key: "cortis", name: "CORTIS", accent: "#759a62", modelUrl: "/models/kpop/cortis.3mf", thumbnail: "/images/kpop-models/cortis/thumbnail_3mf.png" },
+  { key: "enhypen", name: "ENHYPEN", accent: "#d5d1c7", modelUrl: "/models/kpop/enhypen.3mf", thumbnail: "/images/kpop-models/enhypen/thumbnail_3mf.png" },
+  { key: "kpop-collection", name: "K-pop Collection", accent: "#f1cb65", modelUrl: "/models/kpop/kpop-collection.3mf", thumbnail: "/images/kpop-models/kpop-collection/thumbnail_3mf.png" },
+  { key: "stray-kids-collection", name: "Stray Kids Collection", accent: "#e84f57", modelUrl: "/models/kpop/stray-kids-collection.3mf", thumbnail: "/images/kpop-models/stray-kids-collection/thumbnail_3mf.png" },
+  { key: "stray-kids", name: "Stray Kids", accent: "#e84f57", modelUrl: "/models/kpop/stray-kids.3mf", thumbnail: "/images/kpop-models/stray-kids/thumbnail_3mf.png" }
+]);
 const PRODUCT_STATUSES = new Set(["active", "coming_soon", "hidden"]);
+
+export function normalizeKpopClickerModels(value = []) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const modelUrl = String(item.modelUrl || item.model_url || "").trim();
+    if (!modelUrl) return [];
+    const name = String(item.name || `K-pop design ${index + 1}`).trim();
+    const key = String(item.key || name).toLowerCase().normalize("NFKD")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `design-${index + 1}`;
+    const accent = /^#[0-9a-f]{6}$/i.test(String(item.accent || "")) ? String(item.accent) : "#f383a0";
+    return [{ key, name, accent, modelUrl, thumbnail: String(item.thumbnail || item.thumbnail_url || "").trim() }];
+  });
+}
 
 export function getPhotoKeepsakeColourPrice(colourCount = 4) {
   const normalizedCount = Math.min(4, Math.max(2, Math.round(Number(colourCount) || 4)));
@@ -241,9 +266,9 @@ export const DEFAULT_PRODUCT_CATALOG = [
   },
   {
     product_key: IMAGE_CLICKER_PRODUCT_KEY,
-    name: "K-pop & Custom Image Clicker",
-    eyebrow: "One image. One satisfying click.",
-    description: "Choose a Little Keeps K-pop design or upload your own image for a personalised clicker keychain.",
+    name: "K-pop Clicker",
+    eyebrow: "Your favourite group, one satisfying click.",
+    description: "Choose a ready-made K-pop design, customise the colours and preview it in 3D.",
     status: "coming_soon",
     price_visible: false,
     usual_base_price: 6.9,
@@ -270,6 +295,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     image_path: null,
     gallery_paths: [],
     video_path: "",
+    kpop_models: DEFAULT_KPOP_CLICKER_MODELS,
     production_notes: "Print one clicker body and one image keycap. Check the chosen artwork, crop and body colour before printing."
   }
 ];
@@ -404,6 +430,7 @@ export function normalizeProductCatalog(rows = []) {
       product.gallery_paths = [String(product.image_path)];
     }
     product.video_path = String(product.video_path || "").trim();
+    product.kpop_models = normalizeKpopClickerModels(product.kpop_models);
     return product;
   });
 
@@ -450,6 +477,7 @@ export function normalizeProductCatalog(rows = []) {
         product.gallery_paths = [String(product.image_path)];
       }
       product.video_path = String(product.video_path || "").trim();
+      product.kpop_models = normalizeKpopClickerModels(product.kpop_models);
       return product;
     });
 

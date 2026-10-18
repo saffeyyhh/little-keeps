@@ -73,6 +73,7 @@ import {
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
   normalizeProductCatalog,
+  normalizeKpopClickerModels,
   normalizeProductOptions,
   isReadyMadeProduct
 } from "./product-catalog.js";
@@ -667,6 +668,7 @@ let editingCustomerReviewId = null;
 let adminProductCatalog = normalizeProductCatalog(DEFAULT_PRODUCT_CATALOG);
 let adminProductsLoadFailed = false;
 const pendingProductMediaFiles = new Map();
+const pendingKpopModelFiles = new Map();
 let pendingBoothPreviewUrl = "";
 let adminSettingsTab = "products";
 let easyParcelConnectionStatus = { connected: false };
@@ -1889,6 +1891,21 @@ async function uploadProductVideo(file, productKey) {
   return supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
 }
 
+async function uploadKpopModel(file, productKey) {
+  if (!file) return "";
+  const extension = String(file.name || "").split(".").pop()?.toLowerCase();
+  if (extension !== "3mf") throw new Error(`“${file.name || "This file"}” is not a 3MF file.`);
+  if (file.size > 20 * 1024 * 1024) throw new Error(`“${file.name}” is too large. Keep each 3MF under 20 MB.`);
+  const path = `${productKey}/models/${crypto.randomUUID()}.3mf`;
+  const { error } = await supabase.storage.from("product-images").upload(path, file, {
+    cacheControl: "3600",
+    contentType: "model/3mf",
+    upsert: false
+  });
+  if (error) throw error;
+  return supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
+}
+
 window.createReadyMadeProduct = async function(button) {
   const name = document.getElementById("newProductName")?.value.trim();
   const price = Number(document.getElementById("newProductPrice")?.value);
@@ -1953,6 +1970,7 @@ function renderSettingsWorkspace() {
     if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl);
   });
   pendingProductMediaFiles.clear();
+  pendingKpopModelFiles.clear();
   if (pendingBoothPreviewUrl) URL.revokeObjectURL(pendingBoothPreviewUrl);
   pendingBoothPreviewUrl = "";
   const checked = value => value ? "checked" : "";
@@ -2055,6 +2073,9 @@ function renderSettingsWorkspace() {
                 ? product.gallery_paths.filter(Boolean)
                 : product.image_path ? [product.image_path] : [];
               const productVideoPath = product.video_path === "__none__" ? "" : String(product.video_path || "");
+              const productKpopModels = isImageClickerDraft
+                ? normalizeKpopClickerModels(product.kpop_models)
+                : [];
 
               return `
                 <article class="product-settings-card ${product.status === "active" ? "is-active" : ""}">
@@ -2125,6 +2146,31 @@ function renderSettingsWorkspace() {
                         </div>
                         <input class="product-video-path-input" name="${escapeAdminHtml(prefix)}video_path" type="hidden" value="${escapeAdminHtml(product.video_path || "")}">
                       </section>
+
+                      ${isImageClickerDraft ? `
+                        <section class="product-price-group kpop-model-manager" data-kpop-model-manager="${escapeAdminHtml(product.product_key)}">
+                          <div class="product-price-group-heading">
+                            <strong>K-pop 3MF designs</strong>
+                            <small>Upload, rename or remove the print-ready models customers can choose. Changes appear after you save settings.</small>
+                          </div>
+                          <div class="kpop-model-list" data-kpop-model-list>
+                            ${productKpopModels.map(model => `
+                              <article class="kpop-model-item" data-kpop-model-item data-model-url="${escapeAdminHtml(model.modelUrl)}" data-thumbnail="${escapeAdminHtml(model.thumbnail)}" data-model-key="${escapeAdminHtml(model.key)}">
+                                <span class="kpop-model-icon">3MF</span>
+                                <label><span>Design name</span><input type="text" maxlength="50" value="${escapeAdminHtml(model.name)}" data-kpop-model-name></label>
+                                <label><span>Default logo colour</span><input type="color" value="${escapeAdminHtml(model.accent)}" data-kpop-model-accent></label>
+                                <button type="button" class="delete-product-btn" data-kpop-model-remove>Remove</button>
+                              </article>
+                            `).join("") || `<p class="product-media-empty" data-kpop-model-empty>No 3MF designs yet.</p>`}
+                          </div>
+                          <input type="hidden" name="${escapeAdminHtml(prefix)}kpop_models" value="${escapeAdminHtml(JSON.stringify(productKpopModels))}" data-kpop-models-input>
+                          <label class="settings-field product-media-upload">
+                            <span>Add 3MF designs</span>
+                            <input type="file" accept=".3mf,model/3mf" multiple data-kpop-model-upload>
+                            <small>Select one or more 3MF files · up to 20 MB each. The filename becomes the design name and can be edited above.</small>
+                          </label>
+                        </section>
+                      ` : ""}
 
                       ${isReadyMade ? `
                         <section class="product-price-group ready-made-listing-fields">
@@ -2650,6 +2696,68 @@ function renderSettingsWorkspace() {
       syncGallery();
     });
   });
+  document.querySelectorAll("[data-kpop-model-manager]").forEach(manager => {
+    const syncModels = () => {
+      const items = Array.from(manager.querySelectorAll("[data-kpop-model-item]"));
+      const hidden = manager.querySelector("[data-kpop-models-input]");
+      const models = items.map((item, index) => ({
+        key: item.dataset.modelKey || `design-${index + 1}`,
+        name: item.querySelector("[data-kpop-model-name]")?.value.trim() || `K-pop design ${index + 1}`,
+        accent: item.querySelector("[data-kpop-model-accent]")?.value || "#f383a0",
+        modelUrl: item.dataset.modelUrl || "",
+        thumbnail: item.dataset.thumbnail || ""
+      }));
+      if (hidden) hidden.value = JSON.stringify(models);
+      const list = manager.querySelector("[data-kpop-model-list]");
+      const empty = manager.querySelector("[data-kpop-model-empty]");
+      if (!items.length && list && !empty) {
+        list.insertAdjacentHTML("beforeend", '<p class="product-media-empty" data-kpop-model-empty>No 3MF designs yet.</p>');
+      } else if (items.length) {
+        empty?.remove();
+      }
+    };
+    manager.addEventListener("input", event => {
+      if (event.target.matches("[data-kpop-model-name], [data-kpop-model-accent]")) syncModels();
+    });
+    manager.addEventListener("click", event => {
+      const removeButton = event.target.closest("[data-kpop-model-remove]");
+      if (!removeButton) return;
+      const item = removeButton.closest("[data-kpop-model-item]");
+      const pendingId = String(item?.dataset.modelUrl || "").replace(/^pending:/, "");
+      if (String(item?.dataset.modelUrl || "").startsWith("pending:")) pendingKpopModelFiles.delete(pendingId);
+      item?.remove();
+      syncModels();
+    });
+    manager.querySelector("[data-kpop-model-upload]")?.addEventListener("change", event => {
+      const list = manager.querySelector("[data-kpop-model-list]");
+      if (!list) return;
+      Array.from(event.currentTarget.files || []).forEach(file => {
+        if (!/\.3mf$/i.test(file.name) || file.size > 20 * 1024 * 1024) {
+          alert(`“${file.name}” could not be added. Use a 3MF file up to 20 MB.`);
+          return;
+        }
+        const pendingId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        pendingKpopModelFiles.set(pendingId, { file });
+        const name = file.name.replace(/\.3mf$/i, "").replace(/[-_]+/g, " ").trim();
+        const item = document.createElement("article");
+        item.className = "kpop-model-item is-pending";
+        item.dataset.kpopModelItem = "";
+        item.dataset.modelUrl = `pending:${pendingId}`;
+        item.dataset.modelKey = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `design-${Date.now()}`;
+        item.dataset.thumbnail = "";
+        item.innerHTML = `
+          <span class="kpop-model-icon">NEW</span>
+          <label><span>Design name</span><input type="text" maxlength="50" value="${escapeAdminHtml(name)}" data-kpop-model-name></label>
+          <label><span>Default logo colour</span><input type="color" value="#f383a0" data-kpop-model-accent></label>
+          <button type="button" class="delete-product-btn" data-kpop-model-remove>Remove</button>
+        `;
+        list.append(item);
+      });
+      event.currentTarget.value = "";
+      syncModels();
+    });
+    syncModels();
+  });
   const showSettingsTab = tab => {
     const validTabs = ["products", "scheduling", "stock", "delivery", "customer"];
     adminSettingsTab = validTabs.includes(tab) ? tab : "products";
@@ -2774,7 +2882,7 @@ async function saveShopSettings(event) {
   if (saveButton) {
     saveButton.disabled = true;
     const hasBoothPhoto = Boolean(settingsForm.querySelector("#boothImageUpload")?.files?.length);
-    saveButton.textContent = pendingProductMediaFiles.size || hasBoothPhoto ? "Uploading photos…" : "Saving…";
+    saveButton.textContent = pendingProductMediaFiles.size || pendingKpopModelFiles.size || hasBoothPhoto ? "Uploading files…" : "Saving…";
   }
 
   const form = new FormData(settingsForm);
@@ -2879,6 +2987,7 @@ async function saveShopSettings(event) {
     const prefix = `product:${product.product_key}:`;
     const galleryField = `${prefix}gallery_paths`;
     const videoField = `${prefix}video_path`;
+    const kpopModelsField = `${prefix}kpop_models`;
     let galleryPaths = [];
     try {
       galleryPaths = JSON.parse(String(form.get(galleryField) || "[]"));
@@ -2903,8 +3012,31 @@ async function saveShopSettings(event) {
       form.set(galleryField, JSON.stringify(Array.from(new Set(uploadedGalleryPaths))));
       const videoFile = videoInput?.files?.[0];
       if (videoFile) form.set(videoField, await uploadProductVideo(videoFile, product.product_key));
+      if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+        let models = [];
+        try {
+          models = JSON.parse(String(form.get(kpopModelsField) || "[]"));
+        } catch {
+          models = [];
+        }
+        const uploadedModels = [];
+        for (const model of Array.isArray(models) ? models : []) {
+          let modelUrl = String(model.modelUrl || "");
+          if (modelUrl.startsWith("pending:")) {
+            const pendingId = modelUrl.replace(/^pending:/, "");
+            const pending = pendingKpopModelFiles.get(pendingId);
+            if (!pending?.file) throw new Error("A new 3MF file was lost before it could upload. Please add it again.");
+            modelUrl = await uploadKpopModel(pending.file, product.product_key);
+          }
+          uploadedModels.push({ ...model, modelUrl });
+        }
+        form.set(kpopModelsField, JSON.stringify(normalizeKpopClickerModels(uploadedModels)));
+      }
     } catch (error) {
-      stopSaving(`Unable to upload media for ${product.name}.\n\n${error.message || error}\n\nIf this is your first video upload, run product-media-gallery.sql once in Supabase.`);
+      const setupFile = pendingKpopModelFiles.size
+        ? "kpop-clicker-model-library.sql"
+        : "product-media-gallery.sql";
+      stopSaving(`Unable to upload media for ${product.name}.\n\n${error.message || error}\n\nIf this is your first upload of this type, run ${setupFile} once in Supabase.`);
       return;
     }
   }
@@ -2925,6 +3057,12 @@ async function saveShopSettings(event) {
         }
       })(),
       video_path: String(form.get(`${prefix}video_path`) || "").trim(),
+      kpop_models: product.product_key === IMAGE_CLICKER_PRODUCT_KEY
+        ? (() => {
+            try { return normalizeKpopClickerModels(JSON.parse(String(form.get(`${prefix}kpop_models`) || "[]"))); }
+            catch { return []; }
+          })()
+        : normalizeKpopClickerModels(product.kpop_models),
       updated_at: new Date().toISOString()
     };
     productUpdate.image_path = productUpdate.gallery_paths[0] || "";

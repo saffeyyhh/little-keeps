@@ -19,9 +19,24 @@ import {
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
   normalizeProductCatalog,
+  normalizeKpopClickerModels,
   normalizeProductOptions,
   isReadyMadeProduct
 } from "../src/product-catalog.js";
+
+test("normalizes editable K-pop 3MF designs", () => {
+  assert.deepEqual(normalizeKpopClickerModels([
+    { name: "  Girls' Generation  ", model_url: " https://example.com/gg.3mf ", accent: "#F38FBD" },
+    { name: "Missing model" },
+    null
+  ]), [{
+    key: "girls-generation",
+    name: "Girls' Generation",
+    accent: "#F38FBD",
+    modelUrl: "https://example.com/gg.3mf",
+    thumbnail: ""
+  }]);
+});
 
 test("prices photo keepsakes by artwork colour count", () => {
   assert.equal(getPhotoKeepsakeColourPrice(2), 6.5);
