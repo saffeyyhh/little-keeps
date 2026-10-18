@@ -4537,7 +4537,22 @@ function buildImageClickerOutline(image) {
   if (!outline?.length) {
     return [new THREE.Vector2(-30, -25), new THREE.Vector2(30, -25), new THREE.Vector2(30, 25), new THREE.Vector2(-30, 25)];
   }
-  const sampled = outline.filter((_, index) => index % 2 === 0);
+  let sampled = outline.filter((_, index) => index % 4 === 0);
+  for (let pass = 0; pass < 2; pass += 1) {
+    const smoothed = [];
+    sampled.forEach((point, index) => {
+      const next = sampled[(index + 1) % sampled.length];
+      smoothed.push([
+        point[0] * .75 + next[0] * .25,
+        point[1] * .75 + next[1] * .25
+      ]);
+      smoothed.push([
+        point[0] * .25 + next[0] * .75,
+        point[1] * .25 + next[1] * .75
+      ]);
+    });
+    sampled = smoothed;
+  }
   const minX = Math.min(...sampled.map(point => point[0]));
   const maxX = Math.max(...sampled.map(point => point[0]));
   const minY = Math.min(...sampled.map(point => point[1]));
@@ -4547,6 +4562,27 @@ function buildImageClickerOutline(image) {
     (point[0] - (minX + maxX) / 2) * outlineScale,
     ((minY + maxY) / 2 - point[1]) * outlineScale
   ));
+}
+
+function getImageClickerBackingColour(image) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 12;
+  canvas.height = 12;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0, 12, 12);
+  const pixels = context.getImageData(0, 0, 12, 12).data;
+  const samplePoints = [[0, 0], [11, 0], [0, 11], [11, 11]];
+  const colours = samplePoints.map(([x, y]) => {
+    const offset = (y * 12 + x) * 4;
+    return [pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]];
+  }).filter(colour => colour[3] > 180);
+  if (!colours.length) return "#fffdf7";
+  const average = colours.reduce((result, colour) => [
+    result[0] + colour[0] / colours.length,
+    result[1] + colour[1] / colours.length,
+    result[2] + colour[2] / colours.length
+  ], [0, 0, 0]);
+  return `rgb(${Math.round(average[0])}, ${Math.round(average[1])}, ${Math.round(average[2])})`;
 }
 
 function createImageClickerRing(colour, topY, depth) {
@@ -4568,13 +4604,16 @@ async function buildImageClicker3DPreview() {
   if (!imageClickerState.imageUrl) return;
   try {
     const image = await getImageClickerPreviewImage(imageClickerState.imageUrl);
+    const backingImage = imageClickerState.source === "upload" && imageClickerState.inputDataUrl
+      ? await getImageClickerPreviewImage(imageClickerState.inputDataUrl)
+      : image;
     if (build !== imageClicker3DBuild) return;
     const outline = imageClickerState.fit === "square"
       ? [new THREE.Vector2(-30, -25), new THREE.Vector2(30, -25), new THREE.Vector2(30, 25), new THREE.Vector2(-30, 25)]
       : buildImageClickerOutline(image);
     const shape = new THREE.Shape(outline);
     const bounds = new THREE.Box2().setFromPoints(outline);
-    const bodyDepth = 7;
+    const bodyDepth = 8.2;
     const bodyGeometry = new THREE.ExtrudeGeometry(shape, {
       depth: bodyDepth,
       bevelEnabled: true,
@@ -4589,16 +4628,16 @@ async function buildImageClicker3DPreview() {
     preview.group.add(body);
 
     const capGeometry = new THREE.ExtrudeGeometry(shape, {
-      depth: 2,
+      depth: 1,
       bevelEnabled: true,
-      bevelSize: .55,
-      bevelThickness: .5,
+      bevelSize: .38,
+      bevelThickness: .3,
       bevelSegments: 3,
       curveSegments: 12
     });
-    const cap = new THREE.Mesh(capGeometry, createMat("#fffdf7"));
-    cap.scale.set(.93, .93, 1);
-    cap.position.z = bodyDepth + .5;
+    const cap = new THREE.Mesh(capGeometry, createMat(getImageClickerBackingColour(backingImage)));
+    cap.scale.set(.95, .95, 1);
+    cap.position.z = bodyDepth + .35;
     cap.castShadow = true;
     preview.group.add(cap);
 
@@ -4614,9 +4653,9 @@ async function buildImageClicker3DPreview() {
     }
     const alphaMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: .08, side: THREE.DoubleSide });
     const artworkGeometry = new THREE.PlaneGeometry(artworkWidth, artworkHeight);
-    for (let layer = 0; layer < 7; layer += 1) {
+    for (let layer = 0; layer < 2; layer += 1) {
       const artwork = new THREE.Mesh(artworkGeometry, alphaMaterial.clone());
-      artwork.position.z = bodyDepth + 2.55 + layer * (2 / 6);
+      artwork.position.z = bodyDepth + 1.65 + layer * .2;
       preview.group.add(artwork);
     }
 
