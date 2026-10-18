@@ -36,8 +36,8 @@ Deno.serve(async request => {
     const openAiKey = Deno.env.get("OPENAI_API_KEY");
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!openAiKey || !supabaseUrl || !serviceRoleKey) {
-      return json({ error: "The AI photo studio is not configured yet." }, 503);
+    if (!supabaseUrl || !serviceRoleKey) {
+      return json({ error: "Private artwork storage is not configured yet." }, 503);
     }
 
     const body = await request.json();
@@ -46,6 +46,49 @@ Deno.serve(async request => {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
+
+    if (body.action === "store_image_cap") {
+      const { bytes, mimeType } = decodeDataUrl(String(body.image_data_url || ""));
+      const uploadId = crypto.randomUUID();
+      const extension = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+      const artworkPath = `image-caps/${uploadId}/artwork.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("customer-artwork")
+        .upload(artworkPath, bytes, { contentType: mimeType, upsert: false });
+      if (uploadError) throw uploadError;
+      const requester = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        request.headers.get("cf-connecting-ip") || "unknown";
+      const requesterHash = await sha256(`${requester}:${Deno.env.get("PHOTO_RATE_LIMIT_SALT") || serviceRoleKey.slice(0, 24)}`);
+      const { error: logError } = await supabase.from("photo_artwork_requests").insert({
+        id: uploadId,
+        client_token: clientToken,
+        requester_hash: requesterHash,
+        subject_type: "object",
+        variant: "clicker",
+        colour_count: 2,
+        original_path: artworkPath,
+        artwork_path: artworkPath,
+        model: "customer-upload",
+        status: "generated"
+      });
+      if (logError) {
+        await supabase.storage.from("customer-artwork").remove([artworkPath]);
+        throw logError;
+      }
+      const { data: signedArtwork, error: signedError } = await supabase.storage
+        .from("customer-artwork")
+        .createSignedUrl(artworkPath, 60 * 60 * 2);
+      if (signedError) throw signedError;
+      return json({
+        generation_id: uploadId,
+        artwork_path: artworkPath,
+        artwork_url: signedArtwork.signedUrl
+      });
+    }
+
+    if (!openAiKey) {
+      return json({ error: "The AI photo studio is not configured yet." }, 503);
+    }
     let isVerifiedAdminPreview = false;
     if (body.admin_preview === true) {
       const accessToken = String(request.headers.get("Authorization") || "")
@@ -118,6 +161,7 @@ Deno.serve(async request => {
         .from("photo_artwork_requests")
         .select("created_at", { count: "exact" })
         .eq("requester_hash", requesterHash)
+        .neq("model", "customer-upload")
         .gte("created_at", oneHourAgo)
         .order("created_at", { ascending: true })
         .limit(1);

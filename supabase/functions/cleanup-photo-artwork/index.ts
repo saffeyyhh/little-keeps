@@ -22,7 +22,7 @@ Deno.serve(async request => {
 
   let deleted = 0;
   for (const row of expired || []) {
-    const paths = [row.original_path, row.artwork_path].filter(Boolean);
+    const paths = Array.from(new Set([row.original_path, row.artwork_path].filter(Boolean)));
     const { error: storageError } = await supabase.storage
       .from("customer-artwork")
       .remove(paths);

@@ -66,6 +66,7 @@ import {
 import {
   DEFAULT_PRODUCT_CATALOG,
   PENCIL_PRODUCT_KEY,
+  IMAGE_CLICKER_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
@@ -870,7 +871,8 @@ function getOrderedPhotoArtworkPaths() {
   return new Set(latestOrders.flatMap(order =>
     (Array.isArray(order.order_data) ? order.order_data : []).flatMap(item => {
       const path = String(item?.design?.photo?.artwork_path || "").trim();
-      return path ? [path] : [];
+      const imageCapPath = String(item?.design?.image_cap?.image_path || "").trim();
+      return [path, imageCapPath].filter(Boolean);
     })
   ));
 }
@@ -906,22 +908,26 @@ async function getPrivateArtworkUrl(path, expiresIn = 900) {
 }
 
 async function hydrateOrderPhotoArtworkUrls(orders) {
-  const photoItems = (orders || []).flatMap(order =>
+  const artworkItems = (orders || []).flatMap(order =>
     (Array.isArray(order.order_data) ? order.order_data : [])
-      .filter(item => item?.design?.photo?.artwork_path)
+      .filter(item => item?.design?.photo?.artwork_path || item?.design?.image_cap?.image_path)
   );
-  const paths = Array.from(new Set(photoItems.map(item =>
-    String(item.design.photo.artwork_path).trim()
-  ).filter(Boolean)));
+  const paths = Array.from(new Set(artworkItems.flatMap(item => [
+    String(item?.design?.photo?.artwork_path || "").trim(),
+    String(item?.design?.image_cap?.image_path || "").trim()
+  ].filter(Boolean))));
   const signedUrls = new Map(await Promise.all(paths.map(async path => [
     path,
     await getPrivateArtworkUrl(path, 60 * 60)
   ])));
 
-  photoItems.forEach(item => {
-    item.design.photo.admin_artwork_url = signedUrls.get(
-      String(item.design.photo.artwork_path).trim()
-    ) || "";
+  artworkItems.forEach(item => {
+    if (item?.design?.photo?.artwork_path) {
+      item.design.photo.admin_artwork_url = signedUrls.get(String(item.design.photo.artwork_path).trim()) || "";
+    }
+    if (item?.design?.image_cap?.image_path) {
+      item.design.image_cap.admin_image_url = signedUrls.get(String(item.design.image_cap.image_path).trim()) || "";
+    }
   });
 }
 
@@ -929,6 +935,7 @@ async function loadPhotoPreviews() {
   const { data, error } = await supabase
     .from("photo_artwork_requests")
     .select("id, subject_type, variant, colour_count, original_path, artwork_path, status, created_at, expires_at")
+    .neq("model", "customer-upload")
     .order("created_at", { ascending: false })
     .limit(48);
   if (error) throw error;
@@ -2042,6 +2049,7 @@ function renderSettingsWorkspace() {
               const prefix = `product:${product.product_key}:`;
               const isSolidDraft = product.product_key === "solid-clicky-keychain";
               const isPencilDraft = product.product_key === PENCIL_PRODUCT_KEY;
+              const isImageClickerDraft = product.product_key === IMAGE_CLICKER_PRODUCT_KEY;
               const isReadyMade = isReadyMadeProduct(product);
               const productGalleryPaths = Array.isArray(product.gallery_paths)
                 ? product.gallery_paths.filter(Boolean)
@@ -2083,7 +2091,7 @@ function renderSettingsWorkspace() {
                       <section class="product-price-group product-media-manager" data-product-media-manager="${escapeAdminHtml(product.product_key)}">
                         <div class="product-price-group-heading">
                           <strong>Product photos & click video</strong>
-                          <small>The first photo is the cover. Customers can swipe through the rest.</small>
+                          <small>${isImageClickerDraft ? "Every photo becomes a selectable K-pop cap design. The first is also the shop cover." : "The first photo is the cover. Customers can swipe through the rest."}</small>
                         </div>
                         <div class="product-admin-gallery" data-product-admin-gallery>
                           ${productGalleryPaths.map((path, index) => `
@@ -5637,6 +5645,7 @@ function renderOrders(orders) {
       : item.design?.base_shape?.key || item.design?.baseShape || "ribbed";
     const letterOrientation = getLetterOrientation(item.design);
     const photoProduct = isPhotoKeepsake(order, item);
+    const imageClickerProduct = isImageClicker(order, item);
     const customNameProduct = isCustomNameKeychain(order, item);
     const pencilProduct = isPencilClicker(order, item);
     const readyMadeProduct = isReadyMadeOrderItem(item);
@@ -5659,6 +5668,9 @@ function renderOrders(orders) {
           ${readyMadeProduct ? `
             <span class="assembly-tag">Ready-made design</span>
             <span class="assembly-tag">× ${Math.max(1, Number(item.quantity) || 1)}</span>
+          ` : imageClickerProduct ? `
+            <span class="assembly-tag">Image Clicker</span>
+            <span class="assembly-tag">${item.design?.image_cap?.source === "upload" ? "Customer upload" : "K-pop gallery"}</span>
           ` : photoProduct ? `
             <span class="assembly-tag">Photo Keepsake</span>
             <span class="assembly-tag">${item.design?.photo?.variant === "clicker" ? "Clicker Keychain" : "Classic Keychain"}</span>
@@ -5685,6 +5697,20 @@ function renderOrders(orders) {
           <div class="assembly-ready-made-summary">
             ${item.design?.ready_made?.image_path ? `<img src="${escapeAdminHtml(item.design.ready_made.image_path)}" alt="">` : ""}
             <span>${escapeAdminHtml(readyMadeSelections || "No options selected")}</span>
+          </div>
+        ` : imageClickerProduct ? `
+          <div class="assembly-photo-artwork">
+            ${item.design?.image_cap?.admin_image_url || item.design?.image_cap?.image_url ? `
+              <img src="${escapeAdminHtml(item.design.image_cap.admin_image_url || item.design.image_cap.image_url)}" alt="Image cap artwork for ${escapeAdminHtml(item.name || "clicker")}" loading="lazy">
+            ` : `<div class="assembly-photo-summary">Private image could not be opened. Refresh the admin and try again.</div>`}
+            <div>
+              <strong>${escapeAdminHtml(item.design?.image_cap?.design_name || item.name || "Image cap")}</strong>
+              <span>${item.design?.image_cap?.source === "upload" ? "Customer-uploaded image" : "K-pop gallery design"} · ${escapeAdminHtml(item.design?.bases?.[0]?.name || "Body colour saved")}</span>
+              <small>Print one image cap and one clicker body, then assemble with the switch and keyring.</small>
+              <div class="assembly-photo-artwork-actions">
+                <button type="button" onclick='window.downloadImageClickerArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Image</button>
+              </div>
+            </div>
           </div>
         ` : photoProduct ? `
           <div class="assembly-photo-artwork">
@@ -6900,12 +6926,22 @@ function isPhotoKeepsake(order, item) {
   return String(item?.product_key || order?.product_key || "") === "ai-photo-keepsake";
 }
 
+function isImageClicker(order, item) {
+  return String(item?.product_key || order?.product_key || "") === IMAGE_CLICKER_PRODUCT_KEY;
+}
+
 function getPhotoKeepsakeInventoryName(order, item, itemIndex = 0) {
   const reference = String(order?.order_ref || order?.id || "ORDER").trim();
   const label = String(item?.name || "PHOTO").trim();
   const variant = item?.design?.photo?.variant === "clicker" ? "Clicker" : "Classic";
   const generation = String(item?.design?.photo?.generation_id || "").slice(0, 8);
   return `Photo Keepsake - ${reference} - ${label} - ${variant} - ${generation || itemIndex + 1}`;
+}
+
+function getImageClickerInventoryName(order, item, itemIndex = 0) {
+  const reference = String(order?.order_ref || order?.id || "ORDER").trim();
+  const label = String(item?.design?.image_cap?.design_name || item?.name || "IMAGE").trim();
+  return `Image Clicker - ${reference} - ${itemIndex + 1} - ${label}`;
 }
 
 function getCustomNameInventoryName(order, item, itemIndex = 0) {
@@ -8074,6 +8110,21 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
         return;
       }
 
+      if (isImageClicker(order, item)) {
+        customItems.push({
+          order,
+          item,
+          itemIndex,
+          itemName: getImageClickerInventoryName(order, item, itemIndex),
+          name: item.name || "Image clicker",
+          fontSize: 0,
+          isImageClicker: true,
+          imageCap: design.image_cap || {},
+          background: design.bases?.[0]
+        });
+        return;
+      }
+
       const solidProduct = isSolidClickyKeychain(order, item);
       const solidBaseShape = getSolidBaseShape(letters.length);
 
@@ -8197,6 +8248,11 @@ function getOrderPrintableInventoryNeeds(order) {
 
       if (isPhotoKeepsake(order, item)) {
         addNeed(getPhotoKeepsakeInventoryName(order, item, itemIndex));
+        return;
+      }
+
+      if (isImageClicker(order, item)) {
+        addNeed(getImageClickerInventoryName(order, item, itemIndex));
         return;
       }
 
@@ -8337,6 +8393,13 @@ function getOrderInventoryNeeds(order) {
       add(getPhotoKeepsakeInventoryName(order, item, itemIndex), 1);
       add("Metal Large D Ring", 1);
       if (design.photo?.variant === "clicker") add("Mechanical Switch", 1);
+      return;
+    }
+
+    if (isImageClicker(order, item)) {
+      add(getImageClickerInventoryName(order, item, itemIndex), 1);
+      add("Metal Large D Ring", 1);
+      add("Mechanical Switch", 1);
       return;
     }
 
@@ -8694,8 +8757,10 @@ function getAdminOrderItemProductName(order, item) {
 
 async function getPdfPhotoArtworkDataUrl(item) {
   const photo = item?.design?.photo;
-  const artworkUrl = photo?.admin_artwork_url ||
-    await getPrivateArtworkUrl(photo?.artwork_path, 300);
+  const imageCap = item?.design?.image_cap;
+  const privatePath = photo?.artwork_path || imageCap?.image_path;
+  const artworkUrl = photo?.admin_artwork_url || imageCap?.admin_image_url || imageCap?.image_url ||
+    await getPrivateArtworkUrl(privatePath, 300);
   if (!artworkUrl) return "";
 
   try {
@@ -8904,6 +8969,42 @@ window.downloadPhotoKeepsakeArtwork = async function(orderId, itemIndex, button)
   } catch (error) {
     console.error("Unable to download photo keepsake artwork:", error);
     alert("Unable to save this private artwork. Please try again.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      setTimeout(() => { button.textContent = previousLabel; }, 1800);
+    }
+  }
+};
+
+window.downloadImageClickerArtwork = async function(orderId, itemIndex, button) {
+  const order = latestOrders.find(item => String(item.id) === String(orderId));
+  const item = order?.order_data?.[Number(itemIndex)];
+  const imageCap = item?.design?.image_cap;
+  if (!order || !item || (!imageCap?.image_path && !imageCap?.image_url)) {
+    alert("This image clicker has no saved artwork file.");
+    return;
+  }
+  const previousLabel = button?.textContent || "Save Image";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Preparing…";
+  }
+  try {
+    let artworkUrl = imageCap.image_url || "";
+    if (imageCap.image_path) {
+      artworkUrl = await getPrivateArtworkUrl(imageCap.image_path, 300);
+    }
+    if (!artworkUrl) throw new Error("Unable to open the artwork.");
+    const response = await fetch(artworkUrl);
+    if (!response.ok) throw new Error("Unable to download the artwork.");
+    const extension = String(response.headers.get("content-type") || "").includes("png") ? "png" : "jpg";
+    const filename = `${safeProductionFileName(order.order_ref, "order")}_${safeProductionFileName(item.name, "image-clicker")}_IMAGE-CAP.${extension}`;
+    downloadRushStl(await response.blob(), filename);
+    if (button) button.textContent = "Saved ✓";
+  } catch (error) {
+    console.error("Unable to download image clicker artwork:", error);
+    alert("Unable to save this image. Please try again.");
   } finally {
     if (button) {
       button.disabled = false;
@@ -14109,7 +14210,7 @@ async function renderProductionPlanner(orders) {
                       <span>${escapeAdminHtml(row.order.order_ref || "No reference")}</span>
                       <h4>${escapeAdminHtml(row.name)}</h4>
                     </div>
-                    <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : row.isPencil ? "Licensed Pencil Clicker" : `${row.fontSize} mm letters`}</strong>
+                    <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : row.isImageClicker ? "Image Clicker" : row.isPencil ? "Licensed Pencil Clicker" : `${row.fontSize} mm letters`}</strong>
                   </header>
                   ${row.isPhoto ? `
                     <div class="photo-printability-warning"><strong>Use the 0.4 mm nozzle preset</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · use Arachne walls, then inspect connected shapes, minimum wall thickness and ${row.photo.variant === "clicker" ? "confirm there is no keyring hole" : "the keyring hole"} before printing.</span></div>
@@ -14120,6 +14221,9 @@ async function renderProductionPlanner(orders) {
                         `).join("")}
                       </div>
                     ` : `<p class="hint">Legacy preview · its colours will be matched to your currently available filament when you download the STL pack.</p>`}
+                  ` : row.isImageClicker ? `
+                    <div class="photo-printability-warning"><strong>Check the exact image before printing</strong><span>${row.imageCap.source === "upload" ? "Customer-uploaded image" : "K-pop gallery design"} · print one image cap and one ${escapeAdminHtml(background.name || "selected-colour")} clicker body.</span></div>
+                    ${(row.imageCap.admin_image_url || row.imageCap.image_url) ? `<img class="custom-image-clicker-production-art" src="${escapeAdminHtml(row.imageCap.admin_image_url || row.imageCap.image_url)}" alt="${escapeAdminHtml(row.name)} image cap">` : ""}
                   ` : row.isPencil ? `
                     <div class="pencil-production-guide">
                       <strong>Order-ready licensed STL pack</strong>
@@ -14189,6 +14293,9 @@ async function renderProductionPlanner(orders) {
                       <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download Private Artwork</button>
                       <button type="button" onclick='window.generatePhotoKeepsakeStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)}, ${row.need})'>Checked · Start Printing × ${row.need}</button>
+                    ` : row.isImageClicker ? `
+                      <button type="button" onclick='window.downloadImageClickerArtwork(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Save Image Cap</button>
+                      <button type="button" class="ready-btn" ${productionJobsLoadFailed || row.toPrint <= 0 ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, ${row.toPrint}, "Base")'>Checked · Start Printing × ${row.toPrint}</button>
                     ` : row.isPencil ? `
                       <button type="button" onclick='window.generatePencilClickerStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
                     ` : `
@@ -14762,7 +14869,7 @@ async function generateCustomerOrderPdf(order, items) {
   const dark = [51, 45, 48];
   const muted = [117, 107, 112];
   const photoArtworkImages = await Promise.all(items.map(item =>
-    isPhotoKeepsake(order, item) ? getPdfPhotoArtworkDataUrl(item) : ""
+    isPhotoKeepsake(order, item) || isImageClicker(order, item) ? getPdfPhotoArtworkDataUrl(item) : ""
   ));
 
   function drawPageHeader(showTitle = true) {
@@ -14872,6 +14979,7 @@ async function generateCustomerOrderPdf(order, items) {
     const design = item.design || {};
     const readyMadeProduct = isReadyMadeOrderItem(item);
     const photoProduct = isPhotoKeepsake(order, item);
+    const imageClickerProduct = isImageClicker(order, item);
     const pencilProduct = isPencilClicker(order, item);
     const productName = getAdminOrderItemProductName(order, item);
     const itemPricing = getPdfItemPriceBreakdown(order, item);
@@ -14894,7 +15002,9 @@ async function generateCustomerOrderPdf(order, items) {
       const colour = getAssemblyColourDetails(value, fallback);
       return `${colour.name} - ${colour.material}`;
     };
-    const baseShape = photoProduct
+    const baseShape = imageClickerProduct
+      ? "Single image clicker"
+      : photoProduct
       ? design.photo?.variant === "clicker" ? "Clicker artwork" : "Classic keychain artwork"
       : readyMadeProduct
       ? "Ready-made design"
@@ -14908,14 +15018,19 @@ async function generateCustomerOrderPdf(order, items) {
     const baseNames = getPdfColourNames(bases);
     const capNames = getPdfColourNames(caps);
     const letterNames = getPdfColourNames(letters);
-    const characters = readyMadeProduct || photoProduct ? [] : Array.from(
+    const characters = readyMadeProduct || photoProduct || imageClickerProduct ? [] : Array.from(
       item.clean_name || sanitizeName(item.name || "")
     );
     const iconLegend = getPdfIconLegend(item);
     const photoPalette = normalizePhotoFilamentPalette(design.photo?.filament_palette);
     const photoSubject = formatPhotoSubjectType(design.photo?.subject_type || design.photo?.subjectType);
     const photoTextWidth = contentWidth - 64;
-    const colourLines = photoProduct ? [
+    const colourLines = imageClickerProduct ? [
+      ...pdf.splitTextToSize(`Design name: ${getCompactPdfText(design.image_cap?.design_name || item.name || "Image clicker")}`, photoTextWidth),
+      ...pdf.splitTextToSize(`Artwork source: ${design.image_cap?.source === "upload" ? "Customer upload" : "K-pop gallery"}`, photoTextWidth),
+      ...pdf.splitTextToSize(`Clicker body: ${getCompactPdfText(baseNames)}`, photoTextWidth),
+      "Parts: 1 image cap + 1 clicker body + switch + keyring"
+    ] : photoProduct ? [
       ...pdf.splitTextToSize(`Design name: ${getCompactPdfText(item.name || "Photo keepsake")}`, photoTextWidth),
       ...pdf.splitTextToSize(`Subject: ${getCompactPdfText(photoSubject)}`, photoTextWidth),
       ...pdf.splitTextToSize(`Style: ${getCompactPdfText(baseShape)}`, photoTextWidth),
@@ -15015,10 +15130,10 @@ async function generateCustomerOrderPdf(order, items) {
           )
         : [])
     ];
-    const detailStartOffset = photoProduct ? 21 : readyMadeProduct ? 18 : 31;
-    const detailLineHeight = photoProduct ? 4 : 3.8;
+    const detailStartOffset = photoProduct || imageClickerProduct ? 21 : readyMadeProduct ? 18 : 31;
+    const detailLineHeight = photoProduct || imageClickerProduct ? 4 : 3.8;
     const detailEndOffset = detailStartOffset + colourLines.length * detailLineHeight;
-    const priceSectionOffset = photoProduct
+    const priceSectionOffset = photoProduct || imageClickerProduct
       ? Math.max(64, detailEndOffset + 4)
       : Math.max(readyMadeProduct ? 25 : 36, detailEndOffset + 4);
     const cardHeight = priceSectionOffset + 14 + itemPricing.rows.length * 4.3;
@@ -15032,7 +15147,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(11);
     pdf.text(
-      `${index + 1}. ${getCompactPdfText(productName)}${photoProduct ? "" : ` - ${getCompactPdfText(getPdfReadableItemName(item))}`}`,
+      `${index + 1}. ${getCompactPdfText(productName)}${photoProduct || imageClickerProduct ? "" : ` - ${getCompactPdfText(getPdfReadableItemName(item))}`}`,
       margin + 5,
       y + 7
     );
@@ -15049,7 +15164,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFontSize(8.5);
     pdf.text(
       getCompactPdfText(
-        photoProduct || readyMadeProduct || pencilProduct
+        photoProduct || imageClickerProduct || readyMadeProduct || pencilProduct
           ? baseShape
           : `${baseShape} - ${letterOrientationLabel}`
       ),
@@ -15060,7 +15175,7 @@ async function generateCustomerOrderPdf(order, items) {
     let blockX = margin + (pencilProduct ? 18 : 5);
     const blockY = y + 16;
 
-    if (photoProduct) {
+    if (photoProduct || imageClickerProduct) {
       const artworkImage = photoArtworkImages[index];
       if (artworkImage) {
         try {
@@ -15184,8 +15299,8 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFontSize(7.5);
     pdf.text(
       colourLines,
-      margin + (photoProduct ? 56 : 5),
-      y + (photoProduct ? 21 : readyMadeProduct ? 18 : 31)
+      margin + (photoProduct || imageClickerProduct ? 56 : 5),
+      y + (photoProduct || imageClickerProduct ? 21 : readyMadeProduct ? 18 : 31)
     );
 
     const priceSectionY = y + priceSectionOffset;

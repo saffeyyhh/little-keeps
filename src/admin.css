@@ -10379,3 +10379,14 @@ body::before {
   border-radius: 12px;
   object-fit: cover;
 }
+
+.custom-image-clicker-production-art {
+  display: block;
+  width: min(180px, 100%);
+  aspect-ratio: 1;
+  margin: 12px 0;
+  border: 1px solid #eadbe1;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #fff;
+}

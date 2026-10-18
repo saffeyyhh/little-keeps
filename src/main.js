@@ -42,6 +42,7 @@ import {
   STANDARD_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
+  IMAGE_CLICKER_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
@@ -411,6 +412,13 @@ function isShopColourAvailable(colour) {
     !unavailableColourNames.has(name.toLowerCase());
 }
 
+const initialImageClickerColours = shopSettings.colour_options
+  .filter(colour => isShopColourAvailable(colour.hex))
+  .map(colour => ({ hex: colour.hex, name: colour.name }));
+if (!initialImageClickerColours.length) {
+  initialImageClickerColours.push({ hex: "#FFFFFF", name: "Jade White" });
+}
+
 try {
   const { data, error } = await supabase
     .from("design_presets")
@@ -507,11 +515,13 @@ const standardProduct = getProductByKey(
 );
 const photoProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
 const pencilProduct = getProductByKey(productCatalog, PENCIL_PRODUCT_KEY);
+const imageClickerProduct = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
 const readyMadeProducts = productCatalog.filter(isReadyMadeProduct);
 const visibleProductCount = [
   modularProduct,
   solidProduct,
   pencilProduct,
+  imageClickerProduct,
   standardProduct,
   photoProduct,
   ...readyMadeProducts
@@ -1281,6 +1291,36 @@ ${requestedPreviewProductKey ? `
     </article>
   ` : ""}
 
+  ${imageClickerProduct.status !== "hidden" ? `
+    <article class="product-card image-clicker-product-card ${imageClickerProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="kpop birthdays couples gifts" ${imageClickerProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+      ${getProductMediaPaths(imageClickerProduct).length || imageClickerProduct.video_path
+        ? renderProductCardMedia(imageClickerProduct, {
+            alt: imageClickerProduct.name,
+            badge: imageClickerProduct.status === "active" ? `<span class="product-card-badge">New</span>` : `<span class="product-card-badge">Coming soon</span>`
+          })
+        : `<div class="product-card-visual image-clicker-card-visual" aria-hidden="true">
+          <span class="image-clicker-card-body"><i>★</i></span>
+          ${imageClickerProduct.status === "active" ? `<span class="product-card-badge">New</span>` : `<span class="product-card-badge">Coming soon</span>`}
+        </div>`}
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(imageClickerProduct.eyebrow)}</small>
+          <h3><a href="${getProductPublicUrl(IMAGE_CLICKER_PRODUCT_KEY)}">${escapePresetText(getProductCardName(imageClickerProduct))}</a></h3>
+        </div>
+        <p>${escapePresetText(imageClickerProduct.description)}</p>
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>K-pop designs</span><span>Upload your own</span><span>Satisfying click</span>
+        </div>
+        ${renderProductCardPrice(imageClickerProduct)}
+        ${renderProductUnitsSoldBadge(imageClickerProduct)}
+        ${renderProductCardPricingGuide(imageClickerProduct)}
+        ${imageClickerProduct.status === "active"
+          ? `<button type="button" data-image-clicker-start>Make my clicker <span>→</span></button>`
+          : `<button type="button" disabled>Coming soon</button>`}
+      </div>
+    </article>
+  ` : ""}
+
   ${standardProduct.status !== "hidden" ? `
     <article class="product-card ${standardProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="teacher birthdays party gifts names" ${standardProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       ${getProductMediaPaths(standardProduct).length || standardProduct.video_path
@@ -1405,6 +1445,84 @@ ${showBoothSection ? `
   <div class="ready-made-product-dialog">
     <button id="closeReadyMadeProductModal" class="photo-modal-close" type="button" aria-label="Close">×</button>
     <div id="readyMadeProductModalContent"></div>
+  </div>
+</div>
+
+<div id="imageClickerModal" class="image-clicker-modal hidden" role="dialog" aria-modal="true" aria-labelledby="imageClickerTitle">
+  <div class="image-clicker-dialog">
+    <button id="closeImageClickerModal" type="button" class="photo-modal-close" aria-label="Close">×</button>
+    <div class="image-clicker-heading">
+      <p class="section-eyebrow">K-pop &amp; custom image clicker</p>
+      <h2 id="imageClickerTitle">Make your image click</h2>
+      <p>Choose a ready design or upload one image. See the finished look while you customise.</p>
+    </div>
+
+    <div class="image-clicker-layout">
+      <section class="image-clicker-controls">
+        <div class="image-clicker-step">
+          <span>1</span>
+          <div>
+            <h3>Choose your artwork</h3>
+            <div class="image-clicker-source-tabs" role="tablist" aria-label="Artwork source">
+              <button type="button" class="is-active" data-image-clicker-source="gallery">K-pop designs</button>
+              <button type="button" data-image-clicker-source="upload">Upload my own</button>
+            </div>
+            <div id="imageClickerGalleryPanel" class="image-clicker-source-panel">
+              <div id="imageClickerGallery" class="image-clicker-gallery">
+                ${getProductMediaPaths(imageClickerProduct).map((path, index) => `
+                  <button type="button" data-image-clicker-design="${index}" aria-label="Choose design ${index + 1}">
+                    <img src="${escapePresetText(path)}" alt="K-pop cap design ${index + 1}">
+                    <span>Design ${index + 1}</span>
+                  </button>
+                `).join("") || `<p>Add K-pop cap artwork in Admin → Products &amp; pricing. Customers can still upload their own.</p>`}
+              </div>
+            </div>
+            <div id="imageClickerUploadPanel" class="image-clicker-source-panel hidden">
+              <label class="image-clicker-upload" for="imageClickerInput">
+                <input id="imageClickerInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+                <strong>Choose a JPG, PNG or WebP</strong>
+                <small>Square images work best · maximum 8 MB</small>
+              </label>
+              <label class="image-clicker-permission"><input id="imageClickerPermission" type="checkbox"><span>I own this image or have permission to print it. It may be stored privately for up to 30 days to make my order.</span></label>
+            </div>
+            <div class="image-clicker-fit-options" aria-label="Image fit">
+              <button type="button" class="is-active" data-image-clicker-fit="cover">Fill the cap</button>
+              <button type="button" data-image-clicker-fit="contain">Show whole image</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="image-clicker-step">
+          <span>2</span>
+          <div>
+            <h3>Pick the clicker colour</h3>
+            <div id="imageClickerColours" class="image-clicker-colours">
+              ${initialImageClickerColours.map((colour, index) => `<button type="button" data-image-clicker-colour="${escapePresetText(colour.hex)}" style="--image-clicker-colour:${escapePresetText(colour.hex)}" aria-label="${escapePresetText(colour.name)}" class="${index === 0 ? "is-active" : ""}"><i></i><span>${escapePresetText(colour.name)}</span></button>`).join("")}
+            </div>
+          </div>
+        </div>
+
+        <div class="image-clicker-step">
+          <span>3</span>
+          <div class="image-clicker-final-fields">
+            <h3>Name it and add to cart</h3>
+            <label><span>Design name</span><input id="imageClickerLabel" maxlength="40" placeholder="e.g. My K-pop clicker"></label>
+            <label><span>Quantity</span><input id="imageClickerQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
+          </div>
+        </div>
+      </section>
+
+      <aside class="image-clicker-preview-panel">
+        <span class="image-clicker-preview-kicker">Live preview</span>
+        <div id="imageClickerPreview" class="image-clicker-preview">
+          <span class="image-clicker-ring" aria-hidden="true"></span>
+          <span class="image-clicker-shell"><i id="imageClickerPreviewArtwork">Choose an image</i></span>
+        </div>
+        <div class="image-clicker-price"><span id="imageClickerPriceLabel">1 clicker</span><strong>${displaySettingMoney(getProductDisplayPrice(imageClickerProduct))}</strong></div>
+        <button id="addImageClickerToCartBtn" type="button">Add to cart <span>→</span></button>
+        <p id="imageClickerStatus" aria-live="polite"></p>
+      </aside>
+    </div>
   </div>
 </div>
 
@@ -2816,6 +2934,19 @@ const photoArtworkResult = document.getElementById("photoArtworkResult");
 const photoResultActions = document.getElementById("photoResultActions");
 const photoMappedPalette = document.getElementById("photoMappedPalette");
 const photoAttemptStatus = document.getElementById("photoAttemptStatus");
+const imageClickerModal = document.getElementById("imageClickerModal");
+const closeImageClickerModal = document.getElementById("closeImageClickerModal");
+const imageClickerGalleryPanel = document.getElementById("imageClickerGalleryPanel");
+const imageClickerUploadPanel = document.getElementById("imageClickerUploadPanel");
+const imageClickerInput = document.getElementById("imageClickerInput");
+const imageClickerPermission = document.getElementById("imageClickerPermission");
+const imageClickerLabel = document.getElementById("imageClickerLabel");
+const imageClickerQuantity = document.getElementById("imageClickerQuantity");
+const imageClickerPreview = document.getElementById("imageClickerPreview");
+const imageClickerPreviewArtwork = document.getElementById("imageClickerPreviewArtwork");
+const imageClickerPriceLabel = document.getElementById("imageClickerPriceLabel");
+const addImageClickerToCartBtn = document.getElementById("addImageClickerToCartBtn");
+const imageClickerStatus = document.getElementById("imageClickerStatus");
 const aiDesignBrief = document.getElementById("aiDesignBrief");
 const aiDesignHelperBtn = document.getElementById("aiDesignHelperBtn");
 const aiDesignHelperStatus = document.getElementById("aiDesignHelperStatus");
@@ -4242,6 +4373,17 @@ let photoKeepsakeState = {
   filamentPalette: [],
   recolouring: false
 };
+let editingImageClickerIndex = null;
+let imageClickerState = {
+  source: "gallery",
+  imageUrl: "",
+  imagePath: "",
+  designName: "",
+  bodyColour: getAvailableColours()[0] || "#F55A74",
+  fit: "cover",
+  file: null,
+  inputDataUrl: ""
+};
 
 function getSelectedPhotoArtworkStyle() {
   return photoArtworkStyleInputs.find(input => input.checked)?.value || "true_to_photo";
@@ -4621,6 +4763,9 @@ function calculatePrice(design, name = "", product = activeProduct) {
   }
   const characterCount = Array.from(sanitizeName(name)).length;
 
+  if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+    return roundMoney(getProductDisplayPrice(product));
+  }
   const productPrice = product.product_key === PHOTO_PRODUCT_KEY
     ? getPhotoKeepsakeColourPrice(design?.photo?.colourCount)
     : calculateProductUnitPrice({
@@ -4660,6 +4805,13 @@ function getUnitPriceBreakdown(design, name = "", product = activeProduct) {
     return {
       rows,
       unitTotal: roundMoney(artworkPrice + (design?.photo?.variant === "clicker" ? PHOTO_CLICKER_ADDON_PRICE : 0))
+    };
+  }
+  if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+    const unitTotal = roundMoney(getProductDisplayPrice(product));
+    return {
+      rows: [{ label: "Custom image clicker", amount: unitTotal, addOn: false }],
+      unitTotal
     };
   }
   const characterCount = Array.from(sanitizeName(name)).length;
@@ -5887,6 +6039,7 @@ function getDesign(item) {
     nfcType: item.custom.nfcType || "guardian",
     nfcPayload: item.custom.nfcPayload || "",
     photo: item.custom.photo || null,
+    imageCap: item.custom.imageCap || null,
     pencil: normalizePencilDesign(item.custom.pencil || globalDesign.pencil),
 
     bases:
@@ -6758,6 +6911,9 @@ function createMiniPreview(name, design, product = activeProduct) {
   if (product.product_key === PHOTO_PRODUCT_KEY && design.photo?.artworkUrl) {
     return `<div class="mini-photo-keepsake"><img src="${escapePresetText(design.photo.artworkUrl)}" alt="${escapePresetText(name)} artwork"></div>`;
   }
+  if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY && design.imageCap?.imageUrl) {
+    return `<div class="mini-image-clicker" style="--mini-image-clicker-body:${escapePresetText(design.bases?.[0] || "#F55A74")}"><span><img src="${escapePresetText(design.imageCap.imageUrl)}" alt="${escapePresetText(name)} image" style="object-fit:${design.imageCap.fit === "contain" ? "contain" : "cover"}"></span></div>`;
+  }
 
   if (product.product_key === STANDARD_PRODUCT_KEY) {
     const backgroundColour = design.bases?.[0] || "#F55A74";
@@ -6827,6 +6983,11 @@ function getDesignDescription(design, product = activeProduct) {
       ? `${style} artwork · Clicker keychain`
       : `${style} artwork · Classic keychain`;
   }
+  if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+    return design.imageCap?.source === "upload"
+      ? "Your uploaded image · Clicker keychain"
+      : `${design.imageCap?.designName || "K-pop design"} · Clicker keychain`;
+  }
 
   if (product.product_key === STANDARD_PRODUCT_KEY) {
     return "Flat background · Raised name";
@@ -6851,6 +7012,9 @@ function getDesignColourSummary(design, product = activeProduct) {
   }
   if (product.product_key === PHOTO_PRODUCT_KEY) {
     return `Up to ${Number(design.photo?.colourCount || 4)} stocked filament colours · final printability check included`;
+  }
+  if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+    return `Clicker body: ${getColourName(design.bases?.[0] || "#F55A74")} · full-colour image cap`;
   }
   const uniqueNames = values => Array.from(new Set((values || []).map(getColourName))).join(", ");
   if (product.product_key === STANDARD_PRODUCT_KEY) {
@@ -7686,6 +7850,13 @@ async function submitOrderOnce() {
             ),
             printability_status: "needs_review"
           } : null,
+          image_cap: design.imageCap ? {
+            source: design.imageCap.source || "gallery",
+            image_url: design.imageCap.imageUrl || "",
+            image_path: design.imageCap.imagePath || "",
+            design_name: design.imageCap.designName || "Image cap",
+            fit: design.imageCap.fit === "contain" ? "contain" : "cover"
+          } : null,
           letter_orientation: design.letterOrientation || "vertical",
           base_shape: {
             key: design.baseShape || "ribbed",
@@ -8322,6 +8493,7 @@ function serializeSharedGroupBasket() {
       design: {
         font_size_mm: getStandardFontSize(design),
         photo: design.photo || null,
+        imageCap: design.imageCap || null,
         pencil: normalizePencilDesign(design.pencil),
         base_shape: design.baseShape || "ribbed",
         letter_orientation: design.letterOrientation || "vertical",
@@ -9171,6 +9343,11 @@ window.editCartItem = function(index) {
       renderPhotoMappedPalette();
     }
     openPhotoKeepsakeStudio();
+    return;
+  }
+
+  if (activeProduct.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+    openImageClickerStudio(item, index);
     return;
   }
 
@@ -10244,6 +10421,167 @@ function addPhotoKeepsakeToCart() {
   openCartDrawer();
 }
 
+function setImageClickerSource(source) {
+  imageClickerState.source = source === "upload" ? "upload" : "gallery";
+  if (imageClickerState.source === "gallery") {
+    const galleryPaths = getProductMediaPaths(getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY));
+    if (!galleryPaths.includes(imageClickerState.imageUrl)) {
+      imageClickerState.imageUrl = galleryPaths[0] || "";
+      imageClickerState.imagePath = "";
+      imageClickerState.designName = galleryPaths.length ? "K-pop design 1" : "";
+    }
+    document.querySelectorAll("[data-image-clicker-design]").forEach((button, index) => {
+      button.classList.toggle("is-active", galleryPaths[index] === imageClickerState.imageUrl);
+    });
+  } else if (imageClickerState.inputDataUrl) {
+    imageClickerState.imageUrl = imageClickerState.inputDataUrl;
+  }
+  document.querySelectorAll("[data-image-clicker-source]").forEach(button => {
+    button.classList.toggle("is-active", button.dataset.imageClickerSource === imageClickerState.source);
+  });
+  imageClickerGalleryPanel?.classList.toggle("hidden", imageClickerState.source !== "gallery");
+  imageClickerUploadPanel?.classList.toggle("hidden", imageClickerState.source !== "upload");
+  renderImageClickerPreview();
+}
+
+function renderImageClickerPreview() {
+  if (!imageClickerPreview || !imageClickerPreviewArtwork) return;
+  imageClickerPreview.style.setProperty("--image-clicker-body", imageClickerState.bodyColour || "#F55A74");
+  const hasImage = Boolean(imageClickerState.imageUrl);
+  imageClickerPreview.classList.toggle("has-image", hasImage);
+  imageClickerPreviewArtwork.innerHTML = hasImage
+    ? `<img src="${escapePresetText(imageClickerState.imageUrl)}" alt="Selected image cap preview" style="object-fit:${imageClickerState.fit === "contain" ? "contain" : "cover"}">`
+    : "Choose an image";
+  const quantity = normalizeItemQuantity(imageClickerQuantity?.value);
+  if (imageClickerPriceLabel) imageClickerPriceLabel.textContent = `${quantity} clicker${quantity === 1 ? "" : "s"}`;
+  const product = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
+  const price = roundMoney(getProductDisplayPrice(product) * quantity);
+  const priceElement = imageClickerPreview.closest(".image-clicker-preview-panel")?.querySelector(".image-clicker-price strong");
+  if (priceElement) priceElement.textContent = displaySettingMoney(price);
+}
+
+function openImageClickerStudio(existingItem = null, itemIndex = null) {
+  activeProduct = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
+  editingImageClickerIndex = Number.isInteger(itemIndex) ? itemIndex : null;
+  const saved = existingItem ? getDesign(existingItem).imageCap : null;
+  const galleryPaths = getProductMediaPaths(activeProduct);
+  const savedImageUrl = saved?.imageUrl || "";
+  Object.assign(imageClickerState, {
+    source: saved?.source === "upload" ? "upload" : "gallery",
+    imageUrl: savedImageUrl || galleryPaths[0] || "",
+    imagePath: saved?.imagePath || "",
+    designName: saved?.designName || (galleryPaths.length ? "K-pop design 1" : ""),
+    bodyColour: existingItem?.custom?.bases?.[0] || getAvailableColours()[0] || "#F55A74",
+    fit: saved?.fit === "contain" ? "contain" : "cover",
+    file: null,
+    inputDataUrl: savedImageUrl
+  });
+  if (imageClickerLabel) imageClickerLabel.value = existingItem?.name || "";
+  if (imageClickerQuantity) imageClickerQuantity.value = String(getItemQuantity(existingItem || { quantity: 1 }));
+  if (imageClickerPermission) imageClickerPermission.checked = saved?.source === "upload";
+  document.querySelectorAll("[data-image-clicker-design]").forEach((button, index) => {
+    button.classList.toggle("is-active", Boolean(imageClickerState.source === "gallery" && galleryPaths[index] === imageClickerState.imageUrl));
+  });
+  document.querySelectorAll("[data-image-clicker-colour]").forEach(button => {
+    button.classList.toggle("is-active", button.dataset.imageClickerColour === imageClickerState.bodyColour);
+  });
+  document.querySelectorAll("[data-image-clicker-fit]").forEach(button => {
+    button.classList.toggle("is-active", button.dataset.imageClickerFit === imageClickerState.fit);
+  });
+  if (imageClickerStatus) imageClickerStatus.textContent = "";
+  setImageClickerSource(imageClickerState.source);
+  imageClickerModal?.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+}
+
+function closeImageClickerStudio() {
+  imageClickerModal?.classList.add("hidden");
+  document.body.classList.remove("modal-open");
+  editingImageClickerIndex = null;
+}
+
+async function storeCustomerImageCap() {
+  const imageDataUrl = imageClickerState.inputDataUrl || await preparePhotoForAi(imageClickerState.file);
+  const { data, error } = await supabase.functions.invoke("generate-photo-keepsake", {
+    body: {
+      action: "store_image_cap",
+      image_data_url: imageDataUrl,
+      client_token: currentSubmissionId
+    }
+  });
+  if (error) {
+    const details = await getPhotoFunctionErrorDetails(error);
+    throw new Error(details.error || error.message || "The image could not be saved.");
+  }
+  if (!data?.artwork_path || !data?.artwork_url) throw new Error("The image upload did not finish. Please try again.");
+  imageClickerState.imagePath = data.artwork_path;
+  imageClickerState.imageUrl = data.artwork_url;
+  imageClickerState.inputDataUrl = data.artwork_url;
+}
+
+async function addImageClickerToCart() {
+  if (!imageClickerState.imageUrl) {
+    imageClickerStatus.textContent = "Choose a K-pop design or upload your own image first.";
+    return;
+  }
+  if (imageClickerState.source === "upload" && !imageClickerPermission?.checked) {
+    imageClickerStatus.textContent = "Please confirm that you have permission to print this image.";
+    return;
+  }
+  addImageClickerToCartBtn.disabled = true;
+  imageClickerStatus.textContent = imageClickerState.source === "upload" && !imageClickerState.imagePath
+    ? "Saving your image privately…"
+    : "Adding your clicker…";
+  try {
+    if (imageClickerState.source === "upload" && !imageClickerState.imagePath) {
+      await storeCustomerImageCap();
+    }
+    const fallbackColours = getAvailableColours();
+    const item = {
+      name: imageClickerLabel.value.trim() || (imageClickerState.source === "upload" ? "Custom Image Clicker" : imageClickerState.designName || "K-pop Clicker"),
+      quantity: normalizeItemQuantity(imageClickerQuantity?.value),
+      product_key: IMAGE_CLICKER_PRODUCT_KEY,
+      cartAdded: true,
+      groupContributorName: null,
+      custom: {
+        baseShape: "single-clicker",
+        letterOrientation: "vertical",
+        fontSize: 24,
+        bases: [imageClickerState.bodyColour],
+        caps: [fallbackColours.find(colour => getColourName(colour) === "Jade White") || "#FFFFFF"],
+        letters: [],
+        imageCap: {
+          source: imageClickerState.source,
+          imageUrl: imageClickerState.imageUrl,
+          imagePath: imageClickerState.imagePath,
+          designName: imageClickerState.designName || "Custom upload",
+          fit: imageClickerState.fit
+        }
+      }
+    };
+    if (Number.isInteger(editingImageClickerIndex) && names[editingImageClickerIndex]) {
+      names[editingImageClickerIndex] = item;
+      selectedIndex = editingImageClickerIndex;
+    } else {
+      names = names.filter(entry => cartHasItems && entry.cartAdded !== false);
+      names.push(item);
+      selectedIndex = names.length - 1;
+    }
+    orderType = "single";
+    cartHasItems = true;
+    draftHasMeaningfulChanges = true;
+    closeImageClickerStudio();
+    refreshUI();
+    renderCartDrawer();
+    openCartDrawer();
+  } catch (error) {
+    console.error("Unable to add the image clicker:", error);
+    imageClickerStatus.textContent = error.message || "The image could not be saved. Please try again.";
+  } finally {
+    addImageClickerToCartBtn.disabled = false;
+  }
+}
+
 function isSecureWebUrl(value) {
   try {
     return new URL(String(value || "").trim()).protocol === "https:";
@@ -10424,6 +10762,61 @@ document.querySelectorAll("[data-photo-product-start]").forEach(button => {
     openPhotoKeepsakeStudio();
   });
 });
+document.querySelectorAll("[data-image-clicker-start]").forEach(button => {
+  button.addEventListener("click", () => openImageClickerStudio());
+});
+closeImageClickerModal?.addEventListener("click", closeImageClickerStudio);
+imageClickerModal?.addEventListener("click", event => {
+  if (event.target === imageClickerModal) closeImageClickerStudio();
+  const sourceButton = event.target.closest("[data-image-clicker-source]");
+  if (sourceButton) setImageClickerSource(sourceButton.dataset.imageClickerSource);
+  const designButton = event.target.closest("[data-image-clicker-design]");
+  if (designButton) {
+    const index = Number(designButton.dataset.imageClickerDesign);
+    const path = getProductMediaPaths(getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY))[index];
+    if (!path) return;
+    imageClickerState.source = "gallery";
+    imageClickerState.imageUrl = path;
+    imageClickerState.imagePath = "";
+    imageClickerState.designName = `K-pop design ${index + 1}`;
+    document.querySelectorAll("[data-image-clicker-design]").forEach(button => button.classList.toggle("is-active", button === designButton));
+    renderImageClickerPreview();
+  }
+  const colourButton = event.target.closest("[data-image-clicker-colour]");
+  if (colourButton) {
+    imageClickerState.bodyColour = colourButton.dataset.imageClickerColour;
+    document.querySelectorAll("[data-image-clicker-colour]").forEach(button => button.classList.toggle("is-active", button === colourButton));
+    renderImageClickerPreview();
+  }
+  const fitButton = event.target.closest("[data-image-clicker-fit]");
+  if (fitButton) {
+    imageClickerState.fit = fitButton.dataset.imageClickerFit === "contain" ? "contain" : "cover";
+    document.querySelectorAll("[data-image-clicker-fit]").forEach(button => button.classList.toggle("is-active", button === fitButton));
+    renderImageClickerPreview();
+  }
+});
+imageClickerInput?.addEventListener("change", async () => {
+  const file = imageClickerInput.files?.[0];
+  if (!file) return;
+  try {
+    const dataUrl = await preparePhotoForAi(file);
+    Object.assign(imageClickerState, {
+      source: "upload",
+      file,
+      inputDataUrl: dataUrl,
+      imageUrl: dataUrl,
+      imagePath: "",
+      designName: file.name.replace(/\.[^.]+$/, "").slice(0, 50) || "Custom upload"
+    });
+    imageClickerStatus.textContent = "Image ready — check the preview, then add it to cart.";
+    renderImageClickerPreview();
+  } catch (error) {
+    imageClickerInput.value = "";
+    imageClickerStatus.textContent = error.message || "This image could not be opened.";
+  }
+});
+imageClickerQuantity?.addEventListener("input", renderImageClickerPreview);
+addImageClickerToCartBtn?.addEventListener("click", addImageClickerToCart);
 closePhotoKeepsakeModal?.addEventListener("click", closePhotoKeepsakeStudio);
 photoKeepsakeModal?.addEventListener("click", event => {
   if (event.target === photoKeepsakeModal) closePhotoKeepsakeStudio();
@@ -10595,6 +10988,8 @@ if (requestedProduct && !requestedPreviewProductKey) {
   document.head.append(productStructuredData);
   if (requestedProduct.product_key === PHOTO_PRODUCT_KEY) {
     openPhotoKeepsakeStudio();
+  } else if (requestedProduct.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+    openImageClickerStudio();
   } else {
     beginProductDesign(requestedProduct.product_key);
     setStorefrontView("design", { instant: true, scroll: false });
@@ -10605,6 +11000,8 @@ if (isProductPreview && previewProduct) {
   activeProduct = getProductByKey(productCatalog, previewProduct.product_key);
   if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
     openPhotoKeepsakeStudio();
+  } else if (activeProduct.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+    openImageClickerStudio();
   } else {
     if (activeProduct.product_key === PENCIL_PRODUCT_KEY) applyClassicPencilDefaults();
     updateProductCustomiser();
@@ -12309,6 +12706,13 @@ window.reorderTrackedItems = function(items) {
           filamentPalette: normalizePhotoFilamentPalette(
             design.photo.filament_palette || design.photo.filamentPalette
           )
+        } : null,
+        imageCap: design.image_cap || design.imageCap ? {
+          source: (design.image_cap || design.imageCap).source || "gallery",
+          imagePath: (design.image_cap || design.imageCap).image_path || (design.image_cap || design.imageCap).imagePath || "",
+          imageUrl: (design.image_cap || design.imageCap).image_url || (design.image_cap || design.imageCap).imageUrl || "",
+          designName: (design.image_cap || design.imageCap).design_name || (design.image_cap || design.imageCap).designName || "Image cap",
+          fit: (design.image_cap || design.imageCap).fit === "contain" ? "contain" : "cover"
         } : null,
         pencil: design.pencil ? normalizePencilDesign({
           textStyle: design.pencil.text_style || design.pencil.textStyle,

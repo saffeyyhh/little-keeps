@@ -3,6 +3,7 @@ export const SOLID_PRODUCT_KEY = "solid-clicky-keychain";
 export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
+export const IMAGE_CLICKER_PRODUCT_KEY = "custom-image-clicker";
 export const READY_MADE_PRODUCT_TYPE = "ready_made";
 export const CUSTOM_PRODUCT_TYPE = "custom";
 export const PHOTO_KEEPSAKE_COLOUR_PRICES = Object.freeze({
@@ -237,6 +238,39 @@ export const DEFAULT_PRODUCT_CATALOG = [
     gallery_paths: ["/images/custom-pencil-clicker.jpg"],
     video_path: "",
     production_notes: "Prepare one licensed Clickify 3D Pencil Body and matching Flat/Raised top per character. Confirm block, top, character, eraser, ferrule, wood, tip and end-cap colours before slicing."
+  },
+  {
+    product_key: IMAGE_CLICKER_PRODUCT_KEY,
+    name: "K-pop & Custom Image Clicker",
+    eyebrow: "One image. One satisfying click.",
+    description: "Choose a Little Keeps K-pop design or upload your own image for a personalised clicker keychain.",
+    status: "coming_soon",
+    price_visible: false,
+    usual_base_price: 6.9,
+    launch_base_price: 6.9,
+    launch_price_enabled: false,
+    launch_price_ends_at: null,
+    included_characters: 1,
+    extra_character_price: 0,
+    included_base_colours: 1,
+    included_cap_colours: 1,
+    included_letter_colours: 0,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0,
+    minimum_characters: 1,
+    maximum_characters: 1,
+    base_print_minutes_fixed: 25,
+    base_print_minutes_per_character: 0,
+    keycap_print_minutes_per_character: 20,
+    assembly_minutes_per_item: 5,
+    minimum_working_days: null,
+    maximum_working_days: null,
+    sort_order: 22,
+    image_path: null,
+    gallery_paths: [],
+    video_path: "",
+    production_notes: "Print one clicker body and one image keycap. Check the chosen artwork, crop and body colour before printing."
   }
 ];
 
