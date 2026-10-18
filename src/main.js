@@ -4387,6 +4387,7 @@ let imageClickerState = {
 
 let imageClicker3D = null;
 let imageClicker3DBuild = 0;
+const imageClickerShapeCache = new Map();
 
 function initialiseImageClicker3D() {
   if (!imageClicker3DCanvas || imageClicker3D) return imageClicker3D;
@@ -4434,6 +4435,15 @@ function getImageClickerPreviewImage(url) {
     image.onerror = () => reject(new Error("The artwork preview could not be loaded."));
     image.src = url;
   });
+}
+
+async function getImageClickerShapedPreviewUrl(url) {
+  const source = String(url || "");
+  if (!source) return source;
+  if (!imageClickerShapeCache.has(source)) {
+    imageClickerShapeCache.set(source, removeImageClickerEdgeBackground(source));
+  }
+  return imageClickerShapeCache.get(source);
 }
 
 function buildImageClickerOutline(image) {
@@ -4599,10 +4609,12 @@ async function buildImageClicker3DPreview() {
   while (preview.group.children.length) disposePreviewObject(preview.group.children.pop());
   if (!imageClickerState.imageUrl) return;
   try {
-    const image = await getImageClickerPreviewImage(imageClickerState.imageUrl);
+    const shapedUrl = imageClickerState.shapedDataUrl
+      || await getImageClickerShapedPreviewUrl(imageClickerState.imageUrl);
+    const image = await getImageClickerPreviewImage(shapedUrl);
     const backingImage = imageClickerState.source === "upload" && imageClickerState.inputDataUrl
       ? await getImageClickerPreviewImage(imageClickerState.inputDataUrl)
-      : image;
+      : await getImageClickerPreviewImage(imageClickerState.imageUrl);
     if (build !== imageClicker3DBuild) return;
     const outline = buildImageClickerOutline(image);
     const shape = new THREE.Shape(outline);
@@ -10501,6 +10513,7 @@ async function prepareImageClickerArtwork(file) {
 function removeImageClickerEdgeBackground(dataUrl) {
   return new Promise(resolve => {
     const image = new Image();
+    if (!String(dataUrl || "").startsWith("data:")) image.crossOrigin = "anonymous";
     image.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = image.naturalWidth;
