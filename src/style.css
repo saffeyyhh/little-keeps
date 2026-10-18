@@ -7602,7 +7602,8 @@ body {
 .image-clicker-gallery > p { grid-column: 1 / -1; margin: 0; padding: 18px; border-radius: 14px; background: #faf4f6; color: #71646a; }
 .image-clicker-gallery button { padding: 6px; border: 2px solid transparent; border-radius: 14px; background: #f7f1ee; overflow: hidden; }
 .image-clicker-gallery button.is-active { border-color: #c84674; box-shadow: 0 0 0 3px #f7d9e4; }
-.image-clicker-gallery img { display: block; width: 100%; aspect-ratio: 1; border-radius: 9px; object-fit: contain; background: #111923; }
+.image-clicker-gallery img { display: block; width: 100%; aspect-ratio: 1; border-radius: 9px; object-fit: contain; background: radial-gradient(circle at 45% 35%,#fff 0,#f9eaf1 68%,#efd9e4 100%); }
+.image-clicker-gallery img.is-rendered { padding:4px; }
 .image-clicker-3mf-placeholder { display:grid; place-items:center; width:100%; aspect-ratio:1; border-radius:9px; background:#111923; color:#fff; font-size:24px; font-style:normal; font-weight:950; letter-spacing:.08em; }
 .image-clicker-gallery button span { display: block; padding: 7px 3px 3px; font-size: 12px; font-weight: 800; color: #634f58; }
 .image-clicker-shape-help { margin:8px 2px 0; color:#84757c; font-size:12px; line-height:1.35; }

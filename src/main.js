@@ -1476,9 +1476,8 @@ ${showBoothSection ? `
               <div id="imageClickerGallery" class="image-clicker-gallery">
                 ${KPOP_CLICKER_MODELS.map((design, index) => `
                   <button type="button" data-image-clicker-design="${index}" aria-label="Choose ${escapePresetText(design.name)}" class="${index === 0 ? "is-active" : ""}">
-                    ${design.thumbnail
-                      ? `<img src="${escapePresetText(design.thumbnail)}" alt="${escapePresetText(design.name)} clicker model">`
-                      : `<i class="image-clicker-3mf-placeholder" aria-hidden="true">3D</i>`}
+                    <img ${design.thumbnail ? `src="${escapePresetText(design.thumbnail)}"` : ""} alt="${escapePresetText(design.name)} clicker model" data-image-clicker-cover="${index}">
+                    ${design.thumbnail ? "" : `<i class="image-clicker-3mf-placeholder" aria-hidden="true">3D</i>`}
                     <span>${escapePresetText(design.name)}</span>
                   </button>
                 `).join("") || `<p>No K-pop designs are available right now.</p>`}
@@ -4387,6 +4386,8 @@ let imageClickerState = {
 
 let imageClicker3D = null;
 let imageClicker3DBuild = 0;
+const imageClicker3MFCache = new Map();
+const IMAGE_CLICKER_BACKING_REVEAL = 1.6;
 
 function initialiseImageClicker3D() {
   if (!imageClicker3DCanvas || imageClicker3D) return imageClicker3D;
@@ -4401,12 +4402,12 @@ function initialiseImageClicker3D() {
 
   const previewScene = new THREE.Scene();
   const previewCamera = new THREE.PerspectiveCamera(32, 1, .1, 500);
-  previewCamera.position.set(0, -92, 96);
+  previewCamera.position.set(78, -100, 88);
   const previewControls = new OrbitControls(previewCamera, imageClicker3DCanvas);
   previewControls.enableDamping = true;
   previewControls.enablePan = false;
-  previewControls.minDistance = 72;
-  previewControls.maxDistance = 170;
+  previewControls.minDistance = 82;
+  previewControls.maxDistance = 190;
   previewControls.minPolarAngle = Math.PI * .12;
   previewControls.maxPolarAngle = Math.PI * .78;
   previewControls.target.set(0, 2, 3);
@@ -4424,6 +4425,135 @@ function initialiseImageClicker3D() {
   previewScene.add(group);
   imageClicker3D = { renderer: previewRenderer, scene: previewScene, camera: previewCamera, controls: previewControls, group };
   return imageClicker3D;
+}
+
+function loadImageClicker3MF(modelUrl) {
+  if (!imageClicker3MFCache.has(modelUrl)) {
+    imageClicker3MFCache.set(modelUrl, new ThreeMFLoader().loadAsync(modelUrl));
+  }
+  return imageClicker3MFCache.get(modelUrl);
+}
+
+function flattenImageClickerPart(source, fixedRole = "") {
+  const flattened = new THREE.Group();
+  source.updateWorldMatrix(true, true);
+  source.traverse(object => {
+    if (!object.isMesh) return;
+    const geometry = object.geometry.clone();
+    geometry.applyMatrix4(object.matrixWorld);
+    const mesh = new THREE.Mesh(geometry, createMat("#ffffff"));
+    mesh.userData.colourRole = fixedRole;
+    flattened.add(mesh);
+  });
+  return flattened;
+}
+
+function centreImageClickerPart(part, groundZ = 0) {
+  part.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(part);
+  const centre = box.getCenter(new THREE.Vector3());
+  const wrapper = new THREE.Group();
+  wrapper.add(part);
+  wrapper.position.set(-centre.x, -centre.y, groundZ - box.min.z);
+  wrapper.updateMatrixWorld(true);
+  return { wrapper, size: box.getSize(new THREE.Vector3()) };
+}
+
+function getImageClickerPartStats(part) {
+  let meshCount = 0;
+  part.traverse(object => { if (object.isMesh) meshCount += 1; });
+  return { meshCount, size: new THREE.Box3().setFromObject(part).getSize(new THREE.Vector3()) };
+}
+
+function getImageClickerCapGround(bodyDepth, backingDepth) {
+  return Math.max(0, bodyDepth - backingDepth + IMAGE_CLICKER_BACKING_REVEAL);
+}
+
+function assembleImageClicker3D(sourceModel, colours) {
+  const model = new THREE.Group();
+  const printableParts = sourceModel.children.filter(child => !new THREE.Box3().setFromObject(child).isEmpty());
+  if (!printableParts.length) throw new Error("The 3MF does not contain a printable model.");
+  const allPartStats = printableParts.map((part, index) => ({ ...getImageClickerPartStats(part), index }));
+
+  if (printableParts.length === 1) {
+    const singlePart = flattenImageClickerPart(printableParts[0]);
+    const meshStats = singlePart.children.filter(child => child.isMesh).map(mesh => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      return { mesh, box, size: box.getSize(new THREE.Vector3()) };
+    }).sort((a, b) => b.size.z - a.size.z);
+    if (meshStats.length < 3 || meshStats[0].size.z <= meshStats[1].size.z * 1.5) {
+      throw new Error("The 3MF does not contain a separate clicker body and cap.");
+    }
+    const placeMeshes = (stats, role, groundZ) => {
+      const group = new THREE.Group();
+      stats.forEach(item => {
+        item.mesh.userData.colourRole = role;
+        group.add(item.mesh);
+      });
+      return centreImageClickerPart(group, groundZ);
+    };
+    const placedBody = placeMeshes([meshStats[0]], "body", 0);
+    const backingDepth = meshStats[1].size.z;
+    const capGround = getImageClickerCapGround(placedBody.size.z, backingDepth);
+    const placedBacking = placeMeshes([meshStats[1]], "backing", capGround);
+    const placedLogo = placeMeshes(meshStats.slice(2), "logo", capGround + backingDepth - .2);
+    model.add(placedBody.wrapper, placedBacking.wrapper, placedLogo.wrapper);
+  } else {
+    const bodyStats = allPartStats.reduce((largest, item) => item.size.z > largest.size.z ? item : largest);
+    if (bodyStats.size.z < 12) throw new Error("The 3MF does not include a complete clicker body.");
+    const capStats = allPartStats
+      .filter(item => item.index !== bodyStats.index && item.size.z < bodyStats.size.z * .82)
+      .sort((a, b) => {
+        const score = item => Math.abs(Math.log(Math.max(.01, item.size.x / bodyStats.size.x)))
+          + Math.abs(Math.log(Math.max(.01, item.size.y / bodyStats.size.y)));
+        return score(a) - score(b);
+      })[0];
+    if (!capStats) throw new Error("The 3MF does not include a matching cap.");
+    const placedBody = centreImageClickerPart(flattenImageClickerPart(printableParts[bodyStats.index], "body"));
+    const cap = flattenImageClickerPart(printableParts[capStats.index]);
+    const capMeshes = cap.children.filter(child => child.isMesh);
+    const backingMesh = capMeshes.reduce((largest, mesh) => {
+      const depth = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).z;
+      const largestDepth = largest ? new THREE.Box3().setFromObject(largest).getSize(new THREE.Vector3()).z : -1;
+      return depth > largestDepth ? mesh : largest;
+    }, null);
+    capMeshes.forEach(mesh => { mesh.userData.colourRole = mesh === backingMesh ? "backing" : "logo"; });
+    const backingDepth = backingMesh
+      ? new THREE.Box3().setFromObject(backingMesh).getSize(new THREE.Vector3()).z
+      : capStats.size.z;
+    const placedCap = centreImageClickerPart(cap, getImageClickerCapGround(placedBody.size.z, backingDepth));
+    model.add(placedBody.wrapper, placedCap.wrapper);
+  }
+
+  model.updateMatrixWorld(true);
+  const modelBox = new THREE.Box3().setFromObject(model);
+  const modelDepth = Math.max(.001, modelBox.max.z - modelBox.min.z);
+  model.traverse(object => {
+    if (!object.isMesh) return;
+    const meshBox = new THREE.Box3().setFromObject(object);
+    const meshDepth = meshBox.max.z - meshBox.min.z;
+    let role = object.userData.colourRole;
+    if (!role) {
+      if (meshBox.min.z <= modelBox.min.z + Math.max(.8, modelDepth * .07)) role = "body";
+      else if (meshBox.max.z >= modelBox.max.z - Math.max(.8, modelDepth * .09)
+        && meshDepth <= modelDepth * .38) role = "logo";
+      else role = "backing";
+    }
+    object.userData.colourRole = role;
+    object.material = createMat(colours[role] || colours.backing);
+    object.castShadow = true;
+    object.receiveShadow = true;
+  });
+  model.updateMatrixWorld(true);
+  const initialBox = new THREE.Box3().setFromObject(model);
+  const initialSize = initialBox.getSize(new THREE.Vector3());
+  const modelScale = 68 / Math.max(1, initialSize.x, initialSize.y);
+  model.scale.setScalar(modelScale);
+  model.updateMatrixWorld(true);
+  const scaledBox = new THREE.Box3().setFromObject(model);
+  const centre = scaledBox.getCenter(new THREE.Vector3());
+  model.position.set(-centre.x, -centre.y, -scaledBox.min.z);
+  return model;
 }
 
 function getImageClickerPreviewImage(url) {
@@ -4600,120 +4730,13 @@ async function buildImageClicker3DPreview() {
   if (!imageClickerState.modelUrl) return;
   try {
     if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "Loading 3D model…";
-    const sourceModel = await new ThreeMFLoader().loadAsync(imageClickerState.modelUrl);
+    const sourceModel = await loadImageClicker3MF(imageClickerState.modelUrl);
     if (build !== imageClicker3DBuild) return;
-    const model = new THREE.Group();
-    const printableParts = sourceModel.children.filter(child => !new THREE.Box3().setFromObject(child).isEmpty());
-    if (!printableParts.length) throw new Error("The 3MF does not contain a printable model.");
-
-    const flattenPart = (source, fixedRole = "") => {
-      const flattened = new THREE.Group();
-      source.updateWorldMatrix(true, true);
-      source.traverse(object => {
-        if (!object.isMesh) return;
-        const geometry = object.geometry.clone();
-        geometry.applyMatrix4(object.matrixWorld);
-        const mesh = new THREE.Mesh(geometry, createMat("#ffffff"));
-        mesh.userData.colourRole = fixedRole;
-        flattened.add(mesh);
-      });
-      return flattened;
-    };
-    const centrePart = (part, groundZ = 0) => {
-      part.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(part);
-      const centre = box.getCenter(new THREE.Vector3());
-      const wrapper = new THREE.Group();
-      wrapper.add(part);
-      wrapper.position.set(-centre.x, -centre.y, groundZ - box.min.z);
-      wrapper.updateMatrixWorld(true);
-      return { wrapper, size: box.getSize(new THREE.Vector3()) };
-    };
-    const partStats = part => {
-      let meshCount = 0;
-      part.traverse(object => { if (object.isMesh) meshCount += 1; });
-      return { meshCount, size: new THREE.Box3().setFromObject(part).getSize(new THREE.Vector3()) };
-    };
-    const allPartStats = printableParts.map((part, index) => ({ ...partStats(part), index }));
-
-    if (printableParts.length === 1) {
-      const singlePart = flattenPart(printableParts[0]);
-      const meshStats = singlePart.children.filter(child => child.isMesh).map(mesh => {
-        const box = new THREE.Box3().setFromObject(mesh);
-        return { mesh, box, size: box.getSize(new THREE.Vector3()) };
-      }).sort((a, b) => b.size.z - a.size.z);
-      if (meshStats.length >= 3 && meshStats[0].size.z > meshStats[1].size.z * 1.5) {
-        const placeMeshes = (stats, role, groundZ) => {
-          const group = new THREE.Group();
-          stats.forEach(item => {
-            item.mesh.userData.colourRole = role;
-            group.add(item.mesh);
-          });
-          return centrePart(group, groundZ);
-        };
-        const placedBody = placeMeshes([meshStats[0]], "body", 0);
-        const placedBacking = placeMeshes([meshStats[1]], "backing", Math.max(0, placedBody.size.z - 2.4));
-        const logoGround = Math.max(0, placedBody.size.z - 2.4 + placedBacking.size.z - .45);
-        const placedLogo = placeMeshes(meshStats.slice(2), "logo", logoGround);
-        model.add(placedBody.wrapper, placedBacking.wrapper, placedLogo.wrapper);
-      } else {
-        model.add(centrePart(singlePart).wrapper);
-      }
-    } else {
-      const bodyStats = allPartStats.reduce((largest, item) => item.size.z > largest.size.z ? item : largest);
-      const capStats = allPartStats
-        .filter(item => item.index !== bodyStats.index && item.size.z < bodyStats.size.z * .82)
-        .sort((a, b) => {
-          const score = item => Math.abs(Math.log(Math.max(.01, item.size.x / bodyStats.size.x)))
-            + Math.abs(Math.log(Math.max(.01, item.size.y / bodyStats.size.y)));
-          return score(a) - score(b);
-        })[0];
-      const placedBody = centrePart(flattenPart(printableParts[bodyStats.index], "body"));
-      const cap = flattenPart(printableParts[capStats.index]);
-      const capMeshes = cap.children.filter(child => child.isMesh);
-      capMeshes.forEach((mesh, index) => {
-        mesh.userData.colourRole = index === capMeshes.length - 1 ? "backing" : "logo";
-      });
-      const placedCap = centrePart(
-        cap,
-        Math.max(0, placedBody.size.z - 2.4)
-      );
-      model.add(placedBody.wrapper, placedCap.wrapper);
-    }
-
-    model.updateMatrixWorld(true);
-    const modelBox = new THREE.Box3().setFromObject(model);
-    const modelDepth = Math.max(.001, modelBox.max.z - modelBox.min.z);
-    model.traverse(object => {
-      if (!object.isMesh) return;
-      const meshBox = new THREE.Box3().setFromObject(object);
-      const meshDepth = meshBox.max.z - meshBox.min.z;
-      let role = object.userData.colourRole;
-      if (!role) {
-        if (meshBox.min.z <= modelBox.min.z + Math.max(.8, modelDepth * .07)) role = "body";
-        else if (meshBox.max.z >= modelBox.max.z - Math.max(.8, modelDepth * .09)
-          && meshDepth <= modelDepth * .38) role = "logo";
-        else role = "backing";
-      }
-      object.userData.colourRole = role;
-      object.material = createMat({
-        body: imageClickerState.bodyColour,
-        backing: imageClickerState.backingColour,
-        logo: imageClickerState.logoColour
-      }[role] || imageClickerState.backingColour);
-      object.castShadow = true;
-      object.receiveShadow = true;
+    const model = assembleImageClicker3D(sourceModel, {
+      body: imageClickerState.bodyColour,
+      backing: imageClickerState.backingColour,
+      logo: imageClickerState.logoColour
     });
-    model.rotation.set(0, 0, 0);
-    model.updateMatrixWorld(true);
-    const initialBox = new THREE.Box3().setFromObject(model);
-    const initialSize = initialBox.getSize(new THREE.Vector3());
-    const modelScale = 68 / Math.max(1, initialSize.x, initialSize.y);
-    model.scale.setScalar(modelScale);
-    model.updateMatrixWorld(true);
-    const scaledBox = new THREE.Box3().setFromObject(model);
-    const centre = scaledBox.getCenter(new THREE.Vector3());
-    model.position.set(-centre.x, -centre.y, -scaledBox.min.z);
     preview.group.add(model);
     preview.modelKey = imageClickerState.modelKey;
     preview.group.rotation.z = -.08;
@@ -4725,6 +4748,64 @@ async function buildImageClicker3DPreview() {
     if (imageClickerStatus) imageClickerStatus.textContent = "This 3D model could not be opened.";
     console.warn("Unable to load the K-pop clicker 3MF preview:", error);
   }
+}
+
+async function renderImageClickerCovers() {
+  const covers = Array.from(document.querySelectorAll("[data-image-clicker-cover]"));
+  if (!covers.length) return;
+  if (covers.every(cover => cover.classList.contains("is-rendered"))) return;
+  const canvas = document.createElement("canvas");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(320, 320, false);
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x9a7182, 2.5));
+  const key = new THREE.DirectionalLight(0xffffff, 3.4);
+  key.position.set(-55, -70, 100);
+  key.castShadow = true;
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffdbe8, 1.25);
+  fill.position.set(70, 35, 55);
+  scene.add(fill);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), new THREE.ShadowMaterial({ color: 0x6f4053, opacity: .16 }));
+  floor.position.z = -.25;
+  floor.receiveShadow = true;
+  scene.add(floor);
+  const camera = new THREE.OrthographicCamera(-48, 48, 48, -48, .1, 400);
+  camera.position.set(82, -105, 92);
+  camera.lookAt(0, 0, 6);
+  camera.updateProjectionMatrix();
+
+  for (const cover of covers) {
+    const design = KPOP_CLICKER_MODELS[Number(cover.dataset.imageClickerCover)];
+    if (!design?.modelUrl) continue;
+    let model = null;
+    try {
+      const sourceModel = await loadImageClicker3MF(design.modelUrl);
+      model = assembleImageClicker3D(sourceModel, {
+        body: "#fffdf8",
+        backing: "#171419",
+        logo: design.accent || "#f383a0"
+      });
+      model.rotation.z = -.08;
+      scene.add(model);
+      renderer.render(scene, camera);
+      cover.src = renderer.domElement.toDataURL("image/png");
+      cover.classList.add("is-rendered");
+      cover.nextElementSibling?.classList?.add("hidden");
+    } catch (error) {
+      console.warn(`Unable to render the ${design.name} cover:`, error);
+    } finally {
+      if (model) {
+        scene.remove(model);
+        disposePreviewObject(model);
+      }
+    }
+  }
+  renderer.dispose();
 }
 
 function applyImageClickerPreviewColours() {
@@ -10961,6 +11042,7 @@ function openImageClickerStudio(existingItem = null, itemIndex = null) {
   if (imageClickerStatus) imageClickerStatus.textContent = "";
   imageClickerModal?.classList.remove("hidden");
   document.body.classList.add("modal-open");
+  void renderImageClickerCovers();
   renderImageClickerPreview();
 }
 
