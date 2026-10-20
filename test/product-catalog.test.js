@@ -19,6 +19,7 @@ import {
   normalizeProductCatalogOverrides,
   normalizeProductStatusOverrides,
   normalizeProductCatalog,
+  IMAGE_CLICKER_PRODUCT_KEY,
   normalizeKpopClickerModels,
   normalizeProductOptions,
   isReadyMadeProduct
@@ -255,6 +256,20 @@ test("always shows pricing when a product is available", () => {
   const pencil = getProductByKey(catalogue, PENCIL_PRODUCT_KEY);
   assert.equal(pencil.status, "active");
   assert.equal(pencil.price_visible, true);
+});
+
+test("keeps the retired K-pop catalogue hidden even when saved settings enable it", () => {
+  const catalogue = applyProductStatusOverrides(normalizeProductCatalog([{
+    product_key: IMAGE_CLICKER_PRODUCT_KEY,
+    status: "active",
+    price_visible: true
+  }]), {
+    [IMAGE_CLICKER_PRODUCT_KEY]: "active"
+  });
+
+  const kpopClicker = getProductByKey(catalogue, IMAGE_CLICKER_PRODUCT_KEY);
+  assert.equal(kpopClicker.status, "hidden");
+  assert.equal(kpopClicker.price_visible, false);
 });
 
 test("ignores invalid product visibility overrides", () => {

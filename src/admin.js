@@ -75,7 +75,8 @@ import {
   normalizeProductCatalog,
   normalizeKpopClickerModels,
   normalizeProductOptions,
-  isReadyMadeProduct
+  isReadyMadeProduct,
+  isRetiredProduct
 } from "./product-catalog.js";
 import {
   COLOUR_MATERIAL_TYPES,
@@ -2031,7 +2032,7 @@ function renderSettingsWorkspace() {
               <h3>Products & pricing</h3>
               <p class="hint">Each product now has its own price and production timing. Coming-soon prices stay hidden from customers.</p>
             </div>
-            <strong>${adminProductCatalog.length} products</strong>
+            <strong>${adminProductCatalog.filter(product => !isRetiredProduct(product)).length} products</strong>
           </div>
 
           ${adminProductsLoadFailed ? `
@@ -2063,7 +2064,7 @@ function renderSettingsWorkspace() {
           </details>
 
           <div class="product-settings-grid">
-            ${adminProductCatalog.map(product => {
+            ${adminProductCatalog.filter(product => !isRetiredProduct(product)).map(product => {
               const prefix = `product:${product.product_key}:`;
               const isSolidDraft = product.product_key === "solid-clicky-keychain";
               const isPencilDraft = product.product_key === PENCIL_PRODUCT_KEY;
@@ -3040,7 +3041,9 @@ async function saveShopSettings(event) {
       return;
     }
   }
-  const productUpdates = adminProductCatalog.map(product => {
+  const productUpdates = adminProductCatalog
+    .filter(product => !isRetiredProduct(product))
+    .map(product => {
     const prefix = `product:${product.product_key}:`;
     const productUpdate = {
       ...product,
@@ -3088,7 +3091,7 @@ async function saveShopSettings(event) {
     Object.fromEntries(productUpdates.map(product => [product.product_key, product]))
   );
   const productStatusOverrides = normalizeProductStatusOverrides(
-    Object.fromEntries(adminProductCatalog.map(product => {
+    Object.fromEntries(adminProductCatalog.filter(product => !isRetiredProduct(product)).map(product => {
       const prefix = `product:${product.product_key}:`;
       return [product.product_key, String(form.get(`${prefix}status`) || product.status)];
     }))

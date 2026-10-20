@@ -1203,7 +1203,6 @@ ${requestedPreviewProductKey ? `
     <button type="button" data-occasion-filter="teacher">Teacher gifts</button>
     <button type="button" data-occasion-filter="birthdays">Birthdays</button>
     <button type="button" data-occasion-filter="couples">Couples</button>
-    <button type="button" data-occasion-filter="kpop">K-pop</button>
     <button type="button" data-occasion-filter="party">Party favours</button>
   </nav>
 

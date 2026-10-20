@@ -4,6 +4,8 @@ export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
 export const IMAGE_CLICKER_PRODUCT_KEY = "custom-image-clicker";
+export const RETIRED_PRODUCT_KEYS = Object.freeze([IMAGE_CLICKER_PRODUCT_KEY]);
+const RETIRED_PRODUCT_KEY_SET = new Set(RETIRED_PRODUCT_KEYS);
 export const READY_MADE_PRODUCT_TYPE = "ready_made";
 export const CUSTOM_PRODUCT_TYPE = "custom";
 export const PHOTO_KEEPSAKE_COLOUR_PRICES = Object.freeze({
@@ -55,13 +57,22 @@ export function normalizeProductStatusOverrides(value = {}) {
 export function applyProductStatusOverrides(catalog = [], value = {}) {
   const overrides = normalizeProductStatusOverrides(value);
   return (Array.isArray(catalog) ? catalog : []).map(product => {
-    const status = overrides[product.product_key] || product.status;
+    const status = isRetiredProduct(product)
+      ? "hidden"
+      : overrides[product.product_key] || product.status;
     return {
       ...product,
       status,
       price_visible: status === "active" ? true : product.price_visible
     };
   });
+}
+
+export function isRetiredProduct(productOrKey) {
+  const productKey = typeof productOrKey === "string"
+    ? productOrKey
+    : productOrKey?.product_key;
+  return RETIRED_PRODUCT_KEY_SET.has(String(productKey || ""));
 }
 
 export function normalizeProductCatalogOverrides(value = {}) {
@@ -269,7 +280,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     name: "K-pop Clicker",
     eyebrow: "Your favourite group, one satisfying click.",
     description: "Choose a ready-made K-pop design, customise the colours and preview it in 3D.",
-    status: "coming_soon",
+    status: "hidden",
     price_visible: false,
     usual_base_price: 6.9,
     launch_base_price: 6.9,
@@ -431,6 +442,10 @@ export function normalizeProductCatalog(rows = []) {
     }
     product.video_path = String(product.video_path || "").trim();
     product.kpop_models = normalizeKpopClickerModels(product.kpop_models);
+    if (isRetiredProduct(product)) {
+      product.status = "hidden";
+      product.price_visible = false;
+    }
     return product;
   });
 
