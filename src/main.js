@@ -2386,7 +2386,7 @@ Chloe</textarea>
               </label>
             </div>
           </div>
-        ` : `<p><strong>PayNow is available for every order.</strong> Cards and wallets are also available for totals from $30.</p>`}
+        ` : `<p><strong>Stripe PayNow is available for every order.</strong> Payment is verified automatically—no screenshot or manual confirmation needed.</p>`}
       </div>
 
 <div class="checkout-submit-bar">
@@ -2450,31 +2450,27 @@ Chloe</textarea>
         <p class="payment-total-label">Total due</p>
         <strong id="paymentTotal" class="payment-total-value"></strong>
 
-        <div class="paynow-payment-panel">
-          <span class="online-payment-badge">No minimum spend</span>
-          <h3>Pay instantly with PayNow</h3>
-          <p>Scan the QR code and include your order reference in the payment comment so we can match it quickly.</p>
-          <img class="paynowQR" src="/models/paynow.png" alt="Little Keeps PayNow QR code">
-          <small>Your order is already saved. We’ll confirm it after checking your payment.</small>
-        </div>
-
         ${shopSettings.stripe_enabled ? `
-          <div id="cardPaymentSection">
-            <div class="payment-divider"><span>Or use a card or wallet for totals from $30</span></div>
-            <div class="online-payment-panel">
-              <p>Your secure payment session holds this production slot for about 30 minutes.</p>
-              <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to secure payment</button>
-              <p id="stripeCheckoutStatus" class="hint"></p>
-            </div>
-            <p class="hint">We’ll email your confirmation and order PDF after payment.</p>
+          <div class="online-payment-panel">
+            <span class="online-payment-badge">Recommended · automatically verified</span>
+            <h3>Pay securely with Stripe PayNow</h3>
+            <p>Stripe will create a secure PayNow QR for the exact amount and confirm your payment automatically. Your production slot is held for about 30 minutes once it opens.</p>
+            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to Stripe PayNow</button>
+            <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
-        ` : ""}
+          <p class="hint">No screenshot or WhatsApp message is required. We’ll email your confirmation and order PDF after payment.</p>
+        ` : `
+          <div class="online-payment-panel">
+            <h3>Online payment is temporarily unavailable</h3>
+            <p>Please contact Little Keeps and quote your order reference.</p>
+          </div>
+        `}
 
 <button
 id="paymentDoneBtn"
   class="secondary-btn"
 >
-  I’ve paid by PayNow — return to shop
+  Pay later — return to shop
 </button>
       </div>
     </section>
@@ -3105,7 +3101,6 @@ const stripeCheckoutBtn =
 document.getElementById("stripeCheckoutBtn");
 const stripeCheckoutStatus =
 document.getElementById("stripeCheckoutStatus");
-const cardPaymentSection = document.getElementById("cardPaymentSection");
 const paymentBackBtn =
 document.getElementById("paymentBackBtn");
 
@@ -8559,7 +8554,6 @@ async function submitOrderOnce() {
   paymentOrderRef.innerText = order.linked_order_ref || orderRef;
   paymentOrderRef.dataset.paymentRef = orderRef;
   paymentTotal.innerText = `$${total.toFixed(2)}`;
-  cardPaymentSection?.classList.toggle("hidden", total < 30);
   if (order.linked_order_ref) {
     paymentLinkedOrderNote.textContent =
       `Added to order ${order.linked_order_ref}. It keeps the same pickup or delivery method and there is no second delivery fee.`;
@@ -11985,7 +11979,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
 
   stripeCheckoutBtn.disabled = true;
   stripeCheckoutBtn.textContent = "Opening secure payment…";
-  stripeCheckoutStatus.textContent = "Preparing secure payment…";
+  stripeCheckoutStatus.textContent = "Preparing your secure PayNow checkout…";
 
   try {
     const { data, error } = await supabase.functions.invoke("stripe-create-checkout", {
@@ -12009,7 +12003,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
       "Online payment is temporarily unavailable. Please contact Little Keeps and quote your order reference."
     );
     stripeCheckoutBtn.disabled = false;
-    stripeCheckoutBtn.textContent = "Try secure payment again";
+    stripeCheckoutBtn.textContent = "Try Stripe PayNow again";
   }
 });
 
@@ -13130,14 +13124,10 @@ function renderCustomerOrderStatus(order) {
             ? "Your previous checkout expired and no slot is being held. Open payment again to reserve a fresh slot."
             : "A production slot will be held for about 30 minutes when the secure payment page opens."}</p>
         `}
-        <div class="tracked-paynow-payment">
-          <strong>PayNow · no minimum spend</strong>
-          <img class="paynowQR" src="/models/paynow.png" alt="Little Keeps PayNow QR code">
-          <small>Include ${escapePresetText(order.order_ref || "your order reference")} in the payment comment.</small>
-        </div>
-        ${shopSettings.stripe_enabled && Number(order.total || 0) >= 30 ? `
-          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Start a new payment" : "Pay securely"}</button>
-        ` : ""}
+        ${shopSettings.stripe_enabled ? `
+          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Open a new Stripe PayNow checkout" : "Pay securely with Stripe PayNow"}</button>
+          <small>Stripe verifies your payment automatically—no screenshot needed.</small>
+        ` : `<p>Online payment is temporarily unavailable. Please contact Little Keeps.</p>`}
       </div>
     ` : ""}
 
@@ -13259,7 +13249,7 @@ window.reorderTrackedItems = function(items) {
 };
 
 window.payTrackedOrder = async function(orderRef, email, button) {
-  const previousLabel = button?.textContent || "Pay securely";
+  const previousLabel = button?.textContent || "Pay securely with Stripe PayNow";
   if (button) {
     button.disabled = true;
     button.textContent = "Opening secure payment…";
@@ -13411,7 +13401,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
     modalHeading.textContent = "Payment successful ✓";
     if (modalParagraphs[0]) {
       modalParagraphs[0].textContent =
-        "Thank you! Stripe has received your payment.";
+        "Thank you! Stripe has received and verified your PayNow payment.";
     }
     orderRefText.textContent = returnedOrderRef
       ? `Order ${returnedOrderRef}`
@@ -13501,7 +13491,6 @@ if (
   paymentOrderRef.innerText = "LK-PREVIEW-1234";
   paymentOrderRef.dataset.paymentRef = "LK-PREVIEW-1234";
   paymentTotal.innerText = "$5.70";
-  cardPaymentSection?.classList.add("hidden");
 
   const paymentBox = paymentScreen.querySelector(".payment-box");
 
