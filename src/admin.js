@@ -2511,10 +2511,10 @@ function renderSettingsWorkspace() {
           <h3>Online payment</h3>
           <div class="payment-readiness">
             <div>
-              <strong>${adminShopSettings.stripe_enabled ? "Stripe PayNow enabled" : "Online checkout is disabled"}</strong>
-              <p class="hint">Stripe creates the exact PayNow amount and verifies successful payments automatically for every order.</p>
+              <strong>${adminShopSettings.stripe_enabled ? "Stripe checkout enabled" : "Online checkout is disabled"}</strong>
+              <p class="hint">PayNow is available for every order. Card, Apple Pay and Google Pay become available from S$30. Stripe verifies payments automatically.</p>
             </div>
-            <label class="settings-toggle"><input name="stripe_enabled" type="checkbox" ${checked(adminShopSettings.stripe_enabled)}> Enable Stripe PayNow checkout</label>
+            <label class="settings-toggle"><input name="stripe_enabled" type="checkbox" ${checked(adminShopSettings.stripe_enabled)}> Enable Stripe checkout</label>
           </div>
         </section>
       </div>

@@ -2386,7 +2386,7 @@ Chloe</textarea>
               </label>
             </div>
           </div>
-        ` : `<p><strong>Stripe PayNow is available for every order.</strong> Payment is verified automatically—no screenshot or manual confirmation needed.</p>`}
+        ` : `<p><strong>Stripe PayNow is available for every order.</strong> Card, Apple Pay and Google Pay are also available from S$30. Payment is verified automatically.</p>`}
       </div>
 
 <div class="checkout-submit-bar">
@@ -2453,9 +2453,9 @@ Chloe</textarea>
         ${shopSettings.stripe_enabled ? `
           <div class="online-payment-panel">
             <span class="online-payment-badge">Recommended · automatically verified</span>
-            <h3>Pay securely with Stripe PayNow</h3>
-            <p>Stripe will create a secure PayNow QR for the exact amount and confirm your payment automatically. Your production slot is held for about 30 minutes once it opens.</p>
-            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to Stripe PayNow</button>
+            <h3>Pay securely with Stripe</h3>
+            <p>PayNow is available for every order. Spend S$30 or more to also use card, Apple Pay or Google Pay. Stripe confirms your payment automatically.</p>
+            <button id="stripeCheckoutBtn" type="button" class="submit-btn">Continue to secure payment</button>
             <p id="stripeCheckoutStatus" class="hint"></p>
           </div>
           <p class="hint">No screenshot or WhatsApp message is required. We’ll email your confirmation and order PDF after payment.</p>
@@ -11979,7 +11979,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
 
   stripeCheckoutBtn.disabled = true;
   stripeCheckoutBtn.textContent = "Opening secure payment…";
-  stripeCheckoutStatus.textContent = "Preparing your secure PayNow checkout…";
+  stripeCheckoutStatus.textContent = "Preparing your secure checkout…";
 
   try {
     const { data, error } = await supabase.functions.invoke("stripe-create-checkout", {
@@ -12003,7 +12003,7 @@ stripeCheckoutBtn?.addEventListener("click", async () => {
       "Online payment is temporarily unavailable. Please contact Little Keeps and quote your order reference."
     );
     stripeCheckoutBtn.disabled = false;
-    stripeCheckoutBtn.textContent = "Try Stripe PayNow again";
+    stripeCheckoutBtn.textContent = "Try secure payment again";
   }
 });
 
@@ -13125,8 +13125,8 @@ function renderCustomerOrderStatus(order) {
             : "A production slot will be held for about 30 minutes when the secure payment page opens."}</p>
         `}
         ${shopSettings.stripe_enabled ? `
-          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Open a new Stripe PayNow checkout" : "Pay securely with Stripe PayNow"}</button>
-          <small>Stripe verifies your payment automatically—no screenshot needed.</small>
+          <button class="submit-btn" type="button" onclick='window.payTrackedOrder(${JSON.stringify(order.order_ref)}, ${JSON.stringify(statusCustomerEmail.value.trim())}, this)'>${paymentExpired ? "Open a new secure checkout" : "Pay securely with Stripe"}</button>
+          <small>PayNow is always available. Card and wallets unlock from S$30. Stripe verifies payment automatically.</small>
         ` : `<p>Online payment is temporarily unavailable. Please contact Little Keeps.</p>`}
       </div>
     ` : ""}
@@ -13249,7 +13249,7 @@ window.reorderTrackedItems = function(items) {
 };
 
 window.payTrackedOrder = async function(orderRef, email, button) {
-  const previousLabel = button?.textContent || "Pay securely with Stripe PayNow";
+  const previousLabel = button?.textContent || "Pay securely with Stripe";
   if (button) {
     button.disabled = true;
     button.textContent = "Opening secure payment…";
@@ -13401,7 +13401,7 @@ if (["success", "cancelled"].includes(paymentReturnState)) {
     modalHeading.textContent = "Payment successful ✓";
     if (modalParagraphs[0]) {
       modalParagraphs[0].textContent =
-        "Thank you! Stripe has received and verified your PayNow payment.";
+        "Thank you! Stripe has received and verified your payment.";
     }
     orderRefText.textContent = returnedOrderRef
       ? `Order ${returnedOrderRef}`
