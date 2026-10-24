@@ -1841,13 +1841,21 @@ Chloe</textarea>
             </div>
 
             <div id="dimensionEstimate" class="dimension-estimate" aria-live="polite">
-              <div class="dimension-estimate-heading"><span>📏 Estimated finished size</span><strong>ALICIA</strong></div>
-              <div class="dimension-estimate-grid">
-                <span><small>Length</small><b>17.5 cm</b></span>
-                <span><small>Breadth</small><b>2.7 cm</b></span>
-                <span><small>Height</small><b>2.2 cm</b></span>
+              <button type="button" class="dimension-estimate-collapsed-summary" data-dimension-toggle aria-expanded="false">
+                <span>📏 17.5 × 2.7 × 2.2 cm</span><b>Show</b>
+              </button>
+              <div class="dimension-estimate-expanded">
+                <div class="dimension-estimate-heading">
+                  <span>📏 Estimated finished size</span><strong>ALICIA</strong>
+                  <button type="button" data-dimension-toggle aria-expanded="true">Hide</button>
+                </div>
+                <div class="dimension-estimate-grid">
+                  <span><small>Length</small><b>17.5 cm</b></span>
+                  <span><small>Breadth</small><b>2.7 cm</b></span>
+                  <span><small>Height</small><b>2.2 cm</b></span>
+                </div>
+                <p>Approximate measurement; slight variation may occur after assembly.</p>
               </div>
-              <p>Approximate measurement; slight variation may occur after assembly.</p>
             </div>
           </div>
 
@@ -8021,8 +8029,16 @@ function updateDimensionEstimate(name) {
 
     if (!size.characterCount) {
       dimensionEstimate.innerHTML = `
-        <div class="dimension-estimate-heading"><span>📏 Estimated finished size</span></div>
-        <p>Enter a name to see its approximate length, breadth and height.</p>
+        <button type="button" class="dimension-estimate-collapsed-summary" data-dimension-toggle aria-expanded="false">
+          <span>📏 Finished size</span><b>Show</b>
+        </button>
+        <div class="dimension-estimate-expanded">
+          <div class="dimension-estimate-heading">
+            <span>📏 Estimated finished size</span>
+            <button type="button" data-dimension-toggle aria-expanded="true">Hide</button>
+          </div>
+          <p>Enter a name to see its approximate length, breadth and height.</p>
+        </div>
       `;
       dimensionEstimate.classList.remove("is-long-name");
       return;
@@ -8031,17 +8047,23 @@ function updateDimensionEstimate(name) {
     const isLongName = size.characterCount >= 8;
     dimensionEstimate.classList.toggle("is-long-name", isLongName);
     dimensionEstimate.innerHTML = `
-      <div class="dimension-estimate-heading">
-        <span>📏 Estimated finished size</span>
-        <strong>${escapePresetText(selectedName)}</strong>
+      <button type="button" class="dimension-estimate-collapsed-summary" data-dimension-toggle aria-expanded="false">
+        <span>📏 ${size.lengthCm.toFixed(1)} × ${size.heightCm.toFixed(1)} × ${size.thicknessCm.toFixed(1)} cm</span><b>Show</b>
+      </button>
+      <div class="dimension-estimate-expanded">
+        <div class="dimension-estimate-heading">
+          <span>📏 Estimated finished size</span>
+          <strong>${escapePresetText(selectedName)}</strong>
+          <button type="button" data-dimension-toggle aria-expanded="true">Hide</button>
+        </div>
+        <div class="dimension-estimate-grid">
+          <span><small>Length</small><b>${size.lengthCm.toFixed(1)} cm</b></span>
+          <span><small>Breadth</small><b>${size.heightCm.toFixed(1)} cm</b></span>
+          <span><small>Height</small><b>${size.thicknessCm.toFixed(1)} cm</b></span>
+        </div>
+        ${isLongName ? `<p class="dimension-long-name-warning">Long name — please check the finished length before adding it to your cart.</p>` : ""}
+        <p>Approximate measurement; slight variation may occur after assembly.</p>
       </div>
-      <div class="dimension-estimate-grid">
-        <span><small>Length</small><b>${size.lengthCm.toFixed(1)} cm</b></span>
-        <span><small>Breadth</small><b>${size.heightCm.toFixed(1)} cm</b></span>
-        <span><small>Height</small><b>${size.thicknessCm.toFixed(1)} cm</b></span>
-      </div>
-      ${isLongName ? `<p class="dimension-long-name-warning">Long name — please check the finished length before adding it to your cart.</p>` : ""}
-      <p>Approximate measurement; slight variation may occur after assembly.</p>
     `;
   }
 }
@@ -14011,6 +14033,16 @@ mobilePreviewToggle?.addEventListener("click", () => {
     "aria-expanded",
     String(!collapsed)
   );
+});
+
+dimensionEstimate?.addEventListener("click", event => {
+  const toggle = event.target.closest("[data-dimension-toggle]");
+  if (!toggle) return;
+
+  const collapsed = dimensionEstimate.classList.toggle("is-collapsed");
+  dimensionEstimate.querySelectorAll("[data-dimension-toggle]").forEach(button => {
+    button.setAttribute("aria-expanded", String(!collapsed));
+  });
 });
 
 setOrderType("single");
