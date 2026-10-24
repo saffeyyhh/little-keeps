@@ -44,6 +44,7 @@ import {
   STANDARD_PRODUCT_KEY,
   PHOTO_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
+  LED_PRODUCT_KEY,
   IMAGE_CLICKER_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
@@ -518,6 +519,7 @@ const standardProduct = getProductByKey(
 );
 const photoProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
 const pencilProduct = getProductByKey(productCatalog, PENCIL_PRODUCT_KEY);
+const ledProduct = getProductByKey(productCatalog, LED_PRODUCT_KEY);
 const imageClickerProduct = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
 const KPOP_CLICKER_MODELS = normalizeKpopClickerModels(
   imageClickerProduct.kpop_models ?? DEFAULT_KPOP_CLICKER_MODELS
@@ -529,6 +531,7 @@ const readyMadeProducts = productCatalog.filter(isReadyMadeProduct);
 const visibleProductCount = [
   modularProduct,
   solidProduct,
+  ledProduct,
   pencilProduct,
   imageClickerProduct,
   standardProduct,
@@ -736,6 +739,7 @@ function getProductCardName(product) {
   return ({
     [MODULAR_PRODUCT_KEY]: "Modular Clicky",
     [SOLID_PRODUCT_KEY]: "Compact Clicky",
+    [LED_PRODUCT_KEY]: "Light-Up Clicker",
     [PENCIL_PRODUCT_KEY]: "Pencil Clicker",
     [STANDARD_PRODUCT_KEY]: "Name Keychain",
     [PHOTO_PRODUCT_KEY]: "Photo Keepsake"
@@ -1269,6 +1273,32 @@ ${requestedPreviewProductKey ? `
         ${solidProduct.status === "active" ? `
           <button type="button" data-product-key="${SOLID_PRODUCT_KEY}" data-view-target="design">Customise this <span>→</span></button>
         ` : `<button type="button" disabled>Coming soon</button>`}
+      </div>
+    </article>
+  ` : ""}
+
+  ${ledProduct.status !== "hidden" ? `
+    <article class="product-card led-product-card ${ledProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="teacher birthdays couples party gifts names" ${ledProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+      ${renderProductCardMedia(ledProduct, {
+        fallbackImages: [
+          "/images/light-up-name-clicker-bases.png",
+          "/images/light-up-name-clicker-keycaps.png"
+        ],
+        alt: "Little Keeps light-up name clicker grid bases and raised alphabet keycaps",
+        badge: `<span class="product-card-badge">New design · Coming soon</span>`
+      })}
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(ledProduct.eyebrow)}</small>
+          <h3><a href="${getProductPublicUrl(LED_PRODUCT_KEY)}">${escapePresetText(getProductCardName(ledProduct))}</a></h3>
+        </div>
+        <p>${escapePresetText(ledProduct.description)}</p>
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>Compact grid</span><span>Raised A–Z caps</span><span>Light-up design</span>
+        </div>
+        ${renderProductCardPrice(ledProduct)}
+        ${renderProductUnitsSoldBadge(ledProduct)}
+        <button type="button" disabled>Coming soon</button>
       </div>
     </article>
   ` : ""}

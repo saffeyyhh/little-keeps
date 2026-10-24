@@ -3,6 +3,7 @@ export const SOLID_PRODUCT_KEY = "solid-clicky-keychain";
 export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
+export const LED_PRODUCT_KEY = "light-up-name-clicker";
 export const IMAGE_CLICKER_PRODUCT_KEY = "custom-image-clicker";
 export const RETIRED_PRODUCT_KEYS = Object.freeze([IMAGE_CLICKER_PRODUCT_KEY]);
 const RETIRED_PRODUCT_KEY_SET = new Set(RETIRED_PRODUCT_KEYS);
@@ -169,6 +170,42 @@ export const DEFAULT_PRODUCT_CATALOG = [
     gallery_paths: ["/images/compact-solid-clicky-keychain.jpg"],
     video_path: "/media/compact-clicker-demo.mp4",
     production_notes: "Use the matching licensed Compact Fidget Clicker solid base for 1–10 slots, plus one chunky keycap and switch per character."
+  },
+  {
+    product_key: LED_PRODUCT_KEY,
+    name: "Light-Up Name Clicker",
+    eyebrow: "Designed by Little Keeps",
+    description: "Your name arranged in a compact grid, with raised clicky letters designed to glow from within.",
+    status: "coming_soon",
+    price_visible: false,
+    usual_base_price: 0,
+    launch_base_price: 0,
+    launch_price_enabled: false,
+    launch_price_ends_at: null,
+    included_characters: 6,
+    extra_character_price: 0,
+    included_base_colours: 1,
+    included_cap_colours: 1,
+    included_letter_colours: 1,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0,
+    minimum_characters: 3,
+    maximum_characters: 9,
+    base_print_minutes_fixed: 0,
+    base_print_minutes_per_character: 0,
+    keycap_print_minutes_per_character: 0,
+    assembly_minutes_per_item: 0,
+    minimum_working_days: null,
+    maximum_working_days: null,
+    sort_order: 21,
+    image_path: "/images/light-up-name-clicker-bases.png",
+    gallery_paths: [
+      "/images/light-up-name-clicker-bases.png",
+      "/images/light-up-name-clicker-keycaps.png"
+    ],
+    video_path: "",
+    production_notes: "Original Little Keeps LED Base design. Confirm the final light hardware, supported grid layouts, retail price and timed print settings before changing this product from Coming soon."
   },
 
   {
