@@ -6338,6 +6338,66 @@ body {
 }
 .pencil-ending-options button.active { border-color: #8b5bb3; color: #6d4590; background: #f3eafb; box-shadow: inset 0 0 0 1px #8b5bb3; }
 .pencil-ending-options span { color: #87798b; font-size: 9px; }
+
+.led-base-options {
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid #eadde2;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fff, #fff8fa);
+}
+
+.led-base-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.led-base-type-grid button {
+  display: grid;
+  gap: 3px;
+  min-height: 64px;
+  padding: 10px;
+  border: 1px solid #e3d6db;
+  border-radius: 14px;
+  color: #65545b;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.led-base-type-grid button strong { font-size: 13px; }
+.led-base-type-grid button span { color: #8b7a81; font-size: 10px; }
+
+.led-base-type-grid button.active {
+  border-color: #b95b79;
+  color: #7f4056;
+  background: linear-gradient(145deg, #fff5f8, #f8e8ee);
+  box-shadow: 0 0 0 2px rgba(185, 91, 121, .08);
+}
+
+.led-base-capacity-status {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: #42684f;
+  background: #f0f8f2;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.led-base-capacity-status.is-error {
+  color: #8b3148;
+  background: #fff0f3;
+  box-shadow: inset 0 0 0 1px #efbdc9;
+}
+
+.led-fixed-cap-note {
+  margin: 9px 0 0;
+  color: #74636a;
+  font-size: 10px;
+  line-height: 1.5;
+}
 .pencil-part-tabs {
   display: flex;
   gap: 7px;
@@ -8058,6 +8118,10 @@ body {
 .product-preview-banner.is-locked { background: #8d3d4d; }
 
 @media (max-width: 700px) {
+  .led-base-options { padding: 14px 10px; }
+  .led-base-type-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .led-base-type-grid button { min-height: 56px; padding: 8px 6px; }
+
   .product-preview-banner { align-items: stretch; flex-direction: column; gap: 4px; }
 }
 
