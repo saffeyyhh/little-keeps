@@ -45,6 +45,7 @@ import {
   PHOTO_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
   LED_PRODUCT_KEY,
+  NORMAL_GRID_PRODUCT_KEY,
   IMAGE_CLICKER_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
@@ -520,6 +521,7 @@ const standardProduct = getProductByKey(
 const photoProduct = getProductByKey(productCatalog, PHOTO_PRODUCT_KEY);
 const pencilProduct = getProductByKey(productCatalog, PENCIL_PRODUCT_KEY);
 const ledProduct = getProductByKey(productCatalog, LED_PRODUCT_KEY);
+const normalGridProduct = getProductByKey(productCatalog, NORMAL_GRID_PRODUCT_KEY);
 const imageClickerProduct = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
 const KPOP_CLICKER_MODELS = normalizeKpopClickerModels(
   imageClickerProduct.kpop_models ?? DEFAULT_KPOP_CLICKER_MODELS
@@ -532,6 +534,7 @@ const visibleProductCount = [
   modularProduct,
   solidProduct,
   ledProduct,
+  normalGridProduct,
   pencilProduct,
   imageClickerProduct,
   standardProduct,
@@ -740,6 +743,7 @@ function getProductCardName(product) {
     [MODULAR_PRODUCT_KEY]: "Modular Clicky",
     [SOLID_PRODUCT_KEY]: "Compact Clicky",
     [LED_PRODUCT_KEY]: "Light-Up Clicker",
+    [NORMAL_GRID_PRODUCT_KEY]: "Classic Grid Clicker",
     [PENCIL_PRODUCT_KEY]: "Pencil Clicker",
     [STANDARD_PRODUCT_KEY]: "Name Keychain",
     [PHOTO_PRODUCT_KEY]: "Photo Keepsake"
@@ -1299,6 +1303,34 @@ ${requestedPreviewProductKey ? `
         ${renderProductCardPrice(ledProduct)}
         ${renderProductUnitsSoldBadge(ledProduct)}
         <button type="button" disabled>Coming soon</button>
+      </div>
+    </article>
+  ` : ""}
+
+  ${normalGridProduct.status !== "hidden" ? `
+    <article class="product-card normal-grid-product-card ${normalGridProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="teacher birthdays couples party gifts names" ${normalGridProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+      ${renderProductCardMedia(normalGridProduct, {
+        fallbackImages: [
+          "/images/classic-grid-clicker-bases.png",
+          "/images/classic-grid-clicker-keycaps.png"
+        ],
+        alt: "Little Keeps classic grid clicker bases and raised alphabet keycaps",
+        badge: `<span class="product-card-badge">New design · Coming soon</span>`
+      })}
+      <div class="product-card-content">
+        <div>
+          <small>${escapePresetText(normalGridProduct.eyebrow)}</small>
+          <h3><a href="${getProductPublicUrl(NORMAL_GRID_PRODUCT_KEY)}">${escapePresetText(getProductCardName(normalGridProduct))}</a></h3>
+        </div>
+        <p>${escapePresetText(normalGridProduct.description)}</p>
+        <div class="product-quick-facts" aria-label="Product highlights">
+          <span>Solid grid base</span><span>Opaque colour caps</span><span>3–12 slots</span>
+        </div>
+        ${renderProductCardPrice(normalGridProduct)}
+        ${renderProductUnitsSoldBadge(normalGridProduct)}
+        ${normalGridProduct.status === "active"
+          ? `<button type="button" data-product-key="${NORMAL_GRID_PRODUCT_KEY}" data-view-target="design">Customise this <span>→</span></button>`
+          : `<button type="button" disabled>Coming soon</button>`}
       </div>
     </article>
   ` : ""}
@@ -1921,9 +1953,10 @@ Chloe</textarea>
             <button type="button" data-led-base-type="4-inverted-t"><strong>4 slots</strong><span>Inverted T</span></button>
             <button type="button" data-led-base-type="6-grid"><strong>6 slots</strong><span>3 × 2 grid</span></button>
             <button type="button" data-led-base-type="9-grid"><strong>9 slots</strong><span>3 × 3 grid</span></button>
+            <button type="button" data-led-base-type="12-grid"><strong>12 slots</strong><span>4 × 3 grid</span></button>
           </div>
           <p id="ledBaseCapacityStatus" class="led-base-capacity-status" aria-live="polite"></p>
-          <p class="led-fixed-cap-note"><strong>Translucent caps are included.</strong> Choose colours for the solid base and raised letters only.</p>
+          <p id="gridCapNote" class="led-fixed-cap-note"><strong>Translucent caps are included.</strong> Choose colours for the solid base and raised letters only.</p>
         </div>
 
         <details id="productPricingGuide" class="product-pricing-guide">
@@ -4251,6 +4284,12 @@ function sanitizeName(name) {
   if (activeProduct?.product_key === PENCIL_PRODUCT_KEY) {
     return sanitizePencilCharacters(name);
   }
+  if (activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY) {
+    return Array.from(name || "")
+      .map(char => /[a-z]/i.test(char) ? char.toUpperCase() : char)
+      .filter(char => /[A-Z]/.test(char))
+      .join("");
+  }
   return Array.from(name || "")
     .map(char => /[a-z]/i.test(char) ? char.toUpperCase() : char)
     .filter(char => /[A-Z0-9]/.test(char) || specialKeycaps[char])
@@ -4262,6 +4301,7 @@ function getActiveProductCharacterLimit() {
     1,
     Number(activeProduct?.maximum_characters) || 10
   );
+  if (activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY) return Math.min(12, configuredLimit);
   return [SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct?.product_key)
     ? Math.min(10, configuredLimit)
     : configuredLimit;
@@ -4341,13 +4381,13 @@ function getApproximateKeychainSize(
     };
   }
 
-  if (productKey === LED_PRODUCT_KEY) {
-    const dimensions = getLedBaseLayout(characterCount, design).dimensions;
+  if (isGridClickerProduct(productKey)) {
+    const dimensions = getLedBaseLayout(characterCount, design, productKey).dimensions;
     return {
       characterCount,
       lengthCm: characterCount ? dimensions.lengthMm / 10 : 0,
       heightCm: characterCount ? dimensions.breadthMm / 10 : 0,
-      thicknessCm: 1.96
+      thicknessCm: productKey === NORMAL_GRID_PRODUCT_KEY ? 1.8 : 1.96
     };
   }
 
@@ -5079,15 +5119,91 @@ const LED_BASE_TYPES = Object.freeze({
   }
 });
 
-function getDefaultLedBaseType(characterCount = 1) {
+const NORMAL_GRID_BASE_TYPES = Object.freeze({
+  "3-l": {
+    label: "3 slots · L shape",
+    capacity: 3,
+    path: "/models/normal-grid/normal-grid-base-3-l.stl",
+    positions: [
+      { x: -5.5, y: 8.5 },
+      { x: 11.5, y: 8.5 },
+      { x: -5.5, y: -8.5 }
+    ],
+    dimensions: { lengthMm: 45, breadthMm: 39 }
+  },
+  "4-square": {
+    label: "4 slots · 2 × 2 square",
+    capacity: 4,
+    path: "/models/normal-grid/normal-grid-base-4-square.stl",
+    positions: makeLedGridPositions([-5.5, 11.5], [8.5, -8.5]),
+    dimensions: { lengthMm: 45, breadthMm: 39 }
+  },
+  "4-t": {
+    label: "4 slots · T shape",
+    capacity: 4,
+    path: "/models/normal-grid/normal-grid-base-4-t.stl",
+    positions: [
+      { x: -14, y: 8.5 },
+      { x: 3, y: 8.5 },
+      { x: 20, y: 8.5 },
+      { x: 3, y: -8.5 }
+    ],
+    dimensions: { lengthMm: 62, breadthMm: 39 }
+  },
+  "4-inverted-t": {
+    label: "4 slots · Inverted T",
+    capacity: 4,
+    path: "/models/normal-grid/normal-grid-base-4-inverted-t.stl",
+    positions: [
+      { x: 3, y: 8.5 },
+      { x: -14, y: -8.5 },
+      { x: 3, y: -8.5 },
+      { x: 20, y: -8.5 }
+    ],
+    dimensions: { lengthMm: 62, breadthMm: 39 }
+  },
+  "6-grid": {
+    label: "6 slots · 3 × 2 grid",
+    capacity: 6,
+    path: "/models/normal-grid/normal-grid-base-6-grid.stl",
+    positions: makeLedGridPositions([-14, 3, 20], [8.5, -8.5]),
+    dimensions: { lengthMm: 62, breadthMm: 39 }
+  },
+  "9-grid": {
+    label: "9 slots · 3 × 3 grid",
+    capacity: 9,
+    path: "/models/normal-grid/normal-grid-base-9-grid.stl",
+    positions: makeLedGridPositions([-14, 3, 20], [17, 0, -17]),
+    dimensions: { lengthMm: 62, breadthMm: 56 }
+  },
+  "12-grid": {
+    label: "12 slots · 4 × 3 grid",
+    capacity: 12,
+    path: "/models/normal-grid/normal-grid-base-12-grid.stl",
+    positions: makeLedGridPositions([-22.5, -5.5, 11.5, 28.5], [17, 0, -17]),
+    dimensions: { lengthMm: 79, breadthMm: 56 }
+  }
+});
+
+function getGridBaseTypes(productKey = activeProduct?.product_key) {
+  return productKey === NORMAL_GRID_PRODUCT_KEY ? NORMAL_GRID_BASE_TYPES : LED_BASE_TYPES;
+}
+
+function isGridClickerProduct(productKey = activeProduct?.product_key) {
+  return [LED_PRODUCT_KEY, NORMAL_GRID_PRODUCT_KEY].includes(productKey);
+}
+
+function getDefaultLedBaseType(characterCount = 1, productKey = activeProduct?.product_key) {
   if (characterCount <= 3) return "3-l";
   if (characterCount <= 4) return "4-square";
   if (characterCount <= 6) return "6-grid";
-  return "9-grid";
+  if (characterCount <= 9 || productKey !== NORMAL_GRID_PRODUCT_KEY) return "9-grid";
+  return "12-grid";
 }
 
-function normalizeLedBaseType(value, characterCount = 1) {
-  return LED_BASE_TYPES[value] ? value : getDefaultLedBaseType(characterCount);
+function normalizeLedBaseType(value, characterCount = 1, productKey = activeProduct?.product_key) {
+  const baseTypes = getGridBaseTypes(productKey);
+  return baseTypes[value] ? value : getDefaultLedBaseType(characterCount, productKey);
 }
 
 function getBaseShapeLabel(baseShape = "ribbed") {
@@ -5442,10 +5558,10 @@ function renderColourChargeNotices() {
       element.textContent = pencilLabels[id];
       return;
     }
-    if (id === "baseColourPriceNotice" && [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key)) {
+    if (id === "baseColourPriceNotice" && [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY, NORMAL_GRID_PRODUCT_KEY].includes(activeProduct.product_key)) {
       element.classList.remove("has-charge");
-      element.textContent = activeProduct.product_key === LED_PRODUCT_KEY
-        ? "The LED grid is one solid base and uses one base colour."
+      element.textContent = isGridClickerProduct(activeProduct.product_key)
+        ? "The grid is one solid base and uses one base colour."
         : "The compact solid base is one piece and uses one base colour.";
       return;
     }
@@ -5677,7 +5793,7 @@ function randomiseArticulatedColours() {
     allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
   const design = getActiveDesign();
-  const singleColourParts = [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key);
+  const singleColourParts = [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY, NORMAL_GRID_PRODUCT_KEY].includes(activeProduct.product_key);
   design.bases = singleColourParts ? selected.bases.slice(0, 1) : selected.bases;
   if (activeProduct.product_key !== LED_PRODUCT_KEY) design.caps = selected.caps;
   design.letters = selected.letters;
@@ -5739,7 +5855,7 @@ function randomiseColourPart(part) {
   });
   const property = part === "base" ? "bases" : part === "cap" ? "caps" : "letters";
   const design = getActiveDesign();
-  design[property] = [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key) && part === "base"
+  design[property] = [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY, NORMAL_GRID_PRODUCT_KEY].includes(activeProduct.product_key) && part === "base"
     ? selected[property].slice(0, 1)
     : [...selected[property]];
 
@@ -6132,8 +6248,10 @@ function addColourToDesign(type, colour) {
     activeProduct.product_key === SOLID_PRODUCT_KEY;
   const isLedProduct =
     activeProduct.product_key === LED_PRODUCT_KEY;
+  const isNormalGridProduct =
+    activeProduct.product_key === NORMAL_GRID_PRODUCT_KEY;
   if (isLedProduct && type === "cap") return;
-  if (isStandardProduct || ((isSolidProduct || isLedProduct) && type === "base")) {
+  if (isStandardProduct || ((isSolidProduct || isLedProduct || isNormalGridProduct) && type === "base")) {
     if (type === "base") {
       design.bases = [colour];
     }
@@ -6431,7 +6549,7 @@ function removeColourFromDesign(type, index) {
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
-    [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key) && type === "base";
+    [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY, NORMAL_GRID_PRODUCT_KEY].includes(activeProduct.product_key) && type === "base";
   // Standard keychains must always keep one background
   // colour and one name colour.
   if (isStandardProduct || isFixedSolidBase || (activeProduct.product_key === LED_PRODUCT_KEY && type === "cap")) return;
@@ -6479,7 +6597,7 @@ function renderSlots(containerId, colours, type) {
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
-    [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key) && type === "base";
+    [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY, NORMAL_GRID_PRODUCT_KEY].includes(activeProduct.product_key) && type === "base";
   if (!isStandardProduct && !isFixedSolidBase) {
     slot.title = "Click to remove this colour";
     slot.onclick = () => removeColourFromDesign(type, index);
@@ -6644,7 +6762,8 @@ function getDesign(item) {
 
     ledBaseType: normalizeLedBaseType(
       item.custom.ledBaseType || globalDesign.ledBaseType,
-      Array.from(sanitizeName(item.name)).length
+      Array.from(sanitizeName(item.name)).length,
+      getItemProduct(item).product_key
     ),
 
     letterOrientation:
@@ -7148,12 +7267,13 @@ function createLedPreviewMaterial() {
   });
 }
 
-function getLedBaseLayout(characterCount, design = globalDesign) {
-  const key = normalizeLedBaseType(design?.ledBaseType, characterCount);
-  return { key, ...LED_BASE_TYPES[key] };
+function getLedBaseLayout(characterCount, design = globalDesign, productKey = activeProduct?.product_key) {
+  const baseTypes = getGridBaseTypes(productKey);
+  const key = normalizeLedBaseType(design?.ledBaseType, characterCount, productKey);
+  return { key, ...baseTypes[key] };
 }
 
-async function createLedKeycapTop(letter, index, design) {
+async function createGridKeycapTop(letter, index, design, productKey) {
   if (!/^[A-Z]$/.test(letter)) {
     const special = specialKeycaps[letter];
     const path = special
@@ -7162,23 +7282,34 @@ async function createLedKeycapTop(letter, index, design) {
     const fallbackParts = splitCapGeometry(await loadSTL(path));
     const fallbackLetterColour = design.letters?.[index % Math.max(1, design.letters?.length || 0)] || "#65725a";
     const fallbackGroup = new THREE.Group();
-    fallbackGroup.add(new THREE.Mesh(fallbackParts.tile, createLedPreviewMaterial()));
+    const capColour = design.caps?.[index % Math.max(1, design.caps?.length || 0)] || "#fff9e8";
+    fallbackGroup.add(new THREE.Mesh(
+      fallbackParts.tile,
+      productKey === LED_PRODUCT_KEY ? createLedPreviewMaterial() : createMat(capColour)
+    ));
     fallbackGroup.add(new THREE.Mesh(fallbackParts.letter, createMat(fallbackLetterColour)));
     return fallbackGroup;
   }
 
-  const geometry = await loadSTL(`/models/led/led-cap-${letter}.stl`);
+  const modelPath = productKey === NORMAL_GRID_PRODUCT_KEY
+    ? `/models/normal-grid/normal-grid-cap-${letter}.stl`
+    : `/models/led/led-cap-${letter}.stl`;
+  const geometry = await loadSTL(modelPath);
   const parts = splitLedCapGeometry(geometry);
+  const capColour = design.caps?.[index % Math.max(1, design.caps?.length || 0)] || "#fff9e8";
   const letterColour = design.letters?.[index % Math.max(1, design.letters?.length || 0)] || "#65725a";
   const group = new THREE.Group();
 
-  group.add(new THREE.Mesh(parts.tile, createLedPreviewMaterial()));
+  group.add(new THREE.Mesh(
+    parts.tile,
+    productKey === LED_PRODUCT_KEY ? createLedPreviewMaterial() : createMat(capColour)
+  ));
   group.add(new THREE.Mesh(parts.letter, createMat(letterColour)));
   return group;
 }
 
-async function buildLedKeychain(letters, design, thisBuildNumber) {
-  const layout = getLedBaseLayout(letters.length, design);
+async function buildGridKeychain(letters, design, thisBuildNumber, productKey) {
+  const layout = getLedBaseLayout(letters.length, design, productKey);
   const safeCount = Math.min(layout.capacity, Math.max(1, letters.length));
   const baseColour = design.bases?.[0] || available[0] || "#F55A74";
   const group = new THREE.Group();
@@ -7190,14 +7321,14 @@ async function buildLedKeychain(letters, design, thisBuildNumber) {
   for (let index = 0; index < safeCount; index += 1) {
     const { x, y } = layout.positions[index];
     try {
-      const cap = await createLedKeycapTop(letters[index], index, design);
+      const cap = await createGridKeycapTop(letters[index], index, design, productKey);
       if (thisBuildNumber !== previewBuildNumber) {
         disposePreviewObject(group);
         return null;
       }
-      // The supplied base is 19.6 mm tall and each supplied cap is 8 mm tall.
-      // A centre height of 13.8 mm seats the exact cap mesh on the exact base.
-      cap.position.set(x, y, 13.8);
+      // Both supplied grid projects use 8 mm caps. Their bases are 18–19.5 mm
+      // tall, so these exact centre heights seat each cap on its own base.
+      cap.position.set(x, y, productKey === NORMAL_GRID_PRODUCT_KEY ? 13.75 : 13.8);
       group.add(cap);
     } catch (error) {
       console.warn(`Unable to load LED cap for ${letters[index]}`, error);
@@ -7224,16 +7355,16 @@ async function buildKeychain(name, design) {
   const letters = Array.from(cleanName);
 
   try {
-    if (activeProduct.product_key === LED_PRODUCT_KEY && letters.length) {
-      const ledPreview = await buildLedKeychain(letters, design, thisBuildNumber);
-      if (!ledPreview || thisBuildNumber !== previewBuildNumber) return;
+    if ([LED_PRODUCT_KEY, NORMAL_GRID_PRODUCT_KEY].includes(activeProduct.product_key) && letters.length) {
+      const gridPreview = await buildGridKeychain(letters, design, thisBuildNumber, activeProduct.product_key);
+      if (!gridPreview || thisBuildNumber !== previewBuildNumber) return;
 
-      keychain.add(ledPreview.group);
+      keychain.add(gridPreview.group);
       keychain.position.set(0, 0, 0);
       keychain.rotation.set(-0.52, 0.16, -0.05);
       controls.target.set(0, 0, 0);
       camera.fov = 35;
-      camera.position.set(0, -4, Math.max(120, Math.max(ledPreview.size.x, ledPreview.size.y) * 1.95));
+      camera.position.set(0, -4, Math.max(120, Math.max(gridPreview.size.x, gridPreview.size.y) * 1.95));
       camera.updateProjectionMatrix();
       controls.update();
       return;
@@ -7723,8 +7854,13 @@ function getDesignDescription(design, product = activeProduct) {
   }
 
   if (product.product_key === LED_PRODUCT_KEY) {
-    const layout = getLedBaseLayout(1, design);
+    const layout = getLedBaseLayout(1, design, product.product_key);
     return `${layout.label} · Fixed translucent caps`;
+  }
+
+  if (product.product_key === NORMAL_GRID_PRODUCT_KEY) {
+    const layout = getLedBaseLayout(1, design, product.product_key);
+    return `${layout.label} · Solid grid base`;
   }
 
   return `${
@@ -8611,16 +8747,16 @@ async function submitOrderOnce() {
               : (design.imageCap.fit === "contain" ? "square" : "shape")
           } : null,
           letter_orientation: design.letterOrientation || "vertical",
-          led_base_type: itemProduct.product_key === LED_PRODUCT_KEY
-            ? normalizeLedBaseType(design.ledBaseType, Array.from(sanitizeName(item.name)).length)
+          led_base_type: isGridClickerProduct(itemProduct.product_key)
+            ? normalizeLedBaseType(design.ledBaseType, Array.from(sanitizeName(item.name)).length, itemProduct.product_key)
             : null,
           led_cap_material: itemProduct.product_key === LED_PRODUCT_KEY
             ? "fixed translucent"
             : null,
-          base_shape: itemProduct.product_key === LED_PRODUCT_KEY
+          base_shape: isGridClickerProduct(itemProduct.product_key)
             ? {
-                key: normalizeLedBaseType(design.ledBaseType, Array.from(sanitizeName(item.name)).length),
-                label: getLedBaseLayout(Array.from(sanitizeName(item.name)).length, design).label
+                key: normalizeLedBaseType(design.ledBaseType, Array.from(sanitizeName(item.name)).length, itemProduct.product_key),
+                label: getLedBaseLayout(Array.from(sanitizeName(item.name)).length, design, itemProduct.product_key).label
               }
             : {
                 key: design.baseShape || "ribbed",
@@ -8955,10 +9091,12 @@ function updateCollectionNote() {
 }
 
 function getLedBaseCapacityIssue(item) {
-  if (!item || getItemProduct(item).product_key !== LED_PRODUCT_KEY) return null;
+  if (!item) return null;
+  const productKey = getItemProduct(item).product_key;
+  if (!isGridClickerProduct(productKey)) return null;
   const design = getDesign(item);
   const characterCount = Array.from(sanitizeName(item.name)).length;
-  const layout = getLedBaseLayout(characterCount, design);
+  const layout = getLedBaseLayout(characterCount, design, productKey);
   if (characterCount <= layout.capacity) return null;
   return { item, layout, characterCount };
 }
@@ -8972,18 +9110,20 @@ function updateLedBaseControls() {
   const status = document.getElementById("ledBaseCapacityStatus");
   if (!container || !status) return;
 
-  const isLed = activeProduct.product_key === LED_PRODUCT_KEY;
-  container.style.display = isLed ? "block" : "none";
-  if (!isLed) return;
+  const isGridClicker = isGridClickerProduct(activeProduct.product_key);
+  container.style.display = isGridClicker ? "block" : "none";
+  if (!isGridClicker) return;
 
   const design = getActiveDesign();
   const item = names[selectedIndex];
   const characterCount = Array.from(sanitizeName(item?.name || singleName.value)).length;
-  const selectedKey = normalizeLedBaseType(design.ledBaseType, characterCount);
-  const selectedLayout = LED_BASE_TYPES[selectedKey];
+  const baseTypes = getGridBaseTypes(activeProduct.product_key);
+  const selectedKey = normalizeLedBaseType(design.ledBaseType, characterCount, activeProduct.product_key);
+  const selectedLayout = baseTypes[selectedKey];
   design.ledBaseType = selectedKey;
 
   container.querySelectorAll("[data-led-base-type]").forEach(button => {
+    button.hidden = !baseTypes[button.dataset.ledBaseType];
     const selected = button.dataset.ledBaseType === selectedKey;
     button.classList.toggle("active", selected);
     button.setAttribute("aria-pressed", String(selected));
@@ -8992,8 +9132,8 @@ function updateLedBaseControls() {
   const issue = getLedBaseCapacityIssue(item);
   status.classList.toggle("is-error", Boolean(issue));
   if (issue) {
-    const suggestedKey = getDefaultLedBaseType(issue.characterCount);
-    status.textContent = `${item.name || "This name"} has ${issue.characterCount} characters, but the ${issue.layout.capacity}-slot base cannot fit them. Choose ${LED_BASE_TYPES[suggestedKey].label} or a larger base.`;
+    const suggestedKey = getDefaultLedBaseType(issue.characterCount, activeProduct.product_key);
+    status.textContent = `${item.name || "This name"} has ${issue.characterCount} characters, but the ${issue.layout.capacity}-slot base cannot fit them. Choose ${baseTypes[suggestedKey].label} or a larger base.`;
     return;
   }
 
@@ -9004,14 +9144,14 @@ function updateLedBaseControls() {
 }
 
 function setLedBaseType(type) {
-  if (!LED_BASE_TYPES[type]) return;
+  if (!getGridBaseTypes(activeProduct.product_key)[type]) return;
   const design = getActiveDesign();
   design.ledBaseType = type;
 
   if (applyAllToggle.checked) {
     globalDesign.ledBaseType = type;
     names.forEach(item => {
-      if (getItemProduct(item).product_key !== LED_PRODUCT_KEY) return;
+      if (getItemProduct(item).product_key !== activeProduct.product_key) return;
       if (item.custom) item.custom.ledBaseType = type;
     });
   }
@@ -10325,7 +10465,7 @@ nextBtn.onclick = async () => {
   }
 
   const ledCapacityIssues = getLedBaseCapacityIssues(
-    names.filter(item => (item.product_key || activeProduct.product_key) === LED_PRODUCT_KEY)
+    names.filter(item => isGridClickerProduct(item.product_key || activeProduct.product_key))
   );
   if (ledCapacityIssues.length) {
     const firstIssue = ledCapacityIssues[0];
@@ -10527,10 +10667,13 @@ function updateProductCustomiser() {
     activeProduct.product_key === SOLID_PRODUCT_KEY;
   const isLedClicker =
     activeProduct.product_key === LED_PRODUCT_KEY;
+  const isNormalGridClicker =
+    activeProduct.product_key === NORMAL_GRID_PRODUCT_KEY;
+  const isGridClicker = isLedClicker || isNormalGridClicker;
   const isPencilClicker =
     activeProduct.product_key === PENCIL_PRODUCT_KEY;
 
-  if (isSolidClicker || isLedClicker) {
+  if (isSolidClicker || isGridClicker) {
     globalDesign.bases = globalDesign.bases.slice(0, 1);
     names.forEach(item => {
       if ((item.product_key || activeProduct.product_key) !== activeProduct.product_key) return;
@@ -10551,7 +10694,7 @@ function updateProductCustomiser() {
 
     if (designInspiration) {
   designInspiration.style.display =
-    isNormalKeychain || isLedClicker ? "none" : "";
+    isNormalKeychain || isGridClicker ? "none" : "";
 }
 
     if (dimensionEstimate) {
@@ -10588,7 +10731,13 @@ function updateProductCustomiser() {
 
   const ledOptions = document.getElementById("ledBaseOptions");
   if (ledOptions) {
-    ledOptions.style.display = isLedClicker ? "block" : "none";
+    ledOptions.style.display = isGridClicker ? "block" : "none";
+  }
+  const gridCapNote = document.getElementById("gridCapNote");
+  if (gridCapNote) {
+    gridCapNote.innerHTML = isLedClicker
+      ? "<strong>Translucent caps are included.</strong> Choose colours for the solid base and raised letters only."
+      : "<strong>Opaque caps are included.</strong> Choose colours for the solid base, caps and raised letters.";
   }
 
   const pricingGuide = document.getElementById("productPricingGuide");
@@ -10612,11 +10761,11 @@ function updateProductCustomiser() {
   const baseShapeSection = document.getElementById("clickyBaseShapeSection");
   if (baseShapeSection) {
     baseShapeSection.style.display =
-      isNormalKeychain || isSolidClicker || isLedClicker || isPencilClicker ? "none" : "";
+      isNormalKeychain || isSolidClicker || isGridClicker || isPencilClicker ? "none" : "";
   }
   const orientationSection = document.getElementById("clickyOrientationSection");
   if (orientationSection) {
-    orientationSection.style.display = isNormalKeychain || isLedClicker || isPencilClicker ? "none" : "";
+    orientationSection.style.display = isNormalKeychain || isGridClicker || isPencilClicker ? "none" : "";
   }
 
   const baseHeading = document.getElementById("baseColourPartLabel");
@@ -10628,7 +10777,7 @@ function updateProductCustomiser() {
         ? "Background"
         : isPencilClicker
           ? "Pencil Blocks"
-        : isLedClicker
+        : isGridClicker
           ? "Solid Base"
         : "Base";
   }
@@ -10639,7 +10788,7 @@ function updateProductCustomiser() {
         ? "Name"
         : isPencilClicker
           ? "Characters"
-        : isLedClicker
+        : isGridClicker
           ? "Letters / Icons"
         : "Letter";
   }
@@ -10668,15 +10817,17 @@ function updateProductCustomiser() {
 
   // Emoji icons can use more than one UTF-16 unit, so the input receives
   // extra room while updateNames enforces the real character count.
-  singleName.maxLength = (isSolidClicker || isLedClicker || isPencilClicker) ? nameLimit * 4 : nameLimit;
-  nameList.maxLength = ((isSolidClicker || isLedClicker || isPencilClicker) ? nameLimit * 4 : nameLimit) * 250;
+  singleName.maxLength = (isSolidClicker || isGridClicker || isPencilClicker) ? nameLimit * 4 : nameLimit;
+  nameList.maxLength = ((isSolidClicker || isGridClicker || isPencilClicker) ? nameLimit * 4 : nameLimit) * 250;
 
   if (productCharacterLimitNotice) {
-    productCharacterLimitNotice.hidden = !(isSolidClicker || isLedClicker || isPencilClicker);
+    productCharacterLimitNotice.hidden = !(isSolidClicker || isGridClicker || isPencilClicker);
     productCharacterLimitNotice.textContent = isPencilClicker
       ? "One clicky block per letter, number or symbol. Maximum 10 blocks. Only the symbols shown below are available for this pencil."
       : isLedClicker
         ? "Choose up to 9 letters, numbers or icons, then select the base layout that fits. The translucent clicker caps are fixed; only the solid base and raised characters change colour."
+      : isNormalGridClicker
+        ? "Choose up to 12 letters, then select a base layout that fits. The solid base, opaque caps and raised letters can each use your chosen colours."
       : isSolidClicker
         ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
         : "";
@@ -13024,6 +13175,8 @@ function renderIconPicker() {
     if (!container || !targetInput) return;
 
     container.innerHTML = "";
+    container.classList.toggle("hidden", activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY);
+    if (activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY) return;
 
     const pencilPicker = activeProduct?.product_key === PENCIL_PRODUCT_KEY;
     const iconMap = pencilPicker ? PENCIL_SYMBOLS : specialKeycaps;

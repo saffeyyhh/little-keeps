@@ -4,6 +4,7 @@ export const STANDARD_PRODUCT_KEY = "standard-name-keychain";
 export const PHOTO_PRODUCT_KEY = "ai-photo-keepsake";
 export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
 export const LED_PRODUCT_KEY = "light-up-name-clicker";
+export const NORMAL_GRID_PRODUCT_KEY = "classic-grid-name-clicker";
 export const IMAGE_CLICKER_PRODUCT_KEY = "custom-image-clicker";
 export const RETIRED_PRODUCT_KEYS = Object.freeze([IMAGE_CLICKER_PRODUCT_KEY]);
 const RETIRED_PRODUCT_KEY_SET = new Set(RETIRED_PRODUCT_KEYS);
@@ -206,6 +207,42 @@ export const DEFAULT_PRODUCT_CATALOG = [
     ],
     video_path: "",
     production_notes: "Little Keeps LED Base variant. Keep this product hidden until the light hardware, supported grid layouts, retail price and timed print settings are confirmed."
+  },
+  {
+    product_key: NORMAL_GRID_PRODUCT_KEY,
+    name: "Classic Grid Name Clicker",
+    eyebrow: "Solid everyday clicker",
+    description: "A sturdy grid-style clicker with opaque caps, raised characters and seven base layouts for 3–12 slots.",
+    status: "hidden",
+    price_visible: false,
+    usual_base_price: 0,
+    launch_base_price: 0,
+    launch_price_enabled: false,
+    launch_price_ends_at: null,
+    included_characters: 6,
+    extra_character_price: 0,
+    included_base_colours: 1,
+    included_cap_colours: 1,
+    included_letter_colours: 1,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0,
+    minimum_characters: 1,
+    maximum_characters: 12,
+    base_print_minutes_fixed: 0,
+    base_print_minutes_per_character: 0,
+    keycap_print_minutes_per_character: 0,
+    assembly_minutes_per_item: 0,
+    minimum_working_days: null,
+    maximum_working_days: null,
+    sort_order: 22,
+    image_path: "/images/classic-grid-clicker-bases.png",
+    gallery_paths: [
+      "/images/classic-grid-clicker-bases.png",
+      "/images/classic-grid-clicker-keycaps.png"
+    ],
+    video_path: "",
+    production_notes: "Use the supplied Normal Clicker.3mf bases and matching opaque A–Z keycaps. Confirm the chosen 3, 4, 6, 9 or 12-slot layout and all three colours before slicing."
   },
 
   {

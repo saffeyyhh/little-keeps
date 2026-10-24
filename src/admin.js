@@ -67,6 +67,7 @@ import {
   DEFAULT_PRODUCT_CATALOG,
   PENCIL_PRODUCT_KEY,
   LED_PRODUCT_KEY,
+  NORMAL_GRID_PRODUCT_KEY,
   IMAGE_CLICKER_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
@@ -2070,6 +2071,7 @@ function renderSettingsWorkspace() {
               const isSolidDraft = product.product_key === "solid-clicky-keychain";
               const isPencilDraft = product.product_key === PENCIL_PRODUCT_KEY;
               const isLedDraft = product.product_key === LED_PRODUCT_KEY;
+              const isNormalGridDraft = product.product_key === NORMAL_GRID_PRODUCT_KEY;
               const isImageClickerDraft = product.product_key === IMAGE_CLICKER_PRODUCT_KEY;
               const isReadyMade = isReadyMadeProduct(product);
               const productGalleryPaths = Array.isArray(product.gallery_paths)
@@ -2113,6 +2115,9 @@ function renderSettingsWorkspace() {
                       ` : ""}
                       ${isLedDraft ? `
                         <p class="product-draft-note">Your LED Base.3mf is set up as a solid 1–9 key grid with light-up caps and a left-side keyring. It is hidden from customers while you confirm the hardware, layout rules, print time and final price.</p>
+                      ` : ""}
+                      ${isNormalGridDraft ? `
+                        <p class="product-draft-note">Your Normal Clicker.3mf is set up with its exact seven solid bases and matching A–Z caps for 3–12 slots. It is hidden from customers while you confirm the price and production timing.</p>
                       ` : ""}
 
                       <section class="product-price-group product-media-manager" data-product-media-manager="${escapeAdminHtml(product.product_key)}">

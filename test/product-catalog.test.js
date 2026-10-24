@@ -5,6 +5,7 @@ import {
   DEFAULT_PRODUCT_CATALOG,
   formatProductUnitsSold,
   MODULAR_PRODUCT_KEY,
+  NORMAL_GRID_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   PHOTO_PRODUCT_KEY,
@@ -106,6 +107,7 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   const standard = getProductByKey(catalogue, STANDARD_PRODUCT_KEY);
   const photo = getProductByKey(catalogue, PHOTO_PRODUCT_KEY);
   const pencil = getProductByKey(catalogue, PENCIL_PRODUCT_KEY);
+  const normalGrid = getProductByKey(catalogue, NORMAL_GRID_PRODUCT_KEY);
 
   assert.equal(modular.name, "Chunky Modular Clicky Keychain");
   assert.equal(modular.status, "active");
@@ -128,6 +130,14 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   assert.equal(pencil.extra_cap_colour_price, 0.3);
   assert.equal(pencil.extra_letter_colour_price, 0.2);
   assert.equal(pencil.maximum_characters, 10);
+  assert.equal(normalGrid.name, "Classic Grid Name Clicker");
+  assert.equal(normalGrid.status, "hidden");
+  assert.equal(normalGrid.price_visible, false);
+  assert.equal(normalGrid.maximum_characters, 12);
+  assert.deepEqual(normalGrid.gallery_paths, [
+    "/images/classic-grid-clicker-bases.png",
+    "/images/classic-grid-clicker-keycaps.png"
+  ]);
 });
 
 test("upgrades the pencil's original flat pricing to the main clicky structure", () => {
