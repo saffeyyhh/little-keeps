@@ -5,7 +5,6 @@ import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import polygonClipping from "polygon-clipping";
 import confetti from "canvas-confetti";
 import { createClient } from "@supabase/supabase-js";
@@ -4324,12 +4323,16 @@ function getApproximateKeychainSize(
   }
 
   if (productKey === LED_PRODUCT_KEY) {
-    const { columns: columnCount, rows: rowCount } = getLedGridLayout(characterCount);
+    const dimensions = characterCount <= 4
+      ? { lengthMm: 55, breadthMm: 49 }
+      : characterCount <= 6
+        ? { lengthMm: 78, breadthMm: 48 }
+        : { lengthMm: 78, breadthMm: 72 };
     return {
       characterCount,
-      lengthCm: characterCount ? (columnCount * 22.5 + 12) / 10 : 0,
-      heightCm: characterCount ? (rowCount * 22.5 + 12) / 10 : 0,
-      thicknessCm: 1.95
+      lengthCm: characterCount ? dimensions.lengthMm / 10 : 0,
+      heightCm: characterCount ? dimensions.breadthMm / 10 : 0,
+      thicknessCm: 1.96
     };
   }
 
@@ -6989,30 +6992,6 @@ async function buildStandardKeychain(name, design) {
   }
 }
 
-function getLedGridLayout(characterCount) {
-  const safeCount = Math.min(9, Math.max(1, characterCount));
-  const columns = safeCount <= 3
-    ? safeCount
-    : safeCount === 4
-      ? 2
-      : 3;
-  const rows = Math.ceil(safeCount / columns);
-  return { safeCount, columns, rows };
-}
-
-function getLedGridPosition(index, characterCount, pitch = 22.5) {
-  const { safeCount, columns, rows } = getLedGridLayout(characterCount);
-  const row = Math.floor(index / columns);
-  const itemsBeforeRow = row * columns;
-  const itemsInRow = Math.min(columns, safeCount - itemsBeforeRow);
-  const column = index - itemsBeforeRow;
-
-  return {
-    x: (column - (itemsInRow - 1) / 2) * pitch,
-    y: ((rows - 1) / 2 - row) * pitch
-  };
-}
-
 function createLedPreviewMaterial(colour, { lit = false } = {}) {
   const selectedColour = new THREE.Color(colour || "#fff6df");
   return new THREE.MeshPhysicalMaterial({
@@ -7027,100 +7006,93 @@ function createLedPreviewMaterial(colour, { lit = false } = {}) {
   });
 }
 
-async function buildLedKeychain(letters, design, thisBuildNumber) {
-  const { safeCount, columns, rows } = getLedGridLayout(letters.length);
-  const pitch = 22.5;
-  const baseWidth = columns * pitch + 12;
-  const baseHeight = rows * pitch + 12;
-  const baseDepth = 7.8;
-  const baseColour = design.bases?.[0] || available[0] || "#F55A74";
+function getLedBaseLayout(characterCount) {
+  const count = Math.min(9, Math.max(1, characterCount));
+  const makeGrid = (columns, rows) => Array.from({ length: columns * rows }, (_, index) => ({
+    x: (index % columns - (columns - 1) / 2) * 24,
+    y: ((rows - 1) / 2 - Math.floor(index / columns)) * 24
+  }));
+
+  if (count <= 3) {
+    return {
+      path: "/models/led/led-base-variant-1417.stl",
+      positions: [
+        { x: -12, y: 12 },
+        { x: 12, y: 12 },
+        { x: -12, y: -12 }
+      ]
+    };
+  }
+
+  if (count === 4) {
+    return {
+      path: "/models/led/led-base-variant-1420.stl",
+      positions: makeGrid(2, 2)
+    };
+  }
+
+  if (count <= 6) {
+    return {
+      path: "/models/led/led-base-variant-1426.stl",
+      positions: makeGrid(3, 2)
+    };
+  }
+
+  return {
+    path: "/models/led/led-base-3x3.stl",
+    positions: makeGrid(3, 3)
+  };
+}
+
+async function createLedKeycapTop(letter, index, design, { lit = false } = {}) {
+  if (!/^[A-Z]$/.test(letter)) {
+    return createKeycapTop(letter, index, design);
+  }
+
+  const geometry = await loadSTL(`/models/led/led-cap-${letter}.stl`);
+  const parts = splitCapGeometry(geometry);
+  const capColour = design.caps?.[index % Math.max(1, design.caps?.length || 0)] || "#fff6df";
+  const letterColour = design.letters?.[index % Math.max(1, design.letters?.length || 0)] || "#65725a";
   const group = new THREE.Group();
 
-  const base = createBaseMesh(
-    new RoundedBoxGeometry(baseWidth, baseHeight, baseDepth, 5, 3.2),
-    baseColour
-  );
+  group.add(new THREE.Mesh(parts.tile, createLedPreviewMaterial(capColour, { lit })));
+  group.add(new THREE.Mesh(parts.letter, createMat(letterColour)));
+  return group;
+}
+
+async function buildLedKeychain(letters, design, thisBuildNumber) {
+  const safeCount = Math.min(9, Math.max(1, letters.length));
+  const layout = getLedBaseLayout(safeCount);
+  const baseColour = design.bases?.[0] || available[0] || "#F55A74";
+  const group = new THREE.Group();
+  const baseGeometry = await loadSTL(layout.path);
+  baseGeometry.computeBoundingBox();
+  const base = createBaseMesh(baseGeometry, baseColour);
   group.add(base);
 
-  // The printed body is one solid piece. Each dark recess represents the
-  // switch cavity visible around the separate light-up cap.
   for (let index = 0; index < safeCount; index += 1) {
-    const { x, y } = getLedGridPosition(index, safeCount, pitch);
-    const well = new THREE.Mesh(
-      new RoundedBoxGeometry(19.7, 19.7, 2.8, 4, 2.1),
-      new THREE.MeshStandardMaterial({
-        color: "#171316",
-        roughness: 0.38,
-        metalness: 0
-      })
-    );
-    well.position.set(x, y, baseDepth / 2 + 0.9);
-    group.add(well);
-
+    const { x, y } = layout.positions[index];
     const isLit = index === safeCount - 1;
-    const glowPanel = new THREE.Mesh(
-      new RoundedBoxGeometry(16.9, 16.9, 1.2, 4, 1.7),
-      new THREE.MeshStandardMaterial({
-        color: isLit ? "#f4fff5" : "#d9d7ce",
-        emissive: isLit ? "#dfffe8" : "#000000",
-        emissiveIntensity: isLit ? 2.2 : 0,
-        roughness: 0.24
-      })
-    );
-    glowPanel.position.set(x, y, baseDepth / 2 + 2.25);
-    group.add(glowPanel);
-
     try {
-      const cap = await createKeycapTop(letters[index], index, design);
+      const cap = await createLedKeycapTop(letters[index], index, design, { lit: isLit });
       if (thisBuildNumber !== previewBuildNumber) {
         disposePreviewObject(group);
         return null;
       }
-
-      const capColour = design.caps?.[index % Math.max(1, design.caps?.length || 0)] || "#fff6df";
-      const capSurface = cap.children?.[0];
-      if (capSurface) {
-        capSurface.material?.dispose?.();
-        capSurface.material = createLedPreviewMaterial(capColour, { lit: isLit });
-      }
-      cap.position.set(x, y, baseDepth / 2 + (isLit ? 4.35 : 5.25));
+      // The supplied base is 19.6 mm tall and each supplied cap is 8 mm tall.
+      // A centre height of 13.8 mm seats the exact cap mesh on the exact base.
+      cap.position.set(x, y, 13.8);
       group.add(cap);
 
       if (isLit) {
         const light = new THREE.PointLight("#dffff0", 8, 34, 2);
-        light.position.set(x, y, baseDepth / 2 + 9.5);
+        light.position.set(x, y, 17.2);
         group.add(light);
       }
     } catch (error) {
       console.warn(`Unable to load LED cap for ${letters[index]}`, error);
     }
   }
-
-  // The actual LED sample has its keyring connection on the left edge.
-  const printedLoop = new THREE.Mesh(
-    new THREE.TorusGeometry(4.7, 1.75, 16, 48),
-    createMat(baseColour)
-  );
-  printedLoop.position.set(-baseWidth / 2 - 2.6, 0, 0);
-  group.add(printedLoop);
-
-  const loopBridge = createBaseMesh(
-    new RoundedBoxGeometry(7, 7, baseDepth, 4, 2.2),
-    baseColour
-  );
-  loopBridge.position.set(-baseWidth / 2 + 0.8, 0, 0);
-  group.add(loopBridge);
-
-  const metalRing = new THREE.Mesh(
-    new THREE.TorusGeometry(9.5, 0.85, 14, 64),
-    new THREE.MeshStandardMaterial({
-      color: "#b8b9bd",
-      roughness: 0.22,
-      metalness: 0.92
-    })
-  );
-  metalRing.position.set(-baseWidth / 2 - 11.5, 0, 0.2);
-  group.add(metalRing);
 
   const bounds = new THREE.Box3().setFromObject(group);
   const centre = new THREE.Vector3();
@@ -10453,7 +10425,7 @@ function updateProductCustomiser() {
     productCharacterLimitNotice.textContent = isPencilClicker
       ? "One clicky block per letter, number or symbol. Maximum 10 blocks. Only the symbols shown below are available for this pencil."
       : isLedClicker
-        ? "Choose up to 9 letters, numbers or icons. The keys are arranged automatically in a compact LED grid."
+        ? "Choose 3–9 letters, numbers or icons. Your design uses the exact supplied 3-, 4-, 6- or 9-key LED base; unused positions stay empty."
       : isSolidClicker
         ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
         : "";

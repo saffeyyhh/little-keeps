@@ -124,7 +124,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     extra_base_colour_price: 0.5,
     extra_cap_colour_price: 0.3,
     extra_letter_colour_price: 0.2,
-    minimum_characters: 1,
+    minimum_characters: 3,
     maximum_characters: 10,
     base_print_minutes_fixed: 0,
     base_print_minutes_per_character: 25,
