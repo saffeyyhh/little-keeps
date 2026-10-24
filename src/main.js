@@ -5016,11 +5016,8 @@ const BASE_SHAPES = {
   }
 };
 
-function makeLedGridPositions(columns, rows) {
-  return Array.from({ length: columns * rows }, (_, index) => ({
-    x: (index % columns - (columns - 1) / 2) * 24,
-    y: ((rows - 1) / 2 - Math.floor(index / columns)) * 24
-  }));
+function makeLedGridPositions(xCoordinates, yCoordinates) {
+  return yCoordinates.flatMap(y => xCoordinates.map(x => ({ x, y })));
 }
 
 const LED_BASE_TYPES = Object.freeze({
@@ -5029,9 +5026,9 @@ const LED_BASE_TYPES = Object.freeze({
     capacity: 3,
     path: "/models/led/led-base-variant-1417.stl",
     positions: [
-      { x: -12, y: 12 },
-      { x: 12, y: 12 },
-      { x: -12, y: -12 }
+      { x: -8.5, y: 11.5 },
+      { x: 14.5, y: 11.5 },
+      { x: -8.5, y: -11.5 }
     ],
     dimensions: { lengthMm: 55, breadthMm: 49 }
   },
@@ -5039,7 +5036,7 @@ const LED_BASE_TYPES = Object.freeze({
     label: "4 slots · 2 × 2 square",
     capacity: 4,
     path: "/models/led/led-base-variant-1420.stl",
-    positions: makeLedGridPositions(2, 2),
+    positions: makeLedGridPositions([-8.5, 14.5], [11.5, -11.5]),
     dimensions: { lengthMm: 55, breadthMm: 49 }
   },
   "4-t": {
@@ -5047,10 +5044,10 @@ const LED_BASE_TYPES = Object.freeze({
     capacity: 4,
     path: "/models/led/led-base-variant-1423.stl",
     positions: [
-      { x: 0, y: 12 },
-      { x: -24, y: -12 },
-      { x: 0, y: -12 },
-      { x: 24, y: -12 }
+      { x: 3, y: 11.5 },
+      { x: -20, y: -11.5 },
+      { x: 3, y: -11.5 },
+      { x: 26, y: -11.5 }
     ],
     dimensions: { lengthMm: 78, breadthMm: 49 }
   },
@@ -5059,10 +5056,10 @@ const LED_BASE_TYPES = Object.freeze({
     capacity: 4,
     path: "/models/led/led-base-variant-1424.stl",
     positions: [
-      { x: -24, y: 12 },
-      { x: 0, y: 12 },
-      { x: 24, y: 12 },
-      { x: 0, y: -12 }
+      { x: -20, y: 11.5 },
+      { x: 3, y: 11.5 },
+      { x: 26, y: 11.5 },
+      { x: 3, y: -11.5 }
     ],
     dimensions: { lengthMm: 78, breadthMm: 49 }
   },
@@ -5070,14 +5067,14 @@ const LED_BASE_TYPES = Object.freeze({
     label: "6 slots · 3 × 2 grid",
     capacity: 6,
     path: "/models/led/led-base-variant-1426.stl",
-    positions: makeLedGridPositions(3, 2),
+    positions: makeLedGridPositions([-20, 3, 26], [11.25, -11.25]),
     dimensions: { lengthMm: 78, breadthMm: 49 }
   },
   "9-grid": {
     label: "9 slots · 3 × 3 grid",
     capacity: 9,
     path: "/models/led/led-base-3x3.stl",
-    positions: makeLedGridPositions(3, 3),
+    positions: makeLedGridPositions([-20, 3, 26], [23, 0, -23]),
     dimensions: { lengthMm: 78, breadthMm: 72 }
   }
 });
