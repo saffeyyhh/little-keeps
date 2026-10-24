@@ -3468,6 +3468,23 @@ const specialKeycaps = {
   "🍉": "watermelon"
 };
 
+const normalGridKeycaps = Object.freeze({
+  "🌱": "plant",
+  "⚑": "uk-flag",
+  "✈": "airplane",
+  "🐱": "cat",
+  "🚑": "ambulance",
+  "🧭": "compass"
+});
+
+const NORMAL_GRID_ICON_CATEGORIES = Object.freeze([
+  {
+    key: "all",
+    label: "Icons",
+    icons: Object.keys(normalGridKeycaps)
+  }
+]);
+
 const iconChoices = Object.keys(specialKeycaps);
 
 const ICON_CATEGORIES = [
@@ -4287,7 +4304,7 @@ function sanitizeName(name) {
   if (activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY) {
     return Array.from(name || "")
       .map(char => /[a-z]/i.test(char) ? char.toUpperCase() : char)
-      .filter(char => /[A-Z]/.test(char))
+      .filter(char => /[A-Z]/.test(char) || normalGridKeycaps[char])
       .join("");
   }
   return Array.from(name || "")
@@ -4435,7 +4452,8 @@ function displayIcon(char) {
     "⚡": "⚡",
     "🔥": "🔥",
     "☕": "☕",
-    "🦆": "🦆"
+    "🦆": "🦆",
+    "⚑": "🇬🇧"
   };
 
   return map[char] || char;
@@ -7275,10 +7293,18 @@ function getLedBaseLayout(characterCount, design = globalDesign, productKey = ac
 
 async function createGridKeycapTop(letter, index, design, productKey) {
   if (!/^[A-Z]$/.test(letter)) {
+    const normalGridIcon = productKey === NORMAL_GRID_PRODUCT_KEY
+      ? normalGridKeycaps[letter]
+      : "";
     const special = specialKeycaps[letter];
-    const path = special
-      ? `/models/keycap - ${special}.stl`
-      : `/models/keycap-char-${letter}.stl`;
+    const path = normalGridIcon
+      ? `/models/normal-grid/normal-grid-cap-icon-${normalGridIcon}.stl`
+      : special
+        ? `/models/keycap - ${special}.stl`
+        : `/models/keycap-char-${letter}.stl`;
+    if (productKey === NORMAL_GRID_PRODUCT_KEY && !normalGridIcon) {
+      throw new Error(`Unsupported classic-grid icon: ${letter}`);
+    }
     const fallbackParts = splitCapGeometry(await loadSTL(path));
     const fallbackLetterColour = design.letters?.[index % Math.max(1, design.letters?.length || 0)] || "#65725a";
     const fallbackGroup = new THREE.Group();
@@ -7288,6 +7314,7 @@ async function createGridKeycapTop(letter, index, design, productKey) {
       productKey === LED_PRODUCT_KEY ? createLedPreviewMaterial() : createMat(capColour)
     ));
     fallbackGroup.add(new THREE.Mesh(fallbackParts.letter, createMat(fallbackLetterColour)));
+    if (normalGridIcon) fallbackGroup.position.z = -0.5;
     return fallbackGroup;
   }
 
@@ -10827,7 +10854,7 @@ function updateProductCustomiser() {
       : isLedClicker
         ? "Choose up to 9 letters, numbers or icons, then select the base layout that fits. The translucent clicker caps are fixed; only the solid base and raised characters change colour."
       : isNormalGridClicker
-        ? "Choose up to 12 letters, then select a base layout that fits. The solid base, opaque caps and raised letters can each use your chosen colours."
+        ? "Choose up to 12 letters or the available icons, then select a base layout that fits. The solid base, opaque caps and raised characters can each use your chosen colours."
       : isSolidClicker
         ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
         : "";
@@ -13175,12 +13202,20 @@ function renderIconPicker() {
     if (!container || !targetInput) return;
 
     container.innerHTML = "";
-    container.classList.toggle("hidden", activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY);
-    if (activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY) return;
+    container.classList.remove("hidden");
 
     const pencilPicker = activeProduct?.product_key === PENCIL_PRODUCT_KEY;
-    const iconMap = pencilPicker ? PENCIL_SYMBOLS : specialKeycaps;
-    const categories = pencilPicker ? PENCIL_ICON_CATEGORIES : ICON_CATEGORIES;
+    const normalGridPicker = activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY;
+    const iconMap = pencilPicker
+      ? PENCIL_SYMBOLS
+      : normalGridPicker
+        ? normalGridKeycaps
+        : specialKeycaps;
+    const categories = pencilPicker
+      ? PENCIL_ICON_CATEGORIES
+      : normalGridPicker
+        ? NORMAL_GRID_ICON_CATEGORIES
+        : ICON_CATEGORIES;
     const tabs = document.createElement("div");
     tabs.className = "icon-category-tabs";
     tabs.setAttribute("role", "tablist");
@@ -13249,7 +13284,7 @@ function renderIconPicker() {
     });
 
     container.append(tabs, grid);
-    showCategory(pencilPicker ? "all" : "popular");
+    showCategory((pencilPicker || normalGridPicker) ? "all" : "popular");
   }
 
   buildPicker(singlePicker, singleName);

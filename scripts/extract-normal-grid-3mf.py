@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract the exact solid bases, A-Z caps and listing renders from Normal Clicker.3mf."""
+"""Extract the exact solid bases, A-Z/icon caps and listing renders from Normal Clicker.3mf."""
 
 from __future__ import annotations
 
@@ -55,11 +55,46 @@ CAP_MODELS = {
     "Z": "3D/Objects/object_1490.model",
 }
 
+# These caps are stored as a shared cap body plus transformed SVG artwork.
+# Keep both meshes so the storefront preview matches the supplied printable
+# project rather than substituting a generic emoji or font glyph.
+ICON_MODELS = {
+    "plant": (
+        ("3D/Objects/object_1524.model", 69, None),
+        ("3D/Objects/object_1524.model", 70, (0.059676757, 0, 0, 0, 0.0566929145, 0, 0, 0, 0.100150229, -0.138161381, -0.0391810151, 2.99999992)),
+    ),
+    "airplane": (
+        ("3D/Objects/object_1524.model", 69, None),
+        ("3D/Objects/object_1528.model", 72, (0.0472498226, 0, 0, 0, 0.0472498226, 0, 0, 0, 0.100150229, 0.0488595884, 0.0495061332, 3.00000152)),
+    ),
+    "ambulance": (
+        ("3D/Objects/object_1524.model", 69, None),
+        ("3D/Objects/object_1530.model", 74, (0.051539018, 0, 0, 0, 0.0597196849, 0, 0, 0, 0.100150229, 0.122223707, -0.0558912436, 3.00000039)),
+    ),
+    "cat": (
+        ("3D/Objects/object_1524.model", 69, None),
+        ("3D/Objects/object_1531.model", 76, (0.0527370374, 0, 0, 0, 0.075590557, 0, 0, 0, 0.100150229, 0.0172778225, 0.149471765, 2.99999933)),
+    ),
+    "uk-flag": (
+        ("3D/Objects/object_1524.model", 69, None),
+        ("3D/Objects/object_1532.model", 78, (0.0503937008, 0, 0, 0, 0.0503937008, 0, 0, 0, 0.100150229, 0.0843475973, 0.115470467, 2.99999852)),
+    ),
+    "compass": (
+        ("3D/Objects/object_1524.model", 69, None),
+        ("3D/Objects/object_1536.model", 80, (0.0581465813, 0, 0, 0, 0.0496685404, 0, 0, 0, 0.100150229, -0.00547721718, 0.00157256457, 2.99999881)),
+    ),
+}
 
-def read_mesh(archive: zipfile.ZipFile, member: str):
+
+def read_mesh(archive: zipfile.ZipFile, member: str, object_id: int | None = None):
     root = ET.fromstring(archive.read(member))
     namespace = {"m": CORE_NS}
-    mesh = root.find("m:resources/m:object/m:mesh", namespace)
+    objects = root.findall("m:resources/m:object", namespace)
+    target = next(
+        (item for item in objects if object_id is None or int(item.attrib["id"]) == object_id),
+        None,
+    )
+    mesh = target.find("m:mesh", namespace) if target is not None else None
     if mesh is None:
         raise ValueError(f"No mesh found in {member}")
 
@@ -71,6 +106,31 @@ def read_mesh(archive: zipfile.ZipFile, member: str):
         (int(node.attrib["v1"]), int(node.attrib["v2"]), int(node.attrib["v3"]))
         for node in mesh.findall("m:triangles/m:triangle", namespace)
     ]
+    return vertices, triangles
+
+
+def transform_vertices(vertices, transform):
+    if transform is None:
+        return vertices
+    a, b, c, d, e, f, g, h, i, tx, ty, tz = transform
+    return [
+        (
+            x * a + y * d + z * g + tx,
+            x * b + y * e + z * h + ty,
+            x * c + y * f + z * i + tz,
+        )
+        for x, y, z in vertices
+    ]
+
+
+def read_composite_mesh(archive: zipfile.ZipFile, parts):
+    vertices = []
+    triangles = []
+    for member, object_id, transform in parts:
+        part_vertices, part_triangles = read_mesh(archive, member, object_id)
+        offset = len(vertices)
+        vertices.extend(transform_vertices(part_vertices, transform))
+        triangles.extend(tuple(index + offset for index in triangle) for triangle in part_triangles)
     return vertices, triangles
 
 
@@ -117,12 +177,20 @@ def main():
                 args.model_output / f"normal-grid-cap-{letter}.stl",
                 *read_mesh(archive, member),
             )
+        for icon, parts in ICON_MODELS.items():
+            write_binary_stl(
+                args.model_output / f"normal-grid-cap-icon-{icon}.stl",
+                *read_composite_mesh(archive, parts),
+            )
 
         (args.image_output / "classic-grid-clicker-keycaps.png").write_bytes(
             archive.read("Metadata/plate_1.png")
         )
         (args.image_output / "classic-grid-clicker-bases.png").write_bytes(
             archive.read("Metadata/plate_2.png")
+        )
+        (args.image_output / "classic-grid-clicker-icons.png").write_bytes(
+            archive.read("Metadata/plate_3.png")
         )
 
 

@@ -212,7 +212,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     product_key: NORMAL_GRID_PRODUCT_KEY,
     name: "Classic Grid Name Clicker",
     eyebrow: "Solid everyday clicker",
-    description: "A sturdy grid-style clicker with opaque caps, raised characters and seven base layouts for 3–12 slots.",
+    description: "A sturdy grid-style clicker with opaque caps, raised letters or icons, and seven base layouts for 3–12 slots.",
     status: "hidden",
     price_visible: false,
     usual_base_price: 0,
@@ -239,10 +239,11 @@ export const DEFAULT_PRODUCT_CATALOG = [
     image_path: "/images/classic-grid-clicker-bases.png",
     gallery_paths: [
       "/images/classic-grid-clicker-bases.png",
-      "/images/classic-grid-clicker-keycaps.png"
+      "/images/classic-grid-clicker-keycaps.png",
+      "/images/classic-grid-clicker-icons.png"
     ],
     video_path: "",
-    production_notes: "Use the supplied Normal Clicker.3mf bases and matching opaque A–Z keycaps. Confirm the chosen 3, 4, 6, 9 or 12-slot layout and all three colours before slicing."
+    production_notes: "Use the supplied Normal Clicker.3mf bases and matching opaque A–Z or icon keycaps. Confirm the chosen 3, 4, 6, 9 or 12-slot layout and all three colours before slicing."
   },
 
   {

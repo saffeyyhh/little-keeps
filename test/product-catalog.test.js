@@ -136,7 +136,8 @@ test("keeps launch-ready products live and unfinished products safely hidden", (
   assert.equal(normalGrid.maximum_characters, 12);
   assert.deepEqual(normalGrid.gallery_paths, [
     "/images/classic-grid-clicker-bases.png",
-    "/images/classic-grid-clicker-keycaps.png"
+    "/images/classic-grid-clicker-keycaps.png",
+    "/images/classic-grid-clicker-icons.png"
   ]);
 });
 

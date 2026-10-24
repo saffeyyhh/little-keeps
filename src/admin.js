@@ -8765,7 +8765,13 @@ const specialKeycaps = {
   "🍑": "peach",
   "🌟": "starfruit",
   "🍓": "strawberry",
-  "🍉": "watermelon"
+  "🍉": "watermelon",
+
+  // Classic Grid Clicker icon caps from the supplied Normal Clicker.3mf.
+  "🌱": "plant",
+  "⚑": "uk-flag",
+  "🚑": "ambulance",
+  "🧭": "compass"
 };
 
 function sanitizeName(name) {
@@ -8801,7 +8807,8 @@ function displayIcon(char) {
     "⚡": "⚡",
     "🔥": "🔥",
     "☕": "☕",
-    "🦆": "🦆"
+    "🦆": "🦆",
+    "⚑": "🇬🇧"
   };
 
   return map[char] || char;
@@ -8853,7 +8860,11 @@ const PDF_ICON_CODES = {
   "🍑": "PE",
   "🌟": "SR",
   "🍓": "SW",
-  "🍉": "WM"
+  "🍉": "WM",
+  "🌱": "PT",
+  "⚑": "UK",
+  "🚑": "AM",
+  "🧭": "CP"
 };
 
 function getPdfIconCode(character) {

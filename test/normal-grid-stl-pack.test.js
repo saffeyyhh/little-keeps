@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const modelRoot = fileURLToPath(new URL("../public/models/normal-grid/", import.meta.url));
 
-test("includes every exact normal-grid base and A-Z cap used by the preview", async () => {
+test("includes every exact normal-grid base, A-Z cap and icon cap used by the preview", async () => {
   const baseNames = [
     "3-l",
     "4-square",
@@ -16,12 +16,14 @@ test("includes every exact normal-grid base and A-Z cap used by the preview", as
     "12-grid"
   ];
   const letters = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+  const icons = ["plant", "uk-flag", "airplane", "cat", "ambulance", "compass"];
   const paths = [
     ...baseNames.map(name => `${modelRoot}/normal-grid-base-${name}.stl`),
-    ...letters.map(letter => `${modelRoot}/normal-grid-cap-${letter}.stl`)
+    ...letters.map(letter => `${modelRoot}/normal-grid-cap-${letter}.stl`),
+    ...icons.map(icon => `${modelRoot}/normal-grid-cap-icon-${icon}.stl`)
   ];
 
   const sizes = await Promise.all(paths.map(async path => (await stat(path)).size));
-  assert.equal(paths.length, 33);
+  assert.equal(paths.length, 39);
   assert.ok(sizes.every(size => size > 84));
 });
