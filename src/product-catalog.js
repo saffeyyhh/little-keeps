@@ -176,7 +176,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     name: "Light-Up Name Clicker",
     eyebrow: "Designed by Little Keeps",
     description: "Your name arranged in a compact grid, with raised clicky letters designed to glow from within.",
-    status: "coming_soon",
+    status: "hidden",
     price_visible: false,
     usual_base_price: 0,
     launch_base_price: 0,
@@ -205,7 +205,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
       "/images/light-up-name-clicker-keycaps.png"
     ],
     video_path: "",
-    production_notes: "Original Little Keeps LED Base design. Confirm the final light hardware, supported grid layouts, retail price and timed print settings before changing this product from Coming soon."
+    production_notes: "Little Keeps LED Base variant. Keep this product hidden until the light hardware, supported grid layouts, retail price and timed print settings are confirmed."
   },
 
   {
