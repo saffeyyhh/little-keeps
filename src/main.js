@@ -8044,7 +8044,11 @@ function updateDimensionEstimate(name) {
       return;
     }
 
-    const isLongName = size.characterCount >= 8;
+    const usesFixedGridLayout = [
+      LED_PRODUCT_KEY,
+      NORMAL_GRID_PRODUCT_KEY
+    ].includes(activeProduct.product_key);
+    const isLongName = !usesFixedGridLayout && size.characterCount >= 8;
     dimensionEstimate.classList.toggle("is-long-name", isLongName);
     dimensionEstimate.innerHTML = `
       <button type="button" class="dimension-estimate-collapsed-summary" data-dimension-toggle aria-expanded="false">
