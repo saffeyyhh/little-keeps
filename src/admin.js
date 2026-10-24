@@ -2112,7 +2112,7 @@ function renderSettingsWorkspace() {
                         <p class="product-draft-note">Draft suggestion: S$7.90 launch, then S$9.90. Keep it Coming soon until you confirm the full pencil print time and final price.</p>
                       ` : ""}
                       ${isLedDraft ? `
-                        <p class="product-draft-note">Your LED Base.3mf has been added with its six compact grid bases and A–Z keycaps. Keep it Coming soon until you confirm the light hardware, customer layout rules, print time and final price.</p>
+                        <p class="product-draft-note">Your LED Base.3mf is set up as a solid 1–9 key grid with light-up caps and a left-side keyring. It is hidden from customers while you confirm the hardware, layout rules, print time and final price.</p>
                       ` : ""}
 
                       <section class="product-price-group product-media-manager" data-product-media-manager="${escapeAdminHtml(product.product_key)}">

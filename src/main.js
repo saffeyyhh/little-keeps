@@ -5,6 +5,7 @@ import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import polygonClipping from "polygon-clipping";
 import confetti from "canvas-confetti";
 import { createClient } from "@supabase/supabase-js";
@@ -4243,7 +4244,7 @@ function getActiveProductCharacterLimit() {
     1,
     Number(activeProduct?.maximum_characters) || 10
   );
-  return [SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY].includes(activeProduct?.product_key)
+  return [SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct?.product_key)
     ? Math.min(10, configuredLimit)
     : configuredLimit;
 }
@@ -4319,6 +4320,16 @@ function getApproximateKeychainSize(
       lengthCm: characterCount ? solidBaseLengthMm / 10 : 0,
       heightCm: 2.2,
       thicknessCm: 2.2
+    };
+  }
+
+  if (productKey === LED_PRODUCT_KEY) {
+    const { columns: columnCount, rows: rowCount } = getLedGridLayout(characterCount);
+    return {
+      characterCount,
+      lengthCm: characterCount ? (columnCount * 22.5 + 12) / 10 : 0,
+      heightCm: characterCount ? (rowCount * 22.5 + 12) / 10 : 0,
+      thicknessCm: 1.95
     };
   }
 
@@ -5337,9 +5348,11 @@ function renderColourChargeNotices() {
       element.textContent = pencilLabels[id];
       return;
     }
-    if (id === "baseColourPriceNotice" && activeProduct.product_key === SOLID_PRODUCT_KEY) {
+    if (id === "baseColourPriceNotice" && [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key)) {
       element.classList.remove("has-charge");
-      element.textContent = "The compact solid base is one piece and uses one base colour.";
+      element.textContent = activeProduct.product_key === LED_PRODUCT_KEY
+        ? "The LED grid is one solid base and uses one base colour."
+        : "The compact solid base is one piece and uses one base colour.";
       return;
     }
     const uniqueCount = getUniqueColourCount(selectedColours || []);
@@ -5569,7 +5582,7 @@ function randomiseArticulatedColours() {
     allowMultiple: Boolean(randomiseMultipleColours?.checked)
   });
   const design = getActiveDesign();
-  const singleColourParts = activeProduct.product_key === SOLID_PRODUCT_KEY;
+  const singleColourParts = [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key);
   design.bases = singleColourParts ? selected.bases.slice(0, 1) : selected.bases;
   design.caps = selected.caps;
   design.letters = selected.letters;
@@ -5626,7 +5639,7 @@ function randomiseColourPart(part) {
   });
   const property = part === "base" ? "bases" : part === "cap" ? "caps" : "letters";
   const design = getActiveDesign();
-  design[property] = activeProduct.product_key === SOLID_PRODUCT_KEY && part === "base"
+  design[property] = [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key) && part === "base"
     ? selected[property].slice(0, 1)
     : [...selected[property]];
 
@@ -6017,7 +6030,9 @@ function addColourToDesign(type, colour) {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isSolidProduct =
     activeProduct.product_key === SOLID_PRODUCT_KEY;
-  if (isStandardProduct || (isSolidProduct && type === "base")) {
+  const isLedProduct =
+    activeProduct.product_key === LED_PRODUCT_KEY;
+  if (isStandardProduct || ((isSolidProduct || isLedProduct) && type === "base")) {
     if (type === "base") {
       design.bases = [colour];
     }
@@ -6315,7 +6330,7 @@ function removeColourFromDesign(type, index) {
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
-    activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
+    [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key) && type === "base";
   // Standard keychains must always keep one background
   // colour and one name colour.
   if (isStandardProduct || isFixedSolidBase) return;
@@ -6363,7 +6378,7 @@ function renderSlots(containerId, colours, type) {
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isFixedSolidBase =
-    activeProduct.product_key === SOLID_PRODUCT_KEY && type === "base";
+    [SOLID_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct.product_key) && type === "base";
   if (!isStandardProduct && !isFixedSolidBase) {
     slot.title = "Click to remove this colour";
     slot.onclick = () => removeColourFromDesign(type, index);
@@ -6974,6 +6989,149 @@ async function buildStandardKeychain(name, design) {
   }
 }
 
+function getLedGridLayout(characterCount) {
+  const safeCount = Math.min(9, Math.max(1, characterCount));
+  const columns = safeCount <= 3
+    ? safeCount
+    : safeCount === 4
+      ? 2
+      : 3;
+  const rows = Math.ceil(safeCount / columns);
+  return { safeCount, columns, rows };
+}
+
+function getLedGridPosition(index, characterCount, pitch = 22.5) {
+  const { safeCount, columns, rows } = getLedGridLayout(characterCount);
+  const row = Math.floor(index / columns);
+  const itemsBeforeRow = row * columns;
+  const itemsInRow = Math.min(columns, safeCount - itemsBeforeRow);
+  const column = index - itemsBeforeRow;
+
+  return {
+    x: (column - (itemsInRow - 1) / 2) * pitch,
+    y: ((rows - 1) / 2 - row) * pitch
+  };
+}
+
+function createLedPreviewMaterial(colour, { lit = false } = {}) {
+  const selectedColour = new THREE.Color(colour || "#fff6df");
+  return new THREE.MeshPhysicalMaterial({
+    color: selectedColour,
+    emissive: lit ? selectedColour : new THREE.Color("#000000"),
+    emissiveIntensity: lit ? 1.05 : 0,
+    roughness: 0.32,
+    metalness: 0,
+    transmission: 0.08,
+    transparent: true,
+    opacity: 0.96
+  });
+}
+
+async function buildLedKeychain(letters, design, thisBuildNumber) {
+  const { safeCount, columns, rows } = getLedGridLayout(letters.length);
+  const pitch = 22.5;
+  const baseWidth = columns * pitch + 12;
+  const baseHeight = rows * pitch + 12;
+  const baseDepth = 7.8;
+  const baseColour = design.bases?.[0] || available[0] || "#F55A74";
+  const group = new THREE.Group();
+
+  const base = createBaseMesh(
+    new RoundedBoxGeometry(baseWidth, baseHeight, baseDepth, 5, 3.2),
+    baseColour
+  );
+  group.add(base);
+
+  // The printed body is one solid piece. Each dark recess represents the
+  // switch cavity visible around the separate light-up cap.
+  for (let index = 0; index < safeCount; index += 1) {
+    const { x, y } = getLedGridPosition(index, safeCount, pitch);
+    const well = new THREE.Mesh(
+      new RoundedBoxGeometry(19.7, 19.7, 2.8, 4, 2.1),
+      new THREE.MeshStandardMaterial({
+        color: "#171316",
+        roughness: 0.38,
+        metalness: 0
+      })
+    );
+    well.position.set(x, y, baseDepth / 2 + 0.9);
+    group.add(well);
+
+    const isLit = index === safeCount - 1;
+    const glowPanel = new THREE.Mesh(
+      new RoundedBoxGeometry(16.9, 16.9, 1.2, 4, 1.7),
+      new THREE.MeshStandardMaterial({
+        color: isLit ? "#f4fff5" : "#d9d7ce",
+        emissive: isLit ? "#dfffe8" : "#000000",
+        emissiveIntensity: isLit ? 2.2 : 0,
+        roughness: 0.24
+      })
+    );
+    glowPanel.position.set(x, y, baseDepth / 2 + 2.25);
+    group.add(glowPanel);
+
+    try {
+      const cap = await createKeycapTop(letters[index], index, design);
+      if (thisBuildNumber !== previewBuildNumber) {
+        disposePreviewObject(group);
+        return null;
+      }
+
+      const capColour = design.caps?.[index % Math.max(1, design.caps?.length || 0)] || "#fff6df";
+      const capSurface = cap.children?.[0];
+      if (capSurface) {
+        capSurface.material?.dispose?.();
+        capSurface.material = createLedPreviewMaterial(capColour, { lit: isLit });
+      }
+      cap.position.set(x, y, baseDepth / 2 + (isLit ? 4.35 : 5.25));
+      group.add(cap);
+
+      if (isLit) {
+        const light = new THREE.PointLight("#dffff0", 8, 34, 2);
+        light.position.set(x, y, baseDepth / 2 + 9.5);
+        group.add(light);
+      }
+    } catch (error) {
+      console.warn(`Unable to load LED cap for ${letters[index]}`, error);
+    }
+  }
+
+  // The actual LED sample has its keyring connection on the left edge.
+  const printedLoop = new THREE.Mesh(
+    new THREE.TorusGeometry(4.7, 1.75, 16, 48),
+    createMat(baseColour)
+  );
+  printedLoop.position.set(-baseWidth / 2 - 2.6, 0, 0);
+  group.add(printedLoop);
+
+  const loopBridge = createBaseMesh(
+    new RoundedBoxGeometry(7, 7, baseDepth, 4, 2.2),
+    baseColour
+  );
+  loopBridge.position.set(-baseWidth / 2 + 0.8, 0, 0);
+  group.add(loopBridge);
+
+  const metalRing = new THREE.Mesh(
+    new THREE.TorusGeometry(9.5, 0.85, 14, 64),
+    new THREE.MeshStandardMaterial({
+      color: "#b8b9bd",
+      roughness: 0.22,
+      metalness: 0.92
+    })
+  );
+  metalRing.position.set(-baseWidth / 2 - 11.5, 0, 0.2);
+  group.add(metalRing);
+
+  const bounds = new THREE.Box3().setFromObject(group);
+  const centre = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  bounds.getCenter(centre);
+  bounds.getSize(size);
+  group.position.sub(centre);
+
+  return { group, size };
+}
+
 async function buildKeychain(name, design) {
   const thisBuildNumber = ++previewBuildNumber;
 
@@ -6984,6 +7142,21 @@ async function buildKeychain(name, design) {
   const letters = Array.from(cleanName);
 
   try {
+    if (activeProduct.product_key === LED_PRODUCT_KEY && letters.length) {
+      const ledPreview = await buildLedKeychain(letters, design, thisBuildNumber);
+      if (!ledPreview || thisBuildNumber !== previewBuildNumber) return;
+
+      keychain.add(ledPreview.group);
+      keychain.position.set(0, 0, 0);
+      keychain.rotation.set(-0.52, 0.16, -0.05);
+      controls.target.set(0, 0, 0);
+      camera.fov = 35;
+      camera.position.set(0, -4, Math.max(120, Math.max(ledPreview.size.x, ledPreview.size.y) * 1.95));
+      camera.updateProjectionMatrix();
+      controls.update();
+      return;
+    }
+
     if (activeProduct.product_key === SOLID_PRODUCT_KEY && letters.length) {
       const slotCount = Math.min(10, Math.max(1, letters.length));
       const baseGeometry = await loadSTL(`/models/solid-base-${slotCount}.stl`);
@@ -10138,10 +10311,12 @@ function updateProductCustomiser() {
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isSolidClicker =
     activeProduct.product_key === SOLID_PRODUCT_KEY;
+  const isLedClicker =
+    activeProduct.product_key === LED_PRODUCT_KEY;
   const isPencilClicker =
     activeProduct.product_key === PENCIL_PRODUCT_KEY;
 
-  if (isSolidClicker) {
+  if (isSolidClicker || isLedClicker) {
     globalDesign.bases = globalDesign.bases.slice(0, 1);
     names.forEach(item => {
       if ((item.product_key || activeProduct.product_key) !== activeProduct.product_key) return;
@@ -10218,11 +10393,11 @@ function updateProductCustomiser() {
   const baseShapeSection = document.getElementById("clickyBaseShapeSection");
   if (baseShapeSection) {
     baseShapeSection.style.display =
-      isNormalKeychain || isSolidClicker || isPencilClicker ? "none" : "";
+      isNormalKeychain || isSolidClicker || isLedClicker || isPencilClicker ? "none" : "";
   }
   const orientationSection = document.getElementById("clickyOrientationSection");
   if (orientationSection) {
-    orientationSection.style.display = isNormalKeychain || isPencilClicker ? "none" : "";
+    orientationSection.style.display = isNormalKeychain || isLedClicker || isPencilClicker ? "none" : "";
   }
 
   const baseHeading = document.getElementById("baseColourPartLabel");
@@ -10234,6 +10409,8 @@ function updateProductCustomiser() {
         ? "Background"
         : isPencilClicker
           ? "Pencil Blocks"
+        : isLedClicker
+          ? "Solid Base"
         : "Base";
   }
 
@@ -10243,11 +10420,19 @@ function updateProductCustomiser() {
         ? "Name"
         : isPencilClicker
           ? "Characters"
+        : isLedClicker
+          ? "Letters / Icons"
         : "Letter";
   }
 
   const capHeading = document.querySelector('[data-colour-part-tab="cap"] span');
-  if (capHeading) capHeading.textContent = isPencilClicker ? "Clicker Tops" : "Cap";
+  if (capHeading) {
+    capHeading.textContent = isPencilClicker
+      ? "Clicker Tops"
+      : isLedClicker
+        ? "Light-Up Caps"
+        : "Cap";
+  }
 
   if (isNormalKeychain) {
     document.querySelector('[data-colour-part-tab="base"]')?.click();
@@ -10260,13 +10445,15 @@ function updateProductCustomiser() {
 
   // Emoji icons can use more than one UTF-16 unit, so the input receives
   // extra room while updateNames enforces the real character count.
-  singleName.maxLength = (isSolidClicker || isPencilClicker) ? nameLimit * 4 : nameLimit;
-  nameList.maxLength = ((isSolidClicker || isPencilClicker) ? nameLimit * 4 : nameLimit) * 250;
+  singleName.maxLength = (isSolidClicker || isLedClicker || isPencilClicker) ? nameLimit * 4 : nameLimit;
+  nameList.maxLength = ((isSolidClicker || isLedClicker || isPencilClicker) ? nameLimit * 4 : nameLimit) * 250;
 
   if (productCharacterLimitNotice) {
-    productCharacterLimitNotice.hidden = !(isSolidClicker || isPencilClicker);
+    productCharacterLimitNotice.hidden = !(isSolidClicker || isLedClicker || isPencilClicker);
     productCharacterLimitNotice.textContent = isPencilClicker
       ? "One clicky block per letter, number or symbol. Maximum 10 blocks. Only the symbols shown below are available for this pencil."
+      : isLedClicker
+        ? "Choose up to 9 letters, numbers or icons. The keys are arranged automatically in a compact LED grid."
       : isSolidClicker
         ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
         : "";
@@ -10275,22 +10462,22 @@ function updateProductCustomiser() {
   if (randomColourOptions) randomColourOptions.style.display = "";
 
   if (randomColourOptionsSummary) {
-    randomColourOptionsSummary.textContent = isSolidClicker
+    randomColourOptionsSummary.textContent = isSolidClicker || isLedClicker
       ? "Optional: mix cap or letter colours"
       : "Optional: allow mixed colours across characters";
   }
   if (randomColourOptionsTitle) {
-    randomColourOptionsTitle.textContent = isSolidClicker
+    randomColourOptionsTitle.textContent = isSolidClicker || isLedClicker
       ? "Use more than one cap or letter/icon colour"
       : "Use more than one colour per part";
   }
   if (randomColourOptionsText) {
-    randomColourOptionsText.textContent = isSolidClicker
+    randomColourOptionsText.textContent = isSolidClicker || isLedClicker
       ? "The base stays one colour. Caps and letters/icons may alternate. Add-ons apply only if extra colours are used:"
       : "This may alternate base, cap and letter/icon colours. Add-ons apply only if extra colours are used:";
   }
   if (randomBaseColourFee) {
-    randomBaseColourFee.hidden = isSolidClicker || Number(activeProduct.extra_base_colour_price || 0) <= 0;
+    randomBaseColourFee.hidden = isSolidClicker || isLedClicker || Number(activeProduct.extra_base_colour_price || 0) <= 0;
     randomBaseColourFee.textContent = `+${displaySettingMoney(activeProduct.extra_base_colour_price)} per extra ${isPencilClicker ? "block" : "base"} colour,`;
   }
   if (randomCapColourFee) {
