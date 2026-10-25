@@ -149,131 +149,147 @@ if (!sessionData.session && !IS_ADMIN_PREVIEW) {
 document.querySelector("#app").innerHTML = `
   <main class="admin-page">
     <header class="admin-header">
-      <div class="admin-header-copy">
-        <p class="eyebrow">Little Keeps Admin</p>
-        <h1>Operations Dashboard</h1>
-        <p>A calm view of today’s orders, production and fulfilment.</p>
+      <div class="admin-brand">
+        <span class="admin-brand-mark" aria-hidden="true">LK</span>
+        <div class="admin-header-copy">
+          <p class="eyebrow">Little Keeps</p>
+          <h1>Workshop</h1>
+        </div>
       </div>
 
       <div class="admin-header-actions">
-        <a class="header-store-link" href="./index.html" target="_blank" rel="noopener">
-          View Store
+        <a class="header-manual-order" href="./index.html?manual=true">
+          <span aria-hidden="true">＋</span> New order
         </a>
-        <button id="logoutBtn" type="button">Logout</button>
+        <a class="header-store-link" href="./index.html" target="_blank" rel="noopener">
+          View shop ↗
+        </a>
+        <button id="logoutBtn" type="button" title="Sign out">Sign out</button>
       </div>
     </header>
 
-    <section id="stats" class="stats-grid"></section>
-
-    <section id="operationsSummary" class="operations-summary" aria-live="polite"></section>
-
-    <nav class="workshop-tabs" aria-label="Workshop sections">
-      <section class="workshop-tab-group is-workflow">
-        <small>Daily workflow</small>
-        <div>
-          <button id="todayViewBtn" class="workshop-tab active" type="button"><span aria-hidden="true">●</span> Today</button>
-          <button id="ordersViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▤</span> Orders</button>
-          <button id="productionViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▦</span> Production</button>
-          <button id="assemblyViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">◇</span> Assembly</button>
-          <button id="fulfilmentViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">↗</span> Fulfilment</button>
+    <div class="admin-shell">
+      <aside class="admin-sidebar">
+        <nav class="workshop-tabs" aria-label="Workshop sections">
+          <section class="workshop-tab-group is-workflow">
+            <small>Run the workshop</small>
+            <div>
+              <button id="todayViewBtn" class="workshop-tab active" type="button"><span aria-hidden="true">⌂</span><b>Today</b></button>
+              <button id="ordersViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▤</span><b>Orders</b></button>
+              <button id="productionViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▦</span><b>Print</b></button>
+              <button id="assemblyViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">◇</span><b>Assemble</b></button>
+              <button id="fulfilmentViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">↗</span><b>Send / pickup</b></button>
+            </div>
+          </section>
+          <section class="workshop-tab-group is-manage">
+            <small>Manage the business</small>
+            <div>
+              <button id="scheduleViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▣</span><b>Calendar</b></button>
+              <button id="inventoryViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">□</span><b>Stock</b></button>
+              <button id="photoPreviewsViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▧</span><b>Photo jobs</b></button>
+              <button id="settingsViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">⚙</span><b>Shop setup</b></button>
+              <button id="financeViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">⌁</span><b>Finances</b></button>
+            </div>
+          </section>
+        </nav>
+        <div class="sidebar-help">
+          <strong>Quick flow</strong>
+          <span>Order → Print → Assemble → Send</span>
         </div>
-      </section>
-      <section class="workshop-tab-group is-manage">
-        <small>Plan &amp; manage</small>
-        <div>
-          <button id="scheduleViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▦</span> Calendar</button>
-          <button id="photoPreviewsViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">▧</span> AI Photos</button>
-          <button id="inventoryViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">□</span> Inventory</button>
-          <button id="financeViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">⌁</span> Finances</button>
-          <button id="settingsViewBtn" class="workshop-tab" type="button"><span aria-hidden="true">⚙</span> Settings</button>
-        </div>
-      </section>
-    </nav>
+      </aside>
 
-    <section class="workspace-panel">
-      <div class="section-title">
-        <div>
-          <p class="section-kicker">Workspace</p>
-          <h2 id="sectionTitle">Orders</h2>
-        </div>
+      <div class="admin-content">
+        <section id="stats" class="stats-grid"></section>
 
-        <div class="admin-actions" id="ordersActions">
-          <a class="new-order-btn" href="./index.html?manual=true">
-            + Manual Order
-          </a>
+        <section id="operationsSummary" class="operations-summary" aria-live="polite"></section>
 
-          <button id="cleanupExpiredBtn" type="button">
-            Clean Expired
-          </button>
+        <section class="workspace-panel">
+          <div class="section-title">
+            <div>
+              <p class="section-kicker" id="sectionKicker">Your priority list</p>
+              <h2 id="sectionTitle">Today’s Work</h2>
+              <p id="sectionDescription" class="section-description">Start with anything urgent, then move each order through the workshop.</p>
+            </div>
 
-          <button id="refreshBtn" type="button" title="Refresh orders" aria-label="Refresh orders">
-            ↻
-          </button>
-        </div>
+            <div class="admin-actions" id="ordersActions">
+              <a class="new-order-btn" href="./index.html?manual=true">
+                + Manual order
+              </a>
+
+              <button id="cleanupExpiredBtn" type="button">
+                Clean expired
+              </button>
+
+              <button id="refreshBtn" type="button" title="Refresh orders" aria-label="Refresh orders">
+                ↻
+              </button>
+            </div>
+          </div>
+
+          <div id="orderFilters" class="order-filters">
+            <label class="filter-search">
+              <span>Search</span>
+              <input id="orderSearch" placeholder="Order number, customer or email…">
+            </label>
+
+            <label>
+              <span>Orders</span>
+              <select id="orderViewFilter">
+                <option value="active">Active orders</option>
+                <option value="all">All orders</option>
+                <option value="completed">Completed only</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Status</span>
+              <select id="statusFilter">
+                <option value="all">All stages</option>
+                <option value="review">Needs review</option>
+                <option value="Pending Payment">Awaiting payment</option>
+                <option value="Payment Expired">Expired checkouts</option>
+                <option value="Payment Verified">Ready to print</option>
+                <option value="Printing">Printing</option>
+                <option value="Completed">Completed</option>
+                <option value="Refunded">Refunded</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Payment</span>
+              <select id="paymentFilter">
+                <option value="all">All payments</option>
+                <option value="Pending">Awaiting payment</option>
+                <option value="Paid">Paid</option>
+                <option value="no-charge">No payment needed</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Fulfilment</span>
+              <select id="fulfilmentFilter">
+                <option value="all">Pickup &amp; delivery</option>
+                <option value="pickup">Pickup only</option>
+                <option value="delivery">Delivery only</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Order date</span>
+              <select id="orderDateSort">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="orders">
+            <p class="empty">Loading orders…</p>
+          </div>
+        </section>
       </div>
-
-      <div id="orderFilters" class="order-filters">
-        <label class="filter-search">
-          <span>Search</span>
-          <input id="orderSearch" placeholder="Order reference, customer or email...">
-        </label>
-
-        <label>
-          <span>Orders</span>
-          <select id="orderViewFilter">
-            <option value="active">Active Orders</option>
-            <option value="all">All Orders</option>
-            <option value="completed">Completed Only</option>
-            <option value="archived">Archived</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Status</span>
-          <select id="statusFilter">
-            <option value="all">All stages</option>
-            <option value="review">Needs review</option>
-            <option value="Pending Payment">Awaiting payment</option>
-            <option value="Payment Expired">Expired checkouts</option>
-            <option value="Payment Verified">Ready to print</option>
-            <option value="Printing">Printing</option>
-            <option value="Completed">Completed</option>
-            <option value="Refunded">Refunded</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Payment</span>
-          <select id="paymentFilter">
-            <option value="all">All payments</option>
-            <option value="Pending">Awaiting payment</option>
-            <option value="Paid">Paid</option>
-            <option value="no-charge">No payment needed</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Fulfilment</span>
-          <select id="fulfilmentFilter">
-            <option value="all">Pickup & delivery</option>
-            <option value="pickup">Pickup only</option>
-            <option value="delivery">Delivery only</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Order Date</span>
-          <select id="orderDateSort">
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-          </select>
-        </label>
-      </div>
-
-      <div id="orders">
-        <p class="empty">Loading orders...</p>
-      </div>
-    </section>
+    </div>
 
     <aside class="workshop-notes" aria-label="Persistent workshop notes">
       <button id="workshopNotesToggle" class="workshop-notes-toggle" type="button" aria-expanded="true">
@@ -494,6 +510,8 @@ const photoPreviewsViewBtn = document.getElementById("photoPreviewsViewBtn");
 const scheduleViewBtn = document.getElementById("scheduleViewBtn");
 const productionViewBtn = document.getElementById("productionViewBtn");
 const sectionTitle = document.getElementById("sectionTitle");
+const sectionKicker = document.getElementById("sectionKicker");
+const sectionDescription = document.getElementById("sectionDescription");
 const ordersActions = document.getElementById("ordersActions");
 const assemblyViewBtn = document.getElementById("assemblyViewBtn");
 const fulfilmentViewBtn = document.getElementById("fulfilmentViewBtn");
@@ -548,6 +566,78 @@ logoutBtn.onclick = async () => {
 let currentView = "today";
 let latestOrders = [];
 const REUSABLE_BASKET_COUNT = 20;
+
+const ADMIN_VIEW_META = {
+  today: {
+    kicker: "Your priority list",
+    title: "Today’s Work",
+    description: "Start with anything urgent, then move each order through the workshop."
+  },
+  orders: {
+    kicker: "Customer orders",
+    title: "Orders",
+    description: "Search, review payment and update a customer order from one place."
+  },
+  production: {
+    kicker: "Step 1 of making",
+    title: "Print",
+    description: "Plan the next plates, assign printers and track every printed part."
+  },
+  assembly: {
+    kicker: "Step 2 of making",
+    title: "Assemble",
+    description: "Match parts to names, complete quality checks and pack each order."
+  },
+  fulfilment: {
+    kicker: "Final workshop step",
+    title: "Send / Pickup",
+    description: "Handle pickups, book deliveries and close completed orders."
+  },
+  schedule: {
+    kicker: "Capacity planning",
+    title: "Calendar",
+    description: "See due dates and control which dates customers can choose."
+  },
+  inventory: {
+    kicker: "Materials & ready stock",
+    title: "Stock",
+    description: "Update quantities and spot anything that needs restocking."
+  },
+  "photo-previews": {
+    kicker: "Private customer artwork",
+    title: "Photo Jobs",
+    description: "Review recent generated artwork and download the files needed for production."
+  },
+  settings: {
+    kicker: "Customer-facing controls",
+    title: "Shop Setup",
+    description: "Manage products, prices, colours, delivery and website notices."
+  },
+  finance: {
+    kicker: "Business overview",
+    title: "Finances",
+    description: "Track revenue, expenses, subscriptions and progress towards break-even."
+  }
+};
+
+function updateAdminViewChrome() {
+  const meta = ADMIN_VIEW_META[currentView] || ADMIN_VIEW_META.today;
+  sectionKicker.textContent = meta.kicker;
+  sectionTitle.textContent = meta.title;
+  sectionDescription.textContent = meta.description;
+
+  const isToday = currentView === "today";
+  const isOrders = currentView === "orders";
+  const showsOrderActions = isToday || isOrders || currentView === "fulfilment";
+  statsContainer.hidden = !isToday;
+  operationsSummary.hidden = !isToday;
+  ordersActions.style.display = showsOrderActions ? "flex" : "none";
+  // Creating an order is always available in the top bar, so the workspace
+  // stays focused on actions that belong to the page currently open.
+  ordersActions.querySelector(".new-order-btn").hidden = true;
+  cleanupExpiredBtn.hidden = !isOrders;
+  refreshBtn.hidden = !showsOrderActions;
+}
 
 function getFocusedBasketNumber() {
   const basketNumber = Number(new URLSearchParams(window.location.search).get("basket"));
@@ -1051,65 +1141,46 @@ window.downloadSavedPhotoPreview = async function(path, filename, button) {
 function renderCurrentView() {
 
   orderFilters.style.display = currentView === "orders" ? "" : "none";
+  updateAdminViewChrome();
   if (currentView === "today") {
-    sectionTitle.innerText = "Today’s Work";
-    ordersActions.style.display = "flex";
     renderStats(latestOrders);
     renderTodayWorkspace(latestOrders);
   }
 
   if (currentView === "orders") {
-    sectionTitle.innerText = "Orders";
-    ordersActions.style.display = "flex";
     renderStats(latestOrders);
     renderOrders(latestOrders);
   }
 
   if (currentView === "photo-previews") {
-    sectionTitle.innerText = "AI Photo Previews";
-    ordersActions.style.display = "none";
     renderPhotoPreviewsWorkspace();
   }
 
   if (currentView === "schedule") {
-    sectionTitle.innerText = "Order Calendar";
-    ordersActions.style.display = "none";
     renderScheduleCalendar();
   }
 
   if (currentView === "production") {
-    sectionTitle.innerText = "Production";
-    ordersActions.style.display = "none";
     renderProductionPlanner(latestOrders);
   }
 
   if (currentView === "assembly") {
-    sectionTitle.innerText = "Assembly";
-    ordersActions.style.display = "none";
     renderAssemblyQueue();
   }
 
   if (currentView === "fulfilment") {
-    sectionTitle.innerText = "Fulfilment";
-    ordersActions.style.display = "flex";
     renderFulfilmentWorkspace(latestOrders);
   }
 
   if (currentView === "inventory") {
-    sectionTitle.innerText = "Inventory";
-    ordersActions.style.display = "none";
     renderInventoryWorkspace();
   }
 
   if (currentView === "finance") {
-    sectionTitle.innerText = "Business Finances";
-    ordersActions.style.display = "none";
     renderFinanceWorkspace();
   }
 
   if (currentView === "settings") {
-    sectionTitle.innerText = "Shop Settings";
-    ordersActions.style.display = "none";
     renderSettingsWorkspace();
   }
 }
@@ -18065,20 +18136,27 @@ window.togglePrinterStatus = async function(printerId) {
 };
 
 function setActiveTab(activeTab) {
+  [
+    todayViewBtn,
+    ordersViewBtn,
+    productionViewBtn,
+    assemblyViewBtn,
+    fulfilmentViewBtn,
+    scheduleViewBtn,
+    inventoryViewBtn,
+    photoPreviewsViewBtn,
+    settingsViewBtn,
+    financeViewBtn
+  ].forEach(button => {
+    const isActive = button === activeTab;
+    button.classList.toggle("active", isActive);
+    if (isActive) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
 
-    todayViewBtn.classList.remove("active");
-    ordersViewBtn.classList.remove("active");
-    photoPreviewsViewBtn.classList.remove("active");
-    scheduleViewBtn.classList.remove("active");
-    productionViewBtn.classList.remove("active");
-    assemblyViewBtn.classList.remove("active");
-    fulfilmentViewBtn.classList.remove("active");
-    inventoryViewBtn.classList.remove("active");
-    financeViewBtn.classList.remove("active");
-    settingsViewBtn.classList.remove("active");
-
-    activeTab.classList.add("active");
-
+  if (window.matchMedia("(max-width: 820px)").matches) {
+    activeTab.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }
 }
 
 todayViewBtn.onclick = () => {
