@@ -9552,7 +9552,251 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
 .announcement-arrow:hover,
 .announcement-arrow:focus-visible { background: rgba(255, 255, 255, .18); }
 
+.mobile-colour-step,
+.mobile-colour-quick-actions {
+  display: none;
+}
+
+.swatch.is-selected {
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 0 6px #9b4f69,
+    0 7px 16px rgba(77, 42, 55, .18);
+  transform: scale(.93);
+}
+
 @media (max-width: 760px) {
   .announcement-bar { grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 5px; }
   .announcement-arrow { width: 28px; height: 28px; font-size: 20px; }
+
+  /* Private previews should not consume the space needed to judge the product. */
+  .product-preview-banner {
+    position: static;
+    min-height: 34px;
+    padding: 6px 10px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+  }
+  .product-preview-banner strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .product-preview-banner span { display: none; }
+  .product-preview-banner a {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 1px solid rgba(255,255,255,.45);
+    border-radius: 999px;
+    font-size: 8px;
+    text-decoration: none;
+  }
+
+  /* Keep the product large and steady while customers make each choice. */
+  #designArea[data-design-step="style"] .preview-sticky {
+    top: 64px;
+  }
+  #designArea[data-design-step="style"] .preview-card {
+    margin: 0 0 10px;
+    padding: 6px;
+    border-radius: 18px;
+    box-shadow: 0 12px 30px rgba(57, 36, 45, .14);
+  }
+  #designArea[data-design-step="style"] #previewCanvas {
+    height: 238px;
+    min-height: 238px;
+    border-radius: 14px;
+  }
+  #designArea[data-design-step="style"] .preview-card-heading {
+    top: 11px;
+    right: 11px;
+    left: 11px;
+  }
+  #designArea[data-design-step="style"] .preview-card-heading h2 {
+    padding: 5px 9px;
+    font-size: 8px;
+  }
+  #designArea[data-design-step="style"] .mobile-preview-toggle {
+    display: none;
+  }
+  #designArea[data-design-step="style"] .preview-card.mobile-collapsed .preview-canvas-wrap,
+  #designArea[data-design-step="style"] .preview-card.mobile-collapsed .dimension-estimate {
+    display: block;
+  }
+
+  /* Mobile colour flow: one clear decision at a time. */
+  .colour-options-card {
+    padding: 14px 12px 15px;
+    border-radius: 20px;
+  }
+  .colour-workspace-heading { display: none; }
+  .mobile-colour-step {
+    display: grid;
+    grid-template-columns: 31px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 10px;
+  }
+  .mobile-colour-step > span {
+    width: 31px;
+    height: 31px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    background: #985369;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .mobile-colour-step > div { display: grid; gap: 1px; }
+  .mobile-colour-step strong {
+    color: #3f3036;
+    font-size: 14px;
+    line-height: 1.2;
+  }
+  .mobile-colour-step small {
+    color: #8a767f;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .mobile-colour-step-pick {
+    margin: 16px 0 2px;
+    padding-top: 14px;
+    border-top: 1px solid #eadde2;
+  }
+
+  .colour-part-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .colour-part-tabs button {
+    min-height: 64px;
+    padding: 8px 5px;
+    border: 1px solid #e5d8dd;
+    border-radius: 14px;
+    color: #625159;
+    background: #fff;
+    box-shadow: none;
+  }
+  .colour-part-tabs button > span {
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .colour-part-tabs button small {
+    margin-top: 3px;
+    color: #8f7b84;
+    font-size: 7px;
+  }
+  .colour-part-tabs button.active {
+    border-color: #a95772;
+    color: #7f4056;
+    background: #fff2f6;
+    box-shadow: inset 0 0 0 1px #a95772;
+  }
+
+  .mobile-colour-quick-actions {
+    margin-top: 9px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .mobile-colour-quick-actions button {
+    min-height: 38px;
+    padding: 7px;
+    border: 1px solid #e2d3dc;
+    border-radius: 999px;
+    color: #775867;
+    background: #fff;
+    font: inherit;
+    font-size: 9px;
+    font-weight: 850;
+  }
+  .mobile-colour-quick-actions button:first-child {
+    color: #fff;
+    border-color: #7d4d8d;
+    background: #7d4d8d;
+  }
+  .mobile-colour-quick-actions button.is-active {
+    color: #7f4056;
+    border-color: #b95b79;
+    background: #fff0f5;
+  }
+
+  .style-controls-card > .random-colour-card,
+  .colour-part-panel .part-surprise-btn {
+    display: none !important;
+  }
+  .colour-part-panel { padding-top: 9px; }
+  .slot-row {
+    min-height: 27px;
+    margin: 0 0 7px;
+    padding-left: 1px;
+    gap: 7px;
+  }
+  .colour-slot {
+    width: 27px;
+    height: 27px;
+    border-radius: 8px;
+  }
+  .colour-slot::after {
+    right: -5px;
+    top: -5px;
+    width: 15px;
+    height: 15px;
+    font-size: 8px;
+  }
+  .colour-slot.is-fixed-colour::after { display: none; }
+  .colour-price-notice {
+    margin: 0 0 9px;
+    color: #846f78;
+    font-size: 9px;
+  }
+
+  .material-swatch-group,
+  .material-swatch-group.material-matte,
+  .material-swatch-group.material-dual-tone {
+    padding: 11px 0 8px;
+  }
+  .material-swatch-group h4 {
+    margin-bottom: 10px;
+    font-size: 9px;
+  }
+  .material-swatch-group h4::after { content: none; }
+  .material-swatches {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 13px 5px;
+    overflow: visible;
+    padding: 2px 0 6px;
+  }
+  .material-swatches .swatch-option,
+  .swatch-option {
+    width: auto;
+    min-width: 0;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    font-size: 8px;
+  }
+  .swatch {
+    width: 46px;
+    height: 46px;
+  }
+  .swatch.is-selected {
+    box-shadow:
+      0 0 0 3px #fff,
+      0 0 0 6px #9b4f69,
+      0 7px 16px rgba(77, 42, 55, .18);
+  }
+  .special-colour-note { margin-top: 12px; }
 }

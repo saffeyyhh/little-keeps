@@ -1873,7 +1873,7 @@ Chloe</textarea>
       </div>
       </div>
 
-      <details id="designInspiration" class="design-inspiration" open>
+      <details id="designInspiration" class="design-inspiration">
         <summary>
           <span><strong>Need inspiration?</strong><small>Optional colour ideas ✨</small></span>
           <b>Show ideas</b>
@@ -2077,10 +2077,25 @@ Chloe</textarea>
             </div>
           </div>
 
+          <div class="mobile-colour-step" aria-hidden="true">
+            <span>1</span>
+            <div><strong>Choose what to change</strong><small>Tap a part below</small></div>
+          </div>
+
           <div class="colour-part-tabs" role="tablist" aria-label="Keychain part to colour">
             <button type="button" class="active" data-colour-part-tab="base" role="tab" aria-selected="true"><span id="baseColourPartLabel">Base</span><small id="baseTabSummary"></small></button>
             <button type="button" class="clicky-only-option" data-colour-part-tab="cap" role="tab" aria-selected="false"><span>Cap</span><small id="capTabSummary"></small></button>
             <button type="button" data-colour-part-tab="letter" role="tab" aria-selected="false"><span id="letterColourPartLabel">Letter</span><small id="letterTabSummary"></small></button>
+          </div>
+
+          <div class="mobile-colour-quick-actions">
+            <button id="mobileRandomiseColoursBtn" type="button">✨ Surprise me</button>
+            <button id="mobileMixColoursBtn" type="button" aria-pressed="false">＋ Mix colours</button>
+          </div>
+
+          <div class="mobile-colour-step mobile-colour-step-pick" aria-hidden="true">
+            <span>2</span>
+            <div><strong>Pick a colour</strong><small>The preview updates instantly</small></div>
           </div>
 
           <div class="colour-part-panel active" data-colour-part-panel="base" role="tabpanel">
@@ -2931,6 +2946,8 @@ const previewColourLegend = document.getElementById("previewColourLegend");
 const photoDesignPreview = document.getElementById("photoDesignPreview");
 const inspirationStatus = document.getElementById("inspirationStatus");
 const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
+const mobileRandomiseColoursBtn = document.getElementById("mobileRandomiseColoursBtn");
+const mobileMixColoursBtn = document.getElementById("mobileMixColoursBtn");
 const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
 const randomiseMultipleColours = document.getElementById("randomiseMultipleColours");
 const randomColourOptionsSummary = document.getElementById("randomColourOptionsSummary");
@@ -5595,7 +5612,9 @@ function renderColourChargeNotices() {
     const extras = Math.max(0, uniqueCount - Number(includedCount || 0));
     const unitPrice = Number(extraPrice || 0);
     element.classList.toggle("has-charge", extras > 0);
-    element.textContent = extras > 0
+    element.textContent = unitPrice <= 0
+      ? "Mix colours at no extra charge."
+      : extras > 0
       ? `${extras} extra ${label} colour${extras === 1 ? "" : "s"}: +${displaySettingMoney(extras * unitPrice)}`
       : `One ${label} colour is included. Each additional colour adds ${displaySettingMoney(unitPrice)}.`;
   });
@@ -5942,6 +5961,8 @@ function makeSwatches(containerId, colourOptions, type) {
 
     btn.type = "button";
     btn.className = "swatch";
+    btn.dataset.colourType = type;
+    btn.dataset.colourValue = String(item.colour || "");
     btn.style.background = getColourSwatchBackground(item.colour);
     const colourLabel = `${item.name} · ${item.materialType}${item.materialType === "DUAL-TONE" ? " · Base only" : ""}`;
     btn.title = colourLabel;
@@ -6267,6 +6288,8 @@ function updateCartDisplay() {
 
 function addColourToDesign(type, colour) {
   const design = getActiveDesign();
+  const mobileSingleColourMode = window.matchMedia("(max-width: 760px)").matches &&
+    !randomiseMultipleColours?.checked;
 
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
@@ -6277,7 +6300,7 @@ function addColourToDesign(type, colour) {
   const isNormalGridProduct =
     activeProduct.product_key === NORMAL_GRID_PRODUCT_KEY;
   if (isLedProduct && type === "cap") return;
-  if (isStandardProduct || ((isSolidProduct || isLedProduct || isNormalGridProduct) && type === "base")) {
+  if (mobileSingleColourMode || isStandardProduct || ((isSolidProduct || isLedProduct || isNormalGridProduct) && type === "base")) {
     if (type === "base") {
       design.bases = [colour];
     }
@@ -9218,6 +9241,7 @@ function setLedBaseType(type) {
 function refreshUI() {
   renderNameCards();
   renderColourSlots();
+  updateSelectedColourSwatches();
   updateEditModeText();
   updatePreviewColourLegend();
   renderColourChargeNotices();
@@ -9226,9 +9250,35 @@ function refreshUI() {
   updateStandardFontSizeButtons();
   updatePencilControls();
   updateLedBaseControls();
+  syncMobileColourControls();
   updateCartDisplay();
   updateTurnaroundMessaging();
   renderReviewOrder();
+}
+
+function updateSelectedColourSwatches() {
+  const design = getActiveDesign();
+  const selectedByType = {
+    base: design.bases,
+    cap: design.caps,
+    letter: design.letters
+  };
+
+  document.querySelectorAll(".swatch[data-colour-type]").forEach(swatch => {
+    const selected = (selectedByType[swatch.dataset.colourType] || []).some(
+      colour => String(colour || "").toLowerCase() === String(swatch.dataset.colourValue || "").toLowerCase()
+    );
+    swatch.classList.toggle("is-selected", selected);
+    swatch.setAttribute("aria-pressed", String(selected));
+  });
+}
+
+function syncMobileColourControls() {
+  if (!mobileMixColoursBtn) return;
+  const mixed = Boolean(randomiseMultipleColours?.checked);
+  mobileMixColoursBtn.classList.toggle("is-active", mixed);
+  mobileMixColoursBtn.setAttribute("aria-pressed", String(mixed));
+  mobileMixColoursBtn.textContent = mixed ? "✓ Mixing colours" : "＋ Mix colours";
 }
 
 // Manual 3D preview alignment controls for the pencil product.
@@ -12563,12 +12613,34 @@ resetSelected.onclick = () => {
 };
 
 randomiseColoursBtn?.addEventListener("click", randomiseArticulatedColours);
+mobileRandomiseColoursBtn?.addEventListener("click", randomiseArticulatedColours);
+mobileMixColoursBtn?.addEventListener("click", () => {
+  if (!randomiseMultipleColours) return;
+  randomiseMultipleColours.checked = !randomiseMultipleColours.checked;
+  if (!randomiseMultipleColours.checked) {
+    const design = getActiveDesign();
+    design.bases = design.bases.slice(0, 1);
+    design.caps = design.caps.slice(0, 1);
+    design.letters = design.letters.slice(0, 1);
+    if (applyAllToggle.checked) {
+      globalDesign.bases = [...design.bases];
+      globalDesign.caps = [...design.caps];
+      globalDesign.letters = [...design.letters];
+      names.forEach(item => { item.custom = null; });
+    }
+  }
+  randomiseMultipleColours.dispatchEvent(new Event("change", { bubbles: true }));
+  refreshUI();
+  buildSelectedPreview();
+  syncMobileColourControls();
+});
 randomiseBaseColoursBtn?.addEventListener("click", () => randomiseColourPart("base"));
 randomiseCapColoursBtn?.addEventListener("click", () => randomiseColourPart("cap"));
 randomiseLetterColoursBtn?.addEventListener("click", () => randomiseColourPart("letter"));
 randomiseMultipleColours?.addEventListener("change", () => {
   draftHasMeaningfulChanges = true;
   if (randomiseColoursStatus) randomiseColoursStatus.textContent = "";
+  syncMobileColourControls();
   saveDraft();
 });
 
