@@ -2089,8 +2089,8 @@ Chloe</textarea>
           </div>
 
           <div class="mobile-colour-quick-actions">
-            <button id="mobileRandomiseColoursBtn" type="button">✨ Surprise me</button>
-            <button id="mobileMixColoursBtn" type="button" aria-pressed="false">＋ Mix colours</button>
+            <button id="mobileRandomiseColoursBtn" type="button">✨ Pick for me</button>
+            <button id="mobileMixColoursBtn" type="button" aria-pressed="false">Mix colours</button>
           </div>
 
           <div class="mobile-colour-step mobile-colour-step-pick" aria-hidden="true">
@@ -2922,6 +2922,7 @@ let preparedCheckoutMode = false;
 let preparedCheckoutToken = "";
 let designWizardStep = "names";
 let verifiedLinkedOrder = null;
+let mobileDimensionAutoCollapsed = false;
 
 const canvas = document.getElementById("previewCanvas");
 const singleBtn = document.getElementById("singleBtn");
@@ -5385,12 +5386,6 @@ const designInspiration =
 
 if (designInspiration && window.matchMedia("(max-width: 760px)").matches) {
   designInspiration.removeAttribute("open");
-
-  const mobileColourTabs = document.querySelector(".colour-part-tabs");
-  const randomColourCard = document.querySelector(".random-colour-card");
-  if (mobileColourTabs && randomColourCard) {
-    mobileColourTabs.insertAdjacentElement("afterend", randomColourCard);
-  }
 }
 
 const geometryCache = {};
@@ -6002,6 +5997,7 @@ function makeSwatches(containerId, colourOptions, type) {
         showColourName();
 
         addColourToDesign(type, item.colour);
+        collapseMobileDimensionsAfterColourChoice();
         refreshUI();
         buildSelectedPreview();
       };
@@ -9278,7 +9274,21 @@ function syncMobileColourControls() {
   const mixed = Boolean(randomiseMultipleColours?.checked);
   mobileMixColoursBtn.classList.toggle("is-active", mixed);
   mobileMixColoursBtn.setAttribute("aria-pressed", String(mixed));
-  mobileMixColoursBtn.textContent = mixed ? "✓ Mixing colours" : "＋ Mix colours";
+  mobileMixColoursBtn.textContent = mixed ? "Mixing colours ✓" : "Mix colours";
+}
+
+function collapseMobileDimensionsAfterColourChoice() {
+  if (
+    mobileDimensionAutoCollapsed ||
+    !dimensionEstimate ||
+    !window.matchMedia("(max-width: 760px)").matches
+  ) return;
+
+  mobileDimensionAutoCollapsed = true;
+  dimensionEstimate.classList.add("is-collapsed");
+  dimensionEstimate.querySelectorAll("[data-dimension-toggle]").forEach(button => {
+    button.setAttribute("aria-expanded", "false");
+  });
 }
 
 // Manual 3D preview alignment controls for the pencil product.
@@ -12613,7 +12623,10 @@ resetSelected.onclick = () => {
 };
 
 randomiseColoursBtn?.addEventListener("click", randomiseArticulatedColours);
-mobileRandomiseColoursBtn?.addEventListener("click", randomiseArticulatedColours);
+mobileRandomiseColoursBtn?.addEventListener("click", () => {
+  randomiseArticulatedColours();
+  collapseMobileDimensionsAfterColourChoice();
+});
 mobileMixColoursBtn?.addEventListener("click", () => {
   if (!randomiseMultipleColours) return;
   randomiseMultipleColours.checked = !randomiseMultipleColours.checked;

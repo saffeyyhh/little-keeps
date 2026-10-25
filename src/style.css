@@ -9706,33 +9706,34 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
 
   .mobile-colour-quick-actions {
     margin-top: 9px;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 5px;
   }
   .mobile-colour-quick-actions button {
-    min-height: 38px;
-    padding: 7px;
-    border: 1px solid #e2d3dc;
+    min-height: 30px;
+    padding: 5px 9px;
+    border: 1px solid transparent;
     border-radius: 999px;
-    color: #775867;
-    background: #fff;
+    color: #806d76;
+    background: transparent;
     font: inherit;
-    font-size: 9px;
-    font-weight: 850;
+    font-size: 8px;
+    font-weight: 800;
   }
   .mobile-colour-quick-actions button:first-child {
-    color: #fff;
-    border-color: #7d4d8d;
-    background: #7d4d8d;
+    color: #6f4d7d;
+    border-color: #e4d5ec;
+    background: #faf6fd;
   }
   .mobile-colour-quick-actions button.is-active {
     color: #7f4056;
-    border-color: #b95b79;
+    border-color: #e6c7d2;
     background: #fff0f5;
   }
 
-  .style-controls-card > .random-colour-card,
+  .random-colour-card,
   .colour-part-panel .part-surprise-btn {
     display: none !important;
   }
