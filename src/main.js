@@ -1592,7 +1592,7 @@ ${showBoothSection ? `
     <button id="closePhotoKeepsakeModal" type="button" class="photo-modal-close" aria-label="Close">×</button>
     <p class="section-eyebrow">AI Photo Keepsake</p>
     <h2 id="photoKeepsakeTitle">Turn your photo into a keepsake</h2>
-    <p>Upload one clear photo and we’ll turn the main subject into simple artwork for your keychain. You can approve it or try another version.</p>
+    <p>Upload one clear photo and we’ll turn the main subject into flat-colour artwork that can be 3D printed. You can approve it or try another version.</p>
 
     <div class="photo-keepsake-grid">
       <section>
@@ -1610,7 +1610,7 @@ ${showBoothSection ? `
         <div id="photoSuitabilityCheck" class="photo-suitability-check hidden" aria-live="polite"></div>
 
         <div class="photo-option-grid">
-          <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person or people · max 2</option><option value="pet">Pet or pets · max 2</option><option value="pet_person">1 pet + 1 person</option><option value="object">Object or keepsake</option></select></label>
+          <label><span>Subject</span><select id="photoSubjectType"><option value="person">Person or people · max 2</option><option value="pet">Pet or pets · max 2</option><option value="pet_person">1 pet + 1 person</option><option value="object">Object, emblem or keepsake</option></select></label>
           <label><span>Artwork detail</span><select id="photoColourCount"><option value="2">Simple · 2 colours</option><option value="3">Balanced · 3 colours</option><option value="4" selected>More detail · 4 colours</option></select></label>
           <label><span>Name for this design</span><input id="photoKeepsakeLabel" maxlength="40" placeholder="e.g. Milo or Mum"></label>
           <label><span>Quantity</span><input id="photoKeepsakeQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
@@ -1622,7 +1622,7 @@ ${showBoothSection ? `
           <div>
             <label>
               <input type="radio" name="photoArtworkStyle" value="true_to_photo" checked>
-              <span><strong>True to Photo</strong><small>Closest likeness and natural proportions</small></span>
+              <span><strong>Closest Likeness</strong><small>Preserves the face, pose, outfit or object shape</small></span>
             </label>
             <label>
               <input type="radio" name="photoArtworkStyle" value="cute_cartoon">
@@ -1633,6 +1633,7 @@ ${showBoothSection ? `
               <span><strong>Bold & Simple</strong><small>Chunky shapes with fewer tiny details</small></span>
             </label>
           </div>
+          <p class="photo-likeness-note"><strong>For the closest result:</strong> choose 4 colours and use a bright, front-facing photo. The result is printable illustrated artwork, not an exact photograph.</p>
         </fieldset>
 
         <label class="photo-clicker-upgrade" for="photoClickerUpgrade">
@@ -1667,7 +1668,7 @@ ${showBoothSection ? `
           ` : ""}
         </div>
         <div id="photoMappedPalette" class="photo-mapped-palette hidden"></div>
-        <p class="photo-proof-note">We check every design before making it. Very tiny details may be adjusted so your finished keychain looks neat.</p>
+        <p class="photo-proof-note">This preview is simplified for 3D printing. We check every approved design, and tiny details may still be adjusted so the finished piece prints neatly.</p>
       </section>
     </div>
   </div>
@@ -4975,10 +4976,10 @@ function setSelectedPhotoArtworkStyle(value) {
 
 function getPhotoArtworkStyleLabel(value) {
   return {
-    true_to_photo: "True to Photo",
+    true_to_photo: "Closest Likeness",
     cute_cartoon: "Cute Cartoon",
     bold_graphic: "Bold & Simple"
-  }[value] || "True to Photo";
+  }[value] || "Closest Likeness";
 }
 
 let cartHasItems = false;

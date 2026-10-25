@@ -7942,6 +7942,14 @@ body {
 .photo-artwork-style-picker small { display: block; }
 .photo-artwork-style-picker strong { color: #59434f; font-size: 11px; }
 .photo-artwork-style-picker small { margin-top: 3px; color: #81717a; font-size: 9px; line-height: 1.35; }
+.photo-artwork-style-picker > .photo-likeness-note {
+  margin: 11px 1px 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: #6f5d67;
+  background: #fff;
+  line-height: 1.45;
+}
 
 .photo-clicker-upgrade {
   margin-top: 14px;

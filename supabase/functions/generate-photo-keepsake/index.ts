@@ -204,20 +204,23 @@ Deno.serve(async request => {
       ? "Use a cute cartoon style: rounded friendly shapes, softly simplified features, a warm expression and slightly larger expressive eyes. Keep the subject clearly recognizable and do not invent accessories or markings."
       : artworkStyle === "bold_graphic"
         ? "Use a bold graphic style: chunky high-contrast shapes, very thick clean outlines and the fewest practical details. Favour strong recognizability and print reliability over realism."
-        : "Use a true-to-photo style: preserve the subject's real proportions, pose, expression, face or object shape and distinctive features as closely as possible. Simplify only what is necessary for a clean printable result; do not caricature the subject.";
+        : "Use an identity-locked, true-to-reference style. Treat the uploaded image as a strict composition reference, not loose inspiration. Preserve the subject's exact proportions, pose, expression, age, hairstyle, clothing silhouette, object geometry and distinctive features as closely as the limited flat-colour medium permits. Simplify only what is physically necessary for printing. Do not beautify, caricature, restyle or redesign the subject.";
+    const subjectDirection = subjectType === "person"
+      ? "IDENTITY IS THE HIGHEST PRIORITY. Keep one or two main people together and do not omit either person. Match each person's face shape, head-to-body proportions, hairstyle and hairline, eyebrow shape, eye spacing, nose placement, mouth shape, expression, pose and outfit silhouette to the reference. Do not change their age, ethnicity, pose, clothes, accessories or relationship to each other. Use exactly one single flat filament colour for all visible skin across every face, neck, ear, arm and hand. Completely ignore photographic lighting, highlights, shadows, blush and reflections on skin: never turn them into additional skin colours or white patches. Preserve likeness through geometry and feature placement, not through skin shading."
+      : subjectType === "pet"
+        ? "IDENTITY IS THE HIGHEST PRIORITY. Keep one or two main pets together and do not omit either pet. Match each pet's real species or breed, body proportions, ear shape, face shape, eye spacing, expression, pose and distinctive coat markings. Do not make the animal generic and do not invent clothes, bows, accessories, protruding tongues or markings that are not in the reference. Ignore photographic lighting, highlights, shadows and reflections when separating the pets into colour regions."
+        : subjectType === "pet_person"
+          ? "IDENTITY IS THE HIGHEST PRIORITY. Keep exactly the main person and their pet together as one compact composition. Match the person's face shape, hairstyle, hairline, expression, pose and outfit silhouette. Use exactly one single flat filament colour for all visible human skin across the face, neck, ears, arms and hands; completely ignore skin lighting, highlights, shadows, blush and reflections. Match the pet's species or breed, proportions, ear shape, face shape, expression and distinctive coat markings. Preserve the exact natural pose and relationship between the person and pet. Do not omit either subject, merge their features, or invent clothing, accessories or markings."
+          : "TRACE THE MAIN OBJECT FAITHFULLY. Preserve its exact outer silhouette, proportions, orientation, internal cut-outs, line angles and negative spaces. If the source is a simple emblem, number, wordmark or graphic, reproduce its visible geometry and layout as closely as possible instead of redesigning or stylising it. Keep readable numerals and short lettering faithful to the reference. Do not add new symbols, characters, outlines or decorative details. Ignore photographic lighting, highlights, shadows and reflections when separating the object into colour regions.";
     const prompt = [
       `Transform the selected main ${subjectType} subject or subjects in this image into clean artwork specifically for a small FDM 3D-printed keychain. Include every selected main subject, with no more than two subjects total.`,
       styleDirection,
+      subjectDirection,
       `Use no more than ${colourCount} flat solid colours including outlines.`,
       `Use only colours from this available physical filament palette: ${filamentPalette.map(item => `${item.name} (${item.hex})`).join(", ")}. Choose the closest matches and do not invent any colour outside this list.`,
-      subjectType === "person"
-        ? "Keep one or two main people together and do not omit either person. Use exactly one single flat filament colour for all visible skin across every face, neck, ear, arm and hand. Completely ignore photographic lighting, highlights, shadows, blush and reflections on skin: never turn them into additional skin colours or white patches. Preserve each person's likeness through their face shape, hairstyle, eyebrows, eyes, nose, mouth, expression and bold outline—not through skin shading."
-        : subjectType === "pet"
-          ? "Keep one or two main pets together and do not omit either pet. Preserve each pet's real species or breed, ear shape, face shape, expression and distinctive coat markings so they do not become generic animals. Do not invent clothes, bows, accessories, protruding tongues or markings that are not in the photo. Ignore photographic lighting, highlights, shadows and reflections when separating the pets into colour regions."
-          : subjectType === "pet_person"
-            ? "Keep exactly the main person and their pet together as one compact composition. Preserve the person's recognizable face shape, hairstyle, expression and key features. Use exactly one single flat filament colour for all visible human skin across the face, neck, ears, arms and hands; completely ignore skin lighting, highlights, shadows, blush and reflections. Preserve the pet's species or breed, ear shape, face shape and distinctive coat markings. Keep the natural pose and relationship between the person and pet. Do not omit either subject, merge their features, add extra people or animals, or invent clothing, accessories or markings."
-          : "Ignore photographic lighting, highlights, shadows and reflections when separating the subject into colour regions.",
-      "Keep the subject recognizable and charming, with bold connected shapes, smooth closed outlines, and no gradients, shadows, texture, text, logos, scenery, frame, or background.",
+      subjectType === "object"
+        ? "Keep the object as a clean trace with bold connected shapes and smooth closed outlines. Remove the surrounding scene, frame and background. Use no gradients, shadows or textures."
+        : "Keep the subject recognizable, with bold connected shapes and smooth closed outlines. Use no gradients, shadows, textures, text, logos, scenery, frame or background.",
       "Remove tiny details and isolated specks. Every important stroke and gap must remain thick enough to print at approximately 60 mm wide; target at least 1.2 mm features.",
       variant === "clicker"
         ? "This is the Clicker version. Do not draw or include any keyring hole, hanging loop, eyelet, attachment tab, ring, or circular cut-out. Keep the subject's outer silhouette clean and natural all the way around."
@@ -230,7 +233,7 @@ Deno.serve(async request => {
     form.append("image", new Blob([bytes], { type: mimeType }), mimeType === "image/png" ? "photo.png" : "photo.jpg");
     form.append("prompt", prompt);
     form.append("size", "1024x1024");
-    form.append("quality", "medium");
+    form.append("quality", "high");
     form.append("background", "transparent");
     form.append("output_format", "png");
     if (!model.includes("mini")) form.append("input_fidelity", "high");
