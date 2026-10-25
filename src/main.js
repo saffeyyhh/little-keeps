@@ -6296,7 +6296,11 @@ function addColourToDesign(type, colour) {
   const isNormalGridProduct =
     activeProduct.product_key === NORMAL_GRID_PRODUCT_KEY;
   if (isLedProduct && type === "cap") return;
-  if (mobileSingleColourMode || isStandardProduct || ((isSolidProduct || isLedProduct || isNormalGridProduct) && type === "base")) {
+  if (mobileSingleColourMode) {
+    if (type === "base") design.bases = [colour];
+    if (type === "cap") design.caps = [colour];
+    if (type === "letter") design.letters = [colour];
+  } else if (isStandardProduct || ((isSolidProduct || isLedProduct || isNormalGridProduct) && type === "base")) {
     if (type === "base") {
       design.bases = [colour];
     }
