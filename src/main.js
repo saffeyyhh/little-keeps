@@ -527,7 +527,7 @@ const KPOP_CLICKER_MODELS = normalizeKpopClickerModels(
   imageClickerProduct.kpop_models ?? DEFAULT_KPOP_CLICKER_MODELS
 );
 const INITIAL_KPOP_CLICKER_MODEL = KPOP_CLICKER_MODELS[0] || {
-  key: "", name: "K-pop design", accent: "#f383a0", modelUrl: "", thumbnail: ""
+  key: "", name: "Clicker design", accent: "#f383a0", modelUrl: "", thumbnail: "", previewMode: "photo"
 };
 const readyMadeProducts = productCatalog.filter(isReadyMadeProduct);
 const visibleProductCount = [
@@ -1362,7 +1362,7 @@ ${requestedPreviewProductKey ? `
   ` : ""}
 
   ${imageClickerProduct.status !== "hidden" ? `
-    <article class="product-card image-clicker-product-card ${imageClickerProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="kpop birthdays couples gifts" ${imageClickerProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
+    <article class="product-card image-clicker-product-card ${imageClickerProduct.status === "active" ? "product-card-current" : "product-card-coming"}" data-occasions="cute birthdays kids party gifts" ${imageClickerProduct.status === "active" ? "" : "aria-disabled=\"true\""}>
       ${getProductMediaPaths(imageClickerProduct).length || imageClickerProduct.video_path
         ? renderProductCardMedia(imageClickerProduct, {
             alt: imageClickerProduct.name,
@@ -1379,7 +1379,7 @@ ${requestedPreviewProductKey ? `
         </div>
         <p>${escapePresetText(imageClickerProduct.description)}</p>
         <div class="product-quick-facts" aria-label="Product highlights">
-          <span>K-pop designs</span><span>Upload your own</span><span>Satisfying click</span>
+          <span>12 cute designs</span><span>Choose every colour</span><span>Satisfying click</span>
         </div>
         ${renderProductCardPrice(imageClickerProduct)}
         ${renderProductUnitsSoldBadge(imageClickerProduct)}
@@ -1522,9 +1522,9 @@ ${showBoothSection ? `
   <div class="image-clicker-dialog">
     <button id="closeImageClickerModal" type="button" class="photo-modal-close" aria-label="Close">×</button>
     <div class="image-clicker-heading">
-      <p class="section-eyebrow">K-pop clickers</p>
-      <h2 id="imageClickerTitle">Choose your group</h2>
-      <p>Pick a ready-made design, choose its colours and rotate the actual 3D model.</p>
+      <p class="section-eyebrow">Licensed CritterCRAFT collection</p>
+      <h2 id="imageClickerTitle">Choose your critter</h2>
+      <p>See the real finished design, choose your colours and add your favourite to cart.</p>
     </div>
 
     <div class="image-clicker-layout">
@@ -1532,7 +1532,7 @@ ${showBoothSection ? `
         <div class="image-clicker-step">
           <span>1</span>
           <div>
-            <h3>Choose your K-pop design</h3>
+            <h3>Choose your character</h3>
             <div id="imageClickerGalleryPanel" class="image-clicker-source-panel">
               <div id="imageClickerGallery" class="image-clicker-gallery">
                 ${KPOP_CLICKER_MODELS.map((design, index) => `
@@ -1541,10 +1541,10 @@ ${showBoothSection ? `
                     ${design.thumbnail ? "" : `<i class="image-clicker-3mf-placeholder" aria-hidden="true">3D</i>`}
                     <span>${escapePresetText(design.name)}</span>
                   </button>
-                `).join("") || `<p>No K-pop designs are available right now.</p>`}
+                `).join("") || `<p>No clicker designs are available right now.</p>`}
               </div>
             </div>
-            <p class="image-clicker-shape-help">These previews use the actual print-ready 3MF models.</p>
+            <p class="image-clicker-shape-help">Real product photos are shown here. Your chosen colours are saved with the exact licensed print file.</p>
           </div>
         </div>
 
@@ -1573,9 +1573,10 @@ ${showBoothSection ? `
       </section>
 
       <aside class="image-clicker-preview-panel">
-        <span class="image-clicker-preview-kicker">Live preview</span>
+        <span class="image-clicker-preview-kicker">Design preview</span>
         <div id="imageClickerPreview" class="image-clicker-preview">
-          <canvas id="imageClicker3DCanvas" aria-label="Rotatable 3D K-pop clicker preview"></canvas>
+          <img id="imageClickerPhotoFallback" class="image-clicker-photo-fallback" alt="Selected character clicker">
+          <canvas id="imageClicker3DCanvas" aria-label="Rotatable 3D character clicker preview"></canvas>
           <i id="imageClickerPreviewArtwork">Loading 3D model…</i>
           <span class="image-clicker-drag-hint">Drag to rotate · scroll to zoom</span>
         </div>
@@ -3043,6 +3044,7 @@ const closeImageClickerModal = document.getElementById("closeImageClickerModal")
 const imageClickerQuantity = document.getElementById("imageClickerQuantity");
 const imageClickerPreview = document.getElementById("imageClickerPreview");
 const imageClicker3DCanvas = document.getElementById("imageClicker3DCanvas");
+const imageClickerPhotoFallback = document.getElementById("imageClickerPhotoFallback");
 const imageClickerPreviewArtwork = document.getElementById("imageClickerPreviewArtwork");
 const imageClickerColourParts = document.getElementById("imageClickerColourParts");
 const imageClickerColours = document.getElementById("imageClickerColours");
@@ -4514,6 +4516,7 @@ let imageClickerState = {
   source: "gallery",
   modelKey: INITIAL_KPOP_CLICKER_MODEL.key,
   modelUrl: INITIAL_KPOP_CLICKER_MODEL.modelUrl,
+  previewMode: INITIAL_KPOP_CLICKER_MODEL.previewMode,
   imageUrl: INITIAL_KPOP_CLICKER_MODEL.thumbnail,
   designName: INITIAL_KPOP_CLICKER_MODEL.name,
   selectedPart: "body",
@@ -4540,7 +4543,7 @@ function initialiseImageClicker3D() {
 
   const previewScene = new THREE.Scene();
   const previewCamera = new THREE.PerspectiveCamera(32, 1, .1, 500);
-  previewCamera.position.set(78, -100, 88);
+  previewCamera.position.set(-80, -80, 160);
   const previewControls = new OrbitControls(previewCamera, imageClicker3DCanvas);
   previewControls.enableDamping = true;
   previewControls.enablePan = false;
@@ -4637,14 +4640,17 @@ function assembleImageClicker3D(sourceModel, colours) {
     const placedLogo = placeMeshes(meshStats.slice(2), "logo", capGround + backingDepth - .2);
     model.add(placedBody.wrapper, placedBacking.wrapper, placedLogo.wrapper);
   } else {
-    const bodyStats = allPartStats.reduce((largest, item) => item.size.z > largest.size.z ? item : largest);
-    if (bodyStats.size.z < 12) throw new Error("The 3MF does not include a complete clicker body.");
+    const minimumMeshCount = Math.min(...allPartStats.map(item => item.meshCount));
+    const bodyStats = allPartStats
+      .filter(item => item.meshCount <= Math.max(2, minimumMeshCount + 1))
+      .sort((a, b) => b.meshCount - a.meshCount || a.index - b.index)[0];
+    if (!bodyStats || bodyStats.size.z < 8) throw new Error("The 3MF does not include a complete clicker body.");
     const capStats = allPartStats
-      .filter(item => item.index !== bodyStats.index && item.size.z < bodyStats.size.z * .82)
+      .filter(item => item.index !== bodyStats.index && item.meshCount > bodyStats.meshCount)
       .sort((a, b) => {
         const score = item => Math.abs(Math.log(Math.max(.01, item.size.x / bodyStats.size.x)))
           + Math.abs(Math.log(Math.max(.01, item.size.y / bodyStats.size.y)));
-        return score(a) - score(b);
+        return score(a) - score(b) || b.meshCount - a.meshCount || a.index - b.index;
       })[0];
     if (!capStats) throw new Error("The 3MF does not include a matching cap.");
     const placedBody = centreImageClickerPart(flattenImageClickerPart(printableParts[bodyStats.index], "body"));
@@ -4685,7 +4691,7 @@ function assembleImageClicker3D(sourceModel, colours) {
   model.updateMatrixWorld(true);
   const initialBox = new THREE.Box3().setFromObject(model);
   const initialSize = initialBox.getSize(new THREE.Vector3());
-  const modelScale = 68 / Math.max(1, initialSize.x, initialSize.y);
+  const modelScale = 62 / Math.max(1, initialSize.x, initialSize.y, initialSize.z);
   model.scale.setScalar(modelScale);
   model.updateMatrixWorld(true);
   const scaledBox = new THREE.Box3().setFromObject(model);
@@ -4879,12 +4885,16 @@ async function buildImageClicker3DPreview() {
     preview.modelKey = imageClickerState.modelKey;
     preview.group.rotation.z = -.08;
     preview.group.position.y = -3;
+    imageClickerPreview?.classList.remove("uses-photo-fallback");
+    imageClickerPhotoFallback?.classList.add("hidden");
     if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "";
-    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected.`;
+    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. Your chosen colours will be used for printing.`;
   } catch (error) {
-    if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "Preview unavailable";
-    if (imageClickerStatus) imageClickerStatus.textContent = "This 3D model could not be opened.";
-    console.warn("Unable to load the K-pop clicker 3MF preview:", error);
+    imageClickerPreview?.classList.add("uses-photo-fallback");
+    imageClickerPhotoFallback?.classList.remove("hidden");
+    if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "";
+    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. Your chosen colours will be used for printing.`;
+    console.warn("Unable to load the character clicker 3MF preview:", error);
   }
 }
 
@@ -4920,6 +4930,11 @@ async function renderImageClickerCovers() {
   for (const cover of covers) {
     const design = KPOP_CLICKER_MODELS[Number(cover.dataset.imageClickerCover)];
     if (!design?.modelUrl) continue;
+    if (design.thumbnail) {
+      cover.classList.add("has-photo");
+      cover.nextElementSibling?.classList?.add("hidden");
+      continue;
+    }
     let model = null;
     try {
       const sourceModel = await loadImageClicker3MF(design.modelUrl);
@@ -7901,7 +7916,7 @@ function getDesignDescription(design, product = activeProduct) {
   if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
     return design.imageCap?.source === "upload"
       ? "Your uploaded image · Clicker keychain"
-      : `${design.imageCap?.designName || "K-pop design"} · Clicker keychain`;
+      : `${design.imageCap?.designName || "Clicker design"} · Clicker keychain`;
   }
 
   if (product.product_key === STANDARD_PRODUCT_KEY) {
@@ -8256,7 +8271,7 @@ function renderReviewOrder() {
 
           <p class="review-colour-summary">${getDesignColourSummary(design, product)}</p>
 
-          ${isReadyMadeProduct(product) ? "" : `<p class="item-dimension-note">📏 ${getApproximateSizeText(item.name, product, design)}</p>`}
+          ${isReadyMadeProduct(product) || product.product_key === IMAGE_CLICKER_PRODUCT_KEY ? "" : `<p class="item-dimension-note">📏 ${getApproximateSizeText(item.name, product, design)}</p>`}
         </div>
 
         <div class="review-line-price">
@@ -10186,7 +10201,7 @@ function renderCartDrawer() {
               <p>${escapePresetText(product.name)}</p>
               <p>${designDescription}</p>
               ${itemQuantity > 1 ? `<p>${displaySettingMoney(unitPrice)} each</p>` : ""}
-              ${isReadyMadeProduct(product) ? "" : `<p class="item-dimension-note">📏 ${getApproximateSizeText(item.name, product, design)}</p>`}
+              ${isReadyMadeProduct(product) || product.product_key === IMAGE_CLICKER_PRODUCT_KEY ? "" : `<p class="item-dimension-note">📏 ${getApproximateSizeText(item.name, product, design)}</p>`}
             </div>
 
             <strong class="cart-item-price">
@@ -11722,8 +11737,22 @@ function addPhotoKeepsakeToCart() {
 function renderImageClickerPreview() {
   if (!imageClickerPreview || !imageClicker3DCanvas) return;
   imageClickerPreview.classList.toggle("has-image", Boolean(imageClickerState.modelUrl));
-  if (imageClicker3D?.modelKey === imageClickerState.modelKey) applyImageClickerPreviewColours();
-  else void buildImageClicker3DPreview();
+  if (imageClickerPhotoFallback) {
+    imageClickerPhotoFallback.src = imageClickerState.imageUrl || "";
+    imageClickerPhotoFallback.alt = `${imageClickerState.designName || "Selected character"} clicker`;
+    imageClickerPhotoFallback.classList.toggle("hidden", !imageClickerState.imageUrl);
+  }
+  if (imageClickerState.previewMode === "photo") {
+    while (imageClicker3D?.group?.children?.length) disposePreviewObject(imageClicker3D.group.children.pop());
+    if (imageClicker3D) imageClicker3D.modelKey = "";
+    imageClickerPreview.classList.add("uses-photo-fallback");
+    imageClickerPhotoFallback?.classList.remove("hidden");
+    if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "";
+    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. Your chosen colours will be used for printing.`;
+  } else if (imageClicker3D?.modelKey === imageClickerState.modelKey) {
+    applyImageClickerPreviewColours();
+    imageClickerPhotoFallback?.classList.add("hidden");
+  } else void buildImageClicker3DPreview();
   const selectedColour = imageClickerState[`${imageClickerState.selectedPart}Colour`];
   imageClickerColourParts?.querySelectorAll("[data-image-clicker-part]").forEach(button => {
     button.classList.toggle("is-active", button.dataset.imageClickerPart === imageClickerState.selectedPart);
@@ -11749,6 +11778,7 @@ function openImageClickerStudio(existingItem = null, itemIndex = null) {
     source: "gallery",
     modelKey: selectedModel.key,
     modelUrl: selectedModel.modelUrl,
+    previewMode: selectedModel.previewMode,
     imageUrl: selectedModel.thumbnail,
     designName: selectedModel.name,
     selectedPart: "body",
@@ -11775,7 +11805,7 @@ function closeImageClickerStudio() {
 
 async function addImageClickerToCart() {
   if (!imageClickerState.modelUrl) {
-    imageClickerStatus.textContent = "Choose a K-pop design first.";
+    imageClickerStatus.textContent = "Choose a character first.";
     return;
   }
   addImageClickerToCartBtn.disabled = true;
@@ -11783,7 +11813,7 @@ async function addImageClickerToCart() {
   try {
     const fallbackColours = getAvailableColours();
     const item = {
-      name: `${imageClickerState.designName || "K-pop"} Clicker`,
+      name: `${imageClickerState.designName || "Critter"} Clicker`,
       quantity: normalizeItemQuantity(imageClickerQuantity?.value),
       product_key: IMAGE_CLICKER_PRODUCT_KEY,
       cartAdded: true,
@@ -11799,7 +11829,7 @@ async function addImageClickerToCart() {
           source: "3mf",
           imageUrl: imageClickerState.imageUrl,
           imagePath: "",
-          designName: imageClickerState.designName || "K-pop design",
+          designName: imageClickerState.designName || "Clicker design",
           modelKey: imageClickerState.modelKey,
           modelUrl: imageClickerState.modelUrl,
           bodyColour: imageClickerState.bodyColour,
@@ -12028,6 +12058,7 @@ imageClickerModal?.addEventListener("click", event => {
       source: "gallery",
       modelKey: design.key,
       modelUrl: design.modelUrl,
+      previewMode: design.previewMode,
       imageUrl: design.thumbnail,
       designName: design.name,
       logoColour: design.accent

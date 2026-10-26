@@ -2194,7 +2194,7 @@ function renderSettingsWorkspace() {
                       <section class="product-price-group product-media-manager" data-product-media-manager="${escapeAdminHtml(product.product_key)}">
                         <div class="product-price-group-heading">
                           <strong>Product photos & click video</strong>
-                          <small>${isImageClickerDraft ? "Every photo becomes a selectable K-pop cap design. The first is also the shop cover." : "The first photo is the cover. Customers can swipe through the rest."}</small>
+                          <small>${isImageClickerDraft ? "The first photo is the shop cover. Customers can browse the rest before choosing a 3D design." : "The first photo is the cover. Customers can swipe through the rest."}</small>
                         </div>
                         <div class="product-admin-gallery" data-product-admin-gallery>
                           ${productGalleryPaths.map((path, index) => `
@@ -2232,8 +2232,8 @@ function renderSettingsWorkspace() {
                       ${isImageClickerDraft ? `
                         <section class="product-price-group kpop-model-manager" data-kpop-model-manager="${escapeAdminHtml(product.product_key)}">
                           <div class="product-price-group-heading">
-                            <strong>K-pop 3MF designs</strong>
-                            <small>Upload, rename or remove the print-ready models customers can choose. Changes appear after you save settings.</small>
+                            <strong>Character 3MF designs</strong>
+                            <small>Upload, rename or remove licensed print-ready models customers can choose. Changes appear after you save settings.</small>
                           </div>
                           <div class="kpop-model-list" data-kpop-model-list>
                             ${productKpopModels.map(model => `
@@ -2784,7 +2784,7 @@ function renderSettingsWorkspace() {
       const hidden = manager.querySelector("[data-kpop-models-input]");
       const models = items.map((item, index) => ({
         key: item.dataset.modelKey || `design-${index + 1}`,
-        name: item.querySelector("[data-kpop-model-name]")?.value.trim() || `K-pop design ${index + 1}`,
+        name: item.querySelector("[data-kpop-model-name]")?.value.trim() || `Clicker design ${index + 1}`,
         accent: item.querySelector("[data-kpop-model-accent]")?.value || "#f383a0",
         modelUrl: item.dataset.modelUrl || "",
         thumbnail: item.dataset.thumbnail || ""
@@ -5892,7 +5892,7 @@ function renderOrders(orders) {
             <span class="assembly-tag">× ${Math.max(1, Number(item.quantity) || 1)}</span>
           ` : imageClickerProduct ? `
             <span class="assembly-tag">Image Clicker</span>
-            <span class="assembly-tag">${item.design?.image_cap?.source === "upload" ? "Customer upload" : "K-pop gallery"}</span>
+            <span class="assembly-tag">${item.design?.image_cap?.source === "upload" ? "Customer upload" : "Character gallery"}</span>
           ` : photoProduct ? `
             <span class="assembly-tag">Photo Keepsake</span>
             <span class="assembly-tag">${item.design?.photo?.variant === "clicker" ? "Clicker Keychain" : "Classic Keychain"}</span>
@@ -5927,7 +5927,7 @@ function renderOrders(orders) {
             ` : `<div class="assembly-photo-summary">Private image could not be opened. Refresh the admin and try again.</div>`}
             <div>
               <strong>${escapeAdminHtml(item.design?.image_cap?.design_name || item.name || "Image cap")}</strong>
-              <span>${item.design?.image_cap?.source === "upload" ? "Customer-uploaded image" : "K-pop gallery design"} · ${escapeAdminHtml(item.design?.bases?.[0]?.name || "Body colour saved")}</span>
+              <span>${item.design?.image_cap?.source === "upload" ? "Customer-uploaded image" : "Character gallery design"} · ${escapeAdminHtml(item.design?.bases?.[0]?.name || "Body colour saved")}</span>
               <small>Print one image cap and one clicker body, then assemble with the switch and keyring.</small>
               <div class="assembly-photo-artwork-actions">
                 <button type="button" onclick='window.downloadImageClickerArtwork(${JSON.stringify(String(order.id))}, ${itemIndex}, this)'>Save Image</button>
@@ -14455,7 +14455,7 @@ async function renderProductionPlanner(orders) {
                       </div>
                     ` : `<p class="hint">Legacy preview · its colours will be matched to your currently available filament when you download the STL pack.</p>`}
                   ` : row.isImageClicker ? `
-                    <div class="photo-printability-warning"><strong>Check the exact image before printing</strong><span>${row.imageCap.source === "upload" ? "Customer-uploaded image" : "K-pop gallery design"} · print one image cap and one ${escapeAdminHtml(background.name || "selected-colour")} clicker body.</span></div>
+                    <div class="photo-printability-warning"><strong>Check the exact model before printing</strong><span>${row.imageCap.source === "upload" ? "Customer-uploaded image" : "Character gallery design"} · print one cap and one ${escapeAdminHtml(background.name || "selected-colour")} clicker body.</span></div>
                     ${(row.imageCap.admin_image_url || row.imageCap.image_url) ? `<img class="custom-image-clicker-production-art" src="${escapeAdminHtml(row.imageCap.admin_image_url || row.imageCap.image_url)}" alt="${escapeAdminHtml(row.name)} image cap">` : ""}
                   ` : row.isPencil ? `
                     <div class="pencil-production-guide">
@@ -15260,7 +15260,7 @@ async function generateCustomerOrderPdf(order, items) {
     const photoTextWidth = contentWidth - 64;
     const colourLines = imageClickerProduct ? [
       ...pdf.splitTextToSize(`Design name: ${getCompactPdfText(design.image_cap?.design_name || item.name || "Image clicker")}`, photoTextWidth),
-      ...pdf.splitTextToSize(`Artwork source: ${design.image_cap?.source === "upload" ? "Customer upload" : "K-pop gallery"}`, photoTextWidth),
+      ...pdf.splitTextToSize(`Artwork source: ${design.image_cap?.source === "upload" ? "Customer upload" : "Character gallery"}`, photoTextWidth),
       ...pdf.splitTextToSize(`Clicker body: ${getCompactPdfText(baseNames)}`, photoTextWidth),
       "Parts: 1 image cap + 1 clicker body + switch + keyring"
     ] : photoProduct ? [

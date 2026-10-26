@@ -26,7 +26,7 @@ import {
   isReadyMadeProduct
 } from "../src/product-catalog.js";
 
-test("normalizes editable K-pop 3MF designs", () => {
+test("normalizes editable character clicker 3MF designs", () => {
   assert.deepEqual(normalizeKpopClickerModels([
     { name: "  Girls' Generation  ", model_url: " https://example.com/gg.3mf ", accent: "#F38FBD" },
     { name: "Missing model" },
@@ -36,7 +36,8 @@ test("normalizes editable K-pop 3MF designs", () => {
     name: "Girls' Generation",
     accent: "#F38FBD",
     modelUrl: "https://example.com/gg.3mf",
-    thumbnail: ""
+    thumbnail: "",
+    previewMode: "3d"
   }]);
 });
 
@@ -269,7 +270,7 @@ test("always shows pricing when a product is available", () => {
   assert.equal(pencil.price_visible, true);
 });
 
-test("keeps the retired K-pop catalogue hidden even when saved settings enable it", () => {
+test("keeps the licensed character clicker collection available", () => {
   const catalogue = applyProductStatusOverrides(normalizeProductCatalog([{
     product_key: IMAGE_CLICKER_PRODUCT_KEY,
     status: "active",
@@ -278,9 +279,9 @@ test("keeps the retired K-pop catalogue hidden even when saved settings enable i
     [IMAGE_CLICKER_PRODUCT_KEY]: "active"
   });
 
-  const kpopClicker = getProductByKey(catalogue, IMAGE_CLICKER_PRODUCT_KEY);
-  assert.equal(kpopClicker.status, "hidden");
-  assert.equal(kpopClicker.price_visible, false);
+  const characterClicker = getProductByKey(catalogue, IMAGE_CLICKER_PRODUCT_KEY);
+  assert.equal(characterClicker.status, "active");
+  assert.equal(characterClicker.price_visible, true);
 });
 
 test("ignores invalid product visibility overrides", () => {

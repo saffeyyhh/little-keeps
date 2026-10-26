@@ -6,7 +6,7 @@ export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
 export const LED_PRODUCT_KEY = "light-up-name-clicker";
 export const NORMAL_GRID_PRODUCT_KEY = "classic-grid-name-clicker";
 export const IMAGE_CLICKER_PRODUCT_KEY = "custom-image-clicker";
-export const RETIRED_PRODUCT_KEYS = Object.freeze([IMAGE_CLICKER_PRODUCT_KEY]);
+export const RETIRED_PRODUCT_KEYS = Object.freeze([]);
 const RETIRED_PRODUCT_KEY_SET = new Set(RETIRED_PRODUCT_KEYS);
 export const READY_MADE_PRODUCT_TYPE = "ready_made";
 export const CUSTOM_PRODUCT_TYPE = "custom";
@@ -16,15 +16,18 @@ export const PHOTO_KEEPSAKE_COLOUR_PRICES = Object.freeze({
   4: 8.5
 });
 export const DEFAULT_KPOP_CLICKER_MODELS = Object.freeze([
-  { key: "babymonster", name: "BABYMONSTER", accent: "#f383a0", modelUrl: "/models/kpop/babymonster.3mf", thumbnail: "/images/kpop-models/babymonster/thumbnail_3mf.png" },
-  { key: "bts", name: "BTS", accent: "#8a5cd6", modelUrl: "/models/kpop/bts.3mf", thumbnail: "/images/kpop-models/bts/thumbnail_3mf.png" },
-  { key: "exo", name: "EXO", accent: "#bfc6ce", modelUrl: "/models/kpop/exo.3mf", thumbnail: "/images/kpop-models/exo/thumbnail_3mf.png" },
-  { key: "girls-generation", name: "Girls’ Generation", accent: "#f38fbd", modelUrl: "/models/kpop/girls-generation.3mf", thumbnail: "/images/kpop-models/girls-generation/thumbnail_3mf.png" },
-  { key: "cortis", name: "CORTIS", accent: "#759a62", modelUrl: "/models/kpop/cortis.3mf", thumbnail: "/images/kpop-models/cortis/thumbnail_3mf.png" },
-  { key: "enhypen", name: "ENHYPEN", accent: "#d5d1c7", modelUrl: "/models/kpop/enhypen.3mf", thumbnail: "/images/kpop-models/enhypen/thumbnail_3mf.png" },
-  { key: "kpop-collection", name: "K-pop Collection", accent: "#f1cb65", modelUrl: "/models/kpop/kpop-collection.3mf", thumbnail: "/images/kpop-models/kpop-collection/thumbnail_3mf.png" },
-  { key: "stray-kids-collection", name: "Stray Kids Collection", accent: "#e84f57", modelUrl: "/models/kpop/stray-kids-collection.3mf", thumbnail: "/images/kpop-models/stray-kids-collection/thumbnail_3mf.png" },
-  { key: "stray-kids", name: "Stray Kids", accent: "#e84f57", modelUrl: "/models/kpop/stray-kids.3mf", thumbnail: "/images/kpop-models/stray-kids/thumbnail_3mf.png" }
+  { key: "baby-dragon", name: "Baby Dragon", accent: "#f383a0", modelUrl: "/models/critter-clickers/baby-dragon.3mf", thumbnail: "/images/critter-clickers/baby-dragon.jpg" },
+  { key: "baby-mushroom", name: "Baby Mushroom", accent: "#f15b5b", modelUrl: "/models/critter-clickers/baby-mushroom.3mf", thumbnail: "/images/critter-clickers/baby-mushroom.jpg" },
+  { key: "baby-sunflower", name: "Baby Sunflower", accent: "#ffc400", modelUrl: "/models/critter-clickers/baby-sunflower.3mf", thumbnail: "/images/critter-clickers/baby-sunflower.jpg" },
+  { key: "cactus-cat", name: "Cactus Cat", accent: "#43a047", modelUrl: "/models/critter-clickers/cactus-cat.3mf", thumbnail: "/images/critter-clickers/cactus-cat.jpg" },
+  { key: "mini-cauldron", name: "Mini Cauldron", accent: "#6742a6", modelUrl: "/models/critter-clickers/mini-cauldron.3mf", thumbnail: "/images/critter-clickers/mini-cauldron.jpg" },
+  { key: "chonky-cat", name: "Chonky Cat", accent: "#f0a65a", modelUrl: "/models/critter-clickers/chonky-cat.3mf", thumbnail: "/images/critter-clickers/chonky-cat.jpg" },
+  { key: "mini-dumpling", name: "Mini Dumpling", accent: "#f3d7a4", modelUrl: "/models/critter-clickers/mini-dumpling.3mf", thumbnail: "/images/critter-clickers/mini-dumpling.jpg" },
+  { key: "fruit-turtle", name: "Fruit Turtle", accent: "#4aa36b", modelUrl: "/models/critter-clickers/fruit-turtle.3mf", thumbnail: "/images/critter-clickers/fruit-turtle.jpg" },
+  { key: "ghost", name: "Ghost", accent: "#e9e6df", modelUrl: "/models/critter-clickers/ghost.3mf", thumbnail: "/images/critter-clickers/ghost.jpg" },
+  { key: "jack-o-lantern", name: "Jack-O’-Lantern", accent: "#ff781f", modelUrl: "/models/critter-clickers/jack-o-lantern.3mf", thumbnail: "/images/critter-clickers/jack-o-lantern.jpg" },
+  { key: "mothman", name: "Mothman", accent: "#38343b", modelUrl: "/models/critter-clickers/mothman.3mf", thumbnail: "/images/critter-clickers/mothman.jpg" },
+  { key: "potion", name: "Potion", accent: "#8752bd", modelUrl: "/models/critter-clickers/potion.3mf", thumbnail: "/images/critter-clickers/potion.jpg" }
 ]);
 const PRODUCT_STATUSES = new Set(["active", "coming_soon", "hidden"]);
 
@@ -34,11 +37,13 @@ export function normalizeKpopClickerModels(value = []) {
     if (!item || typeof item !== "object") return [];
     const modelUrl = String(item.modelUrl || item.model_url || "").trim();
     if (!modelUrl) return [];
-    const name = String(item.name || `K-pop design ${index + 1}`).trim();
+    const name = String(item.name || `Clicker design ${index + 1}`).trim();
     const key = String(item.key || name).toLowerCase().normalize("NFKD")
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `design-${index + 1}`;
     const accent = /^#[0-9a-f]{6}$/i.test(String(item.accent || "")) ? String(item.accent) : "#f383a0";
-    return [{ key, name, accent, modelUrl, thumbnail: String(item.thumbnail || item.thumbnail_url || "").trim() }];
+    const previewMode = String(item.previewMode || item.preview_mode || "").trim() ||
+      (modelUrl.startsWith("/models/critter-clickers/") ? "photo" : "3d");
+    return [{ key, name, accent, modelUrl, thumbnail: String(item.thumbnail || item.thumbnail_url || "").trim(), previewMode }];
   });
 }
 
@@ -352,11 +357,11 @@ export const DEFAULT_PRODUCT_CATALOG = [
   },
   {
     product_key: IMAGE_CLICKER_PRODUCT_KEY,
-    name: "K-pop Clicker",
-    eyebrow: "Your favourite group, one satisfying click.",
-    description: "Choose a ready-made K-pop design, customise the colours and preview it in 3D.",
-    status: "hidden",
-    price_visible: false,
+    name: "Critter Clickers",
+    eyebrow: "Cute little characters with a satisfying click.",
+    description: "Choose a licensed CritterCRAFT design, see the real finished look and mix your colours.",
+    status: "active",
+    price_visible: true,
     usual_base_price: 6.9,
     launch_base_price: 6.9,
     launch_price_enabled: false,
@@ -378,11 +383,15 @@ export const DEFAULT_PRODUCT_CATALOG = [
     minimum_working_days: null,
     maximum_working_days: null,
     sort_order: 22,
-    image_path: null,
-    gallery_paths: [],
+    image_path: "/images/critter-clickers/baby-dragon.jpg",
+    gallery_paths: [
+      "/images/critter-clickers/baby-dragon.jpg",
+      "/images/critter-clickers/chonky-cat.jpg",
+      "/images/critter-clickers/mini-dumpling.jpg"
+    ],
     video_path: "",
     kpop_models: DEFAULT_KPOP_CLICKER_MODELS,
-    production_notes: "Print one clicker body and one image keycap. Check the chosen artwork, crop and body colour before printing."
+    production_notes: "Licensed CritterCRAFT design. Print the selected 3MF clicker body and cap, then confirm all chosen colours before slicing."
   }
 ];
 
@@ -488,6 +497,24 @@ export function normalizeProductCatalog(rows = []) {
         product.extra_base_colour_price = fallback.extra_base_colour_price;
         product.extra_cap_colour_price = fallback.extra_cap_colour_price;
         product.extra_letter_colour_price = fallback.extra_letter_colour_price;
+      }
+    }
+
+    if (fallback.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+      const savedModels = normalizeKpopClickerModels(saved.kpop_models);
+      const usesRetiredKpopLibrary = savedModels.length > 0 && savedModels.every(model =>
+        String(model.modelUrl || "").startsWith("/models/kpop/")
+      );
+      if (usesRetiredKpopLibrary || /k-pop/i.test(String(product.name || ""))) {
+        product.name = fallback.name;
+        product.eyebrow = fallback.eyebrow;
+        product.description = fallback.description;
+        product.status = fallback.status;
+        product.price_visible = fallback.price_visible;
+        product.image_path = fallback.image_path;
+        product.gallery_paths = fallback.gallery_paths;
+        product.kpop_models = fallback.kpop_models;
+        product.production_notes = fallback.production_notes;
       }
     }
 
