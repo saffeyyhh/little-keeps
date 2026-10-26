@@ -270,7 +270,7 @@ test("always shows pricing when a product is available", () => {
   assert.equal(pencil.price_visible, true);
 });
 
-test("keeps the licensed character clicker collection available", () => {
+test("keeps the licensed character clicker collection hidden until launch", () => {
   const catalogue = applyProductStatusOverrides(normalizeProductCatalog([{
     product_key: IMAGE_CLICKER_PRODUCT_KEY,
     status: "active",
@@ -280,8 +280,8 @@ test("keeps the licensed character clicker collection available", () => {
   });
 
   const characterClicker = getProductByKey(catalogue, IMAGE_CLICKER_PRODUCT_KEY);
-  assert.equal(characterClicker.status, "active");
-  assert.equal(characterClicker.price_visible, true);
+  assert.equal(characterClicker.status, "hidden");
+  assert.equal(characterClicker.price_visible, false);
 });
 
 test("ignores invalid product visibility overrides", () => {

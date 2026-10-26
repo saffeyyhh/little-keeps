@@ -72,14 +72,14 @@ export function applyProductStatusOverrides(catalog = [], value = {}) {
       ? undefined
       : overrides[product.product_key];
     const status = isLicensedCritterCollection
-      ? "active"
+      ? "hidden"
       : isRetiredProduct(product)
       ? "hidden"
       : savedOverride || product.status;
     return {
       ...product,
       status,
-      price_visible: status === "active" ? true : product.price_visible
+      price_visible: isLicensedCritterCollection ? false : status === "active" ? true : product.price_visible
     };
   });
 }
@@ -368,9 +368,9 @@ export const DEFAULT_PRODUCT_CATALOG = [
     product_key: IMAGE_CLICKER_PRODUCT_KEY,
     name: "Critter Clickers",
     eyebrow: "Cute little characters with a satisfying click.",
-    description: "Choose a licensed CritterCRAFT design, see the real finished look and mix your colours.",
-    status: "active",
-    price_visible: true,
+    description: "Choose a licensed CritterCRAFT design in the original colours shown.",
+    status: "hidden",
+    price_visible: false,
     usual_base_price: 6.9,
     launch_base_price: 6.9,
     launch_price_enabled: false,
@@ -400,7 +400,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     ],
     video_path: "",
     kpop_models: DEFAULT_KPOP_CLICKER_MODELS,
-    production_notes: "Licensed CritterCRAFT design. Print the selected 3MF clicker body and cap, then confirm all chosen colours before slicing."
+    production_notes: "Licensed CritterCRAFT design. Print the selected 3MF clicker body and cap in the original fixed colours shown."
   }
 ];
 
