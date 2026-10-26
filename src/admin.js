@@ -1969,7 +1969,7 @@ async function uploadKpopModel(file, productKey) {
   if (!file) return "";
   const extension = String(file.name || "").split(".").pop()?.toLowerCase();
   if (extension !== "3mf") throw new Error(`“${file.name || "This file"}” is not a 3MF file.`);
-  if (file.size > 20 * 1024 * 1024) throw new Error(`“${file.name}” is too large. Keep each 3MF under 20 MB.`);
+  if (file.size > 50 * 1024 * 1024) throw new Error(`“${file.name}” is too large. Keep each 3MF under 50 MB.`);
   const path = `${productKey}/models/${crypto.randomUUID()}.3mf`;
   const { error } = await supabase.storage.from("product-images").upload(path, file, {
     cacheControl: "3600",
@@ -2144,12 +2144,14 @@ function renderSettingsWorkspace() {
               const isLedDraft = product.product_key === LED_PRODUCT_KEY;
               const isNormalGridDraft = product.product_key === NORMAL_GRID_PRODUCT_KEY;
               const isImageClickerDraft = product.product_key === IMAGE_CLICKER_PRODUCT_KEY;
+              const isCritterCollection = product.product_key.startsWith("critter-");
+              const hasEditableModelLibrary = isImageClickerDraft || isCritterCollection;
               const isReadyMade = isReadyMadeProduct(product);
               const productGalleryPaths = Array.isArray(product.gallery_paths)
                 ? product.gallery_paths.filter(Boolean)
                 : product.image_path ? [product.image_path] : [];
               const productVideoPath = product.video_path === "__none__" ? "" : String(product.video_path || "");
-              const productKpopModels = isImageClickerDraft
+              const productKpopModels = hasEditableModelLibrary
                 ? normalizeKpopClickerModels(product.kpop_models)
                 : [];
 
@@ -2194,7 +2196,7 @@ function renderSettingsWorkspace() {
                       <section class="product-price-group product-media-manager" data-product-media-manager="${escapeAdminHtml(product.product_key)}">
                         <div class="product-price-group-heading">
                           <strong>Product photos & click video</strong>
-                          <small>${isImageClickerDraft ? "The first photo is the shop cover. Customers can browse the rest before choosing a 3D design." : "The first photo is the cover. Customers can swipe through the rest."}</small>
+                          <small>${hasEditableModelLibrary ? "The first photo is the collection cover. Customers can swipe through the rest." : "The first photo is the cover. Customers can swipe through the rest."}</small>
                         </div>
                         <div class="product-admin-gallery" data-product-admin-gallery>
                           ${productGalleryPaths.map((path, index) => `
@@ -2229,18 +2231,18 @@ function renderSettingsWorkspace() {
                         <input class="product-video-path-input" name="${escapeAdminHtml(prefix)}video_path" type="hidden" value="${escapeAdminHtml(product.video_path || "")}">
                       </section>
 
-                      ${isImageClickerDraft ? `
+                      ${hasEditableModelLibrary ? `
                         <section class="product-price-group kpop-model-manager" data-kpop-model-manager="${escapeAdminHtml(product.product_key)}">
                           <div class="product-price-group-heading">
-                            <strong>Character 3MF designs</strong>
-                            <small>Upload, rename or remove licensed print-ready models customers can choose. Changes appear after you save settings.</small>
+                            <strong>${isCritterCollection ? "Collection 3MF files" : "Character 3MF designs"}</strong>
+                            <small>${isCritterCollection ? "Keep the licensed production file here. If this Critter has genuine variants, add their customer-facing names under Options below." : "Upload, rename or remove licensed print-ready models customers can choose. Changes appear after you save settings."}</small>
                           </div>
                           <div class="kpop-model-list" data-kpop-model-list>
                             ${productKpopModels.map(model => `
                               <article class="kpop-model-item" data-kpop-model-item data-model-url="${escapeAdminHtml(model.modelUrl)}" data-thumbnail="${escapeAdminHtml(model.thumbnail)}" data-model-key="${escapeAdminHtml(model.key)}">
                                 <span class="kpop-model-icon">3MF</span>
                                 <label><span>Design name</span><input type="text" maxlength="50" value="${escapeAdminHtml(model.name)}" data-kpop-model-name></label>
-                                <label><span>Default logo colour</span><input type="color" value="${escapeAdminHtml(model.accent)}" data-kpop-model-accent></label>
+                                ${isCritterCollection ? "" : `<label><span>Default logo colour</span><input type="color" value="${escapeAdminHtml(model.accent)}" data-kpop-model-accent></label>`}
                                 <button type="button" class="delete-product-btn" data-kpop-model-remove>Remove</button>
                               </article>
                             `).join("") || `<p class="product-media-empty" data-kpop-model-empty>No 3MF designs yet.</p>`}
@@ -2249,7 +2251,7 @@ function renderSettingsWorkspace() {
                           <label class="settings-field product-media-upload">
                             <span>Add 3MF designs</span>
                             <input type="file" accept=".3mf,model/3mf" multiple data-kpop-model-upload>
-                            <small>Select one or more 3MF files · up to 20 MB each. The filename becomes the design name and can be edited above.</small>
+                            <small>Select one or more 3MF files · up to 50 MB each. The filename becomes the design name and can be edited above.</small>
                           </label>
                         </section>
                       ` : ""}
@@ -2779,6 +2781,7 @@ function renderSettingsWorkspace() {
     });
   });
   document.querySelectorAll("[data-kpop-model-manager]").forEach(manager => {
+    const fixedColourCollection = String(manager.dataset.kpopModelManager || "").startsWith("critter-");
     const syncModels = () => {
       const items = Array.from(manager.querySelectorAll("[data-kpop-model-item]"));
       const hidden = manager.querySelector("[data-kpop-models-input]");
@@ -2814,8 +2817,8 @@ function renderSettingsWorkspace() {
       const list = manager.querySelector("[data-kpop-model-list]");
       if (!list) return;
       Array.from(event.currentTarget.files || []).forEach(file => {
-        if (!/\.3mf$/i.test(file.name) || file.size > 20 * 1024 * 1024) {
-          alert(`“${file.name}” could not be added. Use a 3MF file up to 20 MB.`);
+        if (!/\.3mf$/i.test(file.name) || file.size > 50 * 1024 * 1024) {
+          alert(`“${file.name}” could not be added. Use a 3MF file up to 50 MB.`);
           return;
         }
         const pendingId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -2830,7 +2833,7 @@ function renderSettingsWorkspace() {
         item.innerHTML = `
           <span class="kpop-model-icon">NEW</span>
           <label><span>Design name</span><input type="text" maxlength="50" value="${escapeAdminHtml(name)}" data-kpop-model-name></label>
-          <label><span>Default logo colour</span><input type="color" value="#f383a0" data-kpop-model-accent></label>
+          ${fixedColourCollection ? "" : '<label><span>Default logo colour</span><input type="color" value="#f383a0" data-kpop-model-accent></label>'}
           <button type="button" class="delete-product-btn" data-kpop-model-remove>Remove</button>
         `;
         list.append(item);
@@ -3094,7 +3097,7 @@ async function saveShopSettings(event) {
       form.set(galleryField, JSON.stringify(Array.from(new Set(uploadedGalleryPaths))));
       const videoFile = videoInput?.files?.[0];
       if (videoFile) form.set(videoField, await uploadProductVideo(videoFile, product.product_key));
-      if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
+      if (product.product_key === IMAGE_CLICKER_PRODUCT_KEY || product.product_key.startsWith("critter-")) {
         let models = [];
         try {
           models = JSON.parse(String(form.get(kpopModelsField) || "[]"));
@@ -3141,7 +3144,7 @@ async function saveShopSettings(event) {
         }
       })(),
       video_path: String(form.get(`${prefix}video_path`) || "").trim(),
-      kpop_models: product.product_key === IMAGE_CLICKER_PRODUCT_KEY
+      kpop_models: product.product_key === IMAGE_CLICKER_PRODUCT_KEY || product.product_key.startsWith("critter-")
         ? (() => {
             try { return normalizeKpopClickerModels(JSON.parse(String(form.get(`${prefix}kpop_models`) || "[]"))); }
             catch { return []; }

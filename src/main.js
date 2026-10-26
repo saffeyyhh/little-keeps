@@ -11879,7 +11879,7 @@ function openReadyMadeProduct(productKey, existingItem = null) {
           `).join("")}
           <label><span>Quantity</span><input id="readyMadeQuantity" type="number" min="1" max="${Math.max(1, Number(product.stock_quantity) || 1)}" value="${getItemQuantity(existingItem || {})}"></label>
         </div>
-        <p class="ready-made-stock-note">${Number(product.stock_quantity)} available</p>
+        <p class="ready-made-stock-note">${Number(product.stock_quantity) >= 250 ? "Made to order" : `${Number(product.stock_quantity)} available`}</p>
         <button id="addReadyMadeToCartBtn" class="submit-btn" type="button">${existingItem ? "Update cart" : "Add to cart"}</button>
       </div>
     </div>
@@ -12230,7 +12230,9 @@ if (requestedProduct && !requestedPreviewProductKey) {
 
 if (isProductPreview && previewProduct) {
   activeProduct = getProductByKey(productCatalog, previewProduct.product_key);
-  if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
+  if (isReadyMadeProduct(activeProduct)) {
+    openReadyMadeProduct(activeProduct.product_key);
+  } else if (activeProduct.product_key === PHOTO_PRODUCT_KEY) {
     openPhotoKeepsakeStudio();
   } else if (activeProduct.product_key === IMAGE_CLICKER_PRODUCT_KEY) {
     openImageClickerStudio();

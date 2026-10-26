@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DEFAULT_PRODUCT_CATALOG,
+  DEFAULT_CRITTER_COLLECTIONS,
   formatProductUnitsSold,
   MODULAR_PRODUCT_KEY,
   NORMAL_GRID_PRODUCT_KEY,
@@ -38,6 +39,21 @@ test("normalizes editable character clicker 3MF designs", () => {
     modelUrl: "https://example.com/gg.3mf",
     thumbnail: "",
     previewMode: "3d"
+  }]);
+});
+
+test("keeps every Critter as its own hidden fixed-colour collection", () => {
+  assert.equal(DEFAULT_CRITTER_COLLECTIONS.length, 12);
+  assert.ok(DEFAULT_CRITTER_COLLECTIONS.every(product =>
+    product.product_type === READY_MADE_PRODUCT_TYPE &&
+    product.status === "hidden" &&
+    product.price_visible === false &&
+    product.kpop_models.length === 1
+  ));
+  const turtle = DEFAULT_CRITTER_COLLECTIONS.find(product => product.product_key === "critter-fruit-turtle");
+  assert.deepEqual(turtle.options, [{
+    name: "Fruit design",
+    values: ["Citrus", "Strawberry", "Kiwi", "Watermelon"]
   }]);
 });
 

@@ -6,7 +6,7 @@ export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
 export const LED_PRODUCT_KEY = "light-up-name-clicker";
 export const NORMAL_GRID_PRODUCT_KEY = "classic-grid-name-clicker";
 export const IMAGE_CLICKER_PRODUCT_KEY = "custom-image-clicker";
-export const RETIRED_PRODUCT_KEYS = Object.freeze([]);
+export const RETIRED_PRODUCT_KEYS = Object.freeze([IMAGE_CLICKER_PRODUCT_KEY]);
 const RETIRED_PRODUCT_KEY_SET = new Set(RETIRED_PRODUCT_KEYS);
 export const READY_MADE_PRODUCT_TYPE = "ready_made";
 export const CUSTOM_PRODUCT_TYPE = "custom";
@@ -29,6 +29,51 @@ export const DEFAULT_KPOP_CLICKER_MODELS = Object.freeze([
   { key: "mothman", name: "Mothman", accent: "#38343b", modelUrl: "/models/critter-clickers/mothman.3mf", thumbnail: "/images/critter-clickers/mothman.jpg" },
   { key: "potion", name: "Potion", accent: "#8752bd", modelUrl: "/models/critter-clickers/potion.3mf", thumbnail: "/images/critter-clickers/potion.jpg" }
 ]);
+const CRITTER_COLLECTION_VARIANTS = Object.freeze({
+  "fruit-turtle": [{ name: "Fruit design", values: ["Citrus", "Strawberry", "Kiwi", "Watermelon"] }]
+});
+
+export const DEFAULT_CRITTER_COLLECTIONS = Object.freeze(
+  DEFAULT_KPOP_CLICKER_MODELS.map((model, index) => ({
+    product_key: `critter-${model.key}`,
+    product_type: READY_MADE_PRODUCT_TYPE,
+    name: `${model.name} Clicker`,
+    sku: `CRITTER-${model.key.toUpperCase()}`,
+    eyebrow: "Licensed CritterCRAFT collection",
+    description: `A satisfying ${model.name} character clicker, made in the original fixed colours shown.`,
+    status: "hidden",
+    price_visible: false,
+    usual_base_price: 6.9,
+    launch_base_price: 6.9,
+    launch_price_enabled: false,
+    launch_price_ends_at: null,
+    included_characters: 1,
+    extra_character_price: 0,
+    included_base_colours: 1,
+    included_cap_colours: 1,
+    included_letter_colours: 0,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0,
+    minimum_characters: 1,
+    maximum_characters: 1,
+    base_print_minutes_fixed: 25,
+    base_print_minutes_per_character: 0,
+    keycap_print_minutes_per_character: 20,
+    assembly_minutes_per_item: 5,
+    minimum_working_days: null,
+    maximum_working_days: null,
+    stock_quantity: 250,
+    options: CRITTER_COLLECTION_VARIANTS[model.key] || [],
+    featured: false,
+    sort_order: 60 + index,
+    image_path: model.thumbnail,
+    gallery_paths: [model.thumbnail],
+    video_path: "",
+    kpop_models: [model],
+    production_notes: `Licensed CritterCRAFT ${model.name}. Use ${model.modelUrl} and print only the selected fixed-colour keychain variant.`
+  }))
+);
 const PRODUCT_STATUSES = new Set(["active", "coming_soon", "hidden"]);
 
 export function normalizeKpopClickerModels(value = []) {
@@ -401,7 +446,8 @@ export const DEFAULT_PRODUCT_CATALOG = [
     video_path: "",
     kpop_models: DEFAULT_KPOP_CLICKER_MODELS,
     production_notes: "Licensed CritterCRAFT design. Print the selected 3MF clicker body and cap in the original fixed colours shown."
-  }
+  },
+  ...DEFAULT_CRITTER_COLLECTIONS
 ];
 
 const numericFields = [
