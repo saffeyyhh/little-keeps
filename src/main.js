@@ -1524,7 +1524,7 @@ ${showBoothSection ? `
     <div class="image-clicker-heading">
       <p class="section-eyebrow">Licensed CritterCRAFT collection</p>
       <h2 id="imageClickerTitle">Choose your critter</h2>
-      <p>See the real finished design, choose your colours and add your favourite to cart.</p>
+      <p>Pick your favourite character. Each one is made in the original colours shown.</p>
     </div>
 
     <div class="image-clicker-layout">
@@ -1544,27 +1544,12 @@ ${showBoothSection ? `
                 `).join("") || `<p>No clicker designs are available right now.</p>`}
               </div>
             </div>
-            <p class="image-clicker-shape-help">Real product photos are shown here. Your chosen colours are saved with the exact licensed print file.</p>
+            <p class="image-clicker-shape-help">What you see is what you’ll receive — no colour decisions needed.</p>
           </div>
         </div>
 
         <div class="image-clicker-step">
           <span>2</span>
-          <div>
-            <h3>Choose your colours</h3>
-            <div id="imageClickerColourParts" class="image-clicker-colour-parts" role="tablist" aria-label="Part to recolour">
-              <button type="button" class="is-active" data-image-clicker-part="body">Clicker body</button>
-              <button type="button" data-image-clicker-part="backing">Cap backing</button>
-              <button type="button" data-image-clicker-part="logo">Logo</button>
-            </div>
-            <div id="imageClickerColours" class="image-clicker-colours">
-              ${initialImageClickerColours.map(colour => `<button type="button" data-image-clicker-colour="${escapePresetText(colour.hex)}" style="--image-clicker-colour:${escapePresetText(colour.hex)}" aria-label="${escapePresetText(colour.name)}"><i></i><span>${escapePresetText(colour.name)}</span></button>`).join("")}
-            </div>
-          </div>
-        </div>
-
-        <div class="image-clicker-step">
-          <span>3</span>
           <div class="image-clicker-final-fields">
             <h3>Choose quantity</h3>
             <label><span>Quantity</span><input id="imageClickerQuantity" type="number" min="1" max="250" step="1" value="1" inputmode="numeric"></label>
@@ -1580,11 +1565,7 @@ ${showBoothSection ? `
           <i id="imageClickerPreviewArtwork">Loading 3D model…</i>
           <span class="image-clicker-drag-hint">Drag to rotate · scroll to zoom</span>
         </div>
-        <div class="image-clicker-selected-colours" aria-label="Your selected print colours">
-          <span><i data-image-clicker-summary="body"></i>Body</span>
-          <span><i data-image-clicker-summary="backing"></i>Cap</span>
-          <span><i data-image-clicker-summary="logo"></i>Details</span>
-        </div>
+        <p class="image-clicker-fixed-colours">Colours are fixed as shown ♡</p>
         <div class="image-clicker-price"><span id="imageClickerPriceLabel">1 clicker</span><strong>${displaySettingMoney(getProductDisplayPrice(imageClickerProduct))}</strong></div>
         <button id="addImageClickerToCartBtn" type="button">Add to cart <span>→</span></button>
         <p id="imageClickerStatus" aria-live="polite"></p>
@@ -4893,12 +4874,12 @@ async function buildImageClicker3DPreview() {
     imageClickerPreview?.classList.remove("uses-photo-fallback");
     imageClickerPhotoFallback?.classList.add("hidden");
     if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "";
-    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. Your chosen colours will be used for printing.`;
+    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. It will be made in the colours shown.`;
   } catch (error) {
     imageClickerPreview?.classList.add("uses-photo-fallback");
     imageClickerPhotoFallback?.classList.remove("hidden");
     if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "";
-    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. Your chosen colours will be used for printing.`;
+    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. It will be made in the colours shown.`;
     console.warn("Unable to load the character clicker 3MF preview:", error);
   }
 }
@@ -11753,24 +11734,11 @@ function renderImageClickerPreview() {
     imageClickerPreview.classList.add("uses-photo-fallback");
     imageClickerPhotoFallback?.classList.remove("hidden");
     if (imageClickerPreviewArtwork) imageClickerPreviewArtwork.textContent = "";
-    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. Your chosen colours will be used for printing.`;
+    if (imageClickerStatus) imageClickerStatus.textContent = `${imageClickerState.designName} selected. It will be made in the colours shown.`;
   } else if (imageClicker3D?.modelKey === imageClickerState.modelKey) {
     applyImageClickerPreviewColours();
     imageClickerPhotoFallback?.classList.add("hidden");
   } else void buildImageClicker3DPreview();
-  const selectedColour = imageClickerState[`${imageClickerState.selectedPart}Colour`];
-  imageClickerColourParts?.querySelectorAll("[data-image-clicker-part]").forEach(button => {
-    button.classList.toggle("is-active", button.dataset.imageClickerPart === imageClickerState.selectedPart);
-  });
-  imageClickerColours?.querySelectorAll("[data-image-clicker-colour]").forEach(button => {
-    button.classList.toggle("is-active", button.dataset.imageClickerColour.toLowerCase() === String(selectedColour).toLowerCase());
-  });
-  imageClickerPreview.closest(".image-clicker-preview-panel")?.querySelectorAll("[data-image-clicker-summary]").forEach(swatch => {
-    const part = swatch.dataset.imageClickerSummary;
-    const colour = imageClickerState[`${part}Colour`] || "#FFFFFF";
-    swatch.style.background = colour;
-    swatch.parentElement?.setAttribute("aria-label", `${swatch.parentElement.textContent.trim()}: ${colour}`);
-  });
   const quantity = normalizeItemQuantity(imageClickerQuantity?.value);
   if (imageClickerPriceLabel) imageClickerPriceLabel.textContent = `${quantity} clicker${quantity === 1 ? "" : "s"}`;
   const product = getProductByKey(productCatalog, IMAGE_CLICKER_PRODUCT_KEY);
@@ -11843,6 +11811,7 @@ async function addImageClickerToCart() {
           designName: imageClickerState.designName || "Clicker design",
           modelKey: imageClickerState.modelKey,
           modelUrl: imageClickerState.modelUrl,
+          fixedColours: true,
           bodyColour: imageClickerState.bodyColour,
           backingColour: imageClickerState.backingColour,
           logoColour: imageClickerState.logoColour,
@@ -12075,16 +12044,6 @@ imageClickerModal?.addEventListener("click", event => {
       logoColour: design.accent
     });
     document.querySelectorAll("[data-image-clicker-design]").forEach(button => button.classList.toggle("is-active", button === designButton));
-    renderImageClickerPreview();
-  }
-  const partButton = event.target.closest("[data-image-clicker-part]");
-  if (partButton) {
-    imageClickerState.selectedPart = partButton.dataset.imageClickerPart;
-    renderImageClickerPreview();
-  }
-  const colourButton = event.target.closest("[data-image-clicker-colour]");
-  if (colourButton) {
-    imageClickerState[`${imageClickerState.selectedPart}Colour`] = colourButton.dataset.imageClickerColour;
     renderImageClickerPreview();
   }
 });
