@@ -1580,6 +1580,11 @@ ${showBoothSection ? `
           <i id="imageClickerPreviewArtwork">Loading 3D model…</i>
           <span class="image-clicker-drag-hint">Drag to rotate · scroll to zoom</span>
         </div>
+        <div class="image-clicker-selected-colours" aria-label="Your selected print colours">
+          <span><i data-image-clicker-summary="body"></i>Body</span>
+          <span><i data-image-clicker-summary="backing"></i>Cap</span>
+          <span><i data-image-clicker-summary="logo"></i>Details</span>
+        </div>
         <div class="image-clicker-price"><span id="imageClickerPriceLabel">1 clicker</span><strong>${displaySettingMoney(getProductDisplayPrice(imageClickerProduct))}</strong></div>
         <button id="addImageClickerToCartBtn" type="button">Add to cart <span>→</span></button>
         <p id="imageClickerStatus" aria-live="polite"></p>
@@ -11759,6 +11764,12 @@ function renderImageClickerPreview() {
   });
   imageClickerColours?.querySelectorAll("[data-image-clicker-colour]").forEach(button => {
     button.classList.toggle("is-active", button.dataset.imageClickerColour.toLowerCase() === String(selectedColour).toLowerCase());
+  });
+  imageClickerPreview.closest(".image-clicker-preview-panel")?.querySelectorAll("[data-image-clicker-summary]").forEach(swatch => {
+    const part = swatch.dataset.imageClickerSummary;
+    const colour = imageClickerState[`${part}Colour`] || "#FFFFFF";
+    swatch.style.background = colour;
+    swatch.parentElement?.setAttribute("aria-label", `${swatch.parentElement.textContent.trim()}: ${colour}`);
   });
   const quantity = normalizeItemQuantity(imageClickerQuantity?.value);
   if (imageClickerPriceLabel) imageClickerPriceLabel.textContent = `${quantity} clicker${quantity === 1 ? "" : "s"}`;

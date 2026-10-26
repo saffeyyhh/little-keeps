@@ -64,9 +64,18 @@ export function normalizeProductStatusOverrides(value = {}) {
 export function applyProductStatusOverrides(catalog = [], value = {}) {
   const overrides = normalizeProductStatusOverrides(value);
   return (Array.isArray(catalog) ? catalog : []).map(product => {
-    const status = isRetiredProduct(product)
+    const isLicensedCritterCollection = product.product_key === IMAGE_CLICKER_PRODUCT_KEY &&
+      normalizeKpopClickerModels(product.kpop_models).some(model =>
+        String(model.modelUrl || "").startsWith("/models/critter-clickers/")
+      );
+    const savedOverride = product.reactivated_from_retired_catalog
+      ? undefined
+      : overrides[product.product_key];
+    const status = isLicensedCritterCollection
+      ? "active"
+      : isRetiredProduct(product)
       ? "hidden"
-      : overrides[product.product_key] || product.status;
+      : savedOverride || product.status;
     return {
       ...product,
       status,
@@ -505,7 +514,11 @@ export function normalizeProductCatalog(rows = []) {
       const usesRetiredKpopLibrary = savedModels.length > 0 && savedModels.every(model =>
         String(model.modelUrl || "").startsWith("/models/kpop/")
       );
-      if (usesRetiredKpopLibrary || /k-pop/i.test(String(product.name || ""))) {
+      const hasCritterLibrary = savedModels.some(model =>
+        String(model.modelUrl || "").startsWith("/models/critter-clickers/")
+      );
+      if (!hasCritterLibrary || usesRetiredKpopLibrary || /k-pop/i.test(String(product.name || ""))) {
+        product.reactivated_from_retired_catalog = true;
         product.name = fallback.name;
         product.eyebrow = fallback.eyebrow;
         product.description = fallback.description;
