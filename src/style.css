@@ -6552,6 +6552,8 @@ body {
 }
 
 .led-base-capacity-status {
+  display: grid;
+  gap: 3px;
   margin: 12px 0 0;
   padding: 10px 12px;
   border-radius: 12px;
@@ -6561,10 +6563,41 @@ body {
   font-weight: 750;
 }
 
+.led-base-capacity-status > span {
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .led-base-capacity-status.is-error {
   color: #8b3148;
   background: #fff0f3;
   box-shadow: inset 0 0 0 1px #efbdc9;
+}
+
+.led-base-capacity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.led-base-capacity-actions a,
+.led-base-capacity-actions button {
+  min-height: 34px;
+  padding: 8px 11px;
+  border: 1px solid #c8708d;
+  border-radius: 999px;
+  color: #863e57;
+  background: #fff;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.led-base-capacity-actions a {
+  color: #fff;
+  background: #94475f;
 }
 
 .led-fixed-cap-note {

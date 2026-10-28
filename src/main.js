@@ -1988,7 +1988,7 @@ Chloe</textarea>
             <button type="button" data-led-base-type="9-grid"><strong>9 slots</strong><span>3 × 3 grid</span></button>
             <button type="button" data-led-base-type="12-grid"><strong>12 slots</strong><span>4 × 3 grid</span></button>
           </div>
-          <p id="ledBaseCapacityStatus" class="led-base-capacity-status" aria-live="polite"></p>
+          <div id="ledBaseCapacityStatus" class="led-base-capacity-status" aria-live="polite"></div>
           <p id="gridCapNote" class="led-fixed-cap-note"><strong>Translucent caps are included.</strong> Choose colours for the solid base and raised letters only.</p>
         </div>
 
@@ -4383,7 +4383,9 @@ function getActiveProductCharacterLimit() {
     1,
     Number(activeProduct?.maximum_characters) || 10
   );
-  if (activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY) return Math.min(12, configuredLimit);
+  // Keep longer grid requests visible so customers receive custom-layout help
+  // instead of having their name silently cut off at 12 characters.
+  if (activeProduct?.product_key === NORMAL_GRID_PRODUCT_KEY) return 30;
   return [SOLID_PRODUCT_KEY, PENCIL_PRODUCT_KEY, LED_PRODUCT_KEY].includes(activeProduct?.product_key)
     ? Math.min(10, configuredLimit)
     : configuredLimit;
@@ -5085,6 +5087,7 @@ function applyClassicPencilDefaults() {
 let globalDesign = {
   baseShape: "ribbed",
   ledBaseType: "6-grid",
+  ledBaseManual: false,
   letterOrientation: "vertical",
   fontSize: 24,
   nfcEnabled: false,
@@ -5285,6 +5288,21 @@ function getDefaultLedBaseType(characterCount = 1, productKey = activeProduct?.p
   return "12-grid";
 }
 
+function getLargestGridCapacity(productKey = activeProduct?.product_key) {
+  return Math.max(...Object.values(getGridBaseTypes(productKey)).map(layout => layout.capacity));
+}
+
+function resolveGridBaseType(design, characterCount = 1, productKey = activeProduct?.product_key) {
+  const baseTypes = getGridBaseTypes(productKey);
+  const selectedKey = normalizeLedBaseType(design?.ledBaseType, characterCount, productKey);
+  const selectedLayout = baseTypes[selectedKey];
+
+  if (!design?.ledBaseManual || characterCount > selectedLayout.capacity) {
+    return getDefaultLedBaseType(characterCount, productKey);
+  }
+  return selectedKey;
+}
+
 function normalizeLedBaseType(value, characterCount = 1, productKey = activeProduct?.product_key) {
   const baseTypes = getGridBaseTypes(productKey);
   return baseTypes[value] ? value : getDefaultLedBaseType(characterCount, productKey);
@@ -5301,6 +5319,7 @@ function cloneCustomDesign(source = globalDesign) {
   return {
     baseShape: source?.baseShape || "ribbed",
     ledBaseType: normalizeLedBaseType(source?.ledBaseType, 6),
+    ledBaseManual: Boolean(source?.ledBaseManual),
     letterOrientation: source?.letterOrientation || "vertical",
     fontSize: getStandardFontSize(source || globalDesign),
     nfcEnabled: Boolean(source?.nfcEnabled),
@@ -5674,6 +5693,7 @@ function getActiveDesign() {
     item.custom = {
       baseShape: globalDesign.baseShape || "ribbed",
       ledBaseType: normalizeLedBaseType(globalDesign.ledBaseType, Array.from(sanitizeName(item.name)).length),
+      ledBaseManual: Boolean(globalDesign.ledBaseManual),
       letterOrientation: globalDesign.letterOrientation || "vertical",
       fontSize: getStandardFontSize(globalDesign),
       nfcEnabled: Boolean(globalDesign.nfcEnabled),
@@ -6862,6 +6882,7 @@ function getDesign(item) {
       Array.from(sanitizeName(item.name)).length,
       getItemProduct(item).product_key
     ),
+    ledBaseManual: Boolean(item.custom.ledBaseManual),
 
     letterOrientation:
       item.custom.letterOrientation ||
@@ -7367,7 +7388,7 @@ function createLedPreviewMaterial() {
 
 function getLedBaseLayout(characterCount, design = globalDesign, productKey = activeProduct?.product_key) {
   const baseTypes = getGridBaseTypes(productKey);
-  const key = normalizeLedBaseType(design?.ledBaseType, characterCount, productKey);
+  const key = resolveGridBaseType(design, characterCount, productKey);
   return { key, ...baseTypes[key] };
 }
 
@@ -7821,6 +7842,7 @@ function setBaseShape(shape) {
       item.custom = {
         baseShape: globalDesign.baseShape || "ribbed",
         ledBaseType: normalizeLedBaseType(globalDesign.ledBaseType, Array.from(sanitizeName(item.name)).length),
+        ledBaseManual: Boolean(globalDesign.ledBaseManual),
         letterOrientation: globalDesign.letterOrientation || "vertical",
         fontSize: getStandardFontSize(globalDesign),
         nfcEnabled: Boolean(globalDesign.nfcEnabled),
@@ -7854,6 +7876,11 @@ wavyBaseBtn.onclick = () => {
 
 document.querySelectorAll("[data-led-base-type]").forEach(button => {
   button.addEventListener("click", () => setLedBaseType(button.dataset.ledBaseType));
+});
+
+document.getElementById("ledBaseCapacityStatus")?.addEventListener("click", event => {
+  if (!event.target.closest("[data-grid-browse-products]")) return;
+  setStorefrontView("shop", { scrollTo: "productsSection" });
 });
 
 verticalLetterBtn.onclick = () => {
@@ -8887,14 +8914,17 @@ async function submitOrderOnce() {
           } : null,
           letter_orientation: design.letterOrientation || "vertical",
           led_base_type: isGridClickerProduct(itemProduct.product_key)
-            ? normalizeLedBaseType(design.ledBaseType, Array.from(sanitizeName(item.name)).length, itemProduct.product_key)
+            ? getLedBaseLayout(Array.from(sanitizeName(item.name)).length, design, itemProduct.product_key).key
+            : null,
+          led_base_manual: isGridClickerProduct(itemProduct.product_key)
+            ? Boolean(design.ledBaseManual)
             : null,
           led_cap_material: itemProduct.product_key === LED_PRODUCT_KEY
             ? "fixed translucent"
             : null,
           base_shape: isGridClickerProduct(itemProduct.product_key)
             ? {
-                key: normalizeLedBaseType(design.ledBaseType, Array.from(sanitizeName(item.name)).length, itemProduct.product_key),
+                key: getLedBaseLayout(Array.from(sanitizeName(item.name)).length, design, itemProduct.product_key).key,
                 label: getLedBaseLayout(Array.from(sanitizeName(item.name)).length, design, itemProduct.product_key).label
               }
             : {
@@ -9237,7 +9267,14 @@ function getLedBaseCapacityIssue(item) {
   const characterCount = Array.from(sanitizeName(item.name)).length;
   const layout = getLedBaseLayout(characterCount, design, productKey);
   if (characterCount <= layout.capacity) return null;
-  return { item, layout, characterCount };
+  const maximumCapacity = getLargestGridCapacity(productKey);
+  return {
+    item,
+    layout,
+    characterCount,
+    maximumCapacity,
+    unsupported: characterCount > maximumCapacity
+  };
 }
 
 function getLedBaseCapacityIssues(items = names) {
@@ -9257,9 +9294,12 @@ function updateLedBaseControls() {
   const item = names[selectedIndex];
   const characterCount = Array.from(sanitizeName(item?.name || singleName.value)).length;
   const baseTypes = getGridBaseTypes(activeProduct.product_key);
-  const selectedKey = normalizeLedBaseType(design.ledBaseType, characterCount, activeProduct.product_key);
+  const requestedKey = normalizeLedBaseType(design.ledBaseType, characterCount, activeProduct.product_key);
+  const selectedKey = resolveGridBaseType(design, characterCount, activeProduct.product_key);
   const selectedLayout = baseTypes[selectedKey];
+  const wasAutomaticallySelected = !design.ledBaseManual || selectedKey !== requestedKey;
   design.ledBaseType = selectedKey;
+  if (selectedKey !== requestedKey) design.ledBaseManual = false;
 
   container.querySelectorAll("[data-led-base-type]").forEach(button => {
     button.hidden = !baseTypes[button.dataset.ledBaseType];
@@ -9271,27 +9311,46 @@ function updateLedBaseControls() {
   const issue = getLedBaseCapacityIssue(item);
   status.classList.toggle("is-error", Boolean(issue));
   if (issue) {
+    if (issue.unsupported) {
+      const customMessage = encodeURIComponent(
+        `Hi Little Keeps! I would like a custom grid clicker for “${item.name || "my name"}” (${issue.characterCount} characters). Can you advise me?`
+      );
+      status.innerHTML = `
+        <strong>No standard grid fits all ${issue.characterCount} characters.</strong>
+        <span>Our ready-made grids hold up to ${issue.maximumCapacity}. Ask us about a custom grid, or browse another clicker style.</span>
+        <span class="led-base-capacity-actions">
+          <a href="${contactWhatsAppUrl}?text=${customMessage}" target="_blank" rel="noopener noreferrer">Ask on WhatsApp →</a>
+          <button type="button" data-grid-browse-products>See other products</button>
+        </span>
+      `;
+      return;
+    }
     const suggestedKey = getDefaultLedBaseType(issue.characterCount, activeProduct.product_key);
     status.textContent = `${item.name || "This name"} has ${issue.characterCount} characters, but the ${issue.layout.capacity}-slot base cannot fit them. Choose ${baseTypes[suggestedKey].label} or a larger base.`;
     return;
   }
 
   const emptySlots = Math.max(0, selectedLayout.capacity - characterCount);
-  status.textContent = characterCount
-    ? `Fits ✓ ${characterCount} character${characterCount === 1 ? "" : "s"}${emptySlots ? ` · ${emptySlots} slot${emptySlots === 1 ? "" : "s"} will stay empty` : " · every slot is used"}.`
-    : `This base holds up to ${selectedLayout.capacity} characters.`;
+  status.innerHTML = characterCount
+    ? `<strong>${wasAutomaticallySelected ? "Selected for you ✓" : "Fits your name ✓"}</strong><span>${selectedLayout.label}${emptySlots ? ` · ${emptySlots} empty slot${emptySlots === 1 ? "" : "s"}` : " · every slot is used"}</span>`
+    : `<strong>Enter a name to begin.</strong><span>We’ll select the smallest grid that fits.</span>`;
 }
 
 function setLedBaseType(type) {
   if (!getGridBaseTypes(activeProduct.product_key)[type]) return;
   const design = getActiveDesign();
   design.ledBaseType = type;
+  design.ledBaseManual = true;
 
   if (applyAllToggle.checked) {
     globalDesign.ledBaseType = type;
+    globalDesign.ledBaseManual = true;
     names.forEach(item => {
       if (getItemProduct(item).product_key !== activeProduct.product_key) return;
-      if (item.custom) item.custom.ledBaseType = type;
+      if (item.custom) {
+        item.custom.ledBaseType = type;
+        item.custom.ledBaseManual = true;
+      }
     });
   }
 
@@ -9661,10 +9720,12 @@ function serializeSharedGroupBasket() {
         imageCap: design.imageCap || null,
         pencil: normalizePencilDesign(design.pencil),
         base_shape: design.baseShape || "ribbed",
-        ledBaseType: normalizeLedBaseType(
-          design.ledBaseType,
-          Array.from(sanitizeName(item.name)).length
-        ),
+        ledBaseType: getLedBaseLayout(
+          Array.from(sanitizeName(item.name)).length,
+          design,
+          activeProduct.product_key
+        ).key,
+        ledBaseManual: Boolean(design.ledBaseManual),
         letter_orientation: design.letterOrientation || "vertical",
         bases: [...design.bases],
         caps: [...design.caps],
@@ -10725,7 +10786,10 @@ nextBtn.onclick = async () => {
     refreshUI();
     buildSelectedPreview();
     document.getElementById("ledBaseOptions")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    alert(`${firstIssue.item.name || "This name"} has ${firstIssue.characterCount} characters, but the selected base has only ${firstIssue.layout.capacity} slots. Please choose a larger base before adding it to your cart.`);
+    alert(firstIssue.unsupported
+      ? `${firstIssue.item.name || "This name"} has ${firstIssue.characterCount} characters, but our standard grids hold up to ${firstIssue.maximumCapacity}. Please use the custom-order or other-product options shown below the layouts.`
+      : `${firstIssue.item.name || "This name"} has ${firstIssue.characterCount} characters, but the selected base has only ${firstIssue.layout.capacity} slots. Please choose a larger base before adding it to your cart.`
+    );
     return;
   }
 
@@ -11079,7 +11143,7 @@ function updateProductCustomiser() {
       : isLedClicker
         ? "Choose up to 9 letters, numbers or icons, then select the base layout that fits. The translucent clicker caps are fixed; only the solid base and raised characters change colour."
       : isNormalGridClicker
-        ? "Choose up to 12 letters or the available icons, then select a base layout that fits. The solid base, opaque caps and raised characters can each use your chosen colours."
+        ? "Type your letters or choose the available icons and we’ll select the smallest grid that fits. Standard grids hold up to 12 characters; longer names will show custom-order help."
       : isSolidClicker
         ? "Maximum 10 letters, numbers or icons. The compact base is made as one solid piece."
         : "";
@@ -11149,6 +11213,7 @@ function beginProductDesign(productKey) {
       item.custom = {
         baseShape: globalDesign.baseShape || "ribbed",
         ledBaseType: normalizeLedBaseType(globalDesign.ledBaseType, Array.from(sanitizeName(item.name)).length),
+        ledBaseManual: Boolean(globalDesign.ledBaseManual),
         letterOrientation: globalDesign.letterOrientation || "vertical",
         fontSize: getStandardFontSize(globalDesign),
         nfcEnabled: Boolean(globalDesign.nfcEnabled),
@@ -14089,6 +14154,7 @@ window.reorderTrackedItems = function(items) {
           design.led_base_type || design.ledBaseType,
           Array.from(String(item.name || item.clean_name || "")).length
         ),
+        ledBaseManual: Boolean(design.led_base_manual || design.ledBaseManual),
         letterOrientation: design.letter_orientation || design.letterOrientation || "vertical",
         fontSize: getStandardFontSize({
           fontSize: design.font_size_mm || design.fontSize || design.font_size
