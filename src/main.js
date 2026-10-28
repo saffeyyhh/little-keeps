@@ -1223,6 +1223,15 @@ ${isManualOrder ? `
 <section id="designScreen" class="design-screen">
 
 <section id="productsSection" class="products-section" data-store-view="shop" aria-labelledby="productsHeading">
+  ${isManualOrder ? `
+    <div class="manual-order-shortcut">
+      <div>
+        <strong>Taking an Instagram or WhatsApp order?</strong>
+        <span>Add any special item with your own price and production notes.</span>
+      </div>
+      <button id="addManualCustomItemFromShopBtn" type="button">+ Add custom item</button>
+    </div>
+  ` : ""}
   <div class="products-heading">
     <p class="section-eyebrow">Little Keeps</p>
     <h2 id="productsHeading">Personalised keepsakes</h2>
@@ -10487,6 +10496,7 @@ function openManualCustomItemModal(item = null, index = -1) {
 }
 
 addManualCustomItemBtn?.addEventListener("click", () => openManualCustomItemModal());
+document.getElementById("addManualCustomItemFromShopBtn")?.addEventListener("click", () => openManualCustomItemModal());
 document.getElementById("closeManualCustomItemBtn")?.addEventListener("click", closeManualCustomItemModal);
 manualCustomItemModal?.addEventListener("click", event => {
   if (event.target === manualCustomItemModal) closeManualCustomItemModal();

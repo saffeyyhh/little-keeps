@@ -613,6 +613,42 @@ body.cart-open {
   cursor: pointer;
 }
 
+.manual-order-shortcut {
+  width: min(1120px, calc(100% - 32px));
+  box-sizing: border-box;
+  margin: 20px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border: 1px solid #e7c5d2;
+  border-radius: 17px;
+  color: #5f3545;
+  background: linear-gradient(135deg, #fff7fa, #fbf5ff);
+}
+
+.manual-order-shortcut > div {
+  display: grid;
+  gap: 4px;
+}
+
+.manual-order-shortcut span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.manual-order-shortcut button {
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 16px;
+  color: #fff;
+  background: #8f5869;
+  font-weight: 850;
+  cursor: pointer;
+}
+
 .manual-custom-item-modal-card {
   width: min(620px, calc(100vw - 28px));
   max-height: calc(100vh - 32px);
@@ -679,6 +715,15 @@ body.cart-open {
 }
 
 @media (max-width: 560px) {
+  .manual-order-shortcut {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .manual-order-shortcut button {
+    width: 100%;
+  }
+
   .manual-custom-item-grid {
     grid-template-columns: 1fr;
   }
