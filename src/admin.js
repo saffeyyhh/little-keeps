@@ -8936,9 +8936,7 @@ const specialKeycaps = {
 
   // Classic Grid Clicker icon caps from the supplied Normal Clicker.3mf.
   "🌱": "plant",
-  "⚑": "uk-flag",
-  "🚑": "ambulance",
-  "🧭": "compass"
+  "🐈": "cat-outline"
 };
 
 function sanitizeName(name) {
@@ -9029,9 +9027,7 @@ const PDF_ICON_CODES = {
   "🍓": "SW",
   "🍉": "WM",
   "🌱": "PT",
-  "⚑": "UK",
-  "🚑": "AM",
-  "🧭": "CP"
+  "🐈": "CO"
 };
 
 function getPdfIconCode(character) {

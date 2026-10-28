@@ -10,13 +10,15 @@ test("includes every exact normal-grid base, A-Z cap and icon cap used by the pr
     "3-l",
     "4-square",
     "4-t",
-    "4-inverted-t",
     "6-grid",
     "9-grid",
     "12-grid"
   ];
   const letters = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-  const icons = ["plant", "uk-flag", "airplane", "cat", "ambulance", "compass"];
+  const icons = [
+    "plant", "cat-outline", "coffee", "airplane", "star", "music", "cat", "paw",
+    "cloud", "lightning", "ribbon", "heart", "fire", "moon", "duck", "flower"
+  ];
   const paths = [
     ...baseNames.map(name => `${modelRoot}/normal-grid-base-${name}.stl`),
     ...letters.map(letter => `${modelRoot}/normal-grid-cap-${letter}.stl`),
@@ -24,6 +26,6 @@ test("includes every exact normal-grid base, A-Z cap and icon cap used by the pr
   ];
 
   const sizes = await Promise.all(paths.map(async path => (await stat(path)).size));
-  assert.equal(paths.length, 39);
+  assert.equal(paths.length, 48);
   assert.ok(sizes.every(size => size > 84));
 });

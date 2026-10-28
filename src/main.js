@@ -3525,11 +3525,21 @@ const specialKeycaps = {
 
 const normalGridKeycaps = Object.freeze({
   "🌱": "plant",
-  "⚑": "uk-flag",
+  "🐈": "cat-outline",
+  "☕": "coffee",
   "✈": "airplane",
+  "★": "star",
+  "♪": "music",
   "🐱": "cat",
-  "🚑": "ambulance",
-  "🧭": "compass"
+  "🐾": "paw",
+  "☁": "cloud",
+  "⚡": "lightning",
+  "🎀": "ribbon",
+  "♡": "heart",
+  "🔥": "fire",
+  "🌙": "moon",
+  "🦆": "duck",
+  "✿": "flower"
 });
 
 const NORMAL_GRID_ICON_CATEGORIES = Object.freeze([
@@ -5233,18 +5243,6 @@ const NORMAL_GRID_BASE_TYPES = Object.freeze({
       { x: 3, y: 8.5 },
       { x: 20, y: 8.5 },
       { x: 3, y: -8.5 }
-    ],
-    dimensions: { lengthMm: 62, breadthMm: 39 }
-  },
-  "4-inverted-t": {
-    label: "4 slots · Inverted T",
-    capacity: 4,
-    path: "/models/normal-grid/normal-grid-base-4-inverted-t.stl",
-    positions: [
-      { x: 3, y: 8.5 },
-      { x: -14, y: -8.5 },
-      { x: 3, y: -8.5 },
-      { x: 20, y: -8.5 }
     ],
     dimensions: { lengthMm: 62, breadthMm: 39 }
   },

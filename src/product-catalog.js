@@ -272,7 +272,7 @@ export const DEFAULT_PRODUCT_CATALOG = [
     product_key: NORMAL_GRID_PRODUCT_KEY,
     name: "Classic Grid Name Clicker",
     eyebrow: "Solid everyday clicker",
-    description: "A sturdy grid-style clicker with opaque caps, raised letters or icons, and seven base layouts for 3–12 slots.",
+    description: "A sturdy grid-style clicker with opaque caps, raised letters or icons, and six base layouts for 3–12 slots.",
     status: "hidden",
     price_visible: false,
     usual_base_price: 0,

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Extract the exact solid bases, A-Z/icon caps and listing renders from Normal Clicker.3mf."""
+"""Extract the Grid, Alphabets and Icons plates from Normal Clicker.3mf.
+
+The separate ``Normal`` plate is intentionally ignored. It contains standalone
+clicker bodies that are not part of the configurable Classic Grid product.
+"""
 
 from __future__ import annotations
 
@@ -14,13 +18,12 @@ from pathlib import Path
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 
 BASE_MODELS = {
-    "base-3-l": "3D/Objects/object_1496.model",
-    "base-4-square": "3D/Objects/object_1497.model",
-    "base-4-t": "3D/Objects/object_1499.model",
-    "base-4-inverted-t": "3D/Objects/object_1501.model",
-    "base-6-grid": "3D/Objects/object_1495.model",
-    "base-9-grid": "3D/Objects/object_1498.model",
-    "base-12-grid": "3D/Objects/object_1494.model",
+    "base-3-l": "3D/Objects/object_1591.model",
+    "base-4-square": "3D/Objects/object_1585.model",
+    "base-4-t": "3D/Objects/object_1588.model",
+    "base-6-grid": "3D/Objects/object_1587.model",
+    "base-9-grid": "3D/Objects/object_1586.model",
+    "base-12-grid": "3D/Objects/object_1584.model",
 }
 
 # The Bambu project arranges these caps as an A-Z grid, but the underlying
@@ -55,35 +58,30 @@ CAP_MODELS = {
     "Z": "3D/Objects/object_1490.model",
 }
 
-# These caps are stored as a shared cap body plus transformed SVG artwork.
-# Keep both meshes so the storefront preview matches the supplied printable
-# project rather than substituting a generic emoji or font glyph.
+# Top-level component IDs from the supplied Icons plate. Each object includes
+# the correct blank cap plus its transformed artwork, including multi-part paw
+# artwork, so the website preview mirrors the printable assembly.
 ICON_MODELS = {
-    "plant": (
-        ("3D/Objects/object_1524.model", 69, None),
-        ("3D/Objects/object_1524.model", 70, (0.059676757, 0, 0, 0, 0.0566929145, 0, 0, 0, 0.100150229, -0.138161381, -0.0391810151, 2.99999992)),
-    ),
-    "airplane": (
-        ("3D/Objects/object_1524.model", 69, None),
-        ("3D/Objects/object_1528.model", 72, (0.0472498226, 0, 0, 0, 0.0472498226, 0, 0, 0, 0.100150229, 0.0488595884, 0.0495061332, 3.00000152)),
-    ),
-    "ambulance": (
-        ("3D/Objects/object_1524.model", 69, None),
-        ("3D/Objects/object_1530.model", 74, (0.051539018, 0, 0, 0, 0.0597196849, 0, 0, 0, 0.100150229, 0.122223707, -0.0558912436, 3.00000039)),
-    ),
-    "cat": (
-        ("3D/Objects/object_1524.model", 69, None),
-        ("3D/Objects/object_1531.model", 76, (0.0527370374, 0, 0, 0, 0.075590557, 0, 0, 0, 0.100150229, 0.0172778225, 0.149471765, 2.99999933)),
-    ),
-    "uk-flag": (
-        ("3D/Objects/object_1524.model", 69, None),
-        ("3D/Objects/object_1532.model", 78, (0.0503937008, 0, 0, 0, 0.0503937008, 0, 0, 0, 0.100150229, 0.0843475973, 0.115470467, 2.99999852)),
-    ),
-    "compass": (
-        ("3D/Objects/object_1524.model", 69, None),
-        ("3D/Objects/object_1536.model", 80, (0.0581465813, 0, 0, 0, 0.0496685404, 0, 0, 0, 0.100150229, -0.00547721718, 0.00157256457, 2.99999881)),
-    ),
+    "plant": 5,
+    "cat-outline": 9,
+    "coffee": 13,
+    "airplane": 17,
+    "star": 21,
+    "music": 25,
+    "cat": 29,
+    "paw": 37,
+    "cloud": 41,
+    "lightning": 45,
+    "ribbon": 49,
+    "heart": 53,
+    "fire": 57,
+    "moon": 61,
+    "duck": 65,
+    "flower": 67,
 }
+
+PRODUCTION_NS = "http://schemas.microsoft.com/3dmanufacturing/production/2015/06"
+MAIN_MODEL = "3D/3dmodel.model"
 
 
 def read_mesh(archive: zipfile.ZipFile, member: str, object_id: int | None = None):
@@ -109,6 +107,15 @@ def read_mesh(archive: zipfile.ZipFile, member: str, object_id: int | None = Non
     return vertices, triangles
 
 
+def parse_transform(value: str | None):
+    if not value:
+        return None
+    numbers = tuple(float(number) for number in value.split())
+    if len(numbers) != 12:
+        raise ValueError(f"Expected 12 transform values, got {len(numbers)}")
+    return numbers
+
+
 def transform_vertices(vertices, transform):
     if transform is None:
         return vertices
@@ -128,6 +135,36 @@ def read_composite_mesh(archive: zipfile.ZipFile, parts):
     triangles = []
     for member, object_id, transform in parts:
         part_vertices, part_triangles = read_mesh(archive, member, object_id)
+        offset = len(vertices)
+        vertices.extend(transform_vertices(part_vertices, transform))
+        triangles.extend(tuple(index + offset for index in triangle) for triangle in part_triangles)
+    return vertices, triangles
+
+
+def read_object_tree(archive: zipfile.ZipFile, member: str, object_id: int):
+    """Flatten a 3MF object and all of its transformed components."""
+    member = member.lstrip("/")
+    root = ET.fromstring(archive.read(member))
+    namespace = {"m": CORE_NS, "p": PRODUCTION_NS}
+    target = root.find(f"m:resources/m:object[@id='{object_id}']", namespace)
+    if target is None:
+        raise ValueError(f"Object {object_id} not found in {member}")
+    if target.find("m:mesh", namespace) is not None:
+        return read_mesh(archive, member, object_id)
+
+    parts = []
+    for component in target.findall("m:components/m:component", namespace):
+        component_member = component.attrib.get(f"{{{PRODUCTION_NS}}}path", member)
+        component_id = int(component.attrib["objectid"])
+        vertices, triangles = read_object_tree(archive, component_member, component_id)
+        parts.append((vertices, triangles, parse_transform(component.attrib.get("transform"))))
+
+    if not parts:
+        raise ValueError(f"Object {object_id} in {member} contains no mesh or components")
+
+    vertices = []
+    triangles = []
+    for part_vertices, part_triangles, transform in parts:
         offset = len(vertices)
         vertices.extend(transform_vertices(part_vertices, transform))
         triangles.extend(tuple(index + offset for index in triangle) for triangle in part_triangles)
@@ -166,6 +203,15 @@ def main():
     args.model_output.mkdir(parents=True, exist_ok=True)
     args.image_output.mkdir(parents=True, exist_ok=True)
 
+    expected_models = {
+        *(f"normal-grid-{name}.stl" for name in BASE_MODELS),
+        *(f"normal-grid-cap-{letter}.stl" for letter in CAP_MODELS),
+        *(f"normal-grid-cap-icon-{icon}.stl" for icon in ICON_MODELS),
+    }
+    for existing in args.model_output.glob("normal-grid-*.stl"):
+        if existing.name not in expected_models:
+            existing.unlink()
+
     with zipfile.ZipFile(args.source) as archive:
         for name, member in BASE_MODELS.items():
             write_binary_stl(
@@ -177,20 +223,20 @@ def main():
                 args.model_output / f"normal-grid-cap-{letter}.stl",
                 *read_mesh(archive, member),
             )
-        for icon, parts in ICON_MODELS.items():
+        for icon, object_id in ICON_MODELS.items():
             write_binary_stl(
                 args.model_output / f"normal-grid-cap-icon-{icon}.stl",
-                *read_composite_mesh(archive, parts),
+                *read_object_tree(archive, MAIN_MODEL, object_id),
             )
 
         (args.image_output / "classic-grid-clicker-keycaps.png").write_bytes(
             archive.read("Metadata/plate_1.png")
         )
         (args.image_output / "classic-grid-clicker-bases.png").write_bytes(
-            archive.read("Metadata/plate_2.png")
+            archive.read("Metadata/plate_3.png")
         )
         (args.image_output / "classic-grid-clicker-icons.png").write_bytes(
-            archive.read("Metadata/plate_3.png")
+            archive.read("Metadata/plate_2.png")
         )
 
 
