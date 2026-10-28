@@ -18,10 +18,10 @@ from pathlib import Path
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 
 BASE_MODELS = {
-    "base-3-l": "3D/Objects/object_1591.model",
-    "base-4-square": "3D/Objects/object_1585.model",
-    "base-4-t": "3D/Objects/object_1588.model",
-    "base-6-grid": "3D/Objects/object_1587.model",
+    "base-3-l": "3D/Objects/object_1585.model",
+    "base-4-square": "3D/Objects/object_1591.model",
+    "base-4-t": "3D/Objects/object_1587.model",
+    "base-6-grid": "3D/Objects/object_1588.model",
     "base-9-grid": "3D/Objects/object_1586.model",
     "base-12-grid": "3D/Objects/object_1584.model",
 }

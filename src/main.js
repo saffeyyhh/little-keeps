@@ -1998,7 +1998,6 @@ Chloe</textarea>
             <button type="button" data-led-base-type="3-l"><strong>3 slots</strong><span>L shape</span></button>
             <button type="button" data-led-base-type="4-square"><strong>4 slots</strong><span>2 × 2 square</span></button>
             <button type="button" data-led-base-type="4-t"><strong>4 slots</strong><span>T shape</span></button>
-            <button type="button" data-led-base-type="4-inverted-t"><strong>4 slots</strong><span>Inverted T</span></button>
             <button type="button" data-led-base-type="6-grid"><strong>6 slots</strong><span>3 × 2 grid</span></button>
             <button type="button" data-led-base-type="9-grid"><strong>9 slots</strong><span>3 × 3 grid</span></button>
             <button type="button" data-led-base-type="12-grid"><strong>12 slots</strong><span>4 × 3 grid</span></button>
@@ -5202,18 +5201,6 @@ const LED_BASE_TYPES = Object.freeze({
       { x: -20, y: -11.5 },
       { x: 3, y: -11.5 },
       { x: 26, y: -11.5 }
-    ],
-    dimensions: { lengthMm: 78, breadthMm: 49 }
-  },
-  "4-inverted-t": {
-    label: "4 slots · Inverted T",
-    capacity: 4,
-    path: "/models/led/led-base-variant-1424.stl",
-    positions: [
-      { x: -20, y: 11.5 },
-      { x: 3, y: 11.5 },
-      { x: 26, y: 11.5 },
-      { x: 3, y: -11.5 }
     ],
     dimensions: { lengthMm: 78, breadthMm: 49 }
   },

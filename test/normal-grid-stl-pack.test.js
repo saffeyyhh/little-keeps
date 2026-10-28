@@ -28,4 +28,17 @@ test("includes every exact normal-grid base, A-Z cap and icon cap used by the pr
   const sizes = await Promise.all(paths.map(async path => (await stat(path)).size));
   assert.equal(paths.length, 48);
   assert.ok(sizes.every(size => size > 84));
+
+  assert.deepEqual(
+    Object.fromEntries(baseNames.map((name, index) => [name, sizes[index]])),
+    {
+      "3-l": 779684,
+      "4-square": 582884,
+      "4-t": 1031884,
+      "6-grid": 637184,
+      "9-grid": 718884,
+      "12-grid": 800484
+    },
+    "each layout label must keep pointing to its matching printable base"
+  );
 });
