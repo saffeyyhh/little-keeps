@@ -553,6 +553,28 @@
   font-size: 13px;
 }
 
+.fulfilment-heading-actions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  flex: none;
+}
+
+.fulfilment-heading-actions > span {
+  color: #5f747f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fulfilment-heading-actions > button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  color: #fff;
+  background: #387da7;
+  font-weight: 850;
+}
+
 .route-assistance-bar button,
 .fulfilment-card > button {
   flex: none;
@@ -860,6 +882,15 @@
   .route-assistance-bar button,
   .fulfilment-card > button,
   .fulfilment-card-actions button {
+    width: 100%;
+  }
+
+  .fulfilment-heading-actions {
+    justify-items: stretch;
+    width: 100%;
+  }
+
+  .fulfilment-heading-actions > button {
     width: 100%;
   }
 
@@ -10317,6 +10348,7 @@ body::before {
 .fulfilment-editor-section[hidden] { display: none; }
 .fulfilment-editor-note { grid-column: 1 / -1; margin: 0; color: #6c5a76; font-size: 11px; line-height: 1.5; }
 .fulfilment-editor-warning { padding: 12px 14px; border: 1px solid #f0d4a6; border-radius: 12px; color: #744f16; background: #fffaf0; font-size: 12px; line-height: 1.5; }
+.manual-delivery-label-note { padding: 11px 13px; border: 1px solid #cfe0f5; border-radius: 12px; color: #365b70; background: #f5faff; font-size: 12px; line-height: 1.5; }
 .fulfilment-notify-choice { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border: 1px solid #cfe0f5; border-radius: 12px; background: #f5f9ff; font-size: 12px; font-weight: 750; }
 .fulfilment-notify-choice input { width: 18px; height: 18px; accent-color: #7950a8; }
 .fulfilment-editor footer { display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; }

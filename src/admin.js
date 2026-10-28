@@ -497,6 +497,59 @@ document.querySelector("#app").innerHTML = `
       </footer>
     </form>
   </dialog>
+
+  <dialog id="manualDeliveryLabelDialog" class="fulfilment-editor manual-delivery-label-dialog">
+    <form id="manualDeliveryLabelForm">
+      <header>
+        <div>
+          <p>DM and custom orders</p>
+          <h2>Create a Delivery Label</h2>
+          <span>Enter the delivery details and print the same Little Keeps label. This does not create or change an order.</span>
+        </div>
+        <button id="closeManualDeliveryLabelDialog" type="button" aria-label="Close">×</button>
+      </header>
+
+      <div class="manual-delivery-label-note">
+        Use this for orders received through Instagram, WhatsApp or another channel.
+      </div>
+
+      <div class="fulfilment-editor-grid">
+        <label>
+          <span>Reference</span>
+          <input id="manualDeliveryReference" name="reference" maxlength="40" placeholder="e.g. DM-261028-1317">
+        </label>
+        <label>
+          <span>Customer name</span>
+          <input id="manualDeliveryCustomer" name="customer" maxlength="100" autocomplete="name" required>
+        </label>
+        <label class="full-row">
+          <span>Phone number</span>
+          <input id="manualDeliveryPhone" name="phone" maxlength="40" inputmode="tel" autocomplete="tel" required>
+        </label>
+        <label class="full-row">
+          <span>Delivery address</span>
+          <textarea id="manualDeliveryAddress" name="address" rows="4" maxlength="500" autocomplete="street-address" required></textarea>
+        </label>
+        <label>
+          <span>Hand to (optional)</span>
+          <input id="manualDeliveryHandoffName" name="handoffName" maxlength="100" placeholder="e.g. Guard or recipient">
+        </label>
+        <label>
+          <span>Handoff phone (optional)</span>
+          <input id="manualDeliveryHandoffPhone" name="handoffPhone" maxlength="40" inputmode="tel">
+        </label>
+        <label class="full-row">
+          <span>Delivery instructions (optional)</span>
+          <textarea id="manualDeliveryInstructions" name="instructions" rows="3" maxlength="300" placeholder="e.g. Call before delivery"></textarea>
+        </label>
+      </div>
+
+      <footer>
+        <button id="cancelManualDeliveryLabel" type="button">Cancel</button>
+        <button id="createManualDeliveryLabel" type="submit">Create Label</button>
+      </footer>
+    </form>
+  </dialog>
 `;
 
 const ordersContainer = document.getElementById("orders");
@@ -543,6 +596,8 @@ const aiMessageNote = document.getElementById("aiMessageNote");
 const aiMessageDraft = document.getElementById("aiMessageDraft");
 const basketLabelDialog = document.getElementById("basketLabelDialog");
 const basketLabelForm = document.getElementById("basketLabelForm");
+const manualDeliveryLabelDialog = document.getElementById("manualDeliveryLabelDialog");
+const manualDeliveryLabelForm = document.getElementById("manualDeliveryLabelForm");
 const aiMessageWriterStatus = document.getElementById("aiMessageWriterStatus");
 
 const { data: { session } } = await supabase.auth.getSession();
@@ -6130,7 +6185,10 @@ function renderFulfilmentWorkspace(orders) {
         <h2>Pack → hand off → complete</h2>
         <p>Delivery customers are emailed only when the order goes out for delivery and when it is delivered. Pending Delivery stays internal.</p>
       </div>
-      <span>${pickups.length} pickup · ${deliveries.length} delivery</span>
+      <div class="fulfilment-heading-actions">
+        <span>${pickups.length} pickup · ${deliveries.length} delivery</span>
+        <button type="button" onclick="window.openManualDeliveryLabel()">+ Manual / DM Label</button>
+      </div>
     </div>
     ${handDeliveries.length ? `
       <details class="fulfilment-tools">
@@ -11569,6 +11627,64 @@ document.getElementById("cancelBasketLabelPrint").onclick = () => basketLabelDia
 basketLabelForm.addEventListener("submit", event => {
   event.preventDefault();
   createConfiguredBasketTags(document.getElementById("printConfiguredBasketTags"));
+});
+
+function getManualDeliveryReference() {
+  const now = new Date();
+  const pad = value => String(value).padStart(2, "0");
+  return `DM-${String(now.getFullYear()).slice(-2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+}
+
+window.openManualDeliveryLabel = function() {
+  if (!manualDeliveryLabelDialog || !manualDeliveryLabelForm) return;
+  manualDeliveryLabelForm.reset();
+  document.getElementById("manualDeliveryReference").value = getManualDeliveryReference();
+  manualDeliveryLabelDialog.showModal();
+  setTimeout(() => document.getElementById("manualDeliveryCustomer")?.focus(), 50);
+};
+
+function closeManualDeliveryLabelDialog() {
+  manualDeliveryLabelDialog?.close();
+}
+
+document.getElementById("closeManualDeliveryLabelDialog")?.addEventListener("click", closeManualDeliveryLabelDialog);
+document.getElementById("cancelManualDeliveryLabel")?.addEventListener("click", closeManualDeliveryLabelDialog);
+manualDeliveryLabelDialog?.addEventListener("click", event => {
+  if (event.target === manualDeliveryLabelDialog) closeManualDeliveryLabelDialog();
+});
+
+manualDeliveryLabelForm?.addEventListener("submit", event => {
+  event.preventDefault();
+  const formData = new FormData(manualDeliveryLabelForm);
+  const customer = String(formData.get("customer") || "").trim();
+  const phone = String(formData.get("phone") || "").trim();
+  const address = String(formData.get("address") || "").trim();
+  if (!customer || !phone || !address) {
+    manualDeliveryLabelForm.reportValidity();
+    return;
+  }
+
+  const reference = String(formData.get("reference") || "").trim() || getManualDeliveryReference();
+  const manualOrder = {
+    id: `manual-${Date.now()}`,
+    order_ref: reference,
+    customer_name: customer,
+    customer_phone: phone,
+    collection_method: "delivery",
+    delivery_address: address,
+    special_instructions: String(formData.get("instructions") || "").trim(),
+    handoff_name: String(formData.get("handoffName") || "").trim(),
+    handoff_phone: String(formData.get("handoffPhone") || "").trim()
+  };
+
+  const pdf = buildHandDeliveryLabelPdf([manualOrder]);
+  const pdfUrl = pdf.output("bloburl");
+  const printWindow = window.open(pdfUrl, "_blank");
+  if (!printWindow) {
+    pdf.save(`${safeProductionFileName(reference, "dm-order")}-hand-delivery-label.pdf`);
+    alert("The label was downloaded because the print window was blocked.");
+  }
+  closeManualDeliveryLabelDialog();
 });
 
 async function renderAssemblyQueue() {
