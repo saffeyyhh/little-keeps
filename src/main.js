@@ -1786,6 +1786,21 @@ ${showBoothSection ? `
           </label>
 
           <div id="iconPicker" class="icon-picker"></div>
+
+          <div id="gridNameExamples" class="grid-name-examples hidden">
+            <div>
+              <strong>Not sure how to arrange it?</strong>
+              <span>Each letter or icon fills one slot. Tap an example, then replace it with yours.</span>
+            </div>
+            <div class="grid-name-example-list">
+              <button type="button" data-grid-name-example="SAF♡♡♡ZAT">
+                <b>SAF🩷🩷🩷ZAT</b><small>9-slot idea</small>
+              </button>
+              <button type="button" data-grid-name-example="S♡F♡A♡">
+                <b>S🩷F🩷A🩷</b><small>6-slot idea</small>
+              </button>
+            </div>
+          </div>
         </div>
 
         <div id="groupSection" class="hidden">
@@ -5424,6 +5439,31 @@ controls.maxPolarAngle = Math.PI * 0.58;
 controls.minAzimuthAngle = -Math.PI / 5;
 controls.maxAzimuthAngle = Math.PI / 5;
 
+let previewCameraFit = null;
+let previewCameraAspect = 1;
+
+function fitPreviewCamera({ padding = 1.22, minDistance = 105, y = 6 } = {}) {
+  if (!keychain.children.length) return;
+
+  keychain.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(keychain);
+  const size = new THREE.Vector3();
+  bounds.getSize(size);
+
+  const aspect = Math.max(0.35, canvas.clientWidth / Math.max(1, canvas.clientHeight));
+  const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+  const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+  const widthDistance = size.x / (2 * Math.tan(horizontalFov / 2));
+  const heightDistance = size.y / (2 * Math.tan(verticalFov / 2));
+  const distance = Math.max(minDistance, Math.max(widthDistance, heightDistance) * padding + size.z / 2);
+
+  previewCameraFit = { padding, minDistance, y };
+  previewCameraAspect = aspect;
+  camera.position.set(0, y, distance);
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
 // Optional: prevent zooming
 // controls.enableZoom = false;
 
@@ -7345,18 +7385,7 @@ async function buildStandardKeychain(name, design) {
 
     controls.target.set(0, 0, 0);
 
-    const cameraDistance = Math.max(
-      90,
-      standardSize.x * 1.75
-    );
-
-    camera.position.set(
-      0,
-      10,
-      cameraDistance
-    );
-
-    controls.update();
+    fitPreviewCamera({ padding: 1.28, minDistance: 105, y: 8 });
   } catch (error) {
     console.error(
       "Unable to build normal keychain preview:",
@@ -7492,9 +7521,7 @@ async function buildKeychain(name, design) {
       keychain.rotation.set(-0.52, 0.16, -0.05);
       controls.target.set(0, 0, 0);
       camera.fov = 35;
-      camera.position.set(0, -4, Math.max(120, Math.max(gridPreview.size.x, gridPreview.size.y) * 1.95));
-      camera.updateProjectionMatrix();
-      controls.update();
+      fitPreviewCamera({ padding: 1.22, minDistance: 120, y: -4 });
       return;
     }
 
@@ -7531,9 +7558,7 @@ async function buildKeychain(name, design) {
       keychain.rotation.set(-0.32, 0.08, 0);
       controls.target.set(0, 0, 0);
       camera.fov = 35;
-      camera.position.set(0, 0, Math.max(145, baseSize.x * 1.08));
-      camera.updateProjectionMatrix();
-      controls.update();
+      fitPreviewCamera({ padding: 1.2, minDistance: 145, y: 0 });
       return;
     }
 
@@ -7555,7 +7580,8 @@ async function buildKeychain(name, design) {
     keychain.rotation.y = 0.2;
 
     controls.target.set(0, 0, 0);
-    controls.update();
+    camera.fov = 35;
+    fitPreviewCamera({ padding: 1.22, minDistance: 120, y: 6 });
   } finally {
     if (thisBuildNumber === previewBuildNumber) {
       previewLoading?.classList.add("hidden");
@@ -9550,9 +9576,7 @@ async function buildPencilClickerPreview(item, design) {
     );
     controls.target.set(0, 0, 0);
     camera.fov = 35;
-    camera.position.set(0, 8, Math.max(135, size.x * PENCIL_PREVIEW_LAYOUT.cameraDistanceScale));
-    camera.updateProjectionMatrix();
-    controls.update();
+    fitPreviewCamera({ padding: 1.24, minDistance: 135, y: 8 });
   } catch (error) {
     console.error("Unable to build pencil clicker preview:", error);
     const pencilPreview = document.getElementById("pencilDesignPreview");
@@ -9627,6 +9651,9 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  if (previewCameraFit && Math.abs(camera.aspect - previewCameraAspect) > 0.02) {
+    fitPreviewCamera(previewCameraFit);
+  }
 }
 
 function animate() {
@@ -11049,6 +11076,7 @@ function updateProductCustomiser() {
   if (ledOptions) {
     ledOptions.style.display = isGridClicker ? "block" : "none";
   }
+  document.getElementById("gridNameExamples")?.classList.toggle("hidden", !isNormalGridClicker);
   const gridCapNote = document.getElementById("gridCapNote");
   if (gridCapNote) {
     gridCapNote.innerHTML = isLedClicker
@@ -12666,6 +12694,13 @@ async function retryRememberedOrderEmail() {
 }
 
 singleName.addEventListener("input", updateNames);
+document.getElementById("gridNameExamples")?.addEventListener("click", event => {
+  const example = event.target.closest("[data-grid-name-example]");
+  if (!example) return;
+  singleName.value = example.dataset.gridNameExample || "";
+  updateNames();
+  singleName.focus();
+});
 singleQuantity?.addEventListener("input", () => {
   if (singleQuantity.value === "") return;
   singleQuantity.value = String(normalizeItemQuantity(singleQuantity.value));
