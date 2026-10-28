@@ -6,6 +6,7 @@ import {
   DEFAULT_CRITTER_COLLECTIONS,
   formatProductUnitsSold,
   MODULAR_PRODUCT_KEY,
+  MANUAL_CUSTOM_PRODUCT_KEY,
   NORMAL_GRID_PRODUCT_KEY,
   PENCIL_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
@@ -26,6 +27,13 @@ import {
   normalizeProductOptions,
   isReadyMadeProduct
 } from "../src/product-catalog.js";
+
+test("keeps the admin-only manual item out of the customer catalogue", () => {
+  const manualItem = getProductByKey(DEFAULT_PRODUCT_CATALOG, MANUAL_CUSTOM_PRODUCT_KEY);
+  assert.equal(manualItem.product_type, "manual_custom");
+  assert.equal(manualItem.status, "hidden");
+  assert.equal(manualItem.price_visible, false);
+});
 
 test("normalizes editable character clicker 3MF designs", () => {
   assert.deepEqual(normalizeKpopClickerModels([

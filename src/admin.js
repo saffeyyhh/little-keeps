@@ -69,6 +69,7 @@ import {
   LED_PRODUCT_KEY,
   NORMAL_GRID_PRODUCT_KEY,
   IMAGE_CLICKER_PRODUCT_KEY,
+  MANUAL_CUSTOM_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
@@ -159,7 +160,7 @@ document.querySelector("#app").innerHTML = `
 
       <div class="admin-header-actions">
         <a class="header-manual-order" href="./index.html?manual=true">
-          <span aria-hidden="true">＋</span> New order
+          <span aria-hidden="true">＋</span> Manual / custom order
         </a>
         <a class="header-store-link" href="./index.html" target="_blank" rel="noopener">
           View shop ↗
@@ -213,7 +214,7 @@ document.querySelector("#app").innerHTML = `
 
             <div class="admin-actions" id="ordersActions">
               <a class="new-order-btn" href="./index.html?manual=true">
-                + Manual order
+                + Manual / custom order
               </a>
 
               <button id="cleanupExpiredBtn" type="button">
@@ -5929,6 +5930,7 @@ function renderOrders(orders) {
     const customNameProduct = isCustomNameKeychain(order, item);
     const pencilProduct = isPencilClicker(order, item);
     const readyMadeProduct = isReadyMadeOrderItem(item);
+    const manualCustomProduct = isManualCustomOrderItem(item);
     const readyMadeSelections = Object.entries(item.design?.ready_made?.selections || {})
       .map(([label, value]) => `${label}: ${value}`)
       .join(" · ");
@@ -5945,7 +5947,10 @@ function renderOrders(orders) {
           ` : ""}
           ${item.design_batch_number ? `<span class="assembly-tag">Design Batch ${Number(item.design_batch_number)}</span>` : ""}
 
-          ${readyMadeProduct ? `
+          ${manualCustomProduct ? `
+            <span class="assembly-tag">Custom DM Item</span>
+            <span class="assembly-tag">× ${Math.max(1, Number(item.quantity) || 1)}</span>
+          ` : readyMadeProduct ? `
             <span class="assembly-tag">Ready-made design</span>
             <span class="assembly-tag">× ${Math.max(1, Number(item.quantity) || 1)}</span>
           ` : imageClickerProduct ? `
@@ -5973,7 +5978,12 @@ function renderOrders(orders) {
           ${getItemGiftingBagQuantity(item) ? `<span class="assembly-tag">🎁 ${getItemGiftingBagQuantity(item)} Gifting Bag${getItemGiftingBagQuantity(item) === 1 ? "" : "s"}</span>` : ""}
         </div>
 
-        ${readyMadeProduct ? `
+        ${manualCustomProduct ? `
+          <div class="assembly-photo-summary">
+            <strong>${escapeAdminHtml(item.design?.manual_custom?.description || "Custom request")}</strong>
+            <span>${escapeAdminHtml(item.design?.manual_custom?.production_notes || "No production notes added")}</span>
+          </div>
+        ` : readyMadeProduct ? `
           <div class="assembly-ready-made-summary">
             ${item.design?.ready_made?.image_path ? `<img src="${escapeAdminHtml(item.design.ready_made.image_path)}" alt="">` : ""}
             <span>${escapeAdminHtml(readyMadeSelections || "No options selected")}</span>
@@ -7042,6 +7052,12 @@ function isPencilClicker(order, item) {
 
 function isReadyMadeOrderItem(item) {
   return item?.product_type === READY_MADE_PRODUCT_TYPE || Boolean(item?.design?.ready_made);
+}
+
+function isManualCustomOrderItem(item) {
+  return String(item?.product_key || "") === MANUAL_CUSTOM_PRODUCT_KEY ||
+    item?.product_type === "manual_custom" ||
+    Boolean(item?.design?.manual_custom);
 }
 
 function getPencilClickerInventoryName(order, item, itemIndex = 0) {
@@ -8339,6 +8355,20 @@ function getProductionSummary(orders, includeSelectedStatuses = false) {
 
       if (!design) return;
 
+      if (isManualCustomOrderItem(item)) {
+        customItems.push({
+          order,
+          item,
+          itemIndex,
+          itemName: `Custom DM Item - ${order.order_ref || order.id || "Order"} - ${item.name || "Item"}`,
+          name: item.name || "Custom DM item",
+          fontSize: 0,
+          isManualCustom: true,
+          manualCustom: design.manual_custom || {}
+        });
+        return;
+      }
+
       if (isPencilClicker(order, item)) {
         customItems.push({
           order,
@@ -8516,6 +8546,11 @@ function getOrderPrintableInventoryNeeds(order) {
       const bases = Array.isArray(design.bases) ? design.bases : [];
       const caps = Array.isArray(design.caps) ? design.caps : [];
       const letters = Array.isArray(design.letters) ? design.letters : [];
+
+      if (isManualCustomOrderItem(item)) {
+        addNeed(`Custom DM Item - ${order.order_ref || order.id || "Order"} - ${item.name || "Item"}`);
+        return;
+      }
 
       if (isCustomNameKeychain(order, item)) {
         addNeed(getCustomNameInventoryName(order, item, itemIndex));
@@ -14562,9 +14597,11 @@ async function renderProductionPlanner(orders) {
                       <span>${escapeAdminHtml(row.order.order_ref || "No reference")}</span>
                       <h4>${escapeAdminHtml(row.name)}</h4>
                     </div>
-                    <strong>${row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : row.isImageClicker ? "Image Clicker" : row.isPencil ? "Licensed Pencil Clicker" : `${row.fontSize} mm letters`}</strong>
+                    <strong>${row.isManualCustom ? "Manual Custom" : row.isPhoto ? (row.photo.variant === "clicker" ? "Photo · Clicker" : "Photo · Classic") : row.isImageClicker ? "Image Clicker" : row.isPencil ? "Licensed Pencil Clicker" : `${row.fontSize} mm letters`}</strong>
                   </header>
-                  ${row.isPhoto ? `
+                  ${row.isManualCustom ? `
+                    <div class="photo-printability-warning"><strong>${escapeAdminHtml(row.manualCustom.description || "Custom DM request")}</strong><span>${escapeAdminHtml(row.manualCustom.production_notes || "No production notes were added. Check the customer conversation before starting.")}</span></div>
+                  ` : row.isPhoto ? `
                     <div class="photo-printability-warning"><strong>Use the 0.4 mm nozzle preset</strong><span>${Number(row.photo.colour_count || 4)} stocked filament colours · use Arachne walls, then inspect connected shapes, minimum wall thickness and ${row.photo.variant === "clicker" ? "confirm there is no keyring hole" : "the keyring hole"} before printing.</span></div>
                     ${normalizePhotoFilamentPalette(row.photo.filament_palette).length ? `
                       <div class="custom-print-colours">
@@ -14641,7 +14678,9 @@ async function renderProductionPlanner(orders) {
                     </div>
                   ` : ""}
                   <div class="custom-print-actions">
-                    ${row.isPhoto ? `
+                    ${row.isManualCustom ? `
+                      <button type="button" class="ready-btn" ${productionJobsLoadFailed || row.toPrint <= 0 ? "disabled" : ""} onclick='window.startProductionJob(${JSON.stringify(row.itemName)}, ${row.toPrint}, "Base")'>Start Custom Work × ${row.toPrint}</button>
+                    ` : row.isPhoto ? `
                       <button type="button" onclick='window.downloadPhotoKeepsakeArtwork(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this)'>Download Private Artwork</button>
                       <button type="button" onclick='window.generatePhotoKeepsakeStls(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, this, ${row.need})'>Download STL Pack</button>
                       <button type="button" class="ready-btn" ${productionJobsLoadFailed ? "disabled" : ""} onclick='window.startPhotoKeepsakePrint(${JSON.stringify(String(row.order.id))}, ${row.itemIndex}, ${JSON.stringify(row.itemName)}, ${row.need})'>Checked · Start Printing × ${row.need}</button>
@@ -15333,6 +15372,7 @@ async function generateCustomerOrderPdf(order, items) {
     const photoProduct = isPhotoKeepsake(order, item);
     const imageClickerProduct = isImageClicker(order, item);
     const pencilProduct = isPencilClicker(order, item);
+    const manualCustomProduct = isManualCustomOrderItem(item);
     const productName = getAdminOrderItemProductName(order, item);
     const itemPricing = getPdfItemPriceBreakdown(order, item);
     const readyMadeSelections = Object.entries(design.ready_made?.selections || {})
@@ -15354,7 +15394,9 @@ async function generateCustomerOrderPdf(order, items) {
       const colour = getAssemblyColourDetails(value, fallback);
       return `${colour.name} - ${colour.material}`;
     };
-    const baseShape = imageClickerProduct
+    const baseShape = manualCustomProduct
+      ? "Custom DM request"
+      : imageClickerProduct
       ? "Single image clicker"
       : photoProduct
       ? design.photo?.variant === "clicker" ? "Clicker artwork" : "Classic keychain artwork"
@@ -15370,14 +15412,17 @@ async function generateCustomerOrderPdf(order, items) {
     const baseNames = getPdfColourNames(bases);
     const capNames = getPdfColourNames(caps);
     const letterNames = getPdfColourNames(letters);
-    const characters = readyMadeProduct || photoProduct || imageClickerProduct ? [] : Array.from(
+    const characters = manualCustomProduct || readyMadeProduct || photoProduct || imageClickerProduct ? [] : Array.from(
       item.clean_name || sanitizeName(item.name || "")
     );
     const iconLegend = getPdfIconLegend(item);
     const photoPalette = normalizePhotoFilamentPalette(design.photo?.filament_palette);
     const photoSubject = formatPhotoSubjectType(design.photo?.subject_type || design.photo?.subjectType);
     const photoTextWidth = contentWidth - 64;
-    const colourLines = imageClickerProduct ? [
+    const colourLines = manualCustomProduct ? [
+      ...pdf.splitTextToSize(`Description: ${getCompactPdfText(design.manual_custom?.description || "Custom request")}`, contentWidth - 12),
+      ...pdf.splitTextToSize(`Production notes: ${getCompactPdfText(design.manual_custom?.production_notes || "No production notes added")}`, contentWidth - 12)
+    ] : imageClickerProduct ? [
       ...pdf.splitTextToSize(`Design name: ${getCompactPdfText(design.image_cap?.design_name || item.name || "Image clicker")}`, photoTextWidth),
       ...pdf.splitTextToSize(`Artwork source: ${design.image_cap?.source === "upload" ? "Customer upload" : "Character gallery"}`, photoTextWidth),
       ...pdf.splitTextToSize(`Clicker body: ${getCompactPdfText(baseNames)}`, photoTextWidth),
@@ -15482,12 +15527,13 @@ async function generateCustomerOrderPdf(order, items) {
           )
         : [])
     ];
-    const detailStartOffset = photoProduct || imageClickerProduct ? 21 : readyMadeProduct ? 18 : 31;
+    const compactDetails = manualCustomProduct || readyMadeProduct;
+    const detailStartOffset = photoProduct || imageClickerProduct ? 21 : compactDetails ? 18 : 31;
     const detailLineHeight = photoProduct || imageClickerProduct ? 4 : 3.8;
     const detailEndOffset = detailStartOffset + colourLines.length * detailLineHeight;
     const priceSectionOffset = photoProduct || imageClickerProduct
       ? Math.max(64, detailEndOffset + 4)
-      : Math.max(readyMadeProduct ? 25 : 36, detailEndOffset + 4);
+      : Math.max(compactDetails ? 25 : 36, detailEndOffset + 4);
     const cardHeight = priceSectionOffset + 14 + itemPricing.rows.length * 4.3;
 
     addPageIfNeeded(cardHeight + 5);
@@ -15516,7 +15562,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setFontSize(8.5);
     pdf.text(
       getCompactPdfText(
-        photoProduct || imageClickerProduct || readyMadeProduct || pencilProduct
+        manualCustomProduct || photoProduct || imageClickerProduct || readyMadeProduct || pencilProduct
           ? baseShape
           : `${baseShape} - ${letterOrientationLabel}`
       ),
@@ -15652,7 +15698,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.text(
       colourLines,
       margin + (photoProduct || imageClickerProduct ? 56 : 5),
-      y + (photoProduct || imageClickerProduct ? 21 : readyMadeProduct ? 18 : 31)
+      y + (photoProduct || imageClickerProduct ? 21 : compactDetails ? 18 : 31)
     );
 
     const priceSectionY = y + priceSectionOffset;
@@ -15661,7 +15707,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setTextColor(...dark);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(8.5);
-    pdf.text("Price per keychain", margin + 5, priceSectionY + 5);
+    pdf.text(manualCustomProduct ? "Price per item" : "Price per keychain", margin + 5, priceSectionY + 5);
 
     let priceRowY = priceSectionY + 10;
     itemPricing.rows.forEach(row => {
@@ -15682,7 +15728,7 @@ async function generateCustomerOrderPdf(order, items) {
     pdf.setTextColor(...dark);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(8.5);
-    pdf.text("Price per keychain", margin + 5, priceRowY + 2.5);
+    pdf.text(manualCustomProduct ? "Price per item" : "Price per keychain", margin + 5, priceRowY + 2.5);
     pdf.text(
       getCompactPdfText(formatMoney(itemPricing.unitTotal)),
       pageWidth - margin - 5,

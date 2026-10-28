@@ -6,6 +6,7 @@ export const PENCIL_PRODUCT_KEY = "custom-pencil-clicker";
 export const LED_PRODUCT_KEY = "light-up-name-clicker";
 export const NORMAL_GRID_PRODUCT_KEY = "classic-grid-name-clicker";
 export const IMAGE_CLICKER_PRODUCT_KEY = "custom-image-clicker";
+export const MANUAL_CUSTOM_PRODUCT_KEY = "manual-custom-item";
 export const RETIRED_PRODUCT_KEYS = Object.freeze([IMAGE_CLICKER_PRODUCT_KEY]);
 const RETIRED_PRODUCT_KEY_SET = new Set(RETIRED_PRODUCT_KEYS);
 export const READY_MADE_PRODUCT_TYPE = "ready_made";
@@ -446,6 +447,38 @@ export const DEFAULT_PRODUCT_CATALOG = [
     video_path: "",
     kpop_models: DEFAULT_KPOP_CLICKER_MODELS,
     production_notes: "Licensed CritterCRAFT design. Print the selected 3MF clicker body and cap in the original fixed colours shown."
+  },
+  {
+    product_key: MANUAL_CUSTOM_PRODUCT_KEY,
+    product_type: "manual_custom",
+    name: "Custom DM Item",
+    eyebrow: "Admin-only custom item",
+    description: "A free-form item entered by Little Keeps for a manual order.",
+    status: "hidden",
+    price_visible: false,
+    usual_base_price: 0,
+    launch_base_price: 0,
+    launch_price_enabled: false,
+    launch_price_ends_at: null,
+    included_characters: 999,
+    extra_character_price: 0,
+    included_base_colours: 0,
+    included_cap_colours: 0,
+    included_letter_colours: 0,
+    extra_base_colour_price: 0,
+    extra_cap_colour_price: 0,
+    extra_letter_colour_price: 0,
+    minimum_characters: 1,
+    maximum_characters: 999,
+    base_print_minutes_fixed: 0,
+    base_print_minutes_per_character: 0,
+    keycap_print_minutes_per_character: 0,
+    assembly_minutes_per_item: 0,
+    minimum_working_days: null,
+    maximum_working_days: null,
+    sort_order: 999,
+    image_path: null,
+    production_notes: "Follow the production notes entered on the manual order."
   },
   ...DEFAULT_CRITTER_COLLECTIONS
 ];

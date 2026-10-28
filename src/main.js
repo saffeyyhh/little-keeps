@@ -47,6 +47,7 @@ import {
   LED_PRODUCT_KEY,
   NORMAL_GRID_PRODUCT_KEY,
   IMAGE_CLICKER_PRODUCT_KEY,
+  MANUAL_CUSTOM_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
@@ -1133,6 +1134,12 @@ ${requestedPreviewProductKey ? `
       Save my cart to group order
     </button>
 
+    ${isManualOrder ? `
+      <button id="addManualCustomItemBtn" type="button" class="manual-custom-item-btn">
+        + Add custom DM item
+      </button>
+    ` : ""}
+
     <button
       id="prepareCustomerCheckoutBtn"
       type="button"
@@ -1191,6 +1198,27 @@ ${requestedPreviewProductKey ? `
     </div>
   </div>
 </div>
+
+${isManualOrder ? `
+  <div id="manualCustomItemModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="manualCustomItemTitle">
+    <form id="manualCustomItemForm" class="modal-card manual-custom-item-modal-card">
+      <button id="closeManualCustomItemBtn" type="button" class="modal-close" aria-label="Close">×</button>
+      <p class="modal-eyebrow">DM and special requests</p>
+      <h2 id="manualCustomItemTitle">Add a custom item</h2>
+      <p>Use this for anything that is not in your normal website catalogue.</p>
+
+      <div class="manual-custom-item-grid">
+        <label class="full-row"><span>Item name</span><input id="manualCustomItemName" name="itemName" maxlength="120" placeholder="e.g. Custom desk sign" required></label>
+        <label><span>Quantity</span><input id="manualCustomItemQuantity" name="quantity" type="number" min="1" max="250" step="1" value="1" required></label>
+        <label><span>Price each (S$)</span><input id="manualCustomItemPrice" name="unitPrice" type="number" min="0" max="99999" step="0.01" inputmode="decimal" required></label>
+        <label class="full-row"><span>Customer description</span><textarea id="manualCustomItemDescription" name="description" rows="3" maxlength="500" placeholder="What the customer ordered"></textarea></label>
+        <label class="full-row"><span>Production notes for me</span><textarea id="manualCustomItemProductionNotes" name="productionNotes" rows="3" maxlength="1000" placeholder="Size, colours, file, material or anything needed to make it"></textarea></label>
+      </div>
+
+      <button id="saveManualCustomItemBtn" type="submit" class="submit-btn">Add to order</button>
+    </form>
+  </div>
+` : ""}
 
 <section id="designScreen" class="design-screen">
 
@@ -3124,6 +3152,9 @@ const checkoutFromCartBtn =
   document.getElementById("checkoutFromCartBtn");
 const sharedGroupCartBtn = document.getElementById("sharedGroupCartBtn");
 const prepareCustomerCheckoutBtn = document.getElementById("prepareCustomerCheckoutBtn");
+const addManualCustomItemBtn = document.getElementById("addManualCustomItemBtn");
+const manualCustomItemModal = document.getElementById("manualCustomItemModal");
+const manualCustomItemForm = document.getElementById("manualCustomItemForm");
 const preparedCheckoutModal = document.getElementById("preparedCheckoutModal");
 const closePreparedCheckoutBtn = document.getElementById("closePreparedCheckoutBtn");
 const preparedDiscountType = document.getElementById("preparedDiscountType");
@@ -5269,6 +5300,7 @@ function cloneCustomDesign(source = globalDesign) {
     nfcType: source?.nfcType || "guardian",
     nfcPayload: source?.nfcPayload || "",
     photo: source?.photo ? structuredClone(source.photo) : null,
+    manualCustom: source?.manualCustom ? structuredClone(source.manualCustom) : null,
     pencil: normalizePencilDesign(source?.pencil || globalDesign.pencil),
     bases: [...(source?.bases || globalDesign.bases)],
     caps: [...(source?.caps || globalDesign.caps)],
@@ -5481,6 +5513,9 @@ function getUniqueColourCount(colours) {
 }
 
 function calculatePrice(design, name = "", product = activeProduct) {
+  if (product.product_key === MANUAL_CUSTOM_PRODUCT_KEY) {
+    return roundMoney(Math.max(0, Number(design?.manualCustom?.unitPrice) || 0));
+  }
   if (isReadyMadeProduct(product)) {
     return roundMoney(getProductDisplayPrice(product));
   }
@@ -5506,6 +5541,10 @@ function calculatePrice(design, name = "", product = activeProduct) {
 }
 
 function getUnitPriceBreakdown(design, name = "", product = activeProduct) {
+  if (product.product_key === MANUAL_CUSTOM_PRODUCT_KEY) {
+    const unitTotal = calculatePrice(design, name, product);
+    return { rows: [{ label: "Custom item", amount: unitTotal, addOn: false }], unitTotal };
+  }
   if (isReadyMadeProduct(product)) {
     const unitTotal = roundMoney(getProductDisplayPrice(product));
     return { rows: [{ label: "Product price", amount: unitTotal, addOn: false }], unitTotal };
@@ -6828,6 +6867,7 @@ function getDesign(item) {
     nfcType: item.custom.nfcType || "guardian",
     nfcPayload: item.custom.nfcPayload || "",
     photo: item.custom.photo || null,
+    manualCustom: item.custom.manualCustom || null,
     imageCap: item.custom.imageCap || null,
     pencil: normalizePencilDesign(item.custom.pencil || globalDesign.pencil),
 
@@ -7818,6 +7858,9 @@ horizontalLetterBtn.onclick = () => {
 };
 
 function createMiniPreview(name, design, product = activeProduct) {
+  if (product.product_key === MANUAL_CUSTOM_PRODUCT_KEY) {
+    return `<div class="mini-manual-custom-item"><span aria-hidden="true">✦</span><strong>${escapePresetText(name || "Custom item")}</strong></div>`;
+  }
   if (isReadyMadeProduct(product)) {
     return `<div class="mini-ready-made"><img src="${escapePresetText(design.readyMade?.imagePath || product.image_path || "")}" alt="${escapePresetText(product.name)}"></div>`;
   }
@@ -7887,6 +7930,9 @@ function createMiniPreview(name, design, product = activeProduct) {
 }
 
 function getDesignDescription(design, product = activeProduct) {
+  if (product.product_key === MANUAL_CUSTOM_PRODUCT_KEY) {
+    return escapePresetText(design.manualCustom?.description || "Custom DM request");
+  }
   if (isReadyMadeProduct(product)) {
     const selections = Object.entries(design.readyMade?.selections || {});
     return selections.length
@@ -7933,6 +7979,9 @@ function getDesignDescription(design, product = activeProduct) {
 }
 
 function getDesignColourSummary(design, product = activeProduct) {
+  if (product.product_key === MANUAL_CUSTOM_PRODUCT_KEY) {
+    return escapePresetText(design.manualCustom?.productionNotes || "Check the manual production notes");
+  }
   if (isReadyMadeProduct(product)) {
     return product.stock_quantity > 0 ? "Made in small batches" : "Made to order";
   }
@@ -8814,6 +8863,11 @@ async function submitOrderOnce() {
               design.photo.filamentPalette || design.photo.filament_palette
             ),
             printability_status: "needs_review"
+          } : null,
+          manual_custom: design.manualCustom ? {
+            description: String(design.manualCustom.description || "").trim(),
+            production_notes: String(design.manualCustom.productionNotes || "").trim(),
+            unit_price: roundMoney(Math.max(0, Number(design.manualCustom.unitPrice) || 0))
           } : null,
           image_cap: design.imageCap ? {
             source: design.imageCap.source || "gallery",
@@ -10410,11 +10464,82 @@ copyPreparedCheckoutLinkBtn?.addEventListener("click", async () => {
   setTimeout(() => { copyPreparedCheckoutLinkBtn.textContent = "Copy link"; }, 1400);
 });
 
+function closeManualCustomItemModal() {
+  manualCustomItemModal?.classList.add("hidden");
+  if (manualCustomItemForm) delete manualCustomItemForm.dataset.editIndex;
+}
+
+function openManualCustomItemModal(item = null, index = -1) {
+  if (!isManualOrder || !manualCustomItemModal || !manualCustomItemForm) return;
+  manualCustomItemForm.reset();
+  const design = item ? getDesign(item) : null;
+  const details = design?.manualCustom || {};
+  document.getElementById("manualCustomItemName").value = item?.name || "";
+  document.getElementById("manualCustomItemQuantity").value = String(item ? getItemQuantity(item) : 1);
+  document.getElementById("manualCustomItemPrice").value = item ? String(details.unitPrice ?? "") : "";
+  document.getElementById("manualCustomItemDescription").value = details.description || "";
+  document.getElementById("manualCustomItemProductionNotes").value = details.productionNotes || "";
+  document.getElementById("manualCustomItemTitle").textContent = item ? "Edit custom item" : "Add a custom item";
+  document.getElementById("saveManualCustomItemBtn").textContent = item ? "Save item" : "Add to order";
+  if (index >= 0) manualCustomItemForm.dataset.editIndex = String(index);
+  manualCustomItemModal.classList.remove("hidden");
+  setTimeout(() => document.getElementById("manualCustomItemName")?.focus(), 50);
+}
+
+addManualCustomItemBtn?.addEventListener("click", () => openManualCustomItemModal());
+document.getElementById("closeManualCustomItemBtn")?.addEventListener("click", closeManualCustomItemModal);
+manualCustomItemModal?.addEventListener("click", event => {
+  if (event.target === manualCustomItemModal) closeManualCustomItemModal();
+});
+manualCustomItemForm?.addEventListener("submit", event => {
+  event.preventDefault();
+  const formData = new FormData(manualCustomItemForm);
+  const itemName = String(formData.get("itemName") || "").trim();
+  const quantity = normalizeItemQuantity(formData.get("quantity"));
+  const unitPrice = roundMoney(Math.max(0, Number(formData.get("unitPrice")) || 0));
+  if (!itemName) {
+    manualCustomItemForm.reportValidity();
+    return;
+  }
+
+  const custom = cloneCustomDesign(globalDesign);
+  custom.manualCustom = {
+    unitPrice,
+    description: String(formData.get("description") || "").trim(),
+    productionNotes: String(formData.get("productionNotes") || "").trim()
+  };
+  const manualItem = {
+    name: itemName,
+    quantity,
+    product_key: MANUAL_CUSTOM_PRODUCT_KEY,
+    cartAdded: true,
+    custom
+  };
+  const editIndex = Number(manualCustomItemForm.dataset.editIndex);
+  if (Number.isInteger(editIndex) && editIndex >= 0 && names[editIndex]) {
+    names[editIndex] = manualItem;
+  } else {
+    names.push(manualItem);
+  }
+  cartHasItems = true;
+  draftHasMeaningfulChanges = true;
+  updateCartDisplay();
+  renderCartDrawer();
+  saveDraft();
+  closeManualCustomItemModal();
+  openCartDrawer();
+});
+
 window.editCartItem = function(index) {
   selectedIndex = index;
   const item = names[index];
   if (!item) return;
   activeProduct = getItemProduct(item);
+
+  if (activeProduct.product_key === MANUAL_CUSTOM_PRODUCT_KEY) {
+    openManualCustomItemModal(item, index);
+    return;
+  }
 
   closeCartDrawer();
 
