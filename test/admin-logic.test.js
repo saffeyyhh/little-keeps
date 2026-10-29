@@ -47,6 +47,7 @@ import {
   getCustomerDueDate,
   formatProductionMinutes,
   isOrderReminderFinishedOrExpired,
+  isCustomerSessionInactive,
   isPickupDay,
   isSharedGroupCancelledOrExpired,
   optimizeAmsPlateSequence,
@@ -1155,6 +1156,30 @@ test("clears finished and expired customer reminders", () => {
     status: "Pending Payment",
     payment_expires_at: "2026-08-10T09:31:00+08:00"
   }, now), false);
+  assert.equal(isOrderReminderFinishedOrExpired({
+    status: "Pending Payment",
+    online_payment_status: "failed"
+  }, now), true);
+  assert.equal(isOrderReminderFinishedOrExpired({
+    status: "Pending Payment",
+    online_payment_status: "expired"
+  }, now), true);
+  assert.equal(isOrderReminderFinishedOrExpired({ status: "Payment Failed" }, now), true);
+});
+
+test("resets customer sessions after three inactive days", () => {
+  const now = new Date("2026-08-10T09:30:00+08:00").getTime();
+
+  assert.equal(isCustomerSessionInactive({
+    lastVisitedAt: "2026-08-07T09:30:01+08:00"
+  }, now), false);
+  assert.equal(isCustomerSessionInactive({
+    lastVisitedAt: "2026-08-07T09:29:59+08:00"
+  }, now), true);
+  assert.equal(isCustomerSessionInactive({
+    savedAt: "2026-08-09T09:30:00+08:00"
+  }, now), false);
+  assert.equal(isCustomerSessionInactive({}, now), true);
 });
 
 test("clears cancelled and expired group links", () => {

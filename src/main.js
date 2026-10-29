@@ -29,6 +29,7 @@ import {
   getModularBaseRole,
   getModularPreviewPlacement,
   getPickupTimeRanges,
+  isCustomerSessionInactive,
   isPickupDay,
   isOrderReminderFinishedOrExpired,
   isSharedGroupCancelledOrExpired,
@@ -12531,12 +12532,13 @@ function getRememberedPendingOrder() {
     const saved = JSON.parse(localStorage.getItem(PENDING_ORDER_STORAGE_KEY) || "null");
     if (!saved?.orderRef || !saved?.email) return null;
 
-    const savedAt = new Date(saved.savedAt || 0).getTime();
-    if (!Number.isFinite(savedAt) || Date.now() - savedAt > 30 * 86400000) {
+    if (isCustomerSessionInactive(saved)) {
       localStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
       return null;
     }
 
+    saved.lastVisitedAt = new Date().toISOString();
+    localStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(saved));
     return saved;
   } catch {
     localStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
@@ -12547,7 +12549,8 @@ function getRememberedPendingOrder() {
 function rememberPendingOrder(details) {
   localStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify({
     ...details,
-    savedAt: new Date().toISOString()
+    savedAt: new Date().toISOString(),
+    lastVisitedAt: new Date().toISOString()
   }));
   sessionStorage.removeItem("littleKeepsPendingOrderDismissed");
   renderPendingOrderBanner();
@@ -12608,6 +12611,7 @@ async function refreshRememberedPendingOrderState() {
       return;
     }
     scheduleRememberedOrderExpiry(order, saved);
+    renderPendingOrderBanner();
   } catch (error) {
     // Keep the reminder during a temporary connection problem and try again
     // when the customer returns to the tab.
@@ -13287,6 +13291,8 @@ function saveDraft() {
   }
 
   const draft = {
+    savedAt: new Date().toISOString(),
+    lastVisitedAt: new Date().toISOString(),
     orderType,
     activeProductKey: activeProduct.product_key,
     names,
@@ -13340,9 +13346,20 @@ function loadDraft() {
 
     if (!saved) return;
 
-    draftData = JSON.parse(saved);
-
-    draftModal.classList.remove("hidden");
+    try {
+      draftData = JSON.parse(saved);
+      if (isCustomerSessionInactive(draftData)) {
+        localStorage.removeItem("littleKeepsDraft");
+        draftData = null;
+        return;
+      }
+      draftData.lastVisitedAt = new Date().toISOString();
+      localStorage.setItem("littleKeepsDraft", JSON.stringify(draftData));
+      draftModal.classList.remove("hidden");
+    } catch {
+      localStorage.removeItem("littleKeepsDraft");
+      draftData = null;
+    }
 
 }
 
@@ -14535,11 +14552,9 @@ if (resumeOrderRef && !paymentReturnState) {
   }, 300);
 }
 
-renderPendingOrderBanner();
 void refreshRememberedPendingOrderState();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    renderPendingOrderBanner();
     void refreshRememberedPendingOrderState();
   }
 });

@@ -1380,14 +1380,29 @@ export function sortEasyParcelQuotesByPrice(quotes = []) {
 
 export function isOrderReminderFinishedOrExpired(order, now = Date.now()) {
   if (!order) return false;
+  const onlinePaymentStatus = String(order.online_payment_status || "")
+    .trim()
+    .toLowerCase();
   if (
     order.payment_type === "Paid" ||
-    order.online_payment_status === "completed" ||
-    ["Completed", "Cancelled", "Refunded", "Payment Expired"].includes(order.status)
+    ["completed", "failed", "expired", "cancelled", "canceled"].includes(onlinePaymentStatus) ||
+    ["Completed", "Cancelled", "Refunded", "Payment Expired", "Payment Failed"].includes(order.status)
   ) return true;
 
   const expiresAt = new Date(order.payment_expires_at || "").getTime();
   return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+export function isCustomerSessionInactive(
+  saved,
+  now = Date.now(),
+  inactivityMs = 3 * 86400000
+) {
+  if (!saved) return true;
+  const lastVisitedAt = new Date(
+    saved.lastVisitedAt || saved.savedAt || saved.updatedAt || 0
+  ).getTime();
+  return !Number.isFinite(lastVisitedAt) || now - lastVisitedAt > inactivityMs;
 }
 
 export function isSharedGroupCancelledOrExpired(group, now = Date.now()) {
