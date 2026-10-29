@@ -6388,9 +6388,6 @@ function updateCartDisplay() {
 
 function addColourToDesign(type, colour) {
   const design = getActiveDesign();
-  const mobileSingleColourMode = window.matchMedia("(max-width: 760px)").matches &&
-    !randomiseMultipleColours?.checked;
-
   const isStandardProduct =
     activeProduct.product_key === STANDARD_PRODUCT_KEY;
   const isSolidProduct =
@@ -6400,24 +6397,27 @@ function addColourToDesign(type, colour) {
   const isNormalGridProduct =
     activeProduct.product_key === NORMAL_GRID_PRODUCT_KEY;
   if (isLedProduct && type === "cap") return;
-  if (mobileSingleColourMode) {
-    if (type === "base") design.bases = [colour];
-    if (type === "cap") design.caps = [colour];
-    if (type === "letter") design.letters = [colour];
-  } else if (isStandardProduct || ((isSolidProduct || isLedProduct || isNormalGridProduct) && type === "base")) {
-    if (type === "base") {
-      design.bases = [colour];
-    }
 
-    if (type === "letter") {
-      design.letters = [colour];
-    }
+  const property = type === "base" ? "bases" : type === "cap" ? "caps" : "letters";
+  const isFixedSingleColourPart =
+    isStandardProduct ||
+    ((isSolidProduct || isLedProduct || isNormalGridProduct) && type === "base");
 
-    if (type === "cap") return;
+  if (isFixedSingleColourPart) {
+    if (isStandardProduct && type === "cap") return;
+    design[property] = [colour];
   } else {
-    if (type === "base") design.bases.push(colour);
-    if (type === "cap") design.caps.push(colour);
-    if (type === "letter") design.letters.push(colour);
+    const alreadySelected = design[property].some(
+      selected => String(selected || "").toLowerCase() === String(colour || "").toLowerCase()
+    );
+    if (!alreadySelected) {
+      design[property].push(colour);
+    }
+
+    if (design[property].length > 1 && randomiseMultipleColours && !randomiseMultipleColours.checked) {
+      randomiseMultipleColours.checked = true;
+      randomiseMultipleColours.dispatchEvent(new Event("change", { bubbles: true }));
+    }
   }
 
   if (applyAllToggle.checked) {
