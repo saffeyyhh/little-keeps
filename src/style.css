@@ -10213,13 +10213,27 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
     font-size: 8px;
   }
   #designArea[data-design-step="style"] .material-swatches {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px 5px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px 3px;
   }
-  #designArea[data-design-step="style"] .swatch { width: 40px; height: 40px; }
-  #designArea[data-design-step="style"] .swatch-option { font-size: 9px; }
-  #designArea[data-design-step="style"] .slot-row { gap: 4px; }
-  #designArea[data-design-step="style"] .colour-slot { width: 23px; height: 23px; }
+  #designArea[data-design-step="style"] .swatch { width: 34px; height: 34px; }
+  #designArea[data-design-step="style"] .swatch-option { gap: 5px; font-size: 8px; }
+  #designArea[data-design-step="style"] .slot-row {
+    min-height: 49px;
+    gap: 9px;
+  }
+  #designArea[data-design-step="style"] .colour-slot {
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+  }
+  #designArea[data-design-step="style"] .colour-slot::after {
+    right: -6px;
+    top: -6px;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+  }
   #designArea[data-design-step="style"] .customiser-heading h2 { font-size: 16px; }
   #designArea[data-design-step="style"] .customisation-title h3 { font-size: 11px; }
   #designArea[data-design-step="style"] .customisation-title p { font-size: 8px; }
