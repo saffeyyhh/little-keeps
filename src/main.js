@@ -1850,7 +1850,7 @@ Chloe</textarea>
     </div>
   </div>
 
-  <div class="product-customiser" data-mobile-panel="colours">
+  <div class="product-customiser" data-mobile-panel="style">
     <section class="preview-column">
       <div class="preview-sticky">
         <div class="preview-card">
@@ -1939,9 +1939,9 @@ Chloe</textarea>
 
     <section class="options-column">
       <div class="mobile-customiser-tabs" role="tablist" aria-label="Customisation sections">
-        <button type="button" class="active" data-mobile-customiser-tab="colours" role="tab" aria-selected="true">Colours</button>
-        <button type="button" data-mobile-customiser-tab="style" role="tab" aria-selected="false">Style</button>
+        <button type="button" class="active" data-mobile-customiser-tab="style" role="tab" aria-selected="true">Style</button>
         <button type="button" data-mobile-customiser-tab="layout" role="tab" aria-selected="false" hidden>Layout</button>
+        <button type="button" data-mobile-customiser-tab="colours" role="tab" aria-selected="false">Colours</button>
       </div>
       <div class="card colours-card">
         <div class="style-controls-card">
@@ -9425,7 +9425,7 @@ function syncMobileColourControls() {
   mobileMixColoursBtn.textContent = mixed ? "Mixing colours ✓" : "Mix colours";
 }
 
-function setMobileCustomiserPanel(panel = "colours") {
+function setMobileCustomiserPanel(panel = "style") {
   if (!productCustomiser) return;
 
   const allowedPanels = ["colours", "style", "layout"];
@@ -9433,9 +9433,15 @@ function setMobileCustomiserPanel(panel = "colours") {
   const layoutTab = mobileCustomiserTabs.find(
     button => button.dataset.mobileCustomiserTab === "layout"
   );
+  const styleTab = mobileCustomiserTabs.find(
+    button => button.dataset.mobileCustomiserTab === "style"
+  );
 
   if (nextPanel === "layout" && layoutTab?.hidden) {
     nextPanel = "style";
+  }
+  if (nextPanel === "style" && styleTab?.hidden) {
+    nextPanel = "layout";
   }
 
   productCustomiser.dataset.mobilePanel = nextPanel;
@@ -9823,6 +9829,11 @@ function restoreSharedGroupOwnerCart(group = activeSharedGroup, { force = false 
   singleQuantity.value = String(restored[0].quantity);
   nameList.value = formatDesignBatchNames(restored);
   refreshUI();
+  if (safeStep === "style" && window.matchMedia("(max-width: 760px)").matches) {
+    setMobileCustomiserPanel(
+      isGridClickerProduct(activeProduct.product_key) ? "layout" : "style"
+    );
+  }
   buildSelectedPreview();
   return true;
 }
@@ -11105,11 +11116,18 @@ function updateProductCustomiser() {
   const mobileLayoutTab = mobileCustomiserTabs.find(
     button => button.dataset.mobileCustomiserTab === "layout"
   );
+  const mobileStyleTab = mobileCustomiserTabs.find(
+    button => button.dataset.mobileCustomiserTab === "style"
+  );
   if (mobileLayoutTab) {
     mobileLayoutTab.hidden = !isGridClicker;
-    mobileLayoutTab.parentElement?.classList.toggle("has-layout", isGridClicker);
   }
-  if (!isGridClicker && productCustomiser?.dataset.mobilePanel === "layout") {
+  if (mobileStyleTab) {
+    mobileStyleTab.hidden = isGridClicker;
+  }
+  if (isGridClicker && productCustomiser?.dataset.mobilePanel === "style") {
+    setMobileCustomiserPanel("layout");
+  } else if (!isGridClicker && productCustomiser?.dataset.mobilePanel === "layout") {
     setMobileCustomiserPanel("style");
   }
   document.getElementById("gridNameExamples")?.classList.toggle("hidden", !isNormalGridClicker);
@@ -14387,7 +14405,7 @@ mobileCustomiserTabs.forEach(button => {
     setMobileCustomiserPanel(button.dataset.mobileCustomiserTab);
   });
 });
-setMobileCustomiserPanel(productCustomiser?.dataset.mobilePanel || "colours");
+setMobileCustomiserPanel(productCustomiser?.dataset.mobilePanel || "style");
 
 document
   .querySelectorAll("[data-design-preset]")

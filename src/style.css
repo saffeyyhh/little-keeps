@@ -10132,9 +10132,6 @@ body { background: linear-gradient(180deg, #faf8f4 0, #f6f1ec 100%); }
     background: #fff;
     border-bottom: 1px solid #eee1e6;
   }
-  #designArea[data-design-step="style"] .mobile-customiser-tabs.has-layout {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
   #designArea[data-design-step="style"] .mobile-customiser-tabs button {
     min-width: 0;
     min-height: 40px;
