@@ -1850,7 +1850,7 @@ Chloe</textarea>
     </div>
   </div>
 
-  <div class="product-customiser">
+  <div class="product-customiser" data-mobile-panel="colours">
     <section class="preview-column">
       <div class="preview-sticky">
         <div class="preview-card">
@@ -1938,6 +1938,11 @@ Chloe</textarea>
     </section>
 
     <section class="options-column">
+      <div class="mobile-customiser-tabs" role="tablist" aria-label="Customisation sections">
+        <button type="button" class="active" data-mobile-customiser-tab="colours" role="tab" aria-selected="true">Colours</button>
+        <button type="button" data-mobile-customiser-tab="style" role="tab" aria-selected="false">Style</button>
+        <button type="button" data-mobile-customiser-tab="layout" role="tab" aria-selected="false" hidden>Layout</button>
+      </div>
       <div class="card colours-card">
         <div class="style-controls-card">
         <div class="customiser-heading">
@@ -2988,6 +2993,10 @@ const inspirationStatus = document.getElementById("inspirationStatus");
 const randomiseColoursBtn = document.getElementById("randomiseColoursBtn");
 const mobileRandomiseColoursBtn = document.getElementById("mobileRandomiseColoursBtn");
 const mobileMixColoursBtn = document.getElementById("mobileMixColoursBtn");
+const productCustomiser = document.querySelector(".product-customiser");
+const mobileCustomiserTabs = Array.from(
+  document.querySelectorAll("[data-mobile-customiser-tab]")
+);
 const randomiseColoursStatus = document.getElementById("randomiseColoursStatus");
 const randomiseMultipleColours = document.getElementById("randomiseMultipleColours");
 const randomColourOptionsSummary = document.getElementById("randomColourOptionsSummary");
@@ -9416,6 +9425,32 @@ function syncMobileColourControls() {
   mobileMixColoursBtn.textContent = mixed ? "Mixing colours ✓" : "Mix colours";
 }
 
+function setMobileCustomiserPanel(panel = "colours") {
+  if (!productCustomiser) return;
+
+  const allowedPanels = ["colours", "style", "layout"];
+  let nextPanel = allowedPanels.includes(panel) ? panel : "colours";
+  const layoutTab = mobileCustomiserTabs.find(
+    button => button.dataset.mobileCustomiserTab === "layout"
+  );
+
+  if (nextPanel === "layout" && layoutTab?.hidden) {
+    nextPanel = "style";
+  }
+
+  productCustomiser.dataset.mobilePanel = nextPanel;
+  mobileCustomiserTabs.forEach(button => {
+    const selected = button.dataset.mobileCustomiserTab === nextPanel;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+
+  document.querySelector(".options-column .colours-card")?.scrollTo({
+    top: 0,
+    behavior: "auto"
+  });
+}
+
 function collapseMobileDimensionsAfterColourChoice() {
   if (
     mobileDimensionAutoCollapsed ||
@@ -10966,7 +11001,11 @@ function setDesignWizardStep(nextStep, { scroll = true } = {}) {
   requestAnimationFrame(() => {
     resize();
     if (scroll) {
-      designWizardTitle.scrollIntoView({ behavior: "smooth", block: "start" });
+      const mobileCustomiserTarget =
+        safeStep === "style" && window.matchMedia("(max-width: 760px)").matches
+          ? productCustomiser
+          : designWizardTitle;
+      mobileCustomiserTarget?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
   return true;
@@ -11062,6 +11101,16 @@ function updateProductCustomiser() {
   const ledOptions = document.getElementById("ledBaseOptions");
   if (ledOptions) {
     ledOptions.style.display = isGridClicker ? "block" : "none";
+  }
+  const mobileLayoutTab = mobileCustomiserTabs.find(
+    button => button.dataset.mobileCustomiserTab === "layout"
+  );
+  if (mobileLayoutTab) {
+    mobileLayoutTab.hidden = !isGridClicker;
+    mobileLayoutTab.parentElement?.classList.toggle("has-layout", isGridClicker);
+  }
+  if (!isGridClicker && productCustomiser?.dataset.mobilePanel === "layout") {
+    setMobileCustomiserPanel("style");
   }
   document.getElementById("gridNameExamples")?.classList.toggle("hidden", !isNormalGridClicker);
   const gridCapNote = document.getElementById("gridCapNote");
@@ -14332,6 +14381,13 @@ startLaunchPriceCountdown();
 startFeaturedPromoCountdown();
 renderIconPicker();
 setupColourAccordions();
+
+mobileCustomiserTabs.forEach(button => {
+  button.addEventListener("click", () => {
+    setMobileCustomiserPanel(button.dataset.mobileCustomiserTab);
+  });
+});
+setMobileCustomiserPanel(productCustomiser?.dataset.mobilePanel || "colours");
 
 document
   .querySelectorAll("[data-design-preset]")
