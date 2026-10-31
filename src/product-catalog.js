@@ -11,6 +11,14 @@ export const RETIRED_PRODUCT_KEYS = Object.freeze([IMAGE_CLICKER_PRODUCT_KEY]);
 const RETIRED_PRODUCT_KEY_SET = new Set(RETIRED_PRODUCT_KEYS);
 export const READY_MADE_PRODUCT_TYPE = "ready_made";
 export const CUSTOM_PRODUCT_TYPE = "custom";
+export const CRITTER_LAUNCH_PRODUCT_KEYS = Object.freeze([
+  "critter-chonky-cat",
+  "critter-baby-sunflower",
+  "critter-ghost"
+]);
+export const CRITTER_LAUNCH_UNIT_PRICE = 5.9;
+export const CRITTER_LAUNCH_BUNDLE_QUANTITY = 3;
+export const CRITTER_LAUNCH_BUNDLE_PRICE = 15;
 export const PHOTO_KEEPSAKE_COLOUR_PRICES = Object.freeze({
   2: 6.5,
   3: 7.5,
@@ -35,46 +43,66 @@ const CRITTER_COLLECTION_VARIANTS = Object.freeze({
 });
 
 export const DEFAULT_CRITTER_COLLECTIONS = Object.freeze(
-  DEFAULT_KPOP_CLICKER_MODELS.map((model, index) => ({
-    product_key: `critter-${model.key}`,
-    product_type: READY_MADE_PRODUCT_TYPE,
-    name: `${model.name} Clicker`,
-    sku: `CRITTER-${model.key.toUpperCase()}`,
-    eyebrow: "Licensed CritterCRAFT collection",
-    description: `A satisfying ${model.name} character clicker, made in the original fixed colours shown.`,
-    status: "hidden",
-    price_visible: false,
-    usual_base_price: 6.9,
-    launch_base_price: 6.9,
-    launch_price_enabled: false,
-    launch_price_ends_at: null,
-    included_characters: 1,
-    extra_character_price: 0,
-    included_base_colours: 1,
-    included_cap_colours: 1,
-    included_letter_colours: 0,
-    extra_base_colour_price: 0,
-    extra_cap_colour_price: 0,
-    extra_letter_colour_price: 0,
-    minimum_characters: 1,
-    maximum_characters: 1,
-    base_print_minutes_fixed: 25,
-    base_print_minutes_per_character: 0,
-    keycap_print_minutes_per_character: 20,
-    assembly_minutes_per_item: 5,
-    minimum_working_days: null,
-    maximum_working_days: null,
-    stock_quantity: 250,
-    options: CRITTER_COLLECTION_VARIANTS[model.key] || [],
-    featured: false,
-    sort_order: 60 + index,
-    image_path: model.thumbnail,
-    gallery_paths: [model.thumbnail],
-    video_path: "",
-    kpop_models: [model],
-    production_notes: `Licensed CritterCRAFT ${model.name}. Use ${model.modelUrl} and print only the selected fixed-colour keychain variant.`
-  }))
+  DEFAULT_KPOP_CLICKER_MODELS.map((model, index) => {
+    const productKey = `critter-${model.key}`;
+    const isLaunchProduct = CRITTER_LAUNCH_PRODUCT_KEYS.includes(productKey);
+    return {
+      product_key: productKey,
+      product_type: READY_MADE_PRODUCT_TYPE,
+      name: `${model.name} Clicker`,
+      sku: `CRITTER-${model.key.toUpperCase()}`,
+      eyebrow: "Licensed CritterCRAFT collection",
+      description: `A satisfying ${model.name} character clicker, made in the original fixed colours shown.${isLaunchProduct ? " Launch special: one for $5.90 or any three Critters for $15." : ""}`,
+      status: isLaunchProduct ? "active" : "hidden",
+      price_visible: isLaunchProduct,
+      usual_base_price: 6.9,
+      launch_base_price: isLaunchProduct ? CRITTER_LAUNCH_UNIT_PRICE : 6.9,
+      launch_price_enabled: isLaunchProduct,
+      launch_price_ends_at: null,
+      included_characters: 1,
+      extra_character_price: 0,
+      included_base_colours: 1,
+      included_cap_colours: 1,
+      included_letter_colours: 0,
+      extra_base_colour_price: 0,
+      extra_cap_colour_price: 0,
+      extra_letter_colour_price: 0,
+      minimum_characters: 1,
+      maximum_characters: 1,
+      base_print_minutes_fixed: 25,
+      base_print_minutes_per_character: 0,
+      keycap_print_minutes_per_character: 20,
+      assembly_minutes_per_item: 5,
+      minimum_working_days: null,
+      maximum_working_days: null,
+      stock_quantity: 250,
+      options: CRITTER_COLLECTION_VARIANTS[model.key] || [],
+      featured: model.key === "chonky-cat",
+      sort_order: 60 + index,
+      image_path: model.thumbnail,
+      gallery_paths: [model.thumbnail],
+      video_path: "",
+      kpop_models: [model],
+      production_notes: `Licensed CritterCRAFT ${model.name}. Use ${model.modelUrl} and print only the selected fixed-colour keychain variant.`
+    };
+  })
 );
+
+export function isCritterLaunchProduct(productOrKey) {
+  const productKey = typeof productOrKey === "string"
+    ? productOrKey
+    : productOrKey?.product_key;
+  return CRITTER_LAUNCH_PRODUCT_KEYS.includes(String(productKey || ""));
+}
+
+export function calculateCritterLaunchBundleDiscount(quantity = 0) {
+  const safeQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const bundleCount = Math.floor(safeQuantity / CRITTER_LAUNCH_BUNDLE_QUANTITY);
+  const regularBundleTotal = CRITTER_LAUNCH_UNIT_PRICE * CRITTER_LAUNCH_BUNDLE_QUANTITY;
+  return Math.round(
+    (bundleCount * (regularBundleTotal - CRITTER_LAUNCH_BUNDLE_PRICE) + Number.EPSILON) * 100
+  ) / 100;
+}
 const PRODUCT_STATUSES = new Set(["active", "coming_soon", "hidden"]);
 
 export function normalizeKpopClickerModels(value = []) {

@@ -50,8 +50,12 @@ import {
   IMAGE_CLICKER_PRODUCT_KEY,
   MANUAL_CUSTOM_PRODUCT_KEY,
   READY_MADE_PRODUCT_TYPE,
+  CRITTER_LAUNCH_BUNDLE_PRICE,
+  CRITTER_LAUNCH_BUNDLE_QUANTITY,
+  CRITTER_LAUNCH_UNIT_PRICE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
+  calculateCritterLaunchBundleDiscount,
   calculateProductUnitPrice,
   formatProductUnitsSold,
   getProductByKey,
@@ -62,6 +66,7 @@ import {
   normalizeProductCatalog,
   normalizeKpopClickerModels,
   normalizeProductOptions,
+  isCritterLaunchProduct,
   isReadyMadeProduct
 } from "./product-catalog.js";
 import {
@@ -361,6 +366,21 @@ try {
 }
 productCatalog = applyProductCatalogOverrides(productCatalog, productCatalogOverrides);
 productCatalog = applyProductStatusOverrides(productCatalog, productStatusOverrides);
+productCatalog = productCatalog.map(product => {
+  if (!isCritterLaunchProduct(product)) return product;
+  const launchFallback = getProductByKey(DEFAULT_PRODUCT_CATALOG, product.product_key);
+  return {
+    ...product,
+    status: "active",
+    price_visible: true,
+    usual_base_price: 6.9,
+    launch_base_price: CRITTER_LAUNCH_UNIT_PRICE,
+    launch_price_enabled: true,
+    image_path: launchFallback.image_path,
+    gallery_paths: launchFallback.gallery_paths,
+    description: launchFallback.description
+  };
+});
 
 const productUnitsSoldByKey = new Map();
 await Promise.all(
@@ -632,6 +652,7 @@ function renderProductCardPrice(product) {
       ${launchActive ? `<small>Launch</small><del>${displaySettingMoney(usual)}</del>` : ""}
       <strong>${isReadyMadeProduct(product) ? "" : "From "}${displaySettingMoney(current)}</strong>
     </span>
+    ${isCritterLaunchProduct(product) ? `<span class="product-bundle-offer">Any ${CRITTER_LAUNCH_BUNDLE_QUANTITY} Critters for ${displaySettingMoney(CRITTER_LAUNCH_BUNDLE_PRICE)}</span>` : ""}
   `;
 }
 
@@ -6169,7 +6190,7 @@ checkoutStepTargets.forEach(target => {
   });
 });
 
-function getOrderSubtotal() {
+function getRawOrderSubtotal() {
   const pricedItems = cartHasItems ? getCartItems() : names;
   const keychainSubtotal = pricedItems.reduce(
     (sum, item) => {
@@ -6182,6 +6203,20 @@ function getOrderSubtotal() {
   return roundMoney(
     keychainSubtotal + calculateGiftingBagTotal(giftingBagQuantity, GIFTING_BAG_PRICE)
   );
+}
+
+function getCritterLaunchQuantity(items = getCartItems()) {
+  return items.reduce((total, item) => {
+    return total + (isCritterLaunchProduct(getItemProduct(item)) ? getItemQuantity(item) : 0);
+  }, 0);
+}
+
+function getCritterBundleDiscount(items = getCartItems()) {
+  return calculateCritterLaunchBundleDiscount(getCritterLaunchQuantity(items));
+}
+
+function getOrderSubtotal() {
+  return roundMoney(getRawOrderSubtotal() - getCritterBundleDiscount());
 }
 
 function hasVerifiedLinkedOrder() {
@@ -8516,12 +8551,28 @@ function renderReviewOrder() {
       });
     });
 
-  const keychainTotal = roundMoney(total);
+  const rawKeychainTotal = roundMoney(total);
+  const critterBundleDiscount = getCritterBundleDiscount(getCartItems());
+  const keychainTotal = roundMoney(rawKeychainTotal - critterBundleDiscount);
   const giftingBagTotal = calculateGiftingBagTotal(
     giftingBagQuantity,
     GIFTING_BAG_PRICE
   );
   total = roundMoney(keychainTotal + giftingBagTotal);
+
+  if (critterBundleDiscount > 0) {
+    reviewList.insertAdjacentHTML("beforeend", `
+      <div class="review-item critter-bundle-review-item">
+        <div class="review-item-heading">
+          <div>
+            <strong>Launch bundle · Any ${CRITTER_LAUNCH_BUNDLE_QUANTITY} Critters for ${displaySettingMoney(CRITTER_LAUNCH_BUNDLE_PRICE)}</strong>
+            <p class="hint">Applied automatically</p>
+          </div>
+          <span class="price-tag bundle-discount-price">−$${critterBundleDiscount.toFixed(2)}</span>
+        </div>
+      </div>
+    `);
+  }
 
   if (giftingBagQuantity > 0) {
     reviewList.insertAdjacentHTML("beforeend", `
@@ -8570,7 +8621,12 @@ function renderReviewOrder() {
 
   reviewPrice.innerHTML = `
     <span>Keychains</span>
-    <strong>$${keychainTotal.toFixed(2)}</strong>
+    <strong>$${rawKeychainTotal.toFixed(2)}</strong>
+
+    ${critterBundleDiscount > 0 ? `
+      <span>Critter launch bundle</span>
+      <strong class="bundle-discount-price">−$${critterBundleDiscount.toFixed(2)}</strong>
+    ` : ""}
 
     ${giftingBagQuantity > 0 ? `
       <span>Gifting bags (${giftingBagQuantity})</span>
@@ -8833,15 +8889,17 @@ async function submitOrderOnce() {
 
   neededBy.value = assignedNeededBy;
 
-  const originalSubtotal = getOrderSubtotal();
-
-  const discountAmount = getPromoDiscount(originalSubtotal);
+  const originalSubtotal = getRawOrderSubtotal();
+  const critterBundleDiscount = getCritterBundleDiscount(checkoutItems);
+  const bundleSubtotal = roundMoney(originalSubtotal - critterBundleDiscount);
+  const promoDiscountAmount = getPromoDiscount(bundleSubtotal);
+  const discountAmount = roundMoney(critterBundleDiscount + promoDiscountAmount);
   const subtotal = roundMoney(originalSubtotal - discountAmount);
 
   const delivery =
     collectionMethod.value === "delivery" &&
     !hasVerifiedLinkedOrder() &&
-    originalSubtotal < freeDeliveryThreshold
+    bundleSubtotal < freeDeliveryThreshold
       ? deliveryFeeSetting
       : 0;
 
@@ -9026,7 +9084,10 @@ async function submitOrderOnce() {
         : null,
 
     original_subtotal: roundMoney(originalSubtotal),
-    promo_code: preparedDiscount?.label || appliedPromoCode || null,
+    promo_code: [
+      critterBundleDiscount > 0 ? "Critter launch bundle" : "",
+      preparedDiscount?.label || appliedPromoCode || ""
+    ].filter(Boolean).join(" + ") || null,
     discount_amount: discountAmount,
     subtotal,
     delivery_fee: delivery,
@@ -10436,6 +10497,21 @@ function renderCartDrawer() {
     cartDrawerItems.innerHTML = groupedMarkup + unbatchedMarkup;
   } else {
     cartDrawerItems.innerHTML = cartEntries.map(renderCartEntry).join("");
+  }
+
+  const critterBundleDiscount = getCritterBundleDiscount(getCartItems());
+  if (critterBundleDiscount > 0) {
+    cartDrawerItems.insertAdjacentHTML("beforeend", `
+      <div class="cart-drawer-item critter-bundle-cart-item">
+        <div class="cart-item-top">
+          <div>
+            <strong>Launch bundle · Any ${CRITTER_LAUNCH_BUNDLE_QUANTITY} Critters for ${displaySettingMoney(CRITTER_LAUNCH_BUNDLE_PRICE)}</strong>
+            <p>Applied automatically</p>
+          </div>
+          <strong class="cart-item-price bundle-discount-price">−$${critterBundleDiscount.toFixed(2)}</strong>
+        </div>
+      </div>
+    `);
   }
 
   if (giftingBagQuantity > 0) {
@@ -12152,6 +12228,7 @@ function openReadyMadeProduct(productKey, existingItem = null) {
         <h2 id="readyMadeProductTitle">${escapePresetText(product.name)}</h2>
         <p>${escapePresetText(product.description || "A small-batch Little Keeps design.")}</p>
         <strong class="ready-made-product-price">${displaySettingMoney(getProductDisplayPrice(product))}</strong>
+        ${isCritterLaunchProduct(product) ? `<p class="ready-made-bundle-offer">Launch special · Any ${CRITTER_LAUNCH_BUNDLE_QUANTITY} Critters for ${displaySettingMoney(CRITTER_LAUNCH_BUNDLE_PRICE)}</p>` : ""}
         <div class="ready-made-product-options">
           ${options.map((option, index) => `
             <label><span>${escapePresetText(option.name)}</span><select data-ready-option="${escapePresetText(option.name)}">

@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_PRODUCT_CATALOG,
   DEFAULT_CRITTER_COLLECTIONS,
+  CRITTER_LAUNCH_PRODUCT_KEYS,
+  CRITTER_LAUNCH_UNIT_PRICE,
   formatProductUnitsSold,
   MODULAR_PRODUCT_KEY,
   MANUAL_CUSTOM_PRODUCT_KEY,
@@ -17,6 +19,7 @@ import {
   applyProductStatusOverrides,
   calculateProductProductionEstimate,
   calculateProductUnitPrice,
+  calculateCritterLaunchBundleDiscount,
   getProductByKey,
   getPhotoKeepsakeColourPrice,
   normalizeProductCatalogOverrides,
@@ -25,6 +28,7 @@ import {
   IMAGE_CLICKER_PRODUCT_KEY,
   normalizeKpopClickerModels,
   normalizeProductOptions,
+  isCritterLaunchProduct,
   isReadyMadeProduct
 } from "../src/product-catalog.js";
 
@@ -50,19 +54,44 @@ test("normalizes editable character clicker 3MF designs", () => {
   }]);
 });
 
-test("keeps every Critter as its own hidden fixed-colour collection", () => {
+test("launches the photographed Critter trio while keeping the remaining collections hidden", () => {
   assert.equal(DEFAULT_CRITTER_COLLECTIONS.length, 12);
   assert.ok(DEFAULT_CRITTER_COLLECTIONS.every(product =>
     product.product_type === READY_MADE_PRODUCT_TYPE &&
-    product.status === "hidden" &&
-    product.price_visible === false &&
     product.kpop_models.length === 1
+  ));
+  const launchProducts = DEFAULT_CRITTER_COLLECTIONS.filter(product =>
+    CRITTER_LAUNCH_PRODUCT_KEYS.includes(product.product_key)
+  );
+  const hiddenProducts = DEFAULT_CRITTER_COLLECTIONS.filter(product =>
+    !CRITTER_LAUNCH_PRODUCT_KEYS.includes(product.product_key)
+  );
+  assert.equal(launchProducts.length, 3);
+  assert.ok(launchProducts.every(product =>
+    product.status === "active" &&
+    product.price_visible === true &&
+    product.launch_price_enabled === true &&
+    product.launch_base_price === CRITTER_LAUNCH_UNIT_PRICE
+  ));
+  assert.ok(hiddenProducts.every(product =>
+    product.status === "hidden" && product.price_visible === false
   ));
   const turtle = DEFAULT_CRITTER_COLLECTIONS.find(product => product.product_key === "critter-fruit-turtle");
   assert.deepEqual(turtle.options, [{
     name: "Fruit design",
     values: ["Citrus", "Strawberry", "Kiwi", "Watermelon"]
   }]);
+});
+
+test("applies the Critter launch bundle to every complete group of three", () => {
+  assert.equal(calculateCritterLaunchBundleDiscount(0), 0);
+  assert.equal(calculateCritterLaunchBundleDiscount(2), 0);
+  assert.equal(calculateCritterLaunchBundleDiscount(3), 2.7);
+  assert.equal(calculateCritterLaunchBundleDiscount(4), 2.7);
+  assert.equal(calculateCritterLaunchBundleDiscount(6), 5.4);
+  assert.equal(isCritterLaunchProduct("critter-chonky-cat"), true);
+  assert.equal(isCritterLaunchProduct({ product_key: "critter-baby-sunflower" }), true);
+  assert.equal(isCritterLaunchProduct("critter-strawberry-hippo"), false);
 });
 
 test("prices photo keepsakes by artwork colour count", () => {
