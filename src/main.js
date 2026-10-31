@@ -70,6 +70,7 @@ import {
   isCritterLaunchProduct,
   isReadyMadeProduct
 } from "./product-catalog.js";
+import { getUnavailableReadyMadeColours } from "./ready-made-stock.js";
 import {
   DEFAULT_COLOUR_OPTIONS,
   normalizeColourOptions
@@ -5845,6 +5846,14 @@ function getActiveDesign() {
 }
 
 function getUnavailableDesignColours(design) {
+  if (design?.readyMade) {
+    return getUnavailableReadyMadeColours(
+      design.readyMade.selections,
+      shopSettings.colour_options,
+      unavailableColourNames
+    );
+  }
+
   return [
     ...(design?.bases || []),
     ...(design?.caps || []),
