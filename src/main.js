@@ -52,6 +52,7 @@ import {
   READY_MADE_PRODUCT_TYPE,
   CRITTER_LAUNCH_BUNDLE_PRICE,
   CRITTER_LAUNCH_BUNDLE_QUANTITY,
+  CRITTER_LAUNCH_PRODUCT_KEYS,
   CRITTER_LAUNCH_UNIT_PRICE,
   applyProductCatalogOverrides,
   applyProductStatusOverrides,
@@ -368,17 +369,9 @@ productCatalog = applyProductCatalogOverrides(productCatalog, productCatalogOver
 productCatalog = applyProductStatusOverrides(productCatalog, productStatusOverrides);
 productCatalog = productCatalog.map(product => {
   if (!isCritterLaunchProduct(product)) return product;
-  const launchFallback = getProductByKey(DEFAULT_PRODUCT_CATALOG, product.product_key);
   return {
     ...product,
-    status: "active",
-    price_visible: true,
-    usual_base_price: 6.9,
-    launch_base_price: CRITTER_LAUNCH_UNIT_PRICE,
-    launch_price_enabled: true,
-    image_path: launchFallback.image_path,
-    gallery_paths: launchFallback.gallery_paths,
-    description: launchFallback.description
+    status: "active"
   };
 });
 
@@ -551,7 +544,20 @@ const KPOP_CLICKER_MODELS = normalizeKpopClickerModels(
 const INITIAL_KPOP_CLICKER_MODEL = KPOP_CLICKER_MODELS[0] || {
   key: "", name: "Clicker design", accent: "#f383a0", modelUrl: "", thumbnail: "", previewMode: "photo"
 };
-const readyMadeProducts = productCatalog.filter(isReadyMadeProduct);
+const readyMadeProducts = productCatalog.filter(isReadyMadeProduct).sort((a, b) => {
+  const aIndex = CRITTER_LAUNCH_PRODUCT_KEYS.indexOf(a.product_key);
+  const bIndex = CRITTER_LAUNCH_PRODUCT_KEYS.indexOf(b.product_key);
+  if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex;
+  if (aIndex >= 0) return -1;
+  if (bIndex >= 0) return 1;
+  return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+});
+const critterLaunchProducts = readyMadeProducts.filter(product =>
+  isCritterLaunchProduct(product) && product.status !== "hidden"
+);
+const otherReadyMadeProducts = readyMadeProducts.filter(product =>
+  !isCritterLaunchProduct(product)
+);
 const visibleProductCount = [
   modularProduct,
   solidProduct,
@@ -652,7 +658,6 @@ function renderProductCardPrice(product) {
       ${launchActive ? `<small>Launch</small><del>${displaySettingMoney(usual)}</del>` : ""}
       <strong>${isReadyMadeProduct(product) ? "" : "From "}${displaySettingMoney(current)}</strong>
     </span>
-    ${isCritterLaunchProduct(product) ? `<span class="product-bundle-offer">Any ${CRITTER_LAUNCH_BUNDLE_QUANTITY} Critters for ${displaySettingMoney(CRITTER_LAUNCH_BUNDLE_PRICE)}</span>` : ""}
   `;
 }
 
@@ -847,10 +852,24 @@ function renderProductCardMedia(product, {
   `;
 }
 
+function getReadyMadeProductOptions(product) {
+  const options = normalizeProductOptions(product?.options);
+  if (product?.product_key !== "critter-ghost") return options;
+
+  const legColours = shopSettings.colour_options
+    .filter(colour => colour.active && !unavailableColourNames.has(String(colour.name).toLowerCase()))
+    .map(colour => colour.name);
+  const remainingOptions = options.filter(option => option.name.toLowerCase() !== "leg colour");
+  return legColours.length
+    ? [{ name: "Leg colour", values: legColours }, ...remainingOptions]
+    : remainingOptions;
+}
+
 function renderReadyMadeProductCard(product) {
   if (product.status === "hidden") return "";
   const soldOut = Number(product.stock_quantity || 0) <= 0;
   const unavailable = product.status !== "active" || soldOut;
+  const hasOptions = getReadyMadeProductOptions(product).length > 0;
   return `
     <article class="product-card ready-made-product-card ${unavailable ? "product-card-coming" : "product-card-current"}" data-occasions="gifts birthdays">
       ${renderProductCardMedia(product, {
@@ -862,8 +881,8 @@ function renderReadyMadeProductCard(product) {
         <p>${escapePresetText(product.description || "A small-batch Little Keeps design.")}</p>
         ${renderProductCardPrice(product)}
         ${renderProductUnitsSoldBadge(product)}
-        <button type="button" data-ready-product="${escapePresetText(product.product_key)}" ${unavailable ? "disabled" : ""}>
-          ${soldOut ? "Sold out" : product.status === "active" ? "Choose options" : "Coming soon"}<span>→</span>
+        <button type="button" ${hasOptions ? "data-ready-product" : "data-quick-ready-product"}="${escapePresetText(product.product_key)}" ${unavailable ? "disabled" : ""}>
+          ${soldOut ? "Sold out" : product.status !== "active" ? "Coming soon" : hasOptions ? "Choose leg colour" : "Quick add"}<span>→</span>
         </button>
       </div>
     </article>
@@ -1536,7 +1555,23 @@ ${isManualOrder ? `
     </article>
   ` : ""}
 
-  ${readyMadeProducts.map(renderReadyMadeProductCard).join("")}
+  ${otherReadyMadeProducts.map(renderReadyMadeProductCard).join("")}
+
+  ${critterLaunchProducts.length ? `
+    <section class="critter-launch-collection" aria-labelledby="critterLaunchHeading">
+      <div class="critter-launch-heading">
+        <div>
+          <span>New launch</span>
+          <h3 id="critterLaunchHeading">Meet the Critter Clickers</h3>
+          <p>Small, cute and satisfyingly clicky. Pick your favourite—or build a tiny trio.</p>
+        </div>
+        <strong>1 for ${displaySettingMoney(CRITTER_LAUNCH_UNIT_PRICE)} <i>·</i> Any ${CRITTER_LAUNCH_BUNDLE_QUANTITY} for ${displaySettingMoney(CRITTER_LAUNCH_BUNDLE_PRICE)}</strong>
+      </div>
+      <div class="critter-launch-grid">
+        ${critterLaunchProducts.map(renderReadyMadeProductCard).join("")}
+      </div>
+    </section>
+  ` : ""}
 
 </div>
   <p class="occasion-empty hidden" id="occasionEmpty">No products match this occasion yet—try “All.”</p>
@@ -12216,7 +12251,7 @@ function closeReadyMadeProduct() {
 function openReadyMadeProduct(productKey, existingItem = null) {
   const product = productCatalog.find(item => item.product_key === productKey);
   if (!product || !isReadyMadeProduct(product) || !readyMadeProductModalContent) return;
-  const options = normalizeProductOptions(product.options);
+  const options = getReadyMadeProductOptions(product);
   const previousSelections = existingItem?.custom?.readyMade?.selections || {};
   readyMadeProductModalContent.innerHTML = `
     <div class="ready-made-product-layout">
@@ -12269,8 +12304,34 @@ function openReadyMadeProduct(productKey, existingItem = null) {
   document.body.classList.add("modal-open");
 }
 
+function quickAddReadyMadeProduct(productKey) {
+  const product = productCatalog.find(item => item.product_key === productKey);
+  if (!product || !isReadyMadeProduct(product) || product.status !== "active" || Number(product.stock_quantity || 0) <= 0) return;
+  const design = {
+    baseShape: "ready-made",
+    letterOrientation: "vertical",
+    fontSize: 0,
+    bases: ["#FFFFFF"],
+    caps: ["#FFFFFF"],
+    letters: ["#332D30"],
+    readyMade: { selections: {}, imagePath: product.image_path || "", sku: product.sku || "" }
+  };
+  names = names.filter(item => cartHasItems && item.cartAdded !== false);
+  names.push({ name: product.name, quantity: 1, product_key: product.product_key, cartAdded: true, custom: design });
+  selectedIndex = names.length - 1;
+  cartHasItems = true;
+  draftHasMeaningfulChanges = true;
+  refreshUI();
+  renderCartDrawer();
+  openCartDrawer();
+}
+
 document.querySelectorAll("[data-ready-product]").forEach(button => {
   button.addEventListener("click", () => openReadyMadeProduct(button.dataset.readyProduct));
+});
+
+document.querySelectorAll("[data-quick-ready-product]").forEach(button => {
+  button.addEventListener("click", () => quickAddReadyMadeProduct(button.dataset.quickReadyProduct));
 });
 
 function setProductMediaSlide(gallery, slideIndex, { smooth = true } = {}) {

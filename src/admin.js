@@ -2225,6 +2225,23 @@ function renderSettingsWorkspace() {
                     </select>
                   </header>
 
+                  <div class="product-quick-pricing">
+                    <div>
+                      <span>Customer pricing</span>
+                      <small>Change it here—no need to open the full editor.</small>
+                    </div>
+                    ${productNumberField(product, "usual_base_price", "Normal price (S$)")}
+                    ${productNumberField(product, "launch_base_price", "Promo price (S$)")}
+                    <label class="settings-toggle">
+                      <input name="${escapeAdminHtml(prefix)}launch_price_enabled" type="checkbox" ${checked(product.launch_price_enabled)}>
+                      Use promo price
+                    </label>
+                    <label class="settings-toggle">
+                      <input name="${escapeAdminHtml(prefix)}price_visible" type="checkbox" ${checked(product.price_visible)}>
+                      Show price
+                    </label>
+                  </div>
+
                   <details class="product-settings-editor">
                     <summary>
                       <span>Edit pricing and production</span>
@@ -2331,28 +2348,7 @@ function renderSettingsWorkspace() {
 
                       <section class="product-price-group">
                         <div class="product-price-group-heading">
-                          <strong>1. Starting price</strong>
-                          <small>The amount customers see before optional add-ons.</small>
-                        </div>
-                        <div class="settings-fields two-columns">
-                          ${productNumberField(product, "usual_base_price", "Usual price ($)")}
-                          ${productNumberField(product, "launch_base_price", "Launch price ($)")}
-                        </div>
-                        <div class="product-price-toggles">
-                          <label class="settings-toggle">
-                            <input name="${escapeAdminHtml(prefix)}launch_price_enabled" type="checkbox" ${checked(product.launch_price_enabled)}>
-                            Use launch price
-                          </label>
-                          <label class="settings-toggle">
-                            <input name="${escapeAdminHtml(prefix)}price_visible" type="checkbox" ${checked(product.price_visible)}>
-                            Show pricing to customers
-                          </label>
-                        </div>
-                      </section>
-
-                      <section class="product-price-group">
-                        <div class="product-price-group-heading">
-                          <strong>2. Character pricing</strong>
+                          <strong>Character pricing</strong>
                           <small>Keep six included, then charge only for longer names.</small>
                         </div>
                         <div class="settings-fields three-columns product-character-pricing-fields">
@@ -2364,7 +2360,7 @@ function renderSettingsWorkspace() {
 
                       <section class="product-price-group">
                         <div class="product-price-group-heading">
-                          <strong>3. Mixed-colour add-ons</strong>
+                          <strong>Mixed-colour add-ons</strong>
                           <small>One colour for each part is included. These apply only when a customer uses multiple colours within that same part.</small>
                         </div>
                         <div class="settings-fields three-columns">

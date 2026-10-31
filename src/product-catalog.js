@@ -46,13 +46,18 @@ export const DEFAULT_CRITTER_COLLECTIONS = Object.freeze(
   DEFAULT_KPOP_CLICKER_MODELS.map((model, index) => {
     const productKey = `critter-${model.key}`;
     const isLaunchProduct = CRITTER_LAUNCH_PRODUCT_KEYS.includes(productKey);
+    const launchDescriptions = {
+      "chonky-cat": "Round, grumpy-cute and made for endless belly clicks. Your tiny desk buddy for stressful days.",
+      "baby-sunflower": "A pocket-sized ray of sunshine with the sweetest little face—and a very satisfying click.",
+      ghost: "A shy little ghost with tiny colourful feet. Pick the leg colour that matches your spooky-cute mood."
+    };
     return {
       product_key: productKey,
       product_type: READY_MADE_PRODUCT_TYPE,
       name: `${model.name} Clicker`,
       sku: `CRITTER-${model.key.toUpperCase()}`,
       eyebrow: "Licensed CritterCRAFT collection",
-      description: `A satisfying ${model.name} character clicker, made in the original fixed colours shown.${isLaunchProduct ? " Launch special: one for $5.90 or any three Critters for $15." : ""}`,
+      description: launchDescriptions[model.key] || `A satisfying ${model.name} character clicker, made in the original fixed colours shown.`,
       status: isLaunchProduct ? "active" : "hidden",
       price_visible: isLaunchProduct,
       usual_base_price: 6.9,
@@ -563,6 +568,23 @@ export function normalizeProductCatalog(rows = []) {
   const defaults = DEFAULT_PRODUCT_CATALOG.map(fallback => {
     const saved = savedByKey.get(fallback.product_key) || {};
     const product = { ...fallback, ...saved };
+
+    if (isCritterLaunchProduct(fallback)) {
+      const usesLegacyCritterListing = !saved.description || /^A satisfying .+ character clicker/i.test(String(saved.description));
+      if (usesLegacyCritterListing) {
+        product.description = fallback.description;
+        product.usual_base_price = fallback.usual_base_price;
+        product.launch_base_price = fallback.launch_base_price;
+        product.launch_price_enabled = true;
+        product.price_visible = true;
+      }
+      if (!String(saved.image_path || "").trim()) {
+        product.image_path = fallback.image_path;
+      }
+      if (!Array.isArray(saved.gallery_paths) || !saved.gallery_paths.filter(Boolean).length) {
+        product.gallery_paths = fallback.gallery_paths;
+      }
+    }
 
     if (
       fallback.product_key === MODULAR_PRODUCT_KEY &&

@@ -94,6 +94,30 @@ test("applies the Critter launch bundle to every complete group of three", () =>
   assert.equal(isCritterLaunchProduct("critter-strawberry-hippo"), false);
 });
 
+test("upgrades legacy Critter launch listings without overwriting later admin edits", () => {
+  const legacy = getProductByKey(normalizeProductCatalog([{
+    product_key: "critter-ghost",
+    description: "A satisfying Ghost character clicker, made in the original fixed colours shown.",
+    usual_base_price: 9.9,
+    launch_base_price: 8.9
+  }]), "critter-ghost");
+  const edited = getProductByKey(normalizeProductCatalog([{
+    product_key: "critter-ghost",
+    description: "My own spooky description.",
+    usual_base_price: 8.9,
+    launch_base_price: 7.5,
+    launch_price_enabled: true,
+    price_visible: true
+  }]), "critter-ghost");
+
+  assert.match(legacy.description, /shy little ghost/i);
+  assert.equal(legacy.usual_base_price, 6.9);
+  assert.equal(legacy.launch_base_price, CRITTER_LAUNCH_UNIT_PRICE);
+  assert.equal(edited.description, "My own spooky description.");
+  assert.equal(edited.usual_base_price, 8.9);
+  assert.equal(edited.launch_base_price, 7.5);
+});
+
 test("prices photo keepsakes by artwork colour count", () => {
   assert.equal(getPhotoKeepsakeColourPrice(2), 6.5);
   assert.equal(getPhotoKeepsakeColourPrice(3), 7.5);

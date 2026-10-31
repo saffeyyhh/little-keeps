@@ -35,9 +35,9 @@ values
   (
     'critter-chonky-cat', 'ready_made', 'Chonky Cat Clicker', 'CRITTER-CHONKY-CAT',
     'Licensed CritterCRAFT collection',
-    'A satisfying Chonky Cat character clicker, made in the original fixed colours shown. Launch special: one for $5.90 or any three Critters for $15.',
+    'Round, grumpy-cute and made for endless belly clicks. Your tiny desk buddy for stressful days.',
     'active', true, 6.90, 5.90, true, 1, 1, 1, 0, 1, 1, 25, 20, 5, 250,
-    '[]'::jsonb, true, 65,
+    '[]'::jsonb, true, 61,
     '/images/critter-clickers/chonky-cat.jpg',
     '["/images/critter-clickers/chonky-cat.jpg"]'::jsonb,
     'Licensed CritterCRAFT Chonky Cat. Print only the fixed-colour keychain variant shown.',
@@ -46,7 +46,7 @@ values
   (
     'critter-baby-sunflower', 'ready_made', 'Baby Sunflower Clicker', 'CRITTER-BABY-SUNFLOWER',
     'Licensed CritterCRAFT collection',
-    'A satisfying Baby Sunflower character clicker, made in the original fixed colours shown. Launch special: one for $5.90 or any three Critters for $15.',
+    'A pocket-sized ray of sunshine with the sweetest little face—and a very satisfying click.',
     'active', true, 6.90, 5.90, true, 1, 1, 1, 0, 1, 1, 25, 20, 5, 250,
     '[]'::jsonb, false, 62,
     '/images/critter-clickers/baby-sunflower.jpg',
@@ -57,7 +57,7 @@ values
   (
     'critter-ghost', 'ready_made', 'Ghost Clicker', 'CRITTER-GHOST',
     'Licensed CritterCRAFT collection',
-    'A satisfying Ghost character clicker, made in the original fixed colours shown. Launch special: one for $5.90 or any three Critters for $15.',
+    'A shy little ghost with tiny colourful feet. Pick the leg colour that matches your spooky-cute mood.',
     'active', true, 6.90, 5.90, true, 1, 1, 1, 0, 1, 1, 25, 20, 5, 250,
     '[]'::jsonb, false, 68,
     '/images/critter-clickers/ghost.jpg',
@@ -76,6 +76,7 @@ on conflict (product_key) do update set
   launch_price_enabled = true,
   stock_quantity = greatest(public.product_catalog.stock_quantity, 250),
   featured = excluded.featured,
+  sort_order = excluded.sort_order,
   image_path = excluded.image_path,
   gallery_paths = excluded.gallery_paths,
   production_notes = excluded.production_notes,
