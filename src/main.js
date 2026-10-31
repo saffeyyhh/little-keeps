@@ -854,15 +854,53 @@ function renderProductCardMedia(product, {
 
 function getReadyMadeProductOptions(product) {
   const options = normalizeProductOptions(product?.options);
-  if (product?.product_key !== "critter-ghost") return options;
+  if (!isCritterLaunchProduct(product)) return options;
+
+  const remainingOptions = options.filter(option => !["leg colour", "finish"].includes(option.name.toLowerCase()));
+  const finishOption = { name: "Finish", values: ["With keychain", "Without keychain"] };
+  if (product?.product_key !== "critter-ghost") return [finishOption, ...remainingOptions];
 
   const legColours = shopSettings.colour_options
     .filter(colour => colour.active && !unavailableColourNames.has(String(colour.name).toLowerCase()))
     .map(colour => colour.name);
-  const remainingOptions = options.filter(option => option.name.toLowerCase() !== "leg colour");
   return legColours.length
-    ? [{ name: "Leg colour", values: legColours }, ...remainingOptions]
-    : remainingOptions;
+    ? [{ name: "Leg colour", values: legColours }, finishOption, ...remainingOptions]
+    : [finishOption, ...remainingOptions];
+}
+
+function renderReadyMadeOption(option, index, previousSelections = {}) {
+  const selectedValue = option.values.includes(previousSelections[option.name])
+    ? previousSelections[option.name]
+    : option.values[0];
+  const isColourOption = option.name.toLowerCase().includes("colour");
+  const controlClass = isColourOption ? "ready-made-colour-options" : "ready-made-choice-options";
+
+  return `
+    <fieldset class="ready-made-option-group">
+      <legend>${escapePresetText(option.name)}</legend>
+      <div class="${controlClass}">
+        ${option.values.map(value => {
+          const colour = isColourOption
+            ? shopSettings.colour_options.find(item => item.name.toLowerCase() === value.toLowerCase())
+            : null;
+          const checked = value === selectedValue;
+          return `
+            <label class="ready-made-option-choice ${checked ? "is-selected" : ""}">
+              <input
+                type="radio"
+                name="readyMadeOption${index}"
+                data-ready-option="${escapePresetText(option.name)}"
+                value="${escapePresetText(value)}"
+                ${checked ? "checked" : ""}
+              >
+              ${colour ? `<i class="ready-made-colour-dot" style="--ready-colour:${escapePresetText(colour.hex)}"></i>` : ""}
+              <span>${escapePresetText(value)}</span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </fieldset>
+  `;
 }
 
 function renderReadyMadeProductCard(product) {
@@ -870,6 +908,8 @@ function renderReadyMadeProductCard(product) {
   const soldOut = Number(product.stock_quantity || 0) <= 0;
   const unavailable = product.status !== "active" || soldOut;
   const hasOptions = getReadyMadeProductOptions(product).length > 0;
+  const usesQuickAddModal = isCritterLaunchProduct(product);
+  const opensModal = hasOptions || usesQuickAddModal;
   return `
     <article class="product-card ready-made-product-card ${unavailable ? "product-card-coming" : "product-card-current"}" data-occasions="gifts birthdays">
       ${renderProductCardMedia(product, {
@@ -881,8 +921,8 @@ function renderReadyMadeProductCard(product) {
         <p>${escapePresetText(product.description || "A small-batch Little Keeps design.")}</p>
         ${renderProductCardPrice(product)}
         ${renderProductUnitsSoldBadge(product)}
-        <button type="button" ${hasOptions ? "data-ready-product" : "data-quick-ready-product"}="${escapePresetText(product.product_key)}" ${unavailable ? "disabled" : ""}>
-          ${soldOut ? "Sold out" : product.status !== "active" ? "Coming soon" : hasOptions ? "Choose leg colour" : "Quick add"}<span>→</span>
+        <button type="button" ${opensModal ? "data-ready-product" : "data-quick-ready-product"}="${escapePresetText(product.product_key)}" ${unavailable ? "disabled" : ""}>
+          ${soldOut ? "Sold out" : product.status !== "active" ? "Coming soon" : usesQuickAddModal ? "Quick add" : hasOptions ? "Choose options" : "Quick add"}<span>→</span>
         </button>
       </div>
     </article>
@@ -7004,6 +7044,7 @@ function getDesign(item) {
     photo: item.custom.photo || null,
     manualCustom: item.custom.manualCustom || null,
     imageCap: item.custom.imageCap || null,
+    readyMade: item.custom.readyMade || null,
     pencil: normalizePencilDesign(item.custom.pencil || globalDesign.pencil),
 
     bases:
@@ -12265,20 +12306,38 @@ function openReadyMadeProduct(productKey, existingItem = null) {
         <strong class="ready-made-product-price">${displaySettingMoney(getProductDisplayPrice(product))}</strong>
         ${isCritterLaunchProduct(product) ? `<p class="ready-made-bundle-offer">Launch special · Any ${CRITTER_LAUNCH_BUNDLE_QUANTITY} Critters for ${displaySettingMoney(CRITTER_LAUNCH_BUNDLE_PRICE)}</p>` : ""}
         <div class="ready-made-product-options">
-          ${options.map((option, index) => `
-            <label><span>${escapePresetText(option.name)}</span><select data-ready-option="${escapePresetText(option.name)}">
-              ${option.values.map(value => `<option value="${escapePresetText(value)}" ${previousSelections[option.name] === value ? "selected" : ""}>${escapePresetText(value)}</option>`).join("")}
-            </select></label>
-          `).join("")}
-          <label><span>Quantity</span><input id="readyMadeQuantity" type="number" min="1" max="${Math.max(1, Number(product.stock_quantity) || 1)}" value="${getItemQuantity(existingItem || {})}"></label>
+          ${options.map((option, index) => renderReadyMadeOption(option, index, previousSelections)).join("")}
+          <fieldset class="ready-made-option-group ready-made-quantity-group">
+            <legend>Quantity</legend>
+            <div class="ready-made-quantity-stepper">
+              <button type="button" data-ready-quantity-step="-1" aria-label="Decrease quantity">−</button>
+              <input id="readyMadeQuantity" type="number" min="1" max="${Math.max(1, Number(product.stock_quantity) || 1)}" value="${getItemQuantity(existingItem || {})}" aria-label="Quantity">
+              <button type="button" data-ready-quantity-step="1" aria-label="Increase quantity">+</button>
+            </div>
+          </fieldset>
         </div>
         <p class="ready-made-stock-note">${Number(product.stock_quantity) >= 250 ? "Made to order" : `${Number(product.stock_quantity)} available`}</p>
         <button id="addReadyMadeToCartBtn" class="submit-btn" type="button">${existingItem ? "Update cart" : "Add to cart"}</button>
       </div>
     </div>
   `;
+  readyMadeProductModalContent.querySelectorAll("[data-ready-option]").forEach(input => {
+    input.addEventListener("change", () => {
+      input.closest(".ready-made-option-group")?.querySelectorAll(".ready-made-option-choice").forEach(label => {
+        label.classList.toggle("is-selected", label.contains(input));
+      });
+    });
+  });
+  readyMadeProductModalContent.querySelectorAll("[data-ready-quantity-step]").forEach(button => {
+    button.addEventListener("click", () => {
+      const input = document.getElementById("readyMadeQuantity");
+      if (!input) return;
+      const nextValue = normalizeItemQuantity(Number(input.value || 1) + Number(button.dataset.readyQuantityStep || 0));
+      input.value = String(Math.min(Number(input.max || product.stock_quantity || 1), nextValue));
+    });
+  });
   document.getElementById("addReadyMadeToCartBtn")?.addEventListener("click", () => {
-    const selections = Object.fromEntries(Array.from(readyMadeProductModalContent.querySelectorAll("[data-ready-option]")).map(select => [select.dataset.readyOption, select.value]));
+    const selections = Object.fromEntries(Array.from(readyMadeProductModalContent.querySelectorAll("[data-ready-option]:checked")).map(input => [input.dataset.readyOption, input.value]));
     const quantity = Math.min(Number(product.stock_quantity), normalizeItemQuantity(document.getElementById("readyMadeQuantity")?.value));
     const design = {
       baseShape: "ready-made", letterOrientation: "vertical", fontSize: 0,
